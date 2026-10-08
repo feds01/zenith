@@ -18,8 +18,9 @@ and `"use client"` boundaries. Zenith is a single Rust binary built on
 
 ## Status
 
-Zenith is under construction. Its build spec and its implementation land on
-`main` one reviewed pull request at a time.
+Zenith is under construction. The design is settled in
+[docs/SPEC.md](docs/SPEC.md), and the implementation lands on `main` one
+reviewed pull request at a time (see the spec's roadmap, §13).
 
 ## Installation
 

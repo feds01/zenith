@@ -1,0 +1,46 @@
+[workspace]
+members = ["crates/zenith*"]
+
+resolver = "2"
+
+[workspace.package]
+authors = ["Alexander Fedotov <alexander.fedotov.uk@gmail.com>"]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/feds01/zenith"
+
+[workspace.dependencies]
+anyhow = { version = "1.0.104" }
+argfile = { version = "1.0.0" }
+clap = { version = "4.6.7", features = ["derive", "env", "wrap_help"] }
+wild = { version = "2.2.1" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug-assertions = false
+overflow-checks = false
+# Strip debug info but keep symbols, so that the crash handler's backtraces
+# still name functions.
+strip = "debuginfo"
+debug = false
+
+[profile.release-with-dbg-info]
+inherits = "release"
+debug = true
+strip = false
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"

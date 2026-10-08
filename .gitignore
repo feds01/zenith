@@ -1,0 +1,15 @@
+/target
+
+# Editors
+.vscode/
+.idea/
+
+# Local worktrees and agent scratch space
+.worktrees/
+.claude/worktrees/
+
+# Examples and experimentation
+examples/
+
+# Local corpus configs (may describe private codebases)
+/corpus/

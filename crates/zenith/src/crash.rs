@@ -3,8 +3,7 @@
 use std::{io::Write, panic::PanicHookInfo, process::exit, sync::atomic, thread};
 
 const BUG_REPORT_MSG: &str = "This is a bug in zenith, please file a bug report at";
-const BUG_REPORT_URI: &str =
-    "https://github.com/feds01/zenith/issues?labels=bug&template=bug_report";
+const BUG_REPORT_URI: &str = "https://github.com/feds01/zenith/issues/new?labels=bug";
 
 /// The crash handler. This function should be used to register a `panic`
 /// handle for the program. It will ensure that only one thread can panic at a

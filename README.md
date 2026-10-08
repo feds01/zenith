@@ -35,7 +35,7 @@ Prebuilt binaries and installers will be attached to
 [GitHub releases](https://github.com/feds01/zenith/releases) once the first
 version is tagged.
 
-### Development
+## Development
 
 Zenith builds with a pinned nightly toolchain (see `rust-toolchain.toml`) and
 uses [just](https://github.com/casey/just):
@@ -49,7 +49,7 @@ just run       # run the CLI from source, e.g. `just run version`
 
 See [CLAUDE.md](CLAUDE.md) for the architecture and conventions.
 
-### Releasing
+## Releasing
 
 Bump `version` in `crates/zenith/Cargo.toml`, merge to `main`, then run
 `just release` to tag it. [cargo-dist](https://opensource.axo.dev/cargo-dist/)

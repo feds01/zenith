@@ -31,11 +31,10 @@ Linux/macOS/Windows, and `cargo deny`.
 
 Pipeline: config → walk → parse + resolve (parallel) → graph → contracts (parallel) → render.
 
-The crates and what each one owns are listed in
-SPEC §11.2. That table is the single source; update
-it when responsibilities move. On `main` today: `zenith`, the CLI (`cli.rs`,
-`commands/*`, `crash.rs`, and `version.rs` with `build.rs` for git commit
-stamping).
+The crates and what each one owns are listed in SPEC §11.2. That table is the
+single source; update it when responsibilities move. On `main` today:
+`zenith`, the CLI (`cli.rs`, `commands/*`, `crash.rs`, and `version.rs` with
+`build.rs` for git commit stamping).
 
 Key invariants:
 

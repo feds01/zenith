@@ -41,9 +41,12 @@ fn commit_info(workspace_root: &Path) {
     };
 
     // Rebuild when the commit changes. HEAD holds either a commit, when it is
-    // detached, or `ref: <ref>` when on a branch; in that case the branch's
-    // ref file (or `packed-refs`, once refs are packed) changes on commit.
+    // detached, or `ref: <ref>` when on a branch. A commit on a branch writes
+    // the branch's loose ref file, which may not exist beforehand once refs are
+    // packed (so it cannot be watched), and always appends to HEAD's reflog,
+    // `logs/HEAD`, which can.
     let mut watched = vec![head.clone()];
+    watched.extend(git_path(workspace_root, "logs/HEAD"));
     if let Ok(contents) = fs::read_to_string(&head)
         && let Some(reference) = contents.trim().strip_prefix("ref: ")
     {

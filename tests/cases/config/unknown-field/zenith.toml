@@ -1,0 +1,5 @@
+[contracts.a-not-b]
+type = "forbidden"
+from = ["src/a"]
+to = ["src/b"]
+allow_indirect_import = true

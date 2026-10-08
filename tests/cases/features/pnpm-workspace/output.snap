@@ -1,0 +1,24 @@
+$ zenith check
+exit: 1
+--- stdout
+error[package-tiers]: `pkg:@demo/utils` must not import `pkg:@demo/ui`
+ --> packages/utils/index.ts:1:24
+  |
+1 | import { Button } from "@demo/ui";
+  |                        ^^^^^^^^^^ imports `packages/ui/index.ts`
+
+error[packages-acyclic]: dependency cycle in `pkg:*`
+ --> packages/utils/index.ts:1:24
+  |
+1 | import { Button } from "@demo/ui";
+  |                        ^^^^^^^^^^ closes the cycle @demo/utils -> @demo/ui -> @demo/utils
+  |
+  = note: it could be made acyclic by removing 1 dependency:
+            @demo/utils -> @demo/ui (1 import)
+
+Contracts
+  ✗ package-tiers     layers        broken (1 violation)
+  ✗ packages-acyclic  acyclic       broken (1 violation)
+
+0 kept, 2 broken · 3 files, 4 imports
+

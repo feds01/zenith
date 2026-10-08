@@ -1,0 +1,68 @@
+$ zenith check
+exit: 1
+--- stdout
+error[default-kinds]: `src/low` must not import `src/high`
+ --> src/low/common.cjs:1:26
+  |
+1 | const { high } = require("../high/h");
+  |                          ^^^^^^^^^^^ imports `src/high/h.ts`
+  |
+ ::: src/low/dynamic.ts:1:34
+  |
+1 | export const load = () => import("../high/h");
+  |                                  ^^^^^^^^^^^ imports `src/high/h.ts`
+  |
+ ::: src/low/import-equals.ts:1:20
+  |
+1 | import h = require("../high/h");
+  |                    ^^^^^^^^^^^ imports `src/high/h.ts`
+
+error[all-kinds]: `src/low` must not import `src/high`
+ --> src/low/all-type-specifiers.ts:1:36
+  |
+1 | import { type High, type Id } from "../high/h";
+  |                                    ^^^^^^^^^^^ imports `src/high/h.ts`
+  |
+ ::: src/low/common.cjs:1:26
+  |
+1 | const { high } = require("../high/h");
+  |                          ^^^^^^^^^^^ imports `src/high/h.ts`
+  |
+ ::: src/low/dynamic.ts:1:34
+  |
+1 | export const load = () => import("../high/h");
+  |                                  ^^^^^^^^^^^ imports `src/high/h.ts`
+  |
+  = note: 7 direct imports in total; use `--format compact` to list them all
+
+error[requires-only]: `src/low` must not import `src/high`
+ --> src/low/common.cjs:1:26
+  |
+1 | const { high } = require("../high/h");
+  |                          ^^^^^^^^^^^ imports `src/high/h.ts`
+  |
+ ::: src/low/import-equals.ts:1:20
+  |
+1 | import h = require("../high/h");
+  |                    ^^^^^^^^^^^ imports `src/high/h.ts`
+
+Contracts
+  ✗ default-kinds       forbidden     broken (3 violations)
+  ✗ all-kinds           forbidden     broken (7 violations)
+  ✓ static-values-only  forbidden     kept
+  ✗ requires-only       forbidden     broken (2 violations)
+
+1 kept, 3 broken · 8 files, 7 imports
+
+$ zenith check --format compact --contract all-kinds
+exit: 1
+--- stdout
+src/low/all-type-specifiers.ts:1:1: error[all-kinds]: `src/low` must not import `src/high`
+src/low/common.cjs:1:18: error[all-kinds]: `src/low` must not import `src/high`
+src/low/dynamic.ts:1:27: error[all-kinds]: `src/low` must not import `src/high`
+src/low/export-type-star.ts:1:1: error[all-kinds]: `src/low` must not import `src/high`
+src/low/import-equals.ts:1:1: error[all-kinds]: `src/low` must not import `src/high`
+src/low/import-type.ts:1:1: error[all-kinds]: `src/low` must not import `src/high`
+src/low/typeof-import.ts:1:33: error[all-kinds]: `src/low` must not import `src/high`
+1 of 1 contract broken
+

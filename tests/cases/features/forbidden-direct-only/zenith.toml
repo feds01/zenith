@@ -1,0 +1,13 @@
+# `src/a/w.ts` imports `src/c` directly; `src/a/x.ts` reaches it through
+# `src/b`. The transitive contract reports both chains, the direct-only one
+# just the direct import.
+[contracts.transitive]
+type = "forbidden"
+from = ["src/a"]
+to = ["src/c"]
+
+[contracts.direct-only]
+type = "forbidden"
+from = ["src/a"]
+to = ["src/c"]
+allow_indirect_imports = true

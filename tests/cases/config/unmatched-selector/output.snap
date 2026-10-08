@@ -1,0 +1,6 @@
+$ zenith check
+exit: 2
+--- stderr
+error: contract `a-not-c`: `to` selector `src/c` does not match anything
+error: 1 contract could not be compiled
+

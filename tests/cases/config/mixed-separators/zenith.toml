@@ -1,0 +1,4 @@
+[contracts.tiers]
+type = "layers"
+containers = ["src"]
+layers = ["a | b : c"]

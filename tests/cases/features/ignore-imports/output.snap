@@ -1,0 +1,14 @@
+$ zenith check
+exit: 1
+--- stdout
+warning[unmatched-warns]: no imports match the ignored import `src/b -> src/a`
+
+error[unmatched-errors]: no imports match the ignored import `src/b -> src/a`
+
+Contracts
+  ✓ unmatched-warns   forbidden     kept · 1 ignored
+  ✗ unmatched-errors  forbidden     broken (1 violation) · 1 ignored
+  ✓ unmatched-silent  forbidden     kept · 1 ignored
+
+2 kept, 1 broken · 2 files, 1 import
+

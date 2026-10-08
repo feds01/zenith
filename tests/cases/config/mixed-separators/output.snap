@@ -1,0 +1,6 @@
+$ zenith check
+exit: 2
+--- stderr
+error: contract `tiers`: layer `a | b : c` mixes `|` and `:` separators
+error: 1 contract could not be compiled
+

@@ -1,0 +1,7 @@
+# `src/feature` is entered through `index` or anything matching `public/*`.
+# `src/tests` may import its internals.
+[contracts.feature-surface]
+type = "encapsulation"
+modules = ["src/feature"]
+entrypoints = ["index", "public/*"]
+allowed_importers = ["src/tests"]

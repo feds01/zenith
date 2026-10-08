@@ -1,0 +1,2 @@
+check --contract b-not-a
+check --contract nope

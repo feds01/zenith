@@ -1,0 +1,5 @@
+$ zenith check
+exit: 2
+--- stderr
+error: invalid configuration in `$ROOT/zenith.toml`: in contract `a-not-b`: unknown field `allow_indirect_import`, expected one of `name`, `severity`, `exclude_kinds`, `ignore_imports`, `unmatched_ignore_imports`, `guidance`, `from`, `to`, `allow_indirect_imports`; did you mean `allow_indirect_imports`?
+

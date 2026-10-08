@@ -1,0 +1,27 @@
+$ zenith init
+exit: 0
+--- stdout
+Wrote `$ROOT/zenith.toml` (2 source files, 2 workspace packages found).
+
+$ zenith check
+exit: 1
+--- stdout
+error[packages-acyclic]: dependency cycle in `pkg:*`
+ --> packages/b/index.ts:1:19
+  |
+1 | import { a } from "@init/a";
+  |                   ^^^^^^^^^ closes the cycle @init/b -> @init/a -> @init/b
+  |
+  = note: it could be made acyclic by removing 1 dependency:
+            @init/b -> @init/a (1 import)
+
+Contracts
+  ✗ packages-acyclic  acyclic       broken (1 violation)
+
+0 kept, 1 broken · 2 files, 2 imports
+
+$ zenith init
+exit: 2
+--- stderr
+error: `$ROOT/zenith.toml` already exists; use `--force` to overwrite it
+

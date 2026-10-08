@@ -1,0 +1,6 @@
+check
+resolve packages/app/src/main.ts @/lib/format
+resolve packages/core/src/index.ts @/lib/format
+resolve packages/app/src/main.ts config
+resolve packages/app/src/main.ts react
+resolve packages/tools/src/index.ts ~shared/util

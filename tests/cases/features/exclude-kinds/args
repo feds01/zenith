@@ -1,0 +1,3 @@
+check
+# Lists every one of the seven imports.
+check --format compact --contract all-kinds

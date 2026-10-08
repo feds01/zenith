@@ -1,0 +1,38 @@
+$ zenith check
+exit: 1
+--- stdout
+error[a-not-b]: `src/a` must not import `src/b`
+ --> src/a/unknown.ts:2:19
+  |
+2 | import { y } from "../b/y";
+  |                   ^^^^^^^^ imports `src/b/y.ts`
+
+error[b-protected]: `src/b` may only be imported by its allowed importers
+ --> src/a/trailing.ts:1:19
+  |
+1 | import { y } from "../b/y"; /* zenith-ignore a-not-b */
+  |                   ^^^^^^^^ imports `src/b/y.ts`
+  |
+ ::: src/a/unknown.ts:2:19
+  |
+2 | import { y } from "../b/y";
+  |                   ^^^^^^^^ imports `src/b/y.ts`
+
+warning: unused suppression: unknown contract `no-such-contract`
+ --> src/a/unknown.ts:1:1
+  |
+1 | // zenith-ignore no-such-contract
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused suppression: no import on line 2 for the contracts it names
+ --> src/a/unused.ts:1:1
+  |
+1 | // zenith-ignore a-not-b: nothing to suppress here
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Contracts
+  ✗ a-not-b      forbidden     broken (1 violation) · 2 suppressed
+  ✗ b-protected  protected     broken (2 violations) · 1 suppressed
+
+0 kept, 2 broken · 5 files, 3 imports
+

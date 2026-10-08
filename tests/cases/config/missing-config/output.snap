@@ -1,0 +1,5 @@
+$ zenith check
+exit: 2
+--- stderr
+error: could not find a `zenith.toml` in `$ROOT` or its parents; run `zenith init` to create one
+

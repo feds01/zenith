@@ -1,0 +1,8 @@
+# Every child of each domain must be a layer, except `index`. `utils.ts` in
+# `domains/orders` is undeclared.
+[contracts.domain-layers]
+type = "layers"
+containers = ["domains/*"]
+layers = ["ui", "api", "types"]
+exhaustive = true
+exhaustive_ignores = ["index"]

@@ -1,0 +1,9 @@
+# Top level: a -> b (2 imports) -> c (2 imports) -> a (1 import); the
+# breaker is the lightest edge, c -> a. With depth = 1, the children of each
+# unit are checked too: `src/a/one.ts` and `src/a/two.ts` form a cycle.
+# `src/skipped` has a cycle among its children, but is not drilled into.
+[contracts.no-cycles]
+type = "acyclic"
+modules = ["src/*"]
+depth = 1
+skip = ["src/skipped"]

@@ -1,0 +1,6 @@
+$ zenith check
+exit: 2
+--- stderr
+error: contract `a-not-b`: invalid selector `src/a**`: `**` must be a whole path segment in glob `src/a**`; use `*` within a segment
+error: 1 contract could not be compiled
+

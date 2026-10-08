@@ -1,0 +1,5 @@
+$ zenith check
+exit: 2
+--- stderr
+error: invalid configuration in `$ROOT/zenith.toml`: in contract `tiers`: unknown variant `layer`, expected one of `layers`, `forbidden`, `independence`, `protected`, `acyclic`, `encapsulation` in `type`; did you mean `layers`?
+

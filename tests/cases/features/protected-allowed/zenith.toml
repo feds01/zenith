@@ -1,0 +1,7 @@
+# `src/core` may be imported directly only by `src/app` and by itself.
+# `src/lib/outsider.ts` is flagged; `src/lib/indirect.ts` reaches core only
+# through `src/app`, which `protected` does not check.
+[contracts.core-protected]
+type = "protected"
+modules = ["src/core"]
+allowed_importers = ["src/app"]

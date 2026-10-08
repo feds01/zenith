@@ -1,0 +1,12 @@
+$ zenith check
+exit: 1
+--- stdout
+error[domain-layers]: `domains/orders/utils.ts` is not declared as a layer of `domains/orders`
+  |
+  = help: this contract is exhaustive: declare it in `layers`, or add it to `exhaustive_ignores`
+
+Contracts
+  ✗ domain-layers  layers        broken (1 violation)
+
+0 kept, 1 broken · 8 files, 3 imports
+

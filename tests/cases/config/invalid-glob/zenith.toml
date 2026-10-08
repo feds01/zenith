@@ -1,0 +1,5 @@
+# `**` must be a whole segment.
+[contracts.a-not-b]
+type = "forbidden"
+from = ["src/a**"]
+to = ["src/b"]

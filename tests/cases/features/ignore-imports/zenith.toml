@@ -1,0 +1,21 @@
+# The only import, `src/a/x.ts -> src/b/y.ts`, is ignored by the first entry
+# of each contract. The second entry (`src/b -> src/a`) matches nothing.
+[contracts.unmatched-warns]
+type = "forbidden"
+from = ["src/a"]
+to = ["src/b"]
+ignore_imports = ["src/a -> src/b", "src/b -> src/a"]
+unmatched_ignore_imports = "warn"
+
+[contracts.unmatched-errors]
+type = "forbidden"
+from = ["src/a"]
+to = ["src/b"]
+ignore_imports = ["src/a -> src/b", "src/b -> src/a"]
+
+[contracts.unmatched-silent]
+type = "forbidden"
+from = ["src/a"]
+to = ["src/b"]
+ignore_imports = ["src/a -> src/b", "src/b -> src/a"]
+unmatched_ignore_imports = "none"

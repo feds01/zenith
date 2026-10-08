@@ -1,0 +1,5 @@
+{
+  "name": "paths-demo",
+  "private": true,
+  "workspaces": ["packages/*"]
+}

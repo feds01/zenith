@@ -1,0 +1,41 @@
+$ zenith check
+exit: 1
+--- stdout
+error[tools-not-shared]: `tools` must not import `shared`
+ --> packages/tools/src/index.ts:1:24
+  |
+1 | import { shared } from "~shared/util";
+  |                        ^^^^^^^^^^^^^^ imports `shared/util.ts`
+
+Contracts
+  ✓ core-not-app           forbidden     kept
+  ✓ app-has-no-npm-config  forbidden     kept
+  ✗ tools-not-shared       forbidden     broken (1 violation)
+
+2 kept, 1 broken · 7 files, 5 imports
+
+$ zenith resolve packages/app/src/main.ts @/lib/format
+exit: 0
+--- stdout
+internal  packages/app/src/lib/format.ts
+
+$ zenith resolve packages/core/src/index.ts @/lib/format
+exit: 0
+--- stdout
+internal  packages/core/src/lib/format.ts
+
+$ zenith resolve packages/app/src/main.ts config
+exit: 0
+--- stdout
+internal  packages/app/src/config.ts
+
+$ zenith resolve packages/app/src/main.ts react
+exit: 0
+--- stdout
+external  npm:react  (not installed; classified from the specifier)
+
+$ zenith resolve packages/tools/src/index.ts ~shared/util
+exit: 0
+--- stdout
+internal  shared/util.ts
+

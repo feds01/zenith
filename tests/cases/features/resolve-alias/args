@@ -1,0 +1,3 @@
+check --show-unresolved
+resolve src/ui/avatar.ts types/user
+resolve src/ui/avatar.ts /logo.svg

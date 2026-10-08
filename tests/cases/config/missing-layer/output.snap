@@ -1,0 +1,6 @@
+$ zenith check
+exit: 2
+--- stderr
+error: contract `domain-layers`: missing layer `hooks` in container `domains/billing`; wrap it in parentheses to make it optional
+error: 1 contract could not be compiled
+

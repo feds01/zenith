@@ -1,0 +1,4 @@
+init
+check
+# A second init does not overwrite the config.
+init

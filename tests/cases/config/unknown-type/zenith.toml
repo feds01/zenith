@@ -1,0 +1,3 @@
+[contracts.tiers]
+type = "layer"
+layers = ["src/a", "src/b"]

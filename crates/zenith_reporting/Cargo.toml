@@ -1,0 +1,19 @@
+[package]
+name = "zenith_reporting"
+version = "0.1.0"
+authors = { workspace = true }
+edition = { workspace = true }
+publish = false
+
+[dependencies]
+annotate-snippets = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+zenith_config = { workspace = true }
+zenith_contracts = { workspace = true }
+zenith_graph = { workspace = true }
+zenith_index = { workspace = true }
+zenith_utils = { workspace = true }
+
+[lints]
+workspace = true

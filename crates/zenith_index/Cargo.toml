@@ -1,0 +1,19 @@
+[package]
+name = "zenith_index"
+version = "0.1.0"
+authors = { workspace = true }
+edition = { workspace = true }
+publish = false
+
+[dependencies]
+log = { workspace = true }
+rayon = { workspace = true }
+rustc-hash = { workspace = true }
+zenith_graph = { workspace = true }
+zenith_parse = { workspace = true }
+zenith_resolve = { workspace = true }
+zenith_utils = { workspace = true }
+zenith_workspace = { workspace = true }
+
+[lints]
+workspace = true

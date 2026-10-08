@@ -1,0 +1,46 @@
+[package]
+name = "zenith"
+version = "0.1.0"
+description = "An architecture linter for TypeScript and JavaScript codebases"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = false
+default-run = "zenith"
+
+[[bin]]
+name = "zenith"
+path = "src/main.rs"
+
+[dependencies]
+zenith_config = { workspace = true }
+zenith_contracts = { workspace = true }
+zenith_graph = { workspace = true }
+zenith_index = { workspace = true }
+zenith_parse = { workspace = true }
+zenith_reporting = { workspace = true }
+zenith_resolve = { workspace = true }
+zenith_utils = { workspace = true }
+zenith_workspace = { workspace = true }
+
+anyhow = { workspace = true }
+argfile = { workspace = true }
+clap = { workspace = true }
+log = { workspace = true }
+schemars = { workspace = true }
+serde_json = { workspace = true }
+wild = { workspace = true }
+
+[dev-dependencies]
+libtest-mimic = { workspace = true }
+pretty_assertions = { workspace = true }
+regex = { workspace = true }
+
+[[test]]
+name = "ui"
+path = "tests/ui.rs"
+harness = false
+
+[lints]
+workspace = true

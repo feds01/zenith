@@ -1,0 +1,15 @@
+[package]
+name = "zenith_resolve"
+version = "0.1.0"
+authors = { workspace = true }
+edition = { workspace = true }
+publish = false
+
+[dependencies]
+oxc_resolver = { workspace = true }
+rustc-hash = { workspace = true }
+serde_json = { workspace = true }
+zenith_utils = { workspace = true }
+
+[lints]
+workspace = true

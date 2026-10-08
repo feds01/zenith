@@ -1,0 +1,132 @@
+$ zenith check
+exit: 1
+--- stdout
+error[web-layers]: `web/src/components` must not import `web/src/app`
+ --> web/src/components/nav/Sidebar.tsx:3:32
+  |
+3 | import { DASHBOARD_TABS } from "@/app/(dashboard)/tabs";
+  |                                ^^^^^^^^^^^^^^^^^^^^^^^^ imports `web/src/app/(dashboard)/tabs.ts`
+
+error[web-layers]: `web/src/lib` must not import `web/src/domains`
+ --> web/src/lib/format.ts:1:40
+  |
+1 | import { CAMPAIGN_STATUS_LABELS } from "@/domains/campaigns/types";
+  |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `web/src/domains/campaigns/types.ts`
+
+help: how to fix `web-layers`
+  |
+  = Lower layers must not import higher ones. Move the shared code down a layer.
+
+error[package-tiers]: `pkg:@acme/utils` must not import `pkg:@acme/api`
+ --> packages/utils/src/campaign-url.ts:1:27
+  |
+1 | import { campaigns } from "@acme/api";
+  |                           ^^^^^^^^^^^ imports `packages/api/index.ts`
+
+error[packages-acyclic]: dependency cycle in `pkg:*`
+ --> packages/utils/src/campaign-url.ts:1:27
+  |
+1 | import { campaigns } from "@acme/api";
+  |                           ^^^^^^^^^^^ closes the cycle @acme/utils -> @acme/api -> @acme/utils
+  |
+  = note: it could be made acyclic by removing 1 dependency:
+            @acme/utils -> @acme/api (1 import)
+
+error[client-safety]: `web/src/domains/analytics/components/AnalyticsChart.tsx` must not import `node:fs`
+ --> web/src/domains/analytics/components/AnalyticsChart.tsx:3:36
+  |
+3 | import { readReportTemplate } from "@/lib/files";
+  |                                    ^^^^^^^^^^^^^ starts a chain of 2 imports
+  |
+  = note: import chain:
+            web/src/domains/analytics/components/AnalyticsChart.tsx:3
+            -> web/src/lib/files.ts:1
+            -> node:fs
+
+error[client-safety]: `web/src/domains/campaigns/components/CampaignAiPanel.tsx` must not import `npm:sharp`
+ --> web/src/domains/campaigns/components/CampaignAiPanel.tsx:3:35
+  |
+3 | import { summarizeCampaign } from "@acme/ai";
+  |                                   ^^^^^^^^^^ starts a chain of 5 imports
+  |
+  = note: import chain:
+            web/src/domains/campaigns/components/CampaignAiPanel.tsx:3
+            -> packages/ai/index.ts:1
+            -> packages/ai/src/domains/campaigns/index.ts:2
+            -> packages/ai/src/domains/campaigns/summarize.ts:2
+            -> packages/ai/src/utils/images/to-model-image.ts:2 (dynamic)
+            -> npm:sharp
+
+error[client-safety]: `web/src/domains/campaigns/components/CampaignAiPanel.tsx` must not import `npm:@mastra/core`
+ --> web/src/domains/campaigns/components/CampaignAiPanel.tsx:3:35
+  |
+3 | import { summarizeCampaign } from "@acme/ai";
+  |                                   ^^^^^^^^^^ starts a chain of 3 imports
+  |
+  = note: import chain:
+            web/src/domains/campaigns/components/CampaignAiPanel.tsx:3
+            -> packages/ai/index.ts:3
+            -> packages/ai/src/domains/research/index.ts:1
+            -> npm:@mastra/core
+
+help: how to fix `client-safety`
+  |
+  = Keep server-only modules out of client bundles: import a narrower module, or move the call into a server action.
+
+warning[ai-public-surface]: `@acme/ai` may only be imported through its entry points
+ --> services/mcp/src/tools.ts:1:31
+  |
+1 | import { researchTools } from "@acme/ai/src/tools";
+  |                               ^^^^^^^^^^^^^^^^^^^^ imports `packages/ai/src/tools/index.ts`, which is internal
+  |
+ ::: web/src/domains/campaigns/hooks/use-campaign-brief.ts:1:29
+  |
+1 | import { briefSchema } from "@acme/ai/src/domains/campaigns/brief";
+  |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `packages/ai/src/domains/campaigns/brief.ts`, which is internal
+
+error[strategies-independent]: `packages/ai/src/domains/content/strategies/ads` must not import `packages/ai/src/domains/content/strategies/blueprints`
+ --> packages/ai/src/domains/content/strategies/ads/index.ts:1:30
+  |
+1 | import { blueprintFor } from "../blueprints";
+  |                              ^^^^^^^^^^^^^^^ imports `packages/ai/src/domains/content/strategies/blueprints/index.ts`
+
+error[mastra-protected]: `web/src/mastra` may only be imported by its allowed importers
+ --> web/src/components/assistant.tsx:1:32
+  |
+1 | import { assistantAgent } from "@/mastra/agent";
+  |                                ^^^^^^^^^^^^^^^^ imports `web/src/mastra/agent.ts`
+
+error[api-domain-layers]: `packages/api/src/domains/accounts/types` must not import `packages/api/src/domains/accounts/api`
+ --> packages/api/src/domains/accounts/types.ts:1:35
+  |
+1 | import { ACCOUNTS_ENDPOINT } from "./api";
+  |                                   ^^^^^^^ imports `packages/api/src/domains/accounts/api.ts`
+
+error[legacy-freeze]: `@acme/ai` must not import `legacy-editor`
+ --> packages/ai/src/connectors/editor.ts:1:32
+  |
+1 | import { createDocument } from "legacy-editor";
+  |                                ^^^^^^^^^^^^^^^ imports `packages/legacyEditor/index.ts`
+
+help: how to fix `legacy-freeze`
+  |
+  = legacy-editor is frozen. Use the new editor APIs instead.
+
+warning: 1 import could not be resolved
+  |
+  = help: use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
+
+Contracts
+  ✗ web-layers              layers        broken (2 violations) · 1 suppressed
+  ✗ package-tiers           layers        broken (1 violation)
+  ✗ packages-acyclic        acyclic       broken (1 violation)
+  ✗ client-safety           forbidden     broken (3 violations)
+  ! ai-public-surface       encapsulation broken (2 violations, warning only)
+  ✗ strategies-independent  independence  broken (1 violation) · 2 ignored
+  ✗ mastra-protected        protected     broken (1 violation)
+  ✗ api-domain-layers       layers        broken (1 violation)
+  ✗ legacy-freeze           forbidden     broken (1 violation)
+  ✓ sdk-standalone          forbidden     kept
+
+1 kept, 9 broken · 78 files, 127 imports
+

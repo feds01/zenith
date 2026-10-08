@@ -1,0 +1,3 @@
+graph web/src --depth 1
+why pkg:web npm:sharp
+why pkg:sdk pkg:@acme/api --exclude-kind type

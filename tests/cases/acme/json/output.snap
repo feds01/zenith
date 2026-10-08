@@ -1,0 +1,241 @@
+$ zenith check --format json --contract client-safety --contract packages-acyclic
+exit: 1
+--- stdout
+{
+  "version": 1,
+  "passed": false,
+  "summary": {
+    "contracts": 2,
+    "kept": 0,
+    "broken": 2,
+    "files": 78,
+    "imports": 127
+  },
+  "contracts": [
+    {
+      "id": "packages-acyclic",
+      "name": "No cycles between workspace packages",
+      "type": "acyclic",
+      "severity": "error",
+      "status": "broken",
+      "violations": [
+        {
+          "kind": "cycle",
+          "scope": "pkg:*",
+          "breakers": [
+            {
+              "importer": "@acme/utils",
+              "imported": "@acme/api",
+              "imports": [
+                {
+                  "importer": "packages/utils/src/campaign-url.ts",
+                  "imported": "packages/api/index.ts",
+                  "imports": [
+                    {
+                      "line": 1,
+                      "column": 1,
+                      "specifier": "@acme/api",
+                      "kind": "value"
+                    }
+                  ]
+                }
+              ],
+              "cycle": [
+                "@acme/utils",
+                "@acme/api",
+                "@acme/utils"
+              ]
+            }
+          ]
+        }
+      ],
+      "warnings": [],
+      "errors": [],
+      "stale_baseline": [],
+      "ignored_imports": 0,
+      "baselined_imports": 0,
+      "suppressed_imports": 0
+    },
+    {
+      "id": "client-safety",
+      "name": "Client components never reach server-only code",
+      "type": "forbidden",
+      "severity": "error",
+      "status": "broken",
+      "violations": [
+        {
+          "kind": "dependency",
+          "importer": "web/src/domains/analytics/components/AnalyticsChart.tsx",
+          "imported": "node:fs",
+          "chains": [
+            {
+              "links": [
+                {
+                  "importer": "web/src/domains/analytics/components/AnalyticsChart.tsx",
+                  "imported": "web/src/lib/files.ts",
+                  "imports": [
+                    {
+                      "line": 3,
+                      "column": 1,
+                      "specifier": "@/lib/files",
+                      "kind": "value"
+                    }
+                  ]
+                },
+                {
+                  "importer": "web/src/lib/files.ts",
+                  "imported": "node:fs",
+                  "imports": [
+                    {
+                      "line": 1,
+                      "column": 1,
+                      "specifier": "node:fs",
+                      "kind": "value"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "dependency",
+          "importer": "web/src/domains/campaigns/components/CampaignAiPanel.tsx",
+          "imported": "npm:sharp",
+          "chains": [
+            {
+              "links": [
+                {
+                  "importer": "web/src/domains/campaigns/components/CampaignAiPanel.tsx",
+                  "imported": "packages/ai/index.ts",
+                  "imports": [
+                    {
+                      "line": 3,
+                      "column": 1,
+                      "specifier": "@acme/ai",
+                      "kind": "value"
+                    }
+                  ]
+                },
+                {
+                  "importer": "packages/ai/index.ts",
+                  "imported": "packages/ai/src/domains/campaigns/index.ts",
+                  "imports": [
+                    {
+                      "line": 1,
+                      "column": 1,
+                      "specifier": "./src/domains/campaigns",
+                      "kind": "value"
+                    }
+                  ]
+                },
+                {
+                  "importer": "packages/ai/src/domains/campaigns/index.ts",
+                  "imported": "packages/ai/src/domains/campaigns/summarize.ts",
+                  "imports": [
+                    {
+                      "line": 2,
+                      "column": 1,
+                      "specifier": "./summarize",
+                      "kind": "value"
+                    }
+                  ]
+                },
+                {
+                  "importer": "packages/ai/src/domains/campaigns/summarize.ts",
+                  "imported": "packages/ai/src/utils/images/to-model-image.ts",
+                  "imports": [
+                    {
+                      "line": 2,
+                      "column": 1,
+                      "specifier": "../../utils/images/to-model-image",
+                      "kind": "value"
+                    }
+                  ]
+                },
+                {
+                  "importer": "packages/ai/src/utils/images/to-model-image.ts",
+                  "imported": "npm:sharp",
+                  "imports": [
+                    {
+                      "line": 2,
+                      "column": 36,
+                      "specifier": "sharp",
+                      "kind": "dynamic"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "dependency",
+          "importer": "web/src/domains/campaigns/components/CampaignAiPanel.tsx",
+          "imported": "npm:@mastra/core",
+          "chains": [
+            {
+              "links": [
+                {
+                  "importer": "web/src/domains/campaigns/components/CampaignAiPanel.tsx",
+                  "imported": "packages/ai/index.ts",
+                  "imports": [
+                    {
+                      "line": 3,
+                      "column": 1,
+                      "specifier": "@acme/ai",
+                      "kind": "value"
+                    }
+                  ]
+                },
+                {
+                  "importer": "packages/ai/index.ts",
+                  "imported": "packages/ai/src/domains/research/index.ts",
+                  "imports": [
+                    {
+                      "line": 3,
+                      "column": 1,
+                      "specifier": "./src/domains/research",
+                      "kind": "value"
+                    }
+                  ]
+                },
+                {
+                  "importer": "packages/ai/src/domains/research/index.ts",
+                  "imported": "npm:@mastra/core",
+                  "imports": [
+                    {
+                      "line": 1,
+                      "column": 1,
+                      "specifier": "@mastra/core",
+                      "kind": "value"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "warnings": [],
+      "errors": [],
+      "stale_baseline": [],
+      "ignored_imports": 0,
+      "baselined_imports": 0,
+      "suppressed_imports": 0,
+      "guidance": "Keep server-only modules out of client bundles: import a narrower module, or move the call into a server action."
+    }
+  ],
+  "unused_suppressions": [],
+  "unresolved": [
+    {
+      "file": "sdk/src/client.ts",
+      "line": 3,
+      "column": 1,
+      "specifier": "./does-not-exist",
+      "reason": "Cannot find module './does-not-exist'"
+    }
+  ],
+  "parse_errors": []
+}
+

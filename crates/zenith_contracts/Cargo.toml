@@ -1,0 +1,23 @@
+[package]
+name = "zenith_contracts"
+version = "0.1.0"
+authors = { workspace = true }
+edition = { workspace = true }
+publish = false
+
+[dependencies]
+indexmap = { workspace = true }
+log = { workspace = true }
+rayon = { workspace = true }
+rustc-hash = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+zenith_config = { workspace = true }
+zenith_graph = { workspace = true }
+zenith_index = { workspace = true }
+zenith_parse = { workspace = true }
+zenith_utils = { workspace = true }
+zenith_workspace = { workspace = true }
+
+[lints]
+workspace = true

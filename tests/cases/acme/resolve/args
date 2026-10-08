@@ -1,0 +1,6 @@
+resolve web/src/lib/format.ts @/domains/campaigns/types
+resolve web/src/lib/format.ts @acme/ui/button
+resolve services/mcp/src/index.ts ./tools.js
+resolve web/src/lib/format.ts node:fs/promises
+resolve web/src/lib/format.ts react
+resolve web/src/lib/format.ts ./nope

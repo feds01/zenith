@@ -1,0 +1,15 @@
+[package]
+name = "zenith_graph"
+version = "0.1.0"
+authors = { workspace = true }
+edition = { workspace = true }
+publish = false
+
+[dependencies]
+rayon = { workspace = true }
+rustc-hash = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true

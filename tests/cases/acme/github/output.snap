@@ -1,0 +1,8 @@
+$ zenith check --format github --contract web-layers --contract ai-public-surface
+exit: 1
+--- stdout
+::error file=web/src/components/nav/Sidebar.tsx,line=3,col=1,title=zenith(web-layers)::`web/src/components` must not import `web/src/app`%0ALower layers must not import higher ones. Move the shared code down a layer.
+::error file=web/src/lib/format.ts,line=1,col=1,title=zenith(web-layers)::`web/src/lib` must not import `web/src/domains`%0ALower layers must not import higher ones. Move the shared code down a layer.
+::warning file=services/mcp/src/tools.ts,line=1,col=1,title=zenith(ai-public-surface)::`packages/ai/src/tools/index.ts` is internal to `@acme/ai`; import it through an entry point
+::warning file=web/src/domains/campaigns/hooks/use-campaign-brief.ts,line=1,col=1,title=zenith(ai-public-surface)::`packages/ai/src/domains/campaigns/brief.ts` is internal to `@acme/ai`; import it through an entry point
+

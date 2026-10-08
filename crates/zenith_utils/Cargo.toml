@@ -1,0 +1,16 @@
+[package]
+name = "zenith_utils"
+version = "0.1.0"
+authors = { workspace = true }
+edition = { workspace = true }
+publish = false
+
+[dependencies]
+dunce = { workspace = true }
+log = { workspace = true }
+path-absolutize = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true

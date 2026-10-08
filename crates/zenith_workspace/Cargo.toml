@@ -1,0 +1,17 @@
+[package]
+name = "zenith_workspace"
+version = "0.1.0"
+authors = { workspace = true }
+edition = { workspace = true }
+publish = false
+
+[dependencies]
+ignore = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+yaml-rust2 = { workspace = true }
+zenith_utils = { workspace = true }
+
+[lints]
+workspace = true

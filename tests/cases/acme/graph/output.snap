@@ -1,0 +1,41 @@
+$ zenith graph web/src --depth 1
+exit: 0
+--- stdout
+src/ (36 files)
+├─app/ (7 files)
+├─components/ (5 files)
+├─config.ts
+├─domains/ (15 files)
+├─hooks/ (1 file)
+├─lib/ (5 files)
+└─mastra/ (2 files)
+
+dependencies between the children of `web/src`:
+  web/src/app -> web/src/components (1 import)
+  web/src/app -> web/src/config.ts (1 import)
+  web/src/app -> web/src/domains (5 imports)
+  web/src/app -> web/src/mastra (1 import)
+  web/src/components -> web/src/app (1 import)
+  web/src/components -> web/src/hooks (1 import)
+  web/src/components -> web/src/mastra (1 import)
+  web/src/domains -> web/src/lib (3 imports)
+  web/src/lib -> web/src/domains (2 imports)
+
+
+$ zenith why pkg:web npm:sharp
+exit: 0
+--- stdout
+chain 1 of 1:
+  web/src/domains/campaigns/components/CampaignAiPanel.tsx:3
+  -> packages/ai/index.ts:1
+  -> packages/ai/src/domains/campaigns/index.ts:2
+  -> packages/ai/src/domains/campaigns/summarize.ts:2
+  -> packages/ai/src/utils/images/to-model-image.ts:2 (dynamic)
+  -> npm:sharp
+
+
+$ zenith why pkg:sdk pkg:@acme/api --exclude-kind type
+exit: 0
+--- stdout
+`pkg:sdk` does not import `pkg:@acme/api`.
+

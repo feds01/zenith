@@ -216,9 +216,10 @@ impl Printer<'_> {
                     }
                 }
                 if imports.len() > MAX_IMPORTS {
+                    let more = imports.len() - MAX_IMPORTS;
                     elements.push(
                         Level::NOTE
-                            .message(format!("and {} more imports", imports.len() - MAX_IMPORTS))
+                            .message(format!("and {more} more import{}", pluralise!(more)))
                             .into(),
                     );
                 }
@@ -382,13 +383,34 @@ impl Printer<'_> {
         }
 
         let kept = contracts.iter().filter(|c| c.status == Status::Kept).count();
-        let broken = contracts.len() - kept;
+        let broken = contracts
+            .iter()
+            .filter(|c| c.status == Status::Broken && c.severity == Severity::Error)
+            .count();
+        let warned = contracts
+            .iter()
+            .filter(|c| c.status == Status::Broken && c.severity == Severity::Warn)
+            .count();
+        let stale: usize = contracts.iter().map(|c| c.stale_baseline.len()).sum();
         let stats = &context.index.stats;
-        let mut line = format!(
-            "\n{kept} kept, {broken} broken · {} files, {} imports",
+
+        let mut line = format!("\n{kept} kept, {broken} broken");
+        if warned > 0 {
+            line.push_str(&format!(", {warned} warning{}", pluralise!(warned)));
+        }
+        if stale > 0 {
+            line.push_str(&format!(
+                " · {stale} stale baseline entr{}",
+                if stale == 1 { "y" } else { "ies" }
+            ));
+        }
+        line.push_str(&format!(
+            " · {} file{}, {} import{}",
             thousands(stats.files),
-            thousands(stats.imports)
-        );
+            pluralise!(stats.files),
+            thousands(stats.imports),
+            pluralise!(stats.imports)
+        ));
         if context.show_timings {
             line.push_str(&format!(
                 " · walk {}, parse {}, graph {}, total {}",

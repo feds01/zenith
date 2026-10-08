@@ -128,5 +128,5 @@ Contracts
   ✗ legacy-freeze           forbidden     broken (1 violation)
   ✓ sdk-standalone          forbidden     kept
 
-1 kept, 9 broken · 78 files, 127 imports
+1 kept, 8 broken, 1 warning · 78 files, 127 imports
 

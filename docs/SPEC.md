@@ -272,7 +272,7 @@ Higher layers may import lower layers, never the reverse. This is grimp's
 | `layers` | required | ordered high to low; see the syntax below |
 | `containers` | none | selectors. If set, `layers` entries are relative to each container, and each container is checked separately. |
 | `exhaustive` | `false` | every child of every container must be declared as a layer (needs `containers`) |
-| `exhaustive_ignores` | `[]` | child names exempt from the exhaustiveness check |
+| `exhaustive_ignores` | `[]` | child names exempt from the exhaustiveness check: name patterns matched against the base name with or without its JS/TS extension (`index` matches `index.ts`) |
 | `allow_indirect_imports` | `false` | check only direct imports |
 
 Each `layers` entry is a string:
@@ -371,7 +371,7 @@ rule: no deep imports into a package or feature folder.
 | Option | Default | |
 |---|---|---|
 | `modules` | required | directory units |
-| `entrypoints` | `["index"]` | globs relative to each unit root. They are extension-insensitive, so `index` matches `index.ts`, `index.tsx` and so on. |
+| `entrypoints` | `["index"]` | globs relative to each unit root. They are extension-insensitive, so `index` matches `index.ts`, `index.tsx` and so on. **(settled)** They match **files** only: to expose a whole directory, use `public/**`. |
 | `allowed_importers` | `[]` | importers that may bypass the rule (e.g. tests) |
 
 ```toml
@@ -543,6 +543,10 @@ zenith schema                                                    # (hidden) prin
 | 0 | every error-severity contract kept |
 | 1 | at least one error-severity contract broken, or a stale baseline |
 | 2 | configuration, usage or internal error |
+
+`zenith resolve` exits 1 when the specifier does not resolve. The summary line
+reads `<kept> kept, <broken> broken[, <n> warnings][ · <n> stale baseline entries] · <files> files, <imports> imports`,
+where warnings are broken contracts with `severity = "warn"`.
 
 `--root` points zenith at a project whose config lives elsewhere (used for
 corpus runs). `-v` shows info logs, `-vv` debug logs (all on stderr).

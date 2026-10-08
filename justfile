@@ -41,14 +41,14 @@ test *args:
 test-ui *filter:
     cargo test -p zenith --test ui -- "$@"
 
-# Re-generate the `.stdout`/`.stderr` snapshots in tests/cases from current output
+# Re-record the `output.snap` snapshots in tests/cases from the current output
 update-snapshots *filter:
     REGENERATE_OUTPUT=1 cargo test -p zenith --test ui -- "$@"
 
-# Run a release build of `zenith check` against a local checkout, e.g. `just corpus ~/code/acme corpus/acme.toml`
+# Run a release `zenith check` on a local checkout with a gitignored corpus/ config, e.g. `just corpus ~/code/acme corpus/acme.toml`
 corpus path config *args:
     cargo build --release -p zenith
-    ./target/release/zenith check --config "{{config}}" --show-timings "${@:3}"
+    ./target/release/zenith check --root "{{path}}" --config "{{config}}" --show-timings "${@:3}"
 
 # Regenerate zenith.schema.json from the config types
 schema:

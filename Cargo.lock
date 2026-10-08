@@ -1746,6 +1746,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "strsim",
  "toml",
  "zenith_graph",
 ]

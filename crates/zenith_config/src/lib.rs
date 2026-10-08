@@ -203,7 +203,7 @@ pub fn load(path: &Path) -> Result<Config, ConfigError> {
 /// Parse the contents of a configuration file.
 pub fn parse(contents: &str) -> Result<Config, String> {
     let raw: RawConfig =
-        toml::from_str(contents).map_err(|error| error.to_string().trim().to_string())?;
+        toml::from_str(contents).map_err(|error| with_suggestion(error.to_string().trim()))?;
 
     let mut contracts = IndexMap::new();
     for (id, value) in raw.contracts {
@@ -212,8 +212,11 @@ pub fn parse(contents: &str) -> Result<Config, String> {
                 "invalid contract id `{id}`: ids may only contain letters, digits, `-` and `_`"
             ));
         }
-        let contract = ContractConfig::deserialize(value)
-            .map_err(|error| format!("in contract `{id}`: {}", error.to_string().trim()))?;
+        let contract = ContractConfig::deserialize(value).map_err(|error| {
+            // These errors have no source excerpt, so keep them on one line.
+            let message = error.to_string().split_whitespace().collect::<Vec<_>>().join(" ");
+            format!("in contract `{id}`: {}", with_suggestion(&message))
+        })?;
         contracts.insert(id, contract);
     }
 
@@ -224,6 +227,32 @@ pub fn parse(contents: &str) -> Result<Config, String> {
         baseline: raw.baseline,
         contracts,
     })
+}
+
+/// Append a "did you mean" hint to serde's "unknown field `x`, expected one
+/// of `a`, `b`" and "unknown variant" messages, when a close match exists.
+fn with_suggestion(message: &str) -> String {
+    let suggestion = ["unknown field `", "unknown variant `"].iter().find_map(|marker| {
+        let start = message.find(marker)? + marker.len();
+        let unknown = &message[start..start + message[start..].find('`')?];
+        let expected = &message[start + unknown.len()..];
+        let expected = &expected[expected.find("expected")?..];
+        expected
+            .split('`')
+            .skip(1)
+            .step_by(2)
+            .map(|candidate| (strsim::damerau_levenshtein(unknown, candidate), candidate))
+            .filter(|(distance, candidate)| *distance <= (candidate.len() / 3).max(1) + 1)
+            .min_by_key(|(distance, _)| *distance)
+            .map(|(_, candidate)| candidate.to_string())
+    });
+    match suggestion {
+        Some(suggestion) if message.contains('\n') => {
+            format!("{message}\ndid you mean `{suggestion}`?")
+        }
+        Some(suggestion) => format!("{message}; did you mean `{suggestion}`?"),
+        None => message.to_string(),
+    }
 }
 
 fn is_valid_id(id: &str) -> bool {
@@ -300,13 +329,14 @@ to = ["b"]
         )
         .unwrap_err();
         assert!(error.contains("in contract `oops`"), "{error}");
-        assert!(error.contains("fromm"), "{error}");
+        assert!(error.contains("did you mean `from`?"), "{error}");
 
         let error = parse("[contracts.x]\ntype = \"layer\"\n").unwrap_err();
-        assert!(error.contains("layers"), "{error}");
+        assert!(error.contains("did you mean `layers`?"), "{error}");
+        assert!(!error.contains('\n'), "{error}");
 
         let error = parse("[files]\nexclud = []\n").unwrap_err();
-        assert!(error.contains("exclud"), "{error}");
+        assert!(error.contains("did you mean `exclude`?"), "{error}");
     }
 
     #[test]

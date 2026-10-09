@@ -3,10 +3,11 @@
 use std::{
     ffi::{OsStr, OsString},
     io, iter,
+    path::PathBuf,
 };
 
 use argfile::{Argument, PREFIX};
-use clap::Parser;
+use clap::{ArgAction, Parser, ValueEnum};
 
 /// Expand `@path` argfiles in `args`. An `@` argument that doesn't name an
 /// existing file is kept as-is.
@@ -51,18 +52,209 @@ pub struct Cli {
     /// The command to run.
     #[command(subcommand)]
     pub(crate) command: Command,
+
+    /// Options shared by every command.
+    #[command(flatten)]
+    pub(crate) global: GlobalArgs,
+}
+
+/// Options shared by every command.
+#[derive(Debug, Clone, clap::Args)]
+pub struct GlobalArgs {
+    /// The configuration file. Defaults to the nearest `zenith.toml` in or
+    /// above the current directory.
+    #[arg(long, global = true, value_name = "PATH")]
+    pub config: Option<PathBuf>,
+
+    /// The project root. Defaults to the directory of the configuration file.
+    #[arg(long, global = true, value_name = "DIR")]
+    pub root: Option<PathBuf>,
+
+    /// When to use colour.
+    #[arg(long, global = true, value_enum, default_value_t = ColourChoice::Auto, value_name = "WHEN")]
+    pub color: ColourChoice,
+
+    /// Show info logs; repeat for debug logs.
+    #[arg(short, long, global = true, action = ArgAction::Count)]
+    pub verbose: u8,
+}
+
+/// When to use colour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ColourChoice {
+    /// Colour when stdout is a terminal and `NO_COLOR` is not set.
+    Auto,
+    /// Always colour.
+    Always,
+    /// Never colour.
+    Never,
 }
 
 /// The `zenith` subcommands.
 #[derive(Debug, clap::Subcommand)]
 pub enum Command {
+    /// Check the architecture contracts.
+    Check(CheckCommand),
+
+    /// Record the current violations in the baseline file, so that only new
+    /// violations fail `zenith check`.
+    Baseline(BaselineCommand),
+
+    /// Show the module tree under a selector, and the dependencies between
+    /// its children.
+    Graph(GraphCommand),
+
+    /// Show the shortest import chains from one selector to another.
+    Why(WhyCommand),
+
+    /// Show how one import specifier resolves from a file, and why.
+    Resolve(ResolveCommand),
+
+    /// Write a starter `zenith.toml` from the discovered packages.
+    Init(InitCommand),
+
+    /// Print the JSON Schema of `zenith.toml`.
+    #[command(hide = true)]
+    Schema,
+
     /// Print the version of the `zenith` binary.
     Version,
 }
 
+/// Arguments of `zenith check`.
+#[derive(Clone, Debug, clap::Args)]
+pub struct CheckCommand {
+    /// Only check the contracts with these ids.
+    #[arg(long = "contract", value_name = "ID")]
+    pub contracts: Vec<String>,
+
+    /// The output format.
+    #[arg(long, value_enum, default_value_t = ReportFormat::Pretty)]
+    pub format: ReportFormat,
+
+    /// Ignore the baseline file.
+    #[arg(long)]
+    pub no_baseline: bool,
+
+    /// List every import that could not be resolved.
+    #[arg(long)]
+    pub show_unresolved: bool,
+
+    /// Show how long each phase and contract took.
+    #[arg(long)]
+    pub show_timings: bool,
+}
+
+/// Arguments of `zenith baseline`.
+#[derive(Clone, Debug, clap::Args)]
+pub struct BaselineCommand {
+    /// Only update the entries of the contracts with these ids.
+    #[arg(long = "contract", value_name = "ID")]
+    pub contracts: Vec<String>,
+
+    /// Only remove stale entries; never add new ones.
+    #[arg(long)]
+    pub prune: bool,
+}
+
+/// Arguments of `zenith graph`.
+#[derive(Clone, Debug, clap::Args)]
+pub struct GraphCommand {
+    /// The selector to show, e.g. `web/src` or `pkg:@acme/api`. Defaults to
+    /// the whole project.
+    pub selector: Option<String>,
+
+    /// How many levels of the tree to show.
+    #[arg(long, default_value_t = 2, value_name = "N")]
+    pub depth: usize,
+
+    /// The output format.
+    #[arg(long, value_enum, default_value_t = GraphFormat::Tree)]
+    pub format: GraphFormat,
+
+    /// Leave imports of this kind out of the dependencies.
+    #[arg(long = "exclude-kind", value_enum, value_name = "KIND")]
+    pub exclude_kinds: Vec<ImportKindArg>,
+}
+
+/// Arguments of `zenith why`.
+#[derive(Clone, Debug, clap::Args)]
+pub struct WhyCommand {
+    /// The importing selector.
+    pub from: String,
+
+    /// The imported selector.
+    pub to: String,
+
+    /// Leave imports of this kind out of the chains.
+    #[arg(long = "exclude-kind", value_enum, value_name = "KIND")]
+    pub exclude_kinds: Vec<ImportKindArg>,
+
+    /// The maximum number of chains to show.
+    #[arg(long, default_value_t = 10, value_name = "N")]
+    pub limit: usize,
+}
+
+/// Arguments of `zenith resolve`.
+#[derive(Clone, Debug, clap::Args)]
+pub struct ResolveCommand {
+    /// The importing file.
+    pub file: PathBuf,
+
+    /// The specifier to resolve, e.g. `@/lib/format`.
+    pub specifier: String,
+}
+
+/// Arguments of `zenith init`.
+#[derive(Clone, Debug, clap::Args)]
+pub struct InitCommand {
+    /// Overwrite an existing `zenith.toml`.
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// The output formats of `zenith check`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ReportFormat {
+    /// Human-readable reports with code excerpts.
+    Pretty,
+    /// One line per violation.
+    Compact,
+    /// The full report as JSON.
+    Json,
+    /// GitHub Actions annotations.
+    Github,
+}
+
+/// The output formats of `zenith graph`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum GraphFormat {
+    /// The module tree.
+    Tree,
+    /// A Graphviz digraph of the dependencies between children.
+    Dot,
+    /// Children and dependencies as JSON.
+    Json,
+}
+
+/// The import kinds that `--exclude-kind` accepts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ImportKindArg {
+    /// `import` and `export … from` statements that are not type-only.
+    Value,
+    /// Type-only imports and exports, and TypeScript import types.
+    Type,
+    /// `import()` calls.
+    Dynamic,
+    /// `require()` calls and `import x = require()`.
+    Require,
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::PathBuf};
+    use std::fs;
+
+    use clap::{CommandFactory, error::ErrorKind};
 
     use super::*;
 
@@ -103,5 +295,83 @@ mod tests {
         let argfile = format!("@{}", file.display());
         assert_eq!(expand(&["zenith", &argfile]), vec!["zenith", "@acme/ui"]);
         fs::remove_file(file).unwrap();
+    }
+
+    /// Parse a whitespace-separated command line.
+    fn parse(line: &str) -> Cli {
+        Cli::try_parse_from(line.split_whitespace()).unwrap()
+    }
+
+    #[test]
+    fn verify_cli() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn parses_check_options() {
+        let cli = parse("zenith check --contract a --contract b --format json --no-baseline");
+        let Command::Check(check) = cli.command else { panic!("expected `check`") };
+        assert_eq!(check.contracts, ["a", "b"]);
+        assert_eq!(check.format, ReportFormat::Json);
+        assert!(check.no_baseline);
+        assert!(!check.show_unresolved);
+    }
+
+    #[test]
+    fn accepts_global_options_after_the_command() {
+        let cli = parse("zenith why @acme/ui pkg:@acme/api -vv --color never --root acme");
+        assert_eq!(cli.global.verbose, 2);
+        assert_eq!(cli.global.color, ColourChoice::Never);
+        assert_eq!(cli.global.root, Some(PathBuf::from("acme")));
+        let Command::Why(why) = cli.command else { panic!("expected `why`") };
+        assert_eq!((why.from.as_str(), why.to.as_str()), ("@acme/ui", "pkg:@acme/api"));
+    }
+
+    #[test]
+    fn fills_in_defaults() {
+        let cli = parse("zenith graph");
+        assert_eq!(cli.global.color, ColourChoice::Auto);
+        let Command::Graph(graph) = cli.command else { panic!("expected `graph`") };
+        assert_eq!(graph.selector, None);
+        assert_eq!(graph.depth, 2);
+        assert_eq!(graph.format, GraphFormat::Tree);
+        assert!(graph.exclude_kinds.is_empty());
+    }
+
+    #[test]
+    fn parses_every_spec_flag() {
+        // One line per command in SPEC §9, with every flag set.
+        for line in [
+            "zenith check --contract a --format github --no-baseline --show-unresolved --show-timings",
+            "zenith baseline --contract a --prune",
+            "zenith graph web/src --depth 3 --format dot --exclude-kind type --exclude-kind require",
+            "zenith why web/src pkg:@acme/api --exclude-kind dynamic --exclude-kind value --limit 5",
+            "zenith resolve web/src/app.ts @/lib/format",
+            "zenith init --force",
+            "zenith schema",
+            "zenith --config zenith.toml --root . --color always -v version",
+        ] {
+            if let Err(error) = Cli::try_parse_from(line.split_whitespace()) {
+                panic!("{line}: {error}");
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_bad_usage_with_exit_code_2() {
+        for (line, kind) in [
+            ("zenith check --format xml", ErrorKind::InvalidValue),
+            ("zenith why web/src", ErrorKind::MissingRequiredArgument),
+            ("zenith graph --exclude-kind types", ErrorKind::InvalidValue),
+        ] {
+            let error = Cli::try_parse_from(line.split_whitespace()).unwrap_err();
+            assert_eq!(error.kind(), kind, "{line}");
+            assert_eq!(error.exit_code(), 2, "{line}");
+        }
+    }
+
+    #[test]
+    fn hides_schema_from_help() {
+        assert!(Cli::command().find_subcommand("schema").unwrap().is_hide_set());
     }
 }

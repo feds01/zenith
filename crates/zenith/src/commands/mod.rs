@@ -1,3 +1,10 @@
 //! The `zenith` subcommands.
 
+pub mod baseline;
+pub mod check;
+pub mod graph;
+pub mod init;
+pub mod resolve;
+pub mod schema;
 pub mod version;
+pub mod why;

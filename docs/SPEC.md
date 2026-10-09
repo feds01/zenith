@@ -119,12 +119,38 @@ A selector ([§3](#3-selectors)) resolves to a list of units:
 
 - each matched **directory** becomes one unit, containing its whole subtree;
 - each matched **file**, **external** or **builtin** node becomes a unit of one;
-- `except` removes members from each unit; `directive` keeps only members
-  whose file has that directive.
+- `except` removes members from each unit;
+- `directive` replaces the units with **one unit per member file** that has the
+  directive ([§2.6](#26-directives)).
 
 Two units **overlap** if they share a member. Contracts skip overlapping pairs,
 as import-linter does, so `from = ["a"]`, `to = ["a/*"]` is legal and checks
 nothing between `a` and itself.
+
+### 2.6 Directives
+
+A **directive** is a string-literal statement at the very top of a JS/TS file,
+before any import or other code. Together they form the file's *directive
+prologue*:
+
+```ts
+"use client";
+
+import { useState } from "react";
+```
+
+Directives mark how a file runs. In React Server Components (Next.js and other
+frameworks), `"use client"` makes a file the entry point of a client bundle, so
+everything it imports, directly or not, ships to the browser. `"use server"`
+marks server functions that client code may call. `"use strict"` is the
+classic, older example.
+
+Zenith records the directives of every scanned file. **There is no fixed list**:
+every string in the prologue is recorded as written, so framework-specific ones
+(e.g. Next.js's `"use cache"`) work too. A `directive` selector
+([§3.3](#33-table-form)) matches one exactly. Directives let a contract target
+a boundary that the directory layout doesn't show, such as "no `"use client"`
+file may reach `node:*`" ([§4.2](#42-forbidden)).
 
 ---
 
@@ -178,7 +204,8 @@ file names need no escaping:
 ```
 
 `path` takes any string-form selector. `except` takes a list of selectors.
-`directive` is an exact directive string from the file's prologue.
+`directive` is an exact directive string from the file's prologue
+([§2.6](#26-directives)).
 
 **(settled)** A selector with a `directive` resolves to **one unit per matching
 file**, rather than one per matched directory. "`use client` file X reaches
@@ -246,6 +273,13 @@ to = ["npm:sharp", "node:*", "npm:server-only"]
 guidance = "Keep server-only modules out of client bundles."
 ```
 
+No file under `web/src` that starts with `"use client"` may reach `sharp`, any
+Node builtin, or `server-only`, directly or through any chain of imports. Each
+client file is its own unit ([§2.6](#26-directives)), so a violation names the
+client file and shows the whole chain, e.g. `web/src/components/upload.tsx` →
+`web/src/lib/images.ts` → `npm:sharp`. Server components and route handlers
+under `web/src` are unaffected, because they have no `"use client"` directive.
+
 ### 4.3 `independence`
 
 The `modules` units must not depend on one another in either direction,
@@ -263,6 +297,14 @@ type = "independence"
 modules = ["web/src/features/*"]
 ignore_imports = ["web/src/features/* -> web/src/features/shared"]
 ```
+
+Each directory under `web/src/features` is a unit, and no feature may depend on
+another. `features/checkout` importing `features/catalog/api.ts` is flagged. So
+is an indirect route, such as `features/checkout` → `web/src/lib/cart.ts` →
+`features/catalog`. `features/shared` also matches `features/*`, so without the
+`ignore_imports` entry every feature that uses it would be flagged; the entry
+exempts imports *into* `shared`, while `shared` importing a feature is still
+flagged.
 
 ### 4.4 `layers`
 
@@ -321,6 +363,27 @@ containers = ["packages/api/src/domains/*"]
 layers = ["hooks", "api", "types"]
 ```
 
+`package-tiers` puts the workspace packages in five tiers, highest first. Each
+tier may import any tier below it, and nothing above it:
+
+- **Top:** `web`, `sdk`, every app and every service. `|` makes the four groups
+  independent: an app may not import a service, `web` or `sdk`. Apps may import
+  each other, because `apps/*` forms a single layer.
+- **Then:** `@acme/ui` and `@acme/forms`, independent of each other.
+- **Then:** `@acme/client`, then `@acme/core`.
+- **Bottom:** `@acme/types` and `@acme/config`, which may import each other
+  (`:`).
+
+`@acme/core` importing `@acme/client` is flagged. `exclude_kinds = ["type"]`
+exempts `import type` from it, since type-only imports are erased at runtime.
+
+`domain-internals` applies the same idea inside each directory under
+`packages/api/src/domains`, independently per domain: `hooks` (a directory) may
+import `api` and `types`, `api` (e.g. `api.ts`) may import `types`, and `types`
+may import neither. `domains/orders/types.ts` importing `domains/orders/api.ts`
+is flagged. Importing `domains/billing/api.ts` is outside this contract,
+because each container is checked on its own.
+
 ### 4.5 `protected`
 
 Only `allowed_importers` (and the protected unit's own members) may **directly**
@@ -337,6 +400,23 @@ type = "protected"
 modules = ["web/src/agents"]
 allowed_importers = ["web/src/app/api"]
 ```
+
+Say `web/src/agents` holds LLM agents that read API keys and call paid
+services, which should only run behind API routes. The contract lets only the
+route handlers under `web/src/app/api`, and the agents themselves, import them
+directly:
+
+- **Flagged:** `web/src/components/chat.tsx` importing `@/agents/support`. A
+  component that calls an agent directly would bundle it, or run it outside an
+  API route.
+- **Allowed:** `web/src/app/api/chat/route.ts` importing `@/agents/support`, an
+  allowed importer; and `web/src/agents/support.ts` importing
+  `web/src/agents/tools.ts`, two members of the protected unit.
+- **Not checked:** `web/src/components/chat.tsx` importing `web/src/lib/run.ts`,
+  which imports an agent. `protected` only checks *direct* imports, to keep
+  the agents' list of importers short and deliberate. To forbid that
+  reachability too, add a `forbidden` contract from `web/src/components` to
+  `web/src/agents`.
 
 ### 4.6 `acyclic`
 
@@ -364,6 +444,13 @@ modules = ["pkg:*"]
 exclude_kinds = ["type"]
 ```
 
+Every workspace package is a unit, and the package graph must have no cycles.
+If any file in `@acme/core` imports `@acme/client`, and any file in
+`@acme/client` imports `@acme/core`, the contract breaks. The report names the
+cheapest dependency to remove, e.g. `@acme/core -> @acme/client (1 import)`,
+along with the cycle it closes. Type-only imports don't count, as they create
+no runtime cycle.
+
 ### 4.7 `encapsulation` (new; not in import-linter)
 
 Code outside a unit may only import that unit through its **entry points**.
@@ -377,12 +464,19 @@ rule: no deep imports into a package or feature folder.
 | `allowed_importers` | `[]` | importers that may bypass the rule (e.g. tests) |
 
 ```toml
-[contracts.ai-public-surface]
+[contracts.ui-public-surface]
 type = "encapsulation"
 modules = ["pkg:@acme/ui"]
 entrypoints = ["index", "src/components/*/index"]
 severity = "warn"
 ```
+
+Code outside `@acme/ui` may only import the package's root `index` and the
+`index` of each component directory, e.g. `src/components/button/index.ts`.
+`web` importing `@acme/ui/src/components/button/Button.tsx` is reported as a
+deep import, while files inside `@acme/ui` may import each other freely.
+`severity = "warn"` reports the violations without failing the check, for
+example while existing deep imports are migrated.
 
 ---
 
@@ -657,6 +751,29 @@ imports and excluded modules, so this needs no new algorithms.
   it for performance and sanity checks on the real test-bed.
 - CI runs the test suite on Linux, macOS and Windows, because path handling
   has to hold up on all three.
+- **Benchmarks** live in `crates/zenith_benchmark`, following bracketlint's
+  `bl_benchmark`:
+  - They are written with [divan](https://github.com/nvzqz/divan) through
+    `codspeed-divan-compat`, and run locally with `just bench`. Extra arguments
+    filter, e.g. `just bench parse`. Allocations are counted with divan's
+    `AllocProfiler`.
+  - **Inputs:** the `acme` fixture, plus a synthetic monorepo generated
+    deterministically at several sizes (e.g. 1k, 10k and 50k files). The
+    synthetic repo has workspace packages, path aliases, barrels and a
+    realistic import density, so that scaling is measured without committing a
+    large fixture.
+  - **What is measured:**
+    - parsing and import extraction, per file (bytes/s);
+    - resolution;
+    - building the index (walk, parse, resolve, graph);
+    - each contract type on the synthetic graph;
+    - a full `check`.
+  - **CI:** a CodSpeed workflow measures every commit on `main` as the
+    baseline, and PRs that touch benchmarked crates, in simulation and memory
+    modes, as in bracketlint. Enabling CodSpeed on a private repository may
+    need a paid plan; `just bench` works regardless.
+  - **When it lands:** the crate arrives with the parse PR, and each later
+    crate PR adds benchmarks for its hot paths.
 - **Measured on the prototype:**
 
   | Run | Files | Imports | Contracts | Time |

@@ -1,0 +1,16 @@
+[package]
+name = "zenith_utils"
+version = "0.1.0"
+description = "Utilities shared by the zenith crates"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = false
+
+[dependencies]
+dunce = { workspace = true }
+path-absolutize = { workspace = true }
+
+[lints]
+workspace = true

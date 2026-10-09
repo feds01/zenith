@@ -32,9 +32,11 @@ Pipeline: config → walk → parse + resolve (parallel) → graph → contracts
 
 The crates and what each one owns are listed in
 [SPEC §11.2](docs/SPEC.md#112-crates). That table is the single source; update
-it when responsibilities move. On `main` today: `zenith`, the CLI (`cli.rs`,
-`commands/*`, `crash.rs`, and `version.rs` with `build.rs` for git commit
-stamping).
+it when responsibilities move. On `main` today:
+
+- `zenith`: the CLI (`cli.rs`, `commands/*`, `crash.rs`, and `version.rs`
+  with `build.rs` for git commit stamping).
+- `zenith_utils`: path helpers, and the glob dialect and name patterns.
 
 Key invariants:
 

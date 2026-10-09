@@ -10,9 +10,13 @@ license = "MIT"
 repository = "https://github.com/feds01/zenith"
 
 [workspace.dependencies]
+zenith_utils = { path = "crates/zenith_utils" }
+
 anyhow = { version = "1.0.104" }
 argfile = { version = "1.0.0" }
 clap = { version = "4.6.7", features = ["derive", "env", "wrap_help"] }
+dunce = { version = "1.0.5" }
+path-absolutize = { version = "4.0.1" }
 wild = { version = "2.2.1" }
 
 [workspace.lints.rust]

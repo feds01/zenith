@@ -1,9 +1,8 @@
 # Zenith: guide for contributors and agents
 
 Zenith is an architecture linter for TypeScript/JavaScript monorepos, written
-in Rust. **The build spec (`docs/SPEC.md`, which lands in its own PR) is the
-source of truth for behaviour.** When implementation and spec disagree, fix one
-of them in the same change.
+in Rust. **[docs/SPEC.md](docs/SPEC.md) is the source of truth for behaviour.**
+When implementation and spec disagree, fix one of them in the same change.
 
 ## How the work lands
 
@@ -31,10 +30,11 @@ Linux/macOS/Windows, and `cargo deny`.
 
 Pipeline: config → walk → parse + resolve (parallel) → graph → contracts (parallel) → render.
 
-The crates and what each one owns are listed in SPEC §11.2. That table is the
-single source; update it when responsibilities move. On `main` today:
-`zenith`, the CLI (`cli.rs`, `commands/*`, `crash.rs`, and `version.rs` with
-`build.rs` for git commit stamping).
+The crates and what each one owns are listed in
+[SPEC §11.2](docs/SPEC.md#112-crates). That table is the single source; update
+it when responsibilities move. On `main` today: `zenith`, the CLI (`cli.rs`,
+`commands/*`, `crash.rs`, and `version.rs` with `build.rs` for git commit
+stamping).
 
 Key invariants:
 
@@ -43,7 +43,7 @@ Key invariants:
 - **The graph is never mutated.** Each contract checks against its own view.
 - **Output must be deterministic.** Sort before rendering.
 - **All log output goes to stderr**; reports go to stdout.
-- **Exit codes** are in SPEC §9: 0 kept, 1 broken, 2
+- **Exit codes** are in [SPEC §9](docs/SPEC.md#9-cli): 0 kept, 1 broken, 2
   configuration, usage or internal error.
 
 ## Conventions

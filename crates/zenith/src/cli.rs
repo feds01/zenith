@@ -339,8 +339,8 @@ mod tests {
     }
 
     #[test]
-    fn parses_every_spec_flag() {
-        // One line per command in SPEC §9, with every flag set.
+    fn parses_every_flag() {
+        // Every command, with every flag set.
         for line in [
             "zenith check --contract a --format github --no-baseline --show-unresolved --show-timings",
             "zenith baseline --contract a --prune",

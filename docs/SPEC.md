@@ -515,9 +515,13 @@ stale = "error"                 # "error" or "warn"
 # see §4
 ```
 
-The default excludes are always applied: `node_modules`, `.git`, `dist`,
-`build`, `out`, `coverage`, `.next`, `.nuxt`, `.output`, `.svelte-kit`,
-`.turbo`, `.vercel`, `.cache`, `.wxt`, `.mastra` and `storybook-static`.
+The default excludes are always applied: `node_modules`, `.git`, `.yarn`,
+`coverage`, `.next`, `.nuxt`, `.output`, `.svelte-kit`, `.turbo`, `.vercel`,
+`.cache`, `.wxt`, `.mastra` and `storybook-static`, wherever they appear, and
+Yarn's `.pnp.cjs` and `.pnp.loader.mjs`. `dist`, `build` and `out` are excluded
+only directly inside a package (next to a `package.json`) and when they aren't
+packages themselves, since elsewhere, as in `src/build/`, they may be source
+code.
 
 ---
 
@@ -721,7 +725,7 @@ imports and excluded modules, so this needs no new algorithms.
 `oxc_parser`, `oxc_ast`, `oxc_ast_visit`, `oxc_allocator`, `oxc_span`,
 `oxc_resolver`, `rayon`, `ignore`, `clap`, `serde`, `toml`, `serde_json`,
 `schemars`, `annotate-snippets`, `rustc-hash`, `indexmap`, `anyhow`/`thiserror`,
-`log`, `wild`, `argfile`; for tests, `libtest-mimic` and `pretty_assertions`.
+`log`, `wild`, `argfile`, `yaml-rust2` (for `pnpm-workspace.yaml`); for tests, `libtest-mimic` and `pretty_assertions`.
 
 ---
 

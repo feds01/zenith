@@ -588,6 +588,8 @@ version = "0.1.0"
 dependencies = [
  "dunce",
  "path-absolutize",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

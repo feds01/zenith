@@ -2,14 +2,18 @@
 
 use std::{
     collections::{HashMap, hash_map::Entry},
-    fs,
+    io,
     path::{Path, PathBuf},
 };
 
 use log::warn;
 use serde_json::Value;
 use yaml_rust2::{Yaml, YamlLoader};
-use zenith_utils::{glob::Glob, path::relative_posix};
+use zenith_utils::{
+    fs::{ReadJsonError, read_json, read_text},
+    glob::Glob,
+    path::relative_posix,
+};
 
 /// A package of the workspace.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +56,7 @@ impl Workspace {
 /// directories. A matching directory is a package if its `package.json` has a
 /// `name`.
 pub fn discover_packages(root: &Path, package_jsons: &[PathBuf]) -> Workspace {
-    let root_json = read_json(&root.join("package.json"));
+    let root_json = read_manifest(&root.join("package.json"));
 
     let mut patterns = root_json.as_ref().map(workspace_patterns).unwrap_or_default();
     patterns.extend(pnpm_patterns(&root.join("pnpm-workspace.yaml")));
@@ -89,7 +93,7 @@ pub fn discover_packages(root: &Path, package_jsons: &[PathBuf]) -> Workspace {
         {
             continue;
         }
-        let Some(name) = read_json(manifest).as_ref().and_then(package_name) else {
+        let Some(name) = read_manifest(manifest).as_ref().and_then(package_name) else {
             continue;
         };
         packages.push(WorkspacePackage { name, dir, path: path.to_path_buf() });
@@ -131,23 +135,14 @@ fn display_dir(dir: &str) -> &str {
     if dir.is_empty() { "." } else { dir }
 }
 
-/// Read a text file, without a leading byte order mark, which npm, pnpm and
-/// yarn all accept.
-fn read_text(path: &Path) -> Option<String> {
-    let contents = fs::read_to_string(path).ok()?;
-    Some(match contents.strip_prefix('\u{feff}') {
-        Some(contents) => contents.to_string(),
-        None => contents,
-    })
-}
-
-/// Read a JSON file, warning if it exists but can't be parsed.
-fn read_json(path: &Path) -> Option<Value> {
-    let contents = read_text(path)?;
-    match serde_json::from_str(&contents) {
+/// Read a manifest, or `None` if it doesn't exist. Warns if it exists but
+/// can't be read or parsed.
+fn read_manifest(path: &Path) -> Option<Value> {
+    match read_json(path) {
         Ok(value) => Some(value),
+        Err(ReadJsonError::Read(error)) if error.kind() == io::ErrorKind::NotFound => None,
         Err(error) => {
-            warn!("could not parse `{}`: {error}", path.display());
+            warn!("could not read `{}`: {error}", path.display());
             None
         }
     }
@@ -172,8 +167,13 @@ fn workspace_patterns(json: &Value) -> Vec<String> {
 
 /// The `packages` list of a `pnpm-workspace.yaml`.
 fn pnpm_patterns(path: &Path) -> Vec<String> {
-    let Some(contents) = read_text(path) else {
-        return Vec::new();
+    let contents = match read_text(path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Vec::new(),
+        Err(error) => {
+            warn!("could not read `{}`: {error}", path.display());
+            return Vec::new();
+        }
     };
     let documents = match YamlLoader::load_from_str(&contents) {
         Ok(documents) => documents,
@@ -192,6 +192,8 @@ fn pnpm_patterns(path: &Path) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use tempfile::TempDir;
     use zenith_utils::path::adjust_canonicalisation;
 

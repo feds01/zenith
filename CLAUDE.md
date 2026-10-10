@@ -36,7 +36,8 @@ it when responsibilities move. On `main` today:
 
 - `zenith`: the CLI (`cli.rs`, `commands/*`, `crash.rs`, and `version.rs`
   with `build.rs` for git commit stamping).
-- `zenith_utils`: path helpers, and the glob dialect and name patterns.
+- `zenith_utils`: file reading and path helpers, and the glob dialect and name
+  patterns.
 - `zenith_workspace`: the file walker and workspace package discovery.
 
 Key invariants:

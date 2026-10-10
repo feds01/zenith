@@ -172,7 +172,8 @@ A selector is a string, or a table for the advanced forms.
 **(settled)** Package, external and builtin names are matched with *name
 patterns*, not path globs. In a name pattern, `*` matches any run of characters
 **including `/`**, so `pkg:*` and `npm:*` match scoped names like `@acme/api`.
-`{a,b}` alternation also works.
+Otherwise they follow the glob syntax below: `?`, `{a,b}` alternation and `\`
+escapes work.
 
 **(settled)** When a path glob matches nested nodes (e.g. `web/**` matches both
 `web/src` and `web/src/a.ts`), only the **outermost** matches become units,
@@ -183,7 +184,7 @@ since they already contain the inner ones.
 Zenith uses its own segment-wise glob dialect, so that Next.js and TanStack
 file names need no escaping:
 
-- `/` separates segments.
+- `/` separates segments and cannot be escaped. A leading `./` is ignored.
 - `*` matches any run of characters **within** one segment.
 - `**` as a **whole segment** matches zero or more segments. A **trailing**
   `/**` matches one or more, so `a/**` means strictly inside `a`, as in gitignore.
@@ -501,7 +502,7 @@ tsconfig = "auto"          # "auto": nearest tsconfig.json per file; "off"; or a
 conditions = ["types", "source", "import", "module", "require", "node", "default"]   # default
 main_fields = ["module", "main"]                   # default
 alias = { "types" = "web/src/types" }         # bundler-only aliases, value relative to root
-ignore_unresolved = ["/*", "virtual:*"]            # don't report these specifiers as unresolved
+ignore_unresolved = ["/*", "virtual:*"]            # name patterns (§3.1) of specifiers not to report as unresolved
 
 [analysis]
 exclude_kinds = []         # default for every contract

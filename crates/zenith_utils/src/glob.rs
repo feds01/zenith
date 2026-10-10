@@ -55,38 +55,55 @@ enum Piece {
     Question,
 }
 
-/// Why a pattern is invalid. [`Invalid::describe`] adds the pattern.
+/// Why a glob or name pattern is invalid. The message doesn't repeat the
+/// pattern, so callers can name it with its context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Invalid {
-    /// What is wrong.
-    reason: &'static str,
+pub enum GlobError {
+    /// The pattern is empty.
+    Empty,
 
-    /// How to fix it.
-    hint: Option<&'static str>,
+    /// An alternative is empty, as in `{,a}` or `./`.
+    EmptyPath,
+
+    /// Two `/` in a row.
+    EmptySegment,
+
+    /// The pattern starts with `/`.
+    LeadingSlash,
+
+    /// The pattern ends with `/`.
+    TrailingSlash,
+
+    /// A `\` before a `/`.
+    EscapedSlash,
+
+    /// The pattern ends with an unescaped `\`.
+    TrailingBackslash,
+
+    /// `**` inside a segment, as in `a/b**`.
+    DoubleStar,
+
+    /// A `{` without its `}`.
+    UnclosedBrace,
 }
 
-impl Invalid {
-    const DOUBLE_STAR: Self = Self {
-        reason: "`**` must be a whole path segment",
-        hint: Some("use `*` within a segment"),
-    };
-    const EMPTY_PATH: Self = Self { reason: "empty path", hint: None };
-    const EMPTY_SEGMENT: Self = Self { reason: "empty path segment", hint: None };
-    const ESCAPED_SLASH: Self = Self { reason: "`/` cannot be escaped", hint: None };
-    const LEADING_SLASH: Self =
-        Self { reason: "leading `/`", hint: Some("globs are relative to the project root") };
-    const TRAILING_BACKSLASH: Self = Self { reason: "trailing `\\`", hint: None };
-    const TRAILING_SLASH: Self = Self { reason: "trailing `/`", hint: None };
-    const UNCLOSED_BRACE: Self = Self { reason: "unclosed `{`", hint: None };
-
-    /// The full message, naming the pattern and its kind.
-    fn describe(self, kind: &str, pattern: &str) -> String {
-        match self.hint {
-            Some(hint) => format!("{} in {kind} `{pattern}`; {hint}", self.reason),
-            None => format!("{} in {kind} `{pattern}`", self.reason),
-        }
+impl fmt::Display for GlobError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Empty => "the pattern is empty",
+            Self::EmptyPath => "empty path",
+            Self::EmptySegment => "empty path segment",
+            Self::LeadingSlash => "leading `/`; globs are relative to the project root",
+            Self::TrailingSlash => "trailing `/`",
+            Self::EscapedSlash => "`/` cannot be escaped",
+            Self::TrailingBackslash => "trailing `\\`",
+            Self::DoubleStar => "`**` must be a whole path segment; use `*` within a segment",
+            Self::UnclosedBrace => "unclosed `{`",
+        })
     }
 }
+
+impl std::error::Error for GlobError {}
 
 impl fmt::Debug for Glob {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -101,16 +118,15 @@ impl fmt::Display for Glob {
 }
 
 impl Glob {
-    /// Compile a glob, or describe why it is invalid.
-    pub fn new(pattern: &str) -> Result<Self, String> {
+    /// Compile a glob.
+    pub fn new(pattern: &str) -> Result<Self, GlobError> {
         if pattern.is_empty() {
-            return Err("a glob cannot be empty".to_string());
+            return Err(GlobError::Empty);
         }
-        let alternatives = expand_braces(pattern)
-            .and_then(|expanded| {
-                expanded.iter().map(|alternative| parse_segments(alternative)).collect()
-            })
-            .map_err(|invalid| invalid.describe("glob", pattern))?;
+        let alternatives = expand_braces(pattern)?
+            .iter()
+            .map(|alternative| parse_segments(alternative))
+            .collect::<Result<_, _>>()?;
         Ok(Self { raw: pattern.to_string(), alternatives })
     }
 
@@ -169,19 +185,15 @@ pub struct NamePattern {
 }
 
 impl NamePattern {
-    /// Compile a name pattern, or describe why it is invalid.
-    pub fn new(pattern: &str) -> Result<Self, String> {
+    /// Compile a name pattern.
+    pub fn new(pattern: &str) -> Result<Self, GlobError> {
         if pattern.is_empty() {
-            return Err("a name pattern cannot be empty".to_string());
+            return Err(GlobError::Empty);
         }
-        let alternatives = expand_braces(pattern)
-            .and_then(|expanded| {
-                expanded
-                    .iter()
-                    .map(|alternative| parse_pieces(alternative).ok_or(Invalid::TRAILING_BACKSLASH))
-                    .collect()
-            })
-            .map_err(|invalid| invalid.describe("name pattern", pattern))?;
+        let alternatives = expand_braces(pattern)?
+            .iter()
+            .map(|alternative| parse_pieces(alternative).ok_or(GlobError::TrailingBackslash))
+            .collect::<Result<_, _>>()?;
         Ok(Self { raw: pattern.to_string(), alternatives })
     }
 
@@ -218,7 +230,7 @@ pub fn escape(literal: &str) -> String {
 
 /// Expand `{a,b}` alternation, which may nest, into separate patterns. Escapes
 /// are kept for the parser.
-fn expand_braces(pattern: &str) -> Result<Vec<String>, Invalid> {
+fn expand_braces(pattern: &str) -> Result<Vec<String>, GlobError> {
     let Some((open, close)) = find_braces(pattern)? else {
         return Ok(vec![pattern.to_string()]);
     };
@@ -233,7 +245,7 @@ fn expand_braces(pattern: &str) -> Result<Vec<String>, Invalid> {
 
 /// The byte offsets of the first unescaped `{` and its matching `}`. A `}`
 /// without a `{` is literal.
-fn find_braces(pattern: &str) -> Result<Option<(usize, usize)>, Invalid> {
+fn find_braces(pattern: &str) -> Result<Option<(usize, usize)>, GlobError> {
     let (mut open, mut depth) = (0, 0);
     let mut chars = pattern.char_indices();
     while let Some((index, c)) = chars.next() {
@@ -257,7 +269,7 @@ fn find_braces(pattern: &str) -> Result<Option<(usize, usize)>, Invalid> {
         }
     }
 
-    if depth > 0 { Err(Invalid::UNCLOSED_BRACE) } else { Ok(None) }
+    if depth > 0 { Err(GlobError::UnclosedBrace) } else { Ok(None) }
 }
 
 /// Split the inside of a `{…}` on its top-level commas, keeping escapes.
@@ -283,10 +295,10 @@ fn split_options(inner: &str) -> Vec<&str> {
 }
 
 /// Parse one alternative, which has no braces, into segments.
-fn parse_segments(pattern: &str) -> Result<Vec<Segment>, Invalid> {
+fn parse_segments(pattern: &str) -> Result<Vec<Segment>, GlobError> {
     let pattern = pattern.strip_prefix("./").unwrap_or(pattern);
     if pattern.is_empty() {
-        return Err(Invalid::EMPTY_PATH);
+        return Err(GlobError::EmptyPath);
     }
 
     let mut segments = Vec::new();
@@ -295,9 +307,9 @@ fn parse_segments(pattern: &str) -> Result<Vec<Segment>, Invalid> {
     while let Some(raw) = raws.next() {
         let last = raws.peek().is_none();
         match raw {
-            "" if first => return Err(Invalid::LEADING_SLASH),
-            "" if last => return Err(Invalid::TRAILING_SLASH),
-            "" => return Err(Invalid::EMPTY_SEGMENT),
+            "" if first => return Err(GlobError::LeadingSlash),
+            "" if last => return Err(GlobError::TrailingSlash),
+            "" => return Err(GlobError::EmptySegment),
             // Consecutive `**` segments are equivalent to one.
             "**" if segments.last() == Some(&Segment::Recursive) => {}
             "**" => segments.push(Segment::Recursive),
@@ -310,11 +322,11 @@ fn parse_segments(pattern: &str) -> Result<Vec<Segment>, Invalid> {
 
 /// Parse a segment other than `**`. `last` is whether it ends the glob, which
 /// tells a trailing `\` from an escaped `/`.
-fn parse_segment(raw: &str, last: bool) -> Result<Segment, Invalid> {
-    let invalid = if last { Invalid::TRAILING_BACKSLASH } else { Invalid::ESCAPED_SLASH };
-    let pieces = parse_pieces(raw).ok_or(invalid)?;
+fn parse_segment(raw: &str, last: bool) -> Result<Segment, GlobError> {
+    let error = if last { GlobError::TrailingBackslash } else { GlobError::EscapedSlash };
+    let pieces = parse_pieces(raw).ok_or(error)?;
     if pieces.windows(2).any(|pair| pair == [Piece::Star, Piece::Star]) {
-        return Err(Invalid::DOUBLE_STAR);
+        return Err(GlobError::DoubleStar);
     }
 
     let literal: Option<String> = pieces
@@ -516,24 +528,33 @@ mod tests {
 
     #[test]
     fn invalid_globs() {
-        assert_eq!(Glob::new("").unwrap_err(), "a glob cannot be empty");
-        for (pattern, message) in [
-            ("a//b", "empty path segment in glob `a//b`"),
-            ("/a", "leading `/` in glob `/a`; globs are relative to the project root"),
-            ("a/", "trailing `/` in glob `a/`"),
-            ("./", "empty path in glob `./`"),
-            ("{,a}", "empty path in glob `{,a}`"),
-            (
-                "a/b**",
-                "`**` must be a whole path segment in glob `a/b**`; use `*` within a segment",
-            ),
-            ("a/{b", "unclosed `{` in glob `a/{b`"),
-            ("{a,b}/{c", "unclosed `{` in glob `{a,b}/{c`"),
-            ("a\\/b", "`/` cannot be escaped in glob `a\\/b`"),
-            ("a/b\\", "trailing `\\` in glob `a/b\\`"),
+        for (pattern, error) in [
+            ("", GlobError::Empty),
+            ("a//b", GlobError::EmptySegment),
+            ("/a", GlobError::LeadingSlash),
+            ("a/", GlobError::TrailingSlash),
+            ("./", GlobError::EmptyPath),
+            ("{,a}", GlobError::EmptyPath),
+            ("a/b**", GlobError::DoubleStar),
+            ("a/{b", GlobError::UnclosedBrace),
+            ("{a,b}/{c", GlobError::UnclosedBrace),
+            ("a\\/b", GlobError::EscapedSlash),
+            ("a/b\\", GlobError::TrailingBackslash),
         ] {
-            assert_eq!(Glob::new(pattern).unwrap_err(), message);
+            assert_eq!(Glob::new(pattern).unwrap_err(), error, "{pattern}");
         }
+    }
+
+    #[test]
+    fn errors_explain_the_fix() {
+        assert_eq!(
+            GlobError::LeadingSlash.to_string(),
+            "leading `/`; globs are relative to the project root"
+        );
+        assert_eq!(
+            GlobError::DoubleStar.to_string(),
+            "`**` must be a whole path segment; use `*` within a segment"
+        );
     }
 
     #[test]
@@ -581,9 +602,9 @@ mod tests {
 
     #[test]
     fn invalid_name_patterns() {
-        assert_eq!(NamePattern::new("").unwrap_err(), "a name pattern cannot be empty");
-        assert_eq!(NamePattern::new("{a,b").unwrap_err(), "unclosed `{` in name pattern `{a,b`");
-        assert_eq!(NamePattern::new("a\\").unwrap_err(), "trailing `\\` in name pattern `a\\`");
+        assert_eq!(NamePattern::new("").unwrap_err(), GlobError::Empty);
+        assert_eq!(NamePattern::new("{a,b").unwrap_err(), GlobError::UnclosedBrace);
+        assert_eq!(NamePattern::new("a\\").unwrap_err(), GlobError::TrailingBackslash);
     }
 
     #[test]

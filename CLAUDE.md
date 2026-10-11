@@ -38,11 +38,11 @@ it when responsibilities move. On `main` today:
   with `build.rs` for git commit stamping).
 - `zenith_graph`: the module tree and import graph model, import kinds, node
   sets, and graph views that leave out imports.
-- `zenith_utils`: file reading and path helpers, byte ranges, and the glob
-  dialect and name patterns.
-- `zenith_workspace`: the file walker and workspace package discovery.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`, its
   classification, and `exports`-aware workspace resolution.
+- `zenith_utils`: file reading, path and specifier helpers, byte ranges, and
+  the glob dialect and name patterns.
+- `zenith_workspace`: the file walker and workspace package discovery.
 
 Key invariants:
 

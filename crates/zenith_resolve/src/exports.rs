@@ -21,6 +21,7 @@
 use std::borrow::Cow;
 
 use serde_json::{Map, Value};
+use zenith_utils::specifier::stays_inside_package;
 
 /// Resolve `subpath` (`"."` or `"./sub/path"`) through `exports`, to a target
 /// relative to the package, e.g. `"./src/button.tsx"`. `None` means that the
@@ -170,15 +171,6 @@ fn resolve_target<'a>(
         }
         Value::Null | Value::Bool(_) | Value::Number(_) => Target::Excluded,
     }
-}
-
-/// Whether a target stays inside its package.
-fn stays_inside_package(target: &str) -> bool {
-    target.strip_prefix("./").is_some_and(|rest| {
-        rest.split(['/', '\\']).all(|segment| {
-            !matches!(segment, "" | "." | "..") && !segment.eq_ignore_ascii_case("node_modules")
-        })
-    })
 }
 
 #[cfg(test)]

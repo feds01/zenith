@@ -1,5 +1,5 @@
-//! What can be told about a specifier, or a resolved path, from its text
-//! alone.
+//! What can be told about an import specifier, or the path it resolves to,
+//! from its text alone.
 
 use std::path::Path;
 
@@ -7,7 +7,7 @@ use std::path::Path;
 /// `("virtual", "pwa-register")`. A scheme starts with a lowercase ASCII
 /// letter, followed by lowercase letters, digits, `+`, `-` or `.`. It is at
 /// least two characters long, so a Windows drive letter is not a scheme.
-pub(crate) fn split_scheme(specifier: &str) -> Option<(&str, &str)> {
+pub fn split_scheme(specifier: &str) -> Option<(&str, &str)> {
     let (scheme, rest) = specifier.split_once(':')?;
     let mut bytes = scheme.bytes();
     let valid = scheme.len() >= 2
@@ -21,7 +21,7 @@ pub(crate) fn split_scheme(specifier: &str) -> Option<(&str, &str)> {
 /// Split a specifier into its path and its `?query` or `#fragment`, which
 /// bundlers use for variants of a file, as in `./icon.svg?react`. A leading `#`
 /// starts a subpath import, not a fragment.
-pub(crate) fn split_query(specifier: &str) -> (&str, &str) {
+pub fn split_query(specifier: &str) -> (&str, &str) {
     match specifier.get(1..).and_then(|rest| rest.find(['?', '#'])) {
         Some(index) => specifier.split_at(index + 1),
         None => (specifier, ""),
@@ -29,7 +29,7 @@ pub(crate) fn split_query(specifier: &str) -> (&str, &str) {
 }
 
 /// A builtin without its subpath, so `node:fs/promises` is `node:fs`.
-pub(crate) fn squash_builtin(builtin: &str) -> &str {
+pub fn squash_builtin(builtin: &str) -> &str {
     builtin.split_once('/').map_or(builtin, |(name, _)| name)
 }
 
@@ -40,7 +40,7 @@ pub(crate) fn squash_builtin(builtin: &str) -> &str {
 /// imports, URLs, and path aliases that can't be package names, such as
 /// `@/lib` or `~/lib`. A package name and its scope start with an ASCII letter
 /// or digit, followed by letters, digits, `-`, `.`, `_` or `~`.
-pub(crate) fn package_name(specifier: &str) -> Option<&str> {
+pub fn package_name(specifier: &str) -> Option<&str> {
     let end = match specifier.strip_prefix('@') {
         Some(scoped) => {
             let (scope, rest) = scoped.split_once('/')?;
@@ -71,7 +71,7 @@ fn is_name_part(part: &str) -> bool {
 
 /// The package that a resolved path belongs to, named by the segments after
 /// its last `node_modules` segment.
-pub(crate) fn package_from_path(path: &Path) -> Option<String> {
+pub fn package_from_path(path: &Path) -> Option<String> {
     // Walk backwards, remembering the two segments after the current one.
     let (mut first, mut second): (Option<&str>, Option<&str>) = (None, None);
     for component in path.components().rev() {
@@ -87,6 +87,17 @@ pub(crate) fn package_from_path(path: &Path) -> Option<String> {
         first = segment.to_str();
     }
     None
+}
+
+/// Whether `target`, a path relative to a package such as an `exports` target,
+/// stays inside the package: it starts with `./`, and no segment after that is
+/// empty, `.`, `..` or `node_modules`. `\` separates segments too.
+pub fn stays_inside_package(target: &str) -> bool {
+    target.strip_prefix("./").is_some_and(|rest| {
+        rest.split(['/', '\\']).all(|segment| {
+            !matches!(segment, "" | "." | "..") && !segment.eq_ignore_ascii_case("node_modules")
+        })
+    })
 }
 
 #[cfg(test)]
@@ -168,5 +179,26 @@ mod tests {
         assert_eq!(package("/r/node_modules/@scope"), None);
         assert_eq!(package("/r/node_modules"), None);
         assert_eq!(package("/r/src/a.ts"), None);
+    }
+
+    #[test]
+    fn targets_stay_inside_their_package() {
+        for target in ["./index.js", "./src/button.tsx", "./src/.hidden/a.js", "./a\\b.js"] {
+            assert!(stays_inside_package(target), "{target}");
+        }
+        for target in [
+            "index.js",
+            "../index.js",
+            "./",
+            "./a//b.js",
+            "./a/./b.js",
+            "./a/../b.js",
+            "./a\\..\\b.js",
+            "./node_modules/x/index.js",
+            "./a/Node_Modules/x.js",
+            "/abs.js",
+        ] {
+            assert!(!stays_inside_package(target), "{target}");
+        }
     }
 }

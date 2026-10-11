@@ -17,7 +17,6 @@
 mod exports;
 mod resolver;
 mod settings;
-mod specifier;
 
 pub use resolver::{ResolveFailure, Resolved, Resolver, ResolverError, UnresolvedReason};
 pub use settings::{

@@ -13,12 +13,16 @@ use oxc_resolver::{
 };
 use rustc_hash::FxHashMap;
 use serde_json::Value;
-use zenith_utils::{fs::read_json, glob::NamePattern, path::relative_posix};
+use zenith_utils::{
+    fs::read_json,
+    glob::NamePattern,
+    path::{is_extension, relative_posix},
+    specifier::{package_from_path, package_name, split_query, split_scheme, squash_builtin},
+};
 
 use crate::{
     exports,
     settings::{ResolverSettings, TsconfigMode},
-    specifier::{package_from_path, package_name, split_query, split_scheme, squash_builtin},
 };
 
 /// The files that an import with a JavaScript extension may stand for, in the
@@ -53,12 +57,17 @@ pub enum Resolved {
     Builtin(String),
 
     /// The specifier could not be resolved.
-    Unresolved(UnresolvedReason),
+    Unresolved(Box<UnresolvedReason>),
 
     /// The specifier could not be resolved, and it matches one of the
     /// `ignore_unresolved` patterns, so that is expected.
-    Ignored(UnresolvedReason),
+    Ignored(Box<UnresolvedReason>),
 }
+
+// A `Resolved` is made for every import, so it is kept small: the reason of an
+// unresolved import, the rare case, is boxed.
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(size_of::<Resolved>() == 32);
 
 /// Why a specifier could not be resolved.
 #[derive(Debug, Clone, PartialEq)]
@@ -114,7 +123,7 @@ pub enum ResolverError {
     /// The `tsconfig.json` to use for every file does not exist.
     TsconfigNotFound(PathBuf),
 
-    /// An extension does not start with `.`.
+    /// An extension is not a `.` followed by a name, such as `.ts`.
     InvalidExtension(String),
 }
 
@@ -125,7 +134,7 @@ impl fmt::Display for ResolverError {
                 write!(f, "the tsconfig file `{}` does not exist", path.display())
             }
             Self::InvalidExtension(extension) => {
-                write!(f, "the extension `{extension}` does not start with `.`")
+                write!(f, "`{extension}` is not an extension, such as `.ts`")
             }
         }
     }
@@ -185,7 +194,7 @@ impl Resolver {
             ignore_unresolved,
         } = settings;
 
-        if let Some(extension) = extensions.iter().find(|extension| !extension.starts_with('.')) {
+        if let Some(extension) = extensions.iter().find(|extension| !is_extension(extension)) {
             return Err(ResolverError::InvalidExtension(extension.clone()));
         }
         let tsconfig = match tsconfig {
@@ -254,10 +263,12 @@ impl Resolver {
     /// `file`.
     pub fn resolve(&self, file: &Path, specifier: &str) -> Resolved {
         match self.resolve_specifier(file, specifier) {
-            Resolved::Unresolved(reason)
-                if self.ignore_unresolved.iter().any(|pattern| pattern.is_match(specifier)) =>
-            {
-                Resolved::Ignored(reason)
+            Resolved::Unresolved(reason) => {
+                if self.ignore_unresolved.iter().any(|pattern| pattern.is_match(specifier)) {
+                    Resolved::Ignored(reason)
+                } else {
+                    Resolved::Unresolved(reason)
+                }
             }
             resolved => resolved,
         }
@@ -268,7 +279,7 @@ impl Resolver {
         if let Some((scheme, _)) = split_scheme(specifier) {
             return match scheme {
                 "node" | "bun" => Resolved::Builtin(squash_builtin(specifier).to_string()),
-                _ => Resolved::Unresolved(UnresolvedReason::UnsupportedScheme(scheme.to_string())),
+                _ => unresolved(UnresolvedReason::UnsupportedScheme(scheme.to_string())),
             };
         }
 
@@ -344,7 +355,7 @@ impl Resolver {
                 match exports::resolve(exports, &subpath, &self.conditions) {
                     Some(target) => target,
                     None => {
-                        return Resolved::Unresolved(UnresolvedReason::NotExported {
+                        return unresolved(UnresolvedReason::NotExported {
                             package: package.to_string(),
                             subpath,
                         });
@@ -375,7 +386,7 @@ impl Resolver {
         let (specifier, _) = split_query(specifier);
         match package_name(specifier).map(str::to_string).or_else(|| package_from_path(path)) {
             Some(package) => Resolved::External { package, found: true },
-            None => Resolved::Unresolved(UnresolvedReason::OutsideRoot(path.to_path_buf())),
+            None => unresolved(UnresolvedReason::OutsideRoot(path.to_path_buf())),
         }
     }
 }
@@ -391,9 +402,14 @@ fn is_tsconfig_error(error: &ResolveError) -> bool {
     )
 }
 
+/// An unresolved specifier, for this reason.
+fn unresolved(reason: UnresolvedReason) -> Resolved {
+    Resolved::Unresolved(Box::new(reason))
+}
+
 /// An unresolved specifier, for a resolver error.
 fn failed(error: ResolveError) -> Resolved {
-    Resolved::Unresolved(UnresolvedReason::Failed(ResolveFailure(error)))
+    unresolved(UnresolvedReason::Failed(ResolveFailure(error)))
 }
 
 #[cfg(test)]
@@ -467,8 +483,16 @@ mod tests {
         Resolved::Builtin(name.to_string())
     }
 
+    /// Why `resolved` is unresolved, if it is.
+    fn unresolved_reason(resolved: &Resolved) -> Option<&UnresolvedReason> {
+        match resolved {
+            Resolved::Unresolved(reason) => Some(reason),
+            _ => None,
+        }
+    }
+
     fn is_unresolved(resolved: &Resolved) -> bool {
-        matches!(resolved, Resolved::Unresolved(UnresolvedReason::Failed(_)))
+        matches!(unresolved_reason(resolved), Some(UnresolvedReason::Failed(_)))
     }
 
     #[test]
@@ -507,10 +531,8 @@ mod tests {
         assert_eq!(resolve("./plain.js"), internal("web/src/plain.js"));
 
         assert!(matches!(
-            resolve("./missing"),
-            Resolved::Unresolved(UnresolvedReason::Failed(ResolveFailure(ResolveError::NotFound(
-                _
-            ))))
+            unresolved_reason(&resolve("./missing")),
+            Some(UnresolvedReason::Failed(ResolveFailure(ResolveError::NotFound(_))))
         ));
         assert!(is_unresolved(&resolve("./missing.js")));
     }
@@ -602,10 +624,10 @@ mod tests {
             let resolved = resolve("@/util");
             assert!(
                 matches!(
-                    &resolved,
-                    Resolved::Unresolved(UnresolvedReason::Failed(ResolveFailure(
-                        ResolveError::TsconfigNotFound(_)
-                    )))
+                    unresolved_reason(&resolved),
+                    Some(UnresolvedReason::Failed(ResolveFailure(ResolveError::TsconfigNotFound(
+                        _
+                    ))))
                 ),
                 "{resolved:?}"
             );
@@ -631,7 +653,7 @@ mod tests {
         settings.extensions.push("ts".to_string());
         let error = Resolver::new(settings).unwrap_err();
         assert_eq!(error, ResolverError::InvalidExtension("ts".to_string()));
-        assert_eq!(error.to_string(), "the extension `ts` does not start with `.`");
+        assert_eq!(error.to_string(), "`ts` is not an extension, such as `.ts`");
     }
 
     #[test]
@@ -689,7 +711,7 @@ mod tests {
             internal("packages/designSystem/src/icons/outline/star.tsx")
         );
         let not_exported = |subpath: &str| {
-            Resolved::Unresolved(UnresolvedReason::NotExported {
+            unresolved(UnresolvedReason::NotExported {
                 package: "@acme/design-system".to_string(),
                 subpath: subpath.to_string(),
             })
@@ -870,7 +892,7 @@ mod tests {
         assert_eq!(resolver.resolve(&from, "@vendor/sdk"), external("@vendor/sdk", true));
         let outside = resolver.resolve(&from, "../../shared/util");
         let shared = project.root.parent().unwrap().join("shared").join("util.ts");
-        assert_eq!(outside, Resolved::Unresolved(UnresolvedReason::OutsideRoot(shared)));
+        assert_eq!(outside, unresolved(UnresolvedReason::OutsideRoot(shared)));
     }
 
     #[test]
@@ -895,7 +917,7 @@ mod tests {
         let resolved = resolver.resolve(&project.path("main.ts"), "virtual:pwa-register");
         assert_eq!(
             resolved,
-            Resolved::Unresolved(UnresolvedReason::UnsupportedScheme("virtual".to_string()))
+            unresolved(UnresolvedReason::UnsupportedScheme("virtual".to_string()))
         );
         if let Resolved::Unresolved(reason) = resolved {
             assert_eq!(reason.to_string(), "unsupported `virtual:` specifier");
@@ -932,10 +954,13 @@ mod tests {
         let from = project.path("web/main.ts");
         let resolve = |specifier: &str| resolver.resolve(&from, specifier);
 
-        assert!(matches!(resolve("/logo.svg"), Resolved::Ignored(UnresolvedReason::Failed(_))));
+        assert!(matches!(
+            resolve("/logo.svg"),
+            Resolved::Ignored(reason) if matches!(*reason, UnresolvedReason::Failed(_))
+        ));
         assert_eq!(
             resolve("virtual:pwa-register"),
-            Resolved::Ignored(UnresolvedReason::UnsupportedScheme("virtual".to_string()))
+            Resolved::Ignored(Box::new(UnresolvedReason::UnsupportedScheme("virtual".to_string())))
         );
         assert!(matches!(resolve("~icons/mdi/home"), Resolved::Ignored(_)));
         assert!(matches!(resolve("./missing"), Resolved::Ignored(_)));

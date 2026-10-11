@@ -1,0 +1,25 @@
+[package]
+name = "zenith_graph"
+version = "0.1.0"
+description = "The module tree and import graph of a zenith project"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = false
+
+[dependencies]
+bitflags = { workspace = true }
+fixedbitset = { workspace = true }
+index_vec = { workspace = true }
+rustc-hash = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+thin-vec = { workspace = true }
+zenith_utils = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

@@ -13,7 +13,7 @@ use crate::ModuleId;
 ///
 /// Iteration is in ascending id order, which is also the alphabetical order
 /// of node names, so anything derived from a set is deterministic.
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct NodeSet {
     /// One bit per node id. The bit set grows to fit the largest id inserted,
     /// so two equal sets can differ in length: equality and hashing ignore
@@ -81,6 +81,18 @@ impl NodeSet {
         let blocks = self.bits.as_slice();
         let len = blocks.iter().rposition(|block| *block != 0).map_or(0, |last| last + 1);
         &blocks[..len]
+    }
+}
+
+impl Clone for NodeSet {
+    fn clone(&self) -> Self {
+        Self { bits: self.bits.clone() }
+    }
+
+    // Reuse the allocation, so that a search that resets its sets before
+    // every run does not allocate.
+    fn clone_from(&mut self, source: &Self) {
+        self.bits.clone_from(&source.bits);
     }
 }
 
@@ -186,6 +198,14 @@ mod tests {
         assert!(emptied.is_empty());
         assert_eq!(emptied, NodeSet::new());
         assert_ne!(direct, set(&[4]));
+    }
+
+    #[test]
+    fn cloning_into_a_set_replaces_its_nodes() {
+        let mut nodes = set(&[1, 500]);
+        nodes.clone_from(&set(&[2, 64]));
+        assert_eq!(indices(&nodes), [2, 64]);
+        assert_eq!(indices(&nodes.clone()), [2, 64]);
     }
 
     #[test]

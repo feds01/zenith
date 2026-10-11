@@ -45,3 +45,49 @@ pub(crate) fn id(graph: &Graph, name: &str) -> ModuleId {
 pub(crate) fn names(graph: &Graph, ids: impl IntoIterator<Item = ModuleId>) -> Vec<&str> {
     ids.into_iter().map(|id| graph.name(id)).collect()
 }
+
+/// Run `check` on the graph of `imports`, and on the graph of the same
+/// imports added in reverse order, and return its result after asserting
+/// that the two agree.
+pub(crate) fn in_both_orders<T: PartialEq + std::fmt::Debug>(
+    imports: &[(&str, &str)],
+    check: impl Fn(&Graph) -> T,
+) -> T {
+    let forwards = check(&graph_of(imports));
+    let reversed: Vec<_> = imports.iter().rev().copied().collect();
+    assert_eq!(check(&graph_of(&reversed)), forwards, "the result depends on the build order");
+    forwards
+}
+
+/// A xorshift random number generator with a fixed seed, so that generated
+/// graphs are the same on every run.
+pub(crate) struct Random(u64);
+
+impl Random {
+    /// A generator with the fixed seed.
+    pub(crate) fn new() -> Self {
+        Self(0x9e37_79b9_7f4a_7c15)
+    }
+
+    /// A number from 0 up to, but not including, `bound`.
+    pub(crate) fn below(&mut self, bound: usize) -> usize {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        (self.0 % bound as u64) as usize
+    }
+
+    /// Up to `count` imports between random `files`, none of a file by
+    /// itself.
+    pub(crate) fn imports<'a>(
+        &mut self,
+        files: &'a [String],
+        count: usize,
+    ) -> Vec<(&'a str, &'a str)> {
+        (0..count)
+            .map(|_| (self.below(files.len()), self.below(files.len())))
+            .filter(|(importer, imported)| importer != imported)
+            .map(|(importer, imported)| (files[importer].as_str(), files[imported].as_str()))
+            .collect()
+    }
+}

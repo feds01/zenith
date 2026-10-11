@@ -1,0 +1,12 @@
+{
+  "name": "acme",
+  "private": true,
+  "packageManager": "bun@1.4.0",
+  "workspaces": [
+    "web",
+    "sdk",
+    "packages/*",
+    "services/*",
+    "apps/*"
+  ]
+}

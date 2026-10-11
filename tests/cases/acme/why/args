@@ -1,0 +1,9 @@
+why pkg:web npm:sharp
+why pkg:sdk pkg:@acme/api
+why pkg:sdk pkg:@acme/api --exclude-kind type
+why web/src/lib web/src/domains
+why web/src/lib web/src/domains --limit 1
+# Nothing imports it, which is not an error.
+why pkg:web npm:left-pad
+why web web/src
+why web/src/nope npm:react

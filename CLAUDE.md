@@ -16,6 +16,8 @@ and lint-clean on its own.
 
 ```sh
 just test     # all tests; extra args go to cargo, e.g. `just test -p zenith`
+just test-ui  # the UI snapshot tests in tests/cases, e.g. `just test-ui acme`
+just update-snapshots  # re-record their output.snap files
 just lint     # clippy -D warnings + rustfmt --check
 just fmt      # format
 just run      # run the CLI from source
@@ -36,7 +38,9 @@ The crates and what each one owns are listed in
 it when responsibilities move. On `main` today:
 
 - `zenith`: the CLI (`cli.rs`, `commands/*`, `crash.rs`, and `version.rs`
-  with `build.rs` for git commit stamping).
+  with `build.rs` for git commit stamping), `project.rs`, which finds the
+  project and its configuration and runs the pipeline on it, and the UI
+  snapshot harness in `tests/ui.rs`.
 - `zenith_benchmark`: the divan benchmarks, and the deterministic synthetic
   monorepo that they run on.
 - `zenith_config`: the `zenith.toml` types and JSON Schema, config discovery,
@@ -61,7 +65,8 @@ it when responsibilities move. On `main` today:
 - `zenith_resolve`: specifier resolution with `oxc_resolver`, its
   classification, and `exports`-aware workspace resolution.
 - `zenith_utils`: file reading, path and specifier helpers, byte ranges, the
-  glob dialect and name patterns, and the line index.
+  glob dialect and name patterns, the line index, and terminal output:
+  highlighting, the logger, and printing text and trees.
 - `zenith_workspace`: the file walker and workspace package discovery.
 
 Key invariants:

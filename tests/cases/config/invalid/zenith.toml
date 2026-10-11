@@ -1,0 +1,12 @@
+# Every error is reported, in the order of the file.
+[files]
+exclud = ["**/*.test.ts"]
+
+[contracts.a-not-b]
+type = "forbidden"
+from = ["src/a**"]
+to = ["src/b"]
+
+[contracts.tiers]
+type = "layer"
+layers = ["src/a", "src/b"]

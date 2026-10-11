@@ -1,0 +1,27 @@
+$ zenith graph -v
+exit: 0
+--- stdout
+. (2 files)
+└─src/ (2 files)
+  ├─types/ (1 file)
+  └─ui/ (1 file)
+--- stderr
+info: `./missing` in src/ui/avatar.ts:3:1 could not be resolved: Cannot find module './missing'
+warning: 1 import could not be resolved
+info: indexed 2 source files and 1 import
+
+$ zenith resolve src/ui/avatar.ts types/user
+exit: 0
+--- stdout
+internal    src/types/user.ts
+
+$ zenith resolve src/ui/avatar.ts /logo.svg
+exit: 1
+--- stdout
+unresolved  Cannot find module '/logo.svg' (expected, by `ignore_unresolved`)
+
+$ zenith resolve src/ui/avatar.ts ./missing
+exit: 1
+--- stdout
+unresolved  Cannot find module './missing'
+

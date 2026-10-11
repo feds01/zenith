@@ -1,0 +1,75 @@
+$ zenith why pkg:web npm:sharp
+exit: 0
+--- stdout
+chain 1 of 1:
+  web/src/domains/campaigns/components/CampaignAiPanel.tsx:3
+  -> packages/ai/index.ts:1
+  -> packages/ai/src/domains/campaigns/index.ts:2
+  -> packages/ai/src/domains/campaigns/summarize.ts:2
+  -> packages/ai/src/utils/images/to-model-image.ts:2 (dynamic)
+  -> npm:sharp
+
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith why pkg:sdk pkg:@acme/api
+exit: 0
+--- stdout
+chain 1 of 1:
+  sdk/src/client.ts:1 (type)
+  -> packages/api/index.ts
+
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith why pkg:sdk pkg:@acme/api --exclude-kind type
+exit: 0
+--- stdout
+`pkg:sdk` does not import `pkg:@acme/api`.
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith why web/src/lib web/src/domains
+exit: 0
+--- stdout
+chain 1 of 2:
+  web/src/lib/campaign-links.ts:2
+  -> web/src/domains/campaigns/api/client.ts
+
+chain 2 of 2:
+  web/src/lib/format.ts:1
+  -> web/src/domains/campaigns/types.ts
+
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith why web/src/lib web/src/domains --limit 1
+exit: 0
+--- stdout
+chain 1 of 2:
+  web/src/lib/campaign-links.ts:2
+  -> web/src/domains/campaigns/api/client.ts
+
+and 1 chain more; use `--limit` to show them
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith why pkg:web npm:left-pad
+exit: 0
+--- stdout
+`pkg:web` does not import `npm:left-pad`.
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith why web web/src
+exit: 2
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+error: `web` and `web/src` overlap, so there is no import between them
+
+$ zenith why web/src/nope npm:react
+exit: 2
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+error: `web/src/nope` does not match anything
+

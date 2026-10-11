@@ -1,0 +1,10 @@
+{
+  "name": "sdk",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "dependencies": {
+    "@acme/api": "workspace:*",
+    "zod": "^4.1.0"
+  }
+}

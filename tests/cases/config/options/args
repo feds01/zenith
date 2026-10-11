@@ -1,0 +1,8 @@
+# Without a configuration file, the current directory is the root, and
+# nothing is excluded.
+graph --depth 4
+# The configuration file in `--root`, or the root of `--config`.
+graph --root project --depth 3
+graph --config project/zenith.toml --depth 3
+graph --config project/missing.toml
+graph --root missing

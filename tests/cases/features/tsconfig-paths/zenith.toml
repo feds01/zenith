@@ -1,0 +1,17 @@
+# Kept: core's `@/lib/format` is core's own file, not app's.
+[contracts.core-not-app]
+type = "forbidden"
+from = ["pkg:core"]
+to = ["pkg:app"]
+
+# Kept: app's `config` is its own `src/config.ts`.
+[contracts.app-has-no-npm-config]
+type = "forbidden"
+from = ["pkg:app"]
+to = ["npm:config"]
+
+# Broken: tools reaches `shared/` through the inherited `~shared/*` path.
+[contracts.tools-not-shared]
+type = "forbidden"
+from = ["pkg:tools"]
+to = ["shared"]

@@ -765,8 +765,8 @@ imports and excluded modules, so this needs no new algorithms.
 
   Each case is copied to a temporary directory outside the repository and runs
   as its own test through `libtest-mimic`. `just update-snapshots`
-  (`REGENERATE_OUTPUT=1`) re-records them. The harness and its `just` recipes
-  land with the CLI PR.
+  (`REGENERATE_OUTPUT=1`) re-records them, and `just test-ui` runs only
+  them.
 - **The `acme` fixture**: a synthetic monorepo in `tests/fixtures/acme`,
   modelled on the reference test-bed. It has:
   - bun workspaces, with package names that differ from their directories;

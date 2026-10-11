@@ -8,6 +8,7 @@ use std::{
 
 use argfile::{Argument, PREFIX};
 use clap::{ArgAction, Parser, ValueEnum};
+use zenith_graph::ImportKind;
 
 /// Expand `@path` argfiles in `args`. An `@` argument that doesn't name an
 /// existing file is kept as-is.
@@ -248,6 +249,17 @@ pub enum ImportKindArg {
     Dynamic,
     /// `require()` calls and `import x = require()`.
     Require,
+}
+
+impl From<ImportKindArg> for ImportKind {
+    fn from(kind: ImportKindArg) -> Self {
+        match kind {
+            ImportKindArg::Value => ImportKind::Value,
+            ImportKindArg::Type => ImportKind::Type,
+            ImportKindArg::Dynamic => ImportKind::Dynamic,
+            ImportKindArg::Require => ImportKind::Require,
+        }
+    }
 }
 
 #[cfg(test)]

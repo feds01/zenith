@@ -1,0 +1,3 @@
+graph --depth 1
+graph "pkg:*" --depth 0
+why pkg:@demo/utils pkg:@demo/ui

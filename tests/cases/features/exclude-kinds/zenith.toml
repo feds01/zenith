@@ -1,0 +1,34 @@
+# Every file under `src/low` imports `src/high/h.ts` with a different kind.
+[analysis]
+exclude_kinds = ["type"]
+
+# Inherits `[analysis] exclude_kinds`: the type-only imports are ignored.
+[contracts.default-kinds]
+type = "forbidden"
+from = ["src/low"]
+to = ["src/high"]
+allow_indirect_imports = true
+
+# Overrides it with nothing: every kind counts.
+[contracts.all-kinds]
+type = "forbidden"
+from = ["src/low"]
+to = ["src/high"]
+allow_indirect_imports = true
+exclude_kinds = []
+
+# Only static value imports count, and there are none.
+[contracts.static-values-only]
+type = "forbidden"
+from = ["src/low"]
+to = ["src/high"]
+allow_indirect_imports = true
+exclude_kinds = ["type", "dynamic", "require"]
+
+# Leaves only the `require` kind: `require()` and `import x = require()`.
+[contracts.requires-only]
+type = "forbidden"
+from = ["src/low"]
+to = ["src/high"]
+allow_indirect_imports = true
+exclude_kinds = ["type", "dynamic"]

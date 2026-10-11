@@ -1,6 +1,7 @@
 //! The resolver, and how it classifies what a specifier resolves to.
 
 use std::{
+    borrow::Cow,
     fmt,
     path::{Path, PathBuf},
 };
@@ -9,9 +10,12 @@ use oxc_resolver::{
     AliasValue, ResolveError, ResolveOptions, TsconfigDiscovery, TsconfigOptions,
     TsconfigReferences,
 };
-use zenith_utils::{glob::NamePattern, path::relative_posix};
+use rustc_hash::FxHashMap;
+use serde_json::Value;
+use zenith_utils::{fs::read_json, glob::NamePattern, path::relative_posix};
 
 use crate::{
+    exports,
     settings::{ResolverSettings, TsconfigMode},
     specifier::{package_from_path, package_name, split_query, split_scheme, squash_builtin},
 };
@@ -61,6 +65,15 @@ pub enum UnresolvedReason {
     /// The resolver could not resolve it.
     Failed(ResolveFailure),
 
+    /// A workspace package's `exports` map doesn't export the subpath.
+    NotExported {
+        /// The package name.
+        package: String,
+
+        /// The subpath, as an `exports` key, e.g. `./src/internal`.
+        subpath: String,
+    },
+
     /// It resolved to a file outside the project root that is in no package.
     OutsideRoot(PathBuf),
 
@@ -72,6 +85,9 @@ impl fmt::Display for UnresolvedReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Failed(failure) => write!(f, "{failure}"),
+            Self::NotExported { package, subpath } => {
+                write!(f, "`{subpath}` is not exported by `{package}`")
+            }
             Self::OutsideRoot(path) => {
                 write!(f, "resolved to `{}`, outside the project and in no package", path.display())
             }
@@ -126,12 +142,29 @@ pub struct Resolver {
     /// The canonical project root.
     root: PathBuf,
 
+    /// The condition names, for workspace `exports` maps.
+    conditions: Vec<String>,
+
+    /// The workspace packages, by name.
+    workspace: FxHashMap<String, WorkspaceEntry>,
+
     /// Patterns of specifiers that are expected not to resolve.
     ignore_unresolved: Vec<NamePattern>,
 }
 
+/// A workspace package, for resolving its imports without `node_modules`.
+#[derive(Debug)]
+struct WorkspaceEntry {
+    /// Its `package.json`, which its subpaths are resolved from.
+    manifest: PathBuf,
+
+    /// Its `exports` map, if it has one.
+    exports: Option<Value>,
+}
+
 impl Resolver {
-    /// Create a resolver.
+    /// Create a resolver. The `package.json` of every workspace package is
+    /// read now; one that can't be read counts as having no `exports` map.
     pub fn new(settings: ResolverSettings) -> Result<Self, ResolverError> {
         let ResolverSettings {
             root,
@@ -140,6 +173,7 @@ impl Resolver {
             main_fields,
             extensions,
             aliases,
+            workspace_packages,
             ignore_unresolved,
         } = settings;
 
@@ -167,7 +201,7 @@ impl Resolver {
                     (name, vec![AliasValue::Path(path.to_string_lossy().into_owned())])
                 })
                 .collect(),
-            condition_names: conditions,
+            condition_names: conditions.clone(),
             main_fields,
             extensions,
             extension_alias: EXTENSION_ALIASES
@@ -183,7 +217,25 @@ impl Resolver {
             ..ResolveOptions::default()
         };
 
-        Ok(Self { inner: oxc_resolver::Resolver::new(options), root, ignore_unresolved })
+        let mut workspace = FxHashMap::default();
+        for (name, dir) in workspace_packages {
+            workspace.entry(name).or_insert_with(|| {
+                let manifest = dir.join("package.json");
+                let exports = read_json(&manifest)
+                    .ok()
+                    .and_then(|mut json| json.get_mut("exports").map(Value::take))
+                    .filter(|exports| !exports.is_null());
+                WorkspaceEntry { manifest, exports }
+            });
+        }
+
+        Ok(Self {
+            inner: oxc_resolver::Resolver::new(options),
+            root,
+            conditions,
+            workspace,
+            ignore_unresolved,
+        })
     }
 
     /// Resolve `specifier`, as imported by the file at the absolute path
@@ -219,10 +271,53 @@ impl Resolver {
             Err(error) => error,
         };
 
-        let (path, _) = split_query(specifier);
+        let (path, query) = split_query(specifier);
         match package_name(path) {
-            Some(package) => Resolved::External { package: package.to_string(), found: false },
+            Some(package) => match self.workspace.get(package) {
+                Some(entry) => {
+                    let subpath = &path[package.len()..];
+                    self.resolve_in_workspace(specifier, package, entry, subpath, query)
+                }
+                None => Resolved::External { package: package.to_string(), found: false },
+            },
             None => failed(error),
+        }
+    }
+
+    /// Resolve `subpath` (`""` or `"/sub/path"`) of a workspace package
+    /// against its directory, through its `exports` map if it has one, and
+    /// keep the specifier's `query` (`""`, `"?query"` or `"#fragment"`).
+    fn resolve_in_workspace(
+        &self,
+        specifier: &str,
+        package: &str,
+        entry: &WorkspaceEntry,
+        subpath: &str,
+        query: &str,
+    ) -> Resolved {
+        let target = match &entry.exports {
+            Some(exports) => {
+                let subpath = format!(".{subpath}");
+                match exports::resolve(exports, &subpath, &self.conditions) {
+                    Some(target) => target,
+                    None => {
+                        return Resolved::Unresolved(UnresolvedReason::NotExported {
+                            package: package.to_string(),
+                            subpath,
+                        });
+                    }
+                }
+            }
+            None if subpath.is_empty() => Cow::Borrowed("."),
+            None => Cow::Owned(format!(".{subpath}")),
+        };
+        let request = match query {
+            "" => target,
+            query => Cow::Owned(format!("{target}{query}")),
+        };
+        match self.inner.resolve_file(&entry.manifest, &request) {
+            Ok(resolution) => self.classify(specifier, resolution.path()),
+            Err(error) => failed(error),
         }
     }
 
@@ -295,6 +390,14 @@ mod tests {
         /// The default settings for the project.
         fn settings(&self) -> ResolverSettings {
             ResolverSettings::new(self.root.clone())
+        }
+
+        /// The default settings, with the given workspace packages.
+        fn with_packages(&self, packages: &[(&str, &str)]) -> ResolverSettings {
+            let mut settings = self.settings();
+            settings.workspace_packages =
+                packages.iter().map(|(name, dir)| (name.to_string(), self.path(dir))).collect();
+            settings
         }
     }
 
@@ -432,6 +535,177 @@ mod tests {
         let error = Resolver::new(settings).unwrap_err();
         assert_eq!(error, ResolverError::InvalidExtension("ts".to_string()));
         assert_eq!(error.to_string(), "the extension `ts` does not start with `.`");
+    }
+
+    #[test]
+    fn resolves_workspace_packages_without_node_modules() {
+        let project = Project::new(&[
+            ("web/src/main.ts", ""),
+            ("packages/api/package.json", r#"{ "name": "@acme/api", "main": "index.ts" }"#),
+            ("packages/api/index.ts", ""),
+            ("packages/api/src/deep.ts", ""),
+            (
+                "packages/designSystem/package.json",
+                r#"{
+                    "name": "@acme/design-system",
+                    "exports": {
+                        ".": "./index.ts",
+                        "./button": { "types": "./src/button.tsx", "default": "./dist/button.js" },
+                        "./icons/*": "./src/icons/*.tsx",
+                        "./internal/*": null,
+                        "./broken": "./src/missing.ts"
+                    }
+                }"#,
+            ),
+            ("packages/designSystem/index.ts", ""),
+            ("packages/designSystem/src/button.tsx", ""),
+            ("packages/designSystem/src/icons/star.tsx", ""),
+            ("packages/designSystem/src/icons/outline/star.tsx", ""),
+            ("packages/designSystem/src/internal/secret.ts", ""),
+        ]);
+        let settings = project.with_packages(&[
+            ("@acme/api", "packages/api"),
+            ("@acme/design-system", "packages/designSystem"),
+        ]);
+        let resolver = Resolver::new(settings).unwrap();
+        let from = project.path("web/src/main.ts");
+        let resolve = |specifier: &str| resolver.resolve(&from, specifier);
+
+        // Without `exports`, the main field and any path inside the package.
+        assert_eq!(resolve("@acme/api"), internal("packages/api/index.ts"));
+        assert_eq!(resolve("@acme/api/src/deep"), internal("packages/api/src/deep.ts"));
+        assert_eq!(resolve("@acme/api/src/deep.js"), internal("packages/api/src/deep.ts"));
+        assert!(is_unresolved(&resolve("@acme/api/src/missing")));
+
+        // With `exports`, only what it exports.
+        assert_eq!(resolve("@acme/design-system"), internal("packages/designSystem/index.ts"));
+        assert_eq!(
+            resolve("@acme/design-system/button"),
+            internal("packages/designSystem/src/button.tsx")
+        );
+        assert_eq!(
+            resolve("@acme/design-system/icons/star"),
+            internal("packages/designSystem/src/icons/star.tsx")
+        );
+        assert_eq!(
+            resolve("@acme/design-system/icons/outline/star"),
+            internal("packages/designSystem/src/icons/outline/star.tsx")
+        );
+        let not_exported = |subpath: &str| {
+            Resolved::Unresolved(UnresolvedReason::NotExported {
+                package: "@acme/design-system".to_string(),
+                subpath: subpath.to_string(),
+            })
+        };
+        assert_eq!(
+            resolve("@acme/design-system/internal/secret"),
+            not_exported("./internal/secret")
+        );
+        assert_eq!(resolve("@acme/design-system/src/button"), not_exported("./src/button"));
+        let reason = UnresolvedReason::NotExported {
+            package: "@acme/design-system".to_string(),
+            subpath: "./src/button".to_string(),
+        };
+        assert_eq!(reason.to_string(), "`./src/button` is not exported by `@acme/design-system`");
+        assert!(is_unresolved(&resolve("@acme/design-system/broken")));
+    }
+
+    #[test]
+    fn workspace_imports_keep_their_queries() {
+        let project = Project::new(&[
+            ("web/main.ts", ""),
+            (
+                "packages/ui/package.json",
+                r#"{ "name": "@acme/ui", "exports": { ".": "./src/index.ts", "./styles.css": "./src/styles.css" } }"#,
+            ),
+            ("packages/ui/src/index.ts", ""),
+            ("packages/ui/src/styles.css", ""),
+            ("packages/api/package.json", r#"{ "name": "@acme/api", "main": "index.ts" }"#),
+            ("packages/api/index.ts", ""),
+            ("packages/api/schema.json", "{}"),
+        ]);
+        let settings =
+            project.with_packages(&[("@acme/ui", "packages/ui"), ("@acme/api", "packages/api")]);
+        let resolver = Resolver::new(settings).unwrap();
+        let from = project.path("web/main.ts");
+        let resolve = |specifier: &str| resolver.resolve(&from, specifier);
+
+        assert_eq!(resolve("@acme/ui/styles.css?inline"), internal("packages/ui/src/styles.css"));
+        assert_eq!(resolve("@acme/ui?worker"), internal("packages/ui/src/index.ts"));
+        assert_eq!(resolve("@acme/api/schema.json?raw"), internal("packages/api/schema.json"));
+        assert_eq!(resolve("@acme/api?raw"), internal("packages/api/index.ts"));
+        assert_eq!(resolve("chart-kit?url"), external("chart-kit", false));
+    }
+
+    #[test]
+    fn workspace_exports_use_the_configured_conditions() {
+        let project = Project::new(&[
+            ("web/main.ts", ""),
+            (
+                "packages/ui/package.json",
+                r#"{ "name": "@acme/ui", "exports": { "source": "./src/index.ts", "types": "./types/index.d.ts", "default": "./dist/index.js" } }"#,
+            ),
+            ("packages/ui/src/index.ts", ""),
+            ("packages/ui/types/index.d.ts", ""),
+            ("packages/ui/dist/index.js", ""),
+        ]);
+        let from = project.path("web/main.ts");
+
+        // The package's order decides between the configured conditions.
+        let resolver =
+            Resolver::new(project.with_packages(&[("@acme/ui", "packages/ui")])).unwrap();
+        assert_eq!(resolver.resolve(&from, "@acme/ui"), internal("packages/ui/src/index.ts"));
+
+        let mut settings = project.with_packages(&[("@acme/ui", "packages/ui")]);
+        settings.conditions = vec!["types".to_string()];
+        let resolver = Resolver::new(settings).unwrap();
+        assert_eq!(resolver.resolve(&from, "@acme/ui"), internal("packages/ui/types/index.d.ts"));
+
+        let mut settings = project.with_packages(&[("@acme/ui", "packages/ui")]);
+        settings.conditions = Vec::new();
+        let resolver = Resolver::new(settings).unwrap();
+        assert_eq!(resolver.resolve(&from, "@acme/ui"), internal("packages/ui/dist/index.js"));
+    }
+
+    #[test]
+    fn workspace_main_fields_follow_the_settings() {
+        let project = Project::new(&[
+            ("web/main.ts", ""),
+            (
+                "packages/ui/package.json",
+                r#"{ "name": "@acme/ui", "module": "./src/index.ts", "main": "./dist/index.js" }"#,
+            ),
+            ("packages/ui/src/index.ts", ""),
+            ("packages/ui/dist/index.js", ""),
+        ]);
+        let from = project.path("web/main.ts");
+
+        let resolver =
+            Resolver::new(project.with_packages(&[("@acme/ui", "packages/ui")])).unwrap();
+        assert_eq!(resolver.resolve(&from, "@acme/ui"), internal("packages/ui/src/index.ts"));
+
+        let mut settings = project.with_packages(&[("@acme/ui", "packages/ui")]);
+        settings.main_fields = vec!["main".to_string()];
+        let resolver = Resolver::new(settings).unwrap();
+        assert_eq!(resolver.resolve(&from, "@acme/ui"), internal("packages/ui/dist/index.js"));
+    }
+
+    #[test]
+    fn the_first_workspace_package_with_a_name_wins() {
+        let project = Project::new(&[
+            ("web/main.ts", ""),
+            ("packages/a/package.json", r#"{ "name": "@acme/ui", "main": "a.ts" }"#),
+            ("packages/a/a.ts", ""),
+            ("packages/b/package.json", r#"{ "name": "@acme/ui", "main": "b.ts" }"#),
+            ("packages/b/b.ts", ""),
+        ]);
+        let settings =
+            project.with_packages(&[("@acme/ui", "packages/a"), ("@acme/ui", "packages/b")]);
+        let resolver = Resolver::new(settings).unwrap();
+        assert_eq!(
+            resolver.resolve(&project.path("web/main.ts"), "@acme/ui"),
+            internal("packages/a/a.ts")
+        );
     }
 
     #[test]

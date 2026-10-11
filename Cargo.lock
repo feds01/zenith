@@ -1127,6 +1127,8 @@ name = "zenith_resolve"
 version = "0.1.0"
 dependencies = [
  "oxc_resolver",
+ "rustc-hash",
+ "serde_json",
  "tempfile",
  "zenith_utils",
 ]

@@ -61,6 +61,13 @@ pub struct ResolverSettings {
     /// `types` to `web/src/types` maps `types/user` to `web/src/types/user`.
     pub aliases: Vec<(String, PathBuf)>,
 
+    /// The workspace packages, by name, with their absolute directories. An
+    /// import of one of them that doesn't resolve normally (because
+    /// `node_modules` is not installed, say) is resolved against its
+    /// directory instead, through its `exports` map if it has one. When two
+    /// packages share a name, the first one is used.
+    pub workspace_packages: Vec<(String, PathBuf)>,
+
     /// Patterns of specifiers that are expected not to resolve, such as
     /// `virtual:*`. They are [`Ignored`](crate::Resolved::Ignored) instead of
     /// [`Unresolved`](crate::Resolved::Unresolved).
@@ -79,6 +86,7 @@ impl ResolverSettings {
             main_fields: strings(DEFAULT_MAIN_FIELDS),
             extensions: strings(DEFAULT_EXTENSIONS),
             aliases: Vec::new(),
+            workspace_packages: Vec::new(),
             ignore_unresolved: Vec::new(),
         }
     }

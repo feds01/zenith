@@ -39,6 +39,9 @@ it when responsibilities move. On `main` today:
 - `zenith_config`: the `zenith.toml` types and JSON Schema, config discovery,
   parsing, and validation into typed contract definitions, including the
   syntax of selectors, layers and ignored imports.
+- `zenith_diagnostics`: the errors and warnings reported about zenith's
+  input, collected per pass and rendered as reports with labelled source
+  excerpts using `annotate-snippets`.
 - `zenith_graph`: the module tree and import graph model, import kinds, node
   sets, and graph views that leave out imports.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`, its

@@ -722,6 +722,7 @@ imports and excluded modules, so this needs no new algorithms.
 | `zenith_index` | Orchestrates walk, parse and resolve into a `Graph` |
 | `zenith_contracts` | Resolving selectors into units, per-contract views, the six contract types, the findings model, baseline, suppressions |
 | `zenith_reporting` | Renderers (`pretty`, `compact`, `json`, `github`) using `annotate-snippets` |
+| `zenith_diagnostics` | The errors and warnings about zenith's input, such as an invalid configuration file: typed errors collected per pass, and reports with labelled source excerpts and notes, rendered with `annotate-snippets` |
 | `zenith_utils` | Logging, output streams, highlighting, the glob dialect and name patterns, printing helpers, tree writing, line index, byte ranges, timers, path helpers (mostly from bracketlint), and what can be told about a specifier from its text (package names, schemes, queries) |
 
 **(settled)** The UI snapshot harness lives at `crates/zenith/tests/ui.rs` (a

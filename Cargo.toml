@@ -11,11 +11,13 @@ repository = "https://github.com/feds01/zenith"
 
 [workspace.dependencies]
 zenith_config = { path = "crates/zenith_config" }
+zenith_diagnostics = { path = "crates/zenith_diagnostics" }
 zenith_graph = { path = "crates/zenith_graph" }
 zenith_resolve = { path = "crates/zenith_resolve" }
 zenith_utils = { path = "crates/zenith_utils" }
 zenith_workspace = { path = "crates/zenith_workspace" }
 
+annotate-snippets = { version = "0.12.16" }
 anyhow = { version = "1.0.104" }
 argfile = { version = "1.0.0" }
 bitflags = { version = "2.13.2" }

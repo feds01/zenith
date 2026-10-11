@@ -102,7 +102,7 @@ raw specifier, and its **kind**:
 | Kind | Produced by |
 |---|---|
 | `value` | `import x from "s"`, `import "s"`, `export { a } from "s"`, `export * from "s"`, `export * as ns from "s"` |
-| `type` | `import type …`, `export type …`, `import { type A, type B }` where *every* specifier is type-only, `export type * from`, `typeof import("s")` and other TS import types, `import type x = require("s")` |
+| `type` | `import type …`, `export type …`, `import { type A, type B }` or `export { type A, type B } from` where *every* specifier is type-only, `export type * from`, `typeof import("s")` and other TS import types, `import type x = require("s")` |
 | `dynamic` | `import("s")` with a string-literal or substitution-free template argument |
 | `require` | `require("s")` with a literal argument, `import x = require("s")` |
 

@@ -45,6 +45,8 @@ it when responsibilities move. On `main` today:
 - `zenith_graph`: the module tree and import graph model, import kinds, node
   sets, graph views that leave out imports, and the grimp algorithms that run
   on them: shortest import chains, layers and cycle breakers.
+- `zenith_parse`: oxc-based extraction of imports and their kinds, and
+  directives.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`, its
   classification, and `exports`-aware workspace resolution.
 - `zenith_utils`: file reading, path and specifier helpers, byte ranges, and

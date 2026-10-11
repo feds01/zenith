@@ -19,6 +19,7 @@ just test     # all tests; extra args go to cargo, e.g. `just test -p zenith`
 just lint     # clippy -D warnings + rustfmt --check
 just fmt      # format
 just run      # run the CLI from source
+just bench    # benchmarks; extra args go to divan, e.g. `just bench walk`
 ```
 
 The toolchain is pinned nightly (`rust-toolchain.toml`). This is needed for the
@@ -36,6 +37,8 @@ it when responsibilities move. On `main` today:
 
 - `zenith`: the CLI (`cli.rs`, `commands/*`, `crash.rs`, and `version.rs`
   with `build.rs` for git commit stamping).
+- `zenith_benchmark`: the divan benchmarks, and the deterministic synthetic
+  monorepo that they run on.
 - `zenith_config`: the `zenith.toml` types and JSON Schema, config discovery,
   parsing, and validation into typed contract definitions, including the
   syntax of selectors, layers and ignored imports.

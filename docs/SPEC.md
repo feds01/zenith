@@ -727,6 +727,7 @@ imports and excluded modules, so this needs no new algorithms.
 | `zenith_reporting` | Renderers (`pretty`, `compact`, `json`, `github`) using `annotate-snippets` |
 | `zenith_diagnostics` | The errors and warnings about zenith's input, such as an invalid configuration file: typed errors collected per pass, and reports with labelled source excerpts and notes, rendered with `annotate-snippets` |
 | `zenith_utils` | Logging, output streams, highlighting, the glob dialect and name patterns, printing helpers, tree writing, line index, byte ranges, timers, path helpers (mostly from bracketlint), and what can be told about a specifier from its text (package names, schemes, queries) |
+| `zenith_benchmark` | The divan benchmarks, and the deterministic synthetic monorepo that they run on |
 
 **(settled)** The UI snapshot harness lives at `crates/zenith/tests/ui.rs` (a
 `harness = false` integration test using `libtest-mimic`), not in a separate
@@ -789,8 +790,9 @@ imports and excluded modules, so this needs no new algorithms.
     baseline, and PRs that touch benchmarked crates, in simulation and memory
     modes, as in bracketlint. Enabling CodSpeed on a private repository may
     need a paid plan; `just bench` works regardless.
-  - **When it lands:** the crate arrives with the parse PR, and each later
-    crate PR adds benchmarks for its hot paths.
+  - **When it lands:** the crate lands on its own, with benchmarks for the
+    glob dialect, the walk and package discovery. Each later crate PR adds
+    benchmarks for its hot paths.
 - **Measured on the prototype:**
 
   | Run | Files | Imports | Contracts | Time |

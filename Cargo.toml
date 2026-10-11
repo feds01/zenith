@@ -23,9 +23,11 @@ anyhow = { version = "1.0.104" }
 argfile = { version = "1.0.0" }
 bitflags = { version = "2.13.2" }
 clap = { version = "4.6.7", features = ["derive", "env", "wrap_help"] }
+divan = { package = "codspeed-divan-compat", version = "5.0.2" }
 dunce = { version = "1.0.5" }
 fastrand = { version = "2.5.0" }
 fixedbitset = { version = "0.5.7" }
+heck = { version = "0.5.0" }
 ignore = { version = "0.4.33" }
 index_vec = { version = "0.1.4" }
 indexmap = { version = "2.14.2", features = ["serde"] }
@@ -52,6 +54,7 @@ yaml-rust2 = { version = "0.13.0", default-features = false }
 [workspace.lints.rust]
 unsafe_code = "forbid"
 unused_qualifications = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(codspeed)"] }
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }

@@ -42,6 +42,10 @@ schema:
     cargo build -q -p zenith
     cargo run -q -p zenith -- schema > zenith.schema.json
 
+# Run the benchmarks, extra args go to divan, e.g. `just bench walk`
+bench *args:
+    cargo bench -p zenith_benchmark -- "$@"
+
 # Run clippy, denying warnings
 clippy:
     cargo clippy --workspace --all-targets -- -D warnings

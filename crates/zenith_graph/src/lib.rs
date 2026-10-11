@@ -13,10 +13,12 @@
 //!
 //! The queries that contracts run on a view are ports of
 //! [grimp](https://github.com/python-grimp/grimp), the engine behind Python's
-//! import-linter: shortest import chains ([`find_shortest_chains`]) and
-//! layered architectures ([`find_illegal_dependencies_for_layers`]).
+//! import-linter: shortest import chains ([`find_shortest_chains`]), layered
+//! architectures ([`find_illegal_dependencies_for_layers`]) and cycle breakers
+//! ([`nominate_cycle_breakers`]).
 
 mod builder;
+mod cycles;
 mod graph;
 mod kinds;
 mod layers;
@@ -27,6 +29,7 @@ mod testing;
 mod view;
 
 pub use builder::{FileHandle, GraphBuilder, GraphError, NodeHandle};
+pub use cycles::{UnitDependency, UnitGraph, find_unit_path, nominate_cycle_breakers};
 pub use graph::{Graph, ImportDetail, ModuleId, Node, NodeKind};
 pub use kinds::{ImportKind, KindSet};
 pub use layers::{

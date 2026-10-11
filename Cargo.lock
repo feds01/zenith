@@ -1712,6 +1712,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "zenith_benchmark"
+version = "0.1.0"
+dependencies = [
+ "fastrand",
+ "heck",
+ "zenith_graph",
+ "zenith_utils",
+]
+
+[[package]]
 name = "zenith_config"
 version = "0.1.0"
 dependencies = [

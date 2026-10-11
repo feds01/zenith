@@ -36,6 +36,8 @@ it when responsibilities move. On `main` today:
 
 - `zenith`: the CLI (`cli.rs`, `commands/*`, `crash.rs`, and `version.rs`
   with `build.rs` for git commit stamping).
+- `zenith_benchmark`: the deterministic synthetic monorepo that benchmarks
+  run on.
 - `zenith_config`: the `zenith.toml` types and JSON Schema, config discovery,
   parsing, and validation into typed contract definitions, including the
   syntax of selectors, layers and ignored imports.

@@ -1,0 +1,19 @@
+[package]
+name = "zenith_benchmark"
+version = "0.1.0"
+description = "Benchmarks for the zenith crates, and the synthetic monorepo that they run on"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = false
+
+[dependencies]
+zenith_graph = { workspace = true }
+zenith_utils = { workspace = true }
+
+fastrand = { workspace = true }
+heck = { workspace = true }
+
+[lints]
+workspace = true

@@ -31,7 +31,7 @@ path-absolutize = { version = "4.0.1" }
 rustc-hash = { version = "2.1.3" }
 schemars = { version = "1.2.2", features = ["indexmap2"] }
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = { version = "1.0.151" }
+serde_json = { version = "1.0.151", features = ["preserve_order"] }
 strsim = { version = "0.11.1" }
 tempfile = { version = "3.27.0" }
 thin-vec = { version = "0.2.21" }

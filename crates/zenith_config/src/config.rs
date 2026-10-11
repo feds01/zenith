@@ -6,7 +6,8 @@
 //! contracts.
 
 use indexmap::IndexMap;
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use zenith_graph::KindSet;
 use zenith_utils::glob::{Glob, NamePattern};
 
@@ -133,7 +134,7 @@ impl Default for BaselineConfig {
 }
 
 /// How to report baseline entries whose import no longer exists.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum StaleLevel {
     /// Stale entries fail the check, so the baseline can only shrink.
@@ -145,7 +146,7 @@ pub enum StaleLevel {
 }
 
 /// How severe a broken contract is.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     /// A broken contract fails the check.
@@ -157,7 +158,7 @@ pub enum Severity {
 }
 
 /// How to report an `ignore_imports` entry that matches no import.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum AlertLevel {
     /// The contract is broken.

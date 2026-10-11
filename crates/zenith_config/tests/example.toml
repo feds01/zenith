@@ -1,0 +1,68 @@
+#:schema https://raw.githubusercontent.com/feds01/zenith/main/zenith.schema.json
+
+# The example configuration of the docs, with every table and contract type.
+
+[files]
+include = ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"]
+exclude = ["experimental/**", "**/*.gen.ts"]
+respect_gitignore = true
+
+[resolve]
+tsconfig = "auto"
+conditions = ["types", "source", "import", "module", "require", "node", "default"]
+main_fields = ["module", "main"]
+alias = { "types" = "web/src/types" }
+ignore_unresolved = ["/*", "virtual:*"]
+
+[analysis]
+exclude_kinds = []
+
+[baseline]
+path = "zenith.baseline.json"
+stale = "error"
+
+[contracts.client-safety]
+type = "forbidden"
+name = "Client components never reach server-only code"
+from = [{ path = "web/src/**", directive = "use client" }]
+to = ["npm:sharp", "node:*", "npm:server-only"]
+guidance = "Keep server-only modules out of client bundles."
+
+[contracts.features-independent]
+type = "independence"
+modules = [{ path = "web/src/features/*", except = ["web/src/features/experimental"] }]
+ignore_imports = ["web/src/features/* -> web/src/features/shared"]
+
+[contracts.package-tiers]
+type = "layers"
+layers = [
+  "pkg:web | pkg:sdk | apps/* | services/*",
+  "pkg:@acme/ui | pkg:@acme/forms",
+  { layer = "pkg:@acme/client", closed = true },
+  "pkg:@acme/core",
+  "pkg:@acme/types : pkg:@acme/config",
+]
+exclude_kinds = ["type"]
+
+[contracts.domain-internals]
+type = "layers"
+containers = ["packages/api/src/domains/*"]
+layers = ["hooks", "api", "(types)"]
+exhaustive = true
+exhaustive_ignores = ["index"]
+
+[contracts.agents-are-api-only]
+type = "protected"
+modules = ["web/src/agents"]
+allowed_importers = ["web/src/app/api"]
+
+[contracts.packages-acyclic]
+type = "acyclic"
+modules = ["pkg:*"]
+exclude_kinds = ["type"]
+
+[contracts.ui-public-surface]
+type = "encapsulation"
+modules = ["pkg:@acme/ui"]
+entrypoints = ["index", "src/components/*/index"]
+severity = "warn"

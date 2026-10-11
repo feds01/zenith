@@ -1,17 +1,22 @@
 //! The `zenith.toml` file as written.
 //!
-//! These types mirror the file one-to-one, and serde deserialises them,
-//! rejecting unknown keys everywhere. Values that are checked after
-//! deserialisation, such as selectors, are [`Located`], so that errors can
-//! point at them.
+//! These types mirror the file one-to-one: serde deserialises them, rejecting
+//! unknown keys everywhere, and schemars describes them in the JSON Schema of
+//! the file, so their docs are written for the people editing it. Values that
+//! are checked after deserialisation, such as selectors, are [`Located`], so
+//! that errors can point at them.
 
-use std::{fmt, ops::Range};
+use std::{borrow::Cow, fmt, mem, ops::Range};
 
 use indexmap::IndexMap;
+use schemars::{
+    JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings, transform::RecursiveTransform,
+};
 use serde::{
-    Deserialize, Deserializer,
+    Deserialize, Deserializer, Serialize, Serializer,
     de::{self, IgnoredAny, MapAccess, Visitor, value::MapAccessDeserializer},
 };
+use serde_json::Value;
 use zenith_graph::ImportKind;
 
 use crate::config::{AlertLevel, DEFAULT_BASELINE_PATH, Severity, StaleLevel};
@@ -38,41 +43,73 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for Located<T> {
     }
 }
 
+/// Serialised as the bare value, which is how schemars shows defaults.
+impl<T: Serialize> Serialize for Located<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.value.serialize(serializer)
+    }
+}
+
+/// Described as the bare value, since the location is not written.
+impl<T: JsonSchema> JsonSchema for Located<T> {
+    fn inline_schema() -> bool {
+        T::inline_schema()
+    }
+
+    fn schema_name() -> Cow<'static, str> {
+        T::schema_name()
+    }
+
+    fn schema_id() -> Cow<'static, str> {
+        T::schema_id()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        T::json_schema(generator)
+    }
+}
+
 /// The configuration of a zenith project. It lives at the project root, which
 /// all of its paths are relative to.
 // Each table is deserialised on its own, so that every table reports its
 // errors, and each contract's errors name it and point into it. This struct
-// only rejects unknown tables.
-#[derive(Debug, Deserialize)]
+// only rejects unknown tables, and describes the tables for the schema.
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, expecting = "a table")]
+#[schemars(title = "zenith.toml")]
 #[expect(dead_code, reason = "the tables are deserialised on their own")]
 pub(crate) struct ConfigFile {
     /// Which files to scan for imports.
     #[serde(default)]
+    #[schemars(with = "FilesTable")]
     pub(crate) files: IgnoredAny,
 
     /// How import specifiers are resolved.
     #[serde(default)]
+    #[schemars(with = "ResolveTable")]
     pub(crate) resolve: IgnoredAny,
 
     /// Defaults that apply to every contract.
     #[serde(default)]
+    #[schemars(with = "AnalysisTable")]
     pub(crate) analysis: IgnoredAny,
 
     /// The baseline of known violations, which `zenith check` ignores so that
     /// only new violations fail it.
     #[serde(default)]
+    #[schemars(with = "BaselineTable")]
     pub(crate) baseline: IgnoredAny,
 
     /// The architecture contracts, keyed by id. Ids may contain ASCII
     /// letters, digits, `-` and `_`, and are what `--contract`, the baseline
     /// and `zenith-ignore` comments refer to.
     #[serde(default)]
+    #[schemars(with = "IndexMap<String, ContractTable>")]
     pub(crate) contracts: IgnoredAny,
 }
 
 /// Which files to scan for imports.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields, expecting = "a table")]
 pub(crate) struct FilesTable {
     /// Globs of the files to scan. Defaults to every JavaScript and
@@ -95,7 +132,7 @@ impl Default for FilesTable {
 }
 
 /// How import specifiers are resolved.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields, expecting = "a table")]
 pub(crate) struct ResolveTable {
     /// Which `tsconfig.json` files to use: `"auto"` (the default) uses the
@@ -129,7 +166,7 @@ pub(crate) struct ResolveTable {
 }
 
 /// Defaults that apply to every contract.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields, expecting = "a table")]
 pub(crate) struct AnalysisTable {
     /// The import kinds that contracts ignore unless they set their own
@@ -138,7 +175,7 @@ pub(crate) struct AnalysisTable {
 }
 
 /// The baseline of known violations.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields, expecting = "a table")]
 pub(crate) struct BaselineTable {
     /// The path of the baseline file.
@@ -157,7 +194,8 @@ impl Default for BaselineTable {
 }
 
 /// An architecture contract. Its `type` says what it checks.
-#[derive(Debug)]
+#[derive(Debug, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum ContractTable {
     /// The `from` modules must not import the `to` modules, directly or
     /// through other modules.
@@ -231,7 +269,7 @@ macro_rules! contract_table {
         }
     ) => {
         $(#[$meta])*
-        #[derive(Debug, Deserialize)]
+        #[derive(Debug, Deserialize, JsonSchema)]
         #[serde(deny_unknown_fields, expecting = "a contract table")]
         pub(crate) struct $name {
             $(
@@ -399,7 +437,8 @@ fn default_entrypoints() -> Vec<Located<String>> {
 /// A selector of modules: a path glob such as `web/src/domains/*`, a
 /// workspace package (`pkg:@acme/*`), an external package (`npm:react`), a
 /// builtin (`node:*` or `bun:*`), or a table that filters one.
-#[derive(Debug)]
+#[derive(Debug, JsonSchema)]
+#[serde(untagged)]
 pub(crate) enum SelectorValue {
     /// A selector.
     String(String),
@@ -409,7 +448,7 @@ pub(crate) enum SelectorValue {
 }
 
 /// A selector with filters.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, expecting = "a selector table")]
 pub(crate) struct SelectorTable {
     /// The selector, in any of its string forms.
@@ -437,7 +476,8 @@ impl<'de> Deserialize<'de> for SelectorValue {
 /// A layer of a `layers` contract: `"a"`, `"a | b"` for independent siblings
 /// that may not import each other, `"a : b"` for siblings that may, and
 /// `"(a)"` for a member that may be missing. Members are selectors.
-#[derive(Debug)]
+#[derive(Debug, JsonSchema)]
+#[serde(untagged)]
 pub(crate) enum LayerValue {
     /// A layer.
     String(String),
@@ -447,7 +487,7 @@ pub(crate) enum LayerValue {
 }
 
 /// A layer with options.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, expecting = "a layer table")]
 pub(crate) struct LayerTable {
     /// The layer, in its string form.
@@ -496,5 +536,61 @@ impl<'de, T: Deserialize<'de>, V> Visitor<'de> for StringOrTable<T, V> {
 
     fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<V, A::Error> {
         T::deserialize(MapAccessDeserializer::new(map)).map(self.table)
+    }
+}
+
+/// The JSON Schema of the configuration file, which editors use to complete
+/// and check it.
+pub fn json_schema() -> Value {
+    SchemaSettings::draft2020_12()
+        .with_transform(RecursiveTransform(tidy_schema))
+        .into_generator()
+        .into_root_schema_for::<ConfigFile>()
+        .to_value()
+}
+
+/// Remove `null` from a schema, since TOML has no null: an optional key is
+/// left out instead. Then put the keys that describe it first, for people
+/// reading the schema.
+fn tidy_schema(schema: &mut Schema) {
+    let Some(object) = schema.as_object_mut() else {
+        return;
+    };
+
+    if object.get("default").is_some_and(Value::is_null) {
+        object.remove("default");
+    }
+    if let Some(Value::Array(types)) = object.get_mut("type") {
+        types.retain(|kind| kind != "null");
+        if let [kind] = types.as_slice() {
+            let kind = kind.clone();
+            object.insert("type".to_string(), kind);
+        }
+    }
+
+    let mut entries: Vec<(String, Value)> = mem::take(object).into_iter().collect();
+    entries.sort_by_key(|(key, _)| match key.as_str() {
+        "$schema" => 0,
+        "title" => 1,
+        "description" => 2,
+        _ => 3,
+    });
+    object.extend(entries);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_schema_lists_every_contract_type() {
+        let schema = json_schema();
+        let types: Vec<_> = schema["$defs"]["ContractTable"]["oneOf"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|branch| branch["properties"]["type"]["const"].as_str())
+            .collect();
+        assert_eq!(types, CONTRACT_TYPES.map(Some));
     }
 }

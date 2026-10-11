@@ -7,6 +7,9 @@
 //! layer and ignored import, so that a [`Config`] only holds valid values.
 //! Every [`ConfigError`] has the location of the offending key or value, when
 //! the TOML parser knows it.
+//!
+//! [`json_schema`] describes the file for editors, generated from the same
+//! types that it is deserialised into.
 
 mod config;
 mod error;
@@ -23,6 +26,7 @@ pub use config::{
     LayersConfig, ProtectedConfig, ResolveConfig, Severity, StaleLevel, Tsconfig,
 };
 pub use error::{ConfigError, ConfigErrorKind, LoadError, Location};
+pub use file::json_schema;
 pub use layer::{Layer, LayerError, LayerMember};
 pub use parse::parse;
 pub use selector::{

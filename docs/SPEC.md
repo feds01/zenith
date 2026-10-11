@@ -547,6 +547,10 @@ webpack's enhanced-resolve, through `resolve_file`. With
   does not export is unresolved, matching TypeScript and Node. Without
   `exports`, the subpath is a path inside the package. So workspace imports
   resolve identically with and without `node_modules`.
+- A file whose `tsconfig.json` can't be loaded (because it extends one in a
+  package that isn't installed, say) is resolved without it. A non-relative
+  specifier that then fails is unresolved, with the `tsconfig.json` error as
+  the reason.
 - **Default conditions (settled):** `types`, `source`, `import`, `module`,
   `require`, `node`, `default`. They are matched in the order the package
   lists them. `types` is included so that internal TS packages resolve to

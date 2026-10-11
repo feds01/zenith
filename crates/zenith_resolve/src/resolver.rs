@@ -4,10 +4,11 @@ use std::{
     borrow::Cow,
     fmt,
     path::{Path, PathBuf},
+    sync::{Mutex, PoisonError},
 };
 
 use oxc_resolver::{
-    AliasValue, ResolveError, ResolveOptions, TsconfigDiscovery, TsconfigOptions,
+    AliasValue, Resolution, ResolveError, ResolveOptions, TsconfigDiscovery, TsconfigOptions,
     TsconfigReferences,
 };
 use rustc_hash::FxHashMap;
@@ -139,6 +140,13 @@ pub struct Resolver {
     /// The configured `oxc_resolver`.
     inner: oxc_resolver::Resolver,
 
+    /// The same, sharing its caches, but without `tsconfig.json` files, for
+    /// files whose `tsconfig.json` can't be loaded.
+    without_tsconfig: oxc_resolver::Resolver,
+
+    /// The files whose `tsconfig.json` couldn't be loaded, and why.
+    tsconfig_errors: Mutex<FxHashMap<PathBuf, ResolveError>>,
+
     /// The canonical project root.
     root: PathBuf,
 
@@ -229,8 +237,12 @@ impl Resolver {
             });
         }
 
+        let without_tsconfig = ResolveOptions { tsconfig: None, ..options.clone() };
+        let inner = oxc_resolver::Resolver::new(options);
         Ok(Self {
-            inner: oxc_resolver::Resolver::new(options),
+            without_tsconfig: inner.clone_with_options(without_tsconfig),
+            inner,
+            tsconfig_errors: Mutex::default(),
             root,
             conditions,
             workspace,
@@ -260,7 +272,7 @@ impl Resolver {
             };
         }
 
-        let error = match self.inner.resolve_file(file, specifier) {
+        let error = match self.resolve_file(file, specifier) {
             Ok(resolution) => return self.classify(specifier, resolution.path()),
             Err(ResolveError::Builtin { mut resolved, .. }) => {
                 resolved.truncate(squash_builtin(&resolved).len());
@@ -280,8 +292,39 @@ impl Resolver {
                 }
                 None => Resolved::External { package: package.to_string(), found: false },
             },
+            // Blame the `tsconfig.json` if it couldn't be loaded, since it may
+            // have had the `paths` that a non-relative specifier needs.
+            None if !specifier.starts_with(['.', '/']) => {
+                failed(self.tsconfig_error(file).unwrap_or(error))
+            }
             None => failed(error),
         }
+    }
+
+    /// Resolve `specifier` from `file` with `oxc_resolver`. A file whose
+    /// `tsconfig.json` can't be loaded (because it extends one in a package
+    /// that isn't installed, say) is resolved without it, and the error is
+    /// kept for [`Self::tsconfig_error`]. Since the two resolvers share their
+    /// caches, `oxc_resolver` then remembers that the file has no
+    /// `tsconfig.json`, instead of failing to load it again for every import.
+    fn resolve_file(&self, file: &Path, specifier: &str) -> Result<Resolution, ResolveError> {
+        match self.inner.resolve_file(file, specifier) {
+            Err(error) if is_tsconfig_error(&error) => {
+                let mut errors =
+                    self.tsconfig_errors.lock().unwrap_or_else(PoisonError::into_inner);
+                if !errors.contains_key(file) {
+                    errors.insert(file.to_path_buf(), error);
+                }
+                drop(errors);
+                self.without_tsconfig.resolve_file(file, specifier)
+            }
+            result => result,
+        }
+    }
+
+    /// Why the `tsconfig.json` of `file` couldn't be loaded, if it couldn't.
+    fn tsconfig_error(&self, file: &Path) -> Option<ResolveError> {
+        self.tsconfig_errors.lock().unwrap_or_else(PoisonError::into_inner).get(file).cloned()
     }
 
     /// Resolve `subpath` (`""` or `"/sub/path"`) of a workspace package
@@ -315,7 +358,7 @@ impl Resolver {
             "" => target,
             query => Cow::Owned(format!("{target}{query}")),
         };
-        match self.inner.resolve_file(&entry.manifest, &request) {
+        match self.resolve_file(&entry.manifest, &request) {
             Ok(resolution) => self.classify(specifier, resolution.path()),
             Err(error) => failed(error),
         }
@@ -335,6 +378,17 @@ impl Resolver {
             None => Resolved::Unresolved(UnresolvedReason::OutsideRoot(path.to_path_buf())),
         }
     }
+}
+
+/// Whether a resolver error is about loading a `tsconfig.json`.
+fn is_tsconfig_error(error: &ResolveError) -> bool {
+    matches!(
+        error,
+        ResolveError::TsconfigNotFound(_)
+            | ResolveError::TsconfigLoadFailed { .. }
+            | ResolveError::TsconfigCircularExtend(_)
+            | ResolveError::TsconfigSelfReference(_)
+    )
 }
 
 /// An unresolved specifier, for a resolver error.
@@ -514,6 +568,49 @@ mod tests {
         settings.tsconfig = TsconfigMode::File(project.path("tsconfig.other.json"));
         let resolver = Resolver::new(settings).unwrap();
         assert_eq!(resolver.resolve(&from, "@/util"), internal("other/util.ts"));
+    }
+
+    #[test]
+    fn files_whose_tsconfig_fails_to_load_resolve_without_it() {
+        // Without `node_modules`, the shared config that every package
+        // extends can't be found.
+        let project = Project::new(&[
+            ("packages/tsconfig/package.json", r#"{ "name": "@acme/tsconfig" }"#),
+            ("packages/tsconfig/base.json", "{}"),
+            (
+                "web/tsconfig.json",
+                r#"{ "extends": "@acme/tsconfig/base.json", "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }"#,
+            ),
+            ("web/src/main.ts", ""),
+            ("web/src/util.ts", ""),
+            ("packages/ui/tsconfig.json", r#"{ "extends": "@acme/tsconfig/base.json" }"#),
+            ("packages/ui/package.json", r#"{ "name": "@acme/ui", "exports": "./src/index.ts" }"#),
+            ("packages/ui/src/index.ts", ""),
+        ]);
+        let resolver =
+            Resolver::new(project.with_packages(&[("@acme/ui", "packages/ui")])).unwrap();
+        let from = project.path("web/src/main.ts");
+        let resolve = |specifier: &str| resolver.resolve(&from, specifier);
+
+        assert_eq!(resolve("./util"), internal("web/src/util.ts"));
+        assert_eq!(resolve("fs"), builtin("node:fs"));
+        assert_eq!(resolve("chart-kit"), external("chart-kit", false));
+        assert_eq!(resolve("@acme/ui"), internal("packages/ui/src/index.ts"));
+        // The tsconfig's own `paths` are lost with it, and it is to blame,
+        // every time.
+        for _ in 0..2 {
+            let resolved = resolve("@/util");
+            assert!(
+                matches!(
+                    &resolved,
+                    Resolved::Unresolved(UnresolvedReason::Failed(ResolveFailure(
+                        ResolveError::TsconfigNotFound(_)
+                    )))
+                ),
+                "{resolved:?}"
+            );
+        }
+        assert!(is_unresolved(&resolve("./missing")));
     }
 
     #[test]

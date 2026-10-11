@@ -7,7 +7,9 @@
 //! imports of `.ts` files, and symlinked workspace packages. When
 //! `node_modules` is not installed, imports of workspace packages are resolved
 //! directly against the package directories, through their `exports` maps, so
-//! they resolve the same either way.
+//! they resolve the same either way. A file whose `tsconfig.json` can't be
+//! loaded, because it extends one from a package that isn't installed say, is
+//! resolved without it.
 //!
 //! Every resolution is then classified as an internal file, an external
 //! package, a builtin, or unresolved (see [`Resolved`]).

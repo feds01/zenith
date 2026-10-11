@@ -1,14 +1,10 @@
-//! Errors in configuration files, with their location so that they can be
-//! shown in context.
+//! Errors in configuration files, with the byte range of the offending key or
+//! value, so that they can be shown in context.
 
-use std::{fmt, io, ops::Range, path::PathBuf};
+use std::{fmt, io, path::PathBuf};
 
+use zenith_diagnostics::{Report, Reporter, SourceId, SourceMap, Span};
 use zenith_utils::{glob::GlobError, location::ByteRange};
-
-use crate::{
-    layer::LayerError,
-    selector::{IgnoreImportError, SelectorError},
-};
 
 /// An error in a configuration file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,34 +15,25 @@ pub struct ConfigError {
     /// The id of the contract the error is in, if any.
     pub contract: Option<String>,
 
-    /// Where the error is in the file, when it is known.
-    pub location: Option<Location>,
+    /// The byte range of the offending key or value, when it is known.
+    pub range: Option<ByteRange>,
 }
 
-/// Where an error is in a configuration file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Location {
-    /// The 1-based line of the start of the offending key or value.
-    pub line: u32,
-
-    /// The 1-based column of the start of the offending key or value, in
-    /// characters.
-    pub column: u32,
-
-    /// The byte range of the offending key or value.
-    pub range: ByteRange,
-}
-
-impl Location {
-    /// The location of a byte range of `contents`.
-    pub(crate) fn new(contents: &str, span: &Range<usize>) -> Self {
-        let before = &contents[..contents.floor_char_boundary(span.start)];
-        let line_start = before.rfind('\n').map_or(0, |index| index + 1);
-        Self {
-            line: before.matches('\n').count() as u32 + 1,
-            column: before[line_start..].chars().count() as u32 + 1,
-            range: ByteRange::new(span.start as u32, span.end as u32),
+impl ConfigError {
+    /// The report of the error, which points into `source`, the
+    /// configuration file.
+    pub fn report(&self, source: SourceId) -> Report {
+        let mut report = Report::error(self.kind.title());
+        if let Some(range) = self.range {
+            report.add_span(Span::new(source, range));
         }
+        if let Some(contract) = &self.contract {
+            report.add_note(format!("in contract `{contract}`"));
+        }
+        if let Some(help) = self.kind.help() {
+            report.add_help(help);
+        }
+        report
     }
 }
 
@@ -171,62 +158,85 @@ pub enum ConfigErrorKind {
     ExhaustiveWithoutContainers,
 }
 
-impl fmt::Display for ConfigErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ConfigErrorKind {
+    /// What is wrong, without the names that an unknown name could have
+    /// been.
+    fn title(&self) -> String {
         match self {
-            Self::Syntax { message } => write!(f, "invalid TOML: {message}"),
-            Self::UnknownKey { key, expected, suggestion } => {
-                write!(f, "unknown key `{key}`")?;
-                write_expected(f, expected, suggestion.as_deref())
-            }
-            Self::MissingKey { key } => write!(f, "missing key `{key}`"),
-            Self::UnknownValue { value, expected, suggestion } => {
-                write!(f, "unknown value `{value}`")?;
-                write_expected(f, expected, suggestion.as_deref())
-            }
-            Self::UnknownContractType { name, expected, suggestion } => {
-                write!(f, "unknown contract type `{name}`")?;
-                write_expected(f, expected, suggestion.as_deref())
-            }
-            Self::InvalidValue { message } => f.write_str(message),
-            Self::NotATable { key } => write!(f, "`{key}` must be a table"),
-            Self::ContractTypeNotAString => f.write_str("`type` must be a string"),
-            Self::InvalidContractId { id } => write!(
-                f,
+            Self::Syntax { message } => format!("invalid TOML: {message}"),
+            Self::UnknownKey { key, .. } => format!("unknown key `{key}`"),
+            Self::MissingKey { key } => format!("missing key `{key}`"),
+            Self::UnknownValue { value, .. } => format!("unknown value `{value}`"),
+            Self::UnknownContractType { name, .. } => format!("unknown contract type `{name}`"),
+            Self::InvalidValue { message } => message.clone(),
+            Self::NotATable { key } => format!("`{key}` must be a table"),
+            Self::ContractTypeNotAString => "`type` must be a string".to_string(),
+            Self::InvalidContractId { id } => format!(
                 "invalid contract id `{id}`: ids may only contain ASCII letters, digits, `-` and `_`"
             ),
             Self::InvalidSelector { selector, error } => {
-                write!(f, "invalid selector `{selector}`: {error}")
+                format!("invalid selector `{selector}`: {error}")
             }
             Self::InvalidPattern { pattern, error } => {
-                write!(f, "invalid pattern `{pattern}`: {error}")
+                format!("invalid pattern `{pattern}`: {error}")
             }
             Self::InvalidIgnoreImport { entry, error } => {
-                write!(f, "invalid `ignore_imports` entry `{entry}`: {error}")
+                format!("invalid `ignore_imports` entry `{entry}`: {error}")
             }
-            Self::InvalidLayer { layer, error } => write!(f, "invalid layer `{layer}`: {error}"),
-            Self::NoLayers => f.write_str("`layers` must list at least one layer"),
-            Self::ExhaustiveWithoutContainers => f.write_str("`exhaustive` requires `containers`"),
+            Self::InvalidLayer { layer, error } => format!("invalid layer `{layer}`: {error}"),
+            Self::NoLayers => "`layers` must list at least one layer".to_string(),
+            Self::ExhaustiveWithoutContainers => "`exhaustive` requires `containers`".to_string(),
+        }
+    }
+
+    /// The names that an unknown name could have been, and the closest of
+    /// them, if any is close.
+    fn alternatives(&self) -> Option<(&[String], Option<&str>)> {
+        match self {
+            Self::UnknownKey { expected, suggestion, .. }
+            | Self::UnknownValue { expected, suggestion, .. }
+            | Self::UnknownContractType { expected, suggestion, .. } => {
+                Some((expected, suggestion.as_deref()))
+            }
+            _ => None,
+        }
+    }
+
+    /// How to fix an unknown name: the closest allowed name, or else the
+    /// allowed names.
+    fn help(&self) -> Option<String> {
+        match self.alternatives()? {
+            (_, Some(suggestion)) => Some(format!("did you mean `{suggestion}`?")),
+            (expected, None) => expected_names(expected).map(|names| format!("expected {names}")),
         }
     }
 }
 
-/// Write a "did you mean" hint, or else the allowed names.
-fn write_expected(
-    f: &mut fmt::Formatter<'_>,
-    expected: &[String],
-    suggestion: Option<&str>,
-) -> fmt::Result {
-    if let Some(suggestion) = suggestion {
-        return write!(f, "; did you mean `{suggestion}`?");
-    }
-    match expected {
-        [] => Ok(()),
-        [only] => write!(f, ", expected `{only}`"),
-        [first, second] => write!(f, ", expected `{first}` or `{second}`"),
+/// The allowed names, as `` `a` ``, `` `a` or `b` `` or
+/// `` one of `a`, `b`, `c` ``, or `None` if there are none.
+fn expected_names(names: &[String]) -> Option<String> {
+    match names {
+        [] => None,
+        [only] => Some(format!("`{only}`")),
+        [first, second] => Some(format!("`{first}` or `{second}`")),
         names => {
             let names: Vec<_> = names.iter().map(|name| format!("`{name}`")).collect();
-            write!(f, ", expected one of {}", names.join(", "))
+            Some(format!("one of {}", names.join(", ")))
+        }
+    }
+}
+
+/// On one line: the title, then a "did you mean" hint or the allowed names.
+impl fmt::Display for ConfigErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.title())?;
+        match self.alternatives() {
+            Some((_, Some(suggestion))) => write!(f, "; did you mean `{suggestion}`?"),
+            Some((expected, None)) => match expected_names(expected) {
+                Some(names) => write!(f, ", expected {names}"),
+                None => Ok(()),
+            },
+            None => Ok(()),
         }
     }
 }
@@ -268,22 +278,16 @@ pub enum LoadError {
     },
 }
 
+/// An invalid file is shown as the reports of its errors, without colour.
 impl fmt::Display for LoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Read { path, error } => write!(f, "could not read `{}`: {error}", path.display()),
-            Self::Invalid { path, errors, .. } => {
-                for (index, error) in errors.iter().enumerate() {
-                    if index > 0 {
-                        writeln!(f)?;
-                    }
-                    write!(f, "{}", path.display())?;
-                    if let Some(location) = &error.location {
-                        write!(f, ":{}:{}", location.line, location.column)?;
-                    }
-                    write!(f, ": {error}")?;
-                }
-                Ok(())
+            Self::Invalid { path, contents, errors } => {
+                let mut sources = SourceMap::new();
+                let source = sources.add(path.display().to_string(), contents.as_str());
+                let reports: Vec<_> = errors.iter().map(|error| error.report(source)).collect();
+                write!(f, "{}", Reporter::new(&sources, &reports))
             }
         }
     }
@@ -297,6 +301,112 @@ impl std::error::Error for LoadError {
         }
     }
 }
+
+/// Why a selector is invalid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectorError {
+    /// The glob or name pattern is invalid.
+    Pattern(GlobError),
+
+    /// A path goes up with `..`, out of the project root.
+    ParentDir,
+
+    /// A `directive` is set on a selector that matches no files.
+    DirectiveWithoutFiles,
+}
+
+impl fmt::Display for SelectorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Pattern(error) => write!(f, "{error}"),
+            Self::ParentDir => {
+                f.write_str("`..` is not allowed; paths are relative to the project root")
+            }
+            Self::DirectiveWithoutFiles => f.write_str(
+                "`directive` only applies to path and `pkg:` selectors, which match files",
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SelectorError {}
+
+impl From<GlobError> for SelectorError {
+    fn from(error: GlobError) -> Self {
+        Self::Pattern(error)
+    }
+}
+
+/// Why an `ignore_imports` entry is invalid.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IgnoreImportError {
+    /// The entry doesn't have exactly one `->`.
+    Arrow,
+
+    /// One of the two selectors is invalid.
+    Selector {
+        /// The selector as written.
+        selector: String,
+
+        /// What is wrong with it.
+        error: SelectorError,
+    },
+}
+
+impl fmt::Display for IgnoreImportError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Arrow => f.write_str("expected `<importer> -> <imported>`"),
+            Self::Selector { selector, error } => {
+                write!(f, "invalid selector `{selector}`: {error}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for IgnoreImportError {}
+
+/// Why a layer is invalid.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LayerError {
+    /// The layer separates its members with both `|` and `:`.
+    MixedSeparators,
+
+    /// A member is empty, as in `"a | "`.
+    EmptyMember,
+
+    /// A member is not a valid selector.
+    Selector {
+        /// The member as written.
+        member: String,
+
+        /// What is wrong with it.
+        error: SelectorError,
+    },
+
+    /// The contract has `containers`, but a member is not a path, which
+    /// would be relative to each container.
+    NotRelative {
+        /// The member as written.
+        member: String,
+    },
+}
+
+impl fmt::Display for LayerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MixedSeparators => f.write_str("a layer cannot mix `|` and `:` separators"),
+            Self::EmptyMember => f.write_str("a member is empty"),
+            Self::Selector { member, error } => write!(f, "invalid selector `{member}`: {error}"),
+            Self::NotRelative { member } => write!(
+                f,
+                "`{member}` is not a path; with `containers`, layers are paths relative to each container"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for LayerError {}
 
 /// The candidate closest to `unknown`, if any is close enough to be what
 /// was meant. Ties go to the earliest candidate.
@@ -466,16 +576,41 @@ mod tests {
     }
 
     #[test]
-    fn locates_byte_ranges() {
-        let contents = "[files]\nexclude = [\"é\", 1]\n";
-        let location = Location::new(contents, &(25..26));
-        assert_eq!((location.line, location.column), (2, 17));
-        assert_eq!(
-            Location::new(contents, &(0..7)),
-            Location { line: 1, column: 1, range: ByteRange::new(0, 7) }
-        );
-        // The end of the file, where a missing `]` would be.
-        let end = Location::new(contents, &(contents.len()..contents.len()));
-        assert_eq!((end.line, end.column), (3, 1));
+    fn reports_show_the_contract_and_the_fix() {
+        let mut sources = SourceMap::new();
+        let source = sources.add("zenith.toml", "[contracts.c]\nfromm = []\n");
+        let error = ConfigError {
+            kind: classify("unknown field `fromm`, expected one of `from`, `to`"),
+            contract: Some("c".into()),
+            range: Some(ByteRange::new(14, 19)),
+        };
+        assert_eq!(error.to_string(), "in contract `c`: unknown key `fromm`; did you mean `from`?");
+
+        let expected = [
+            "error: unknown key `fromm`",
+            " --> zenith.toml:2:1",
+            "  |",
+            "2 | fromm = []",
+            "  | ^^^^^",
+            "  |",
+            "  = note: in contract `c`",
+            "  = help: did you mean `from`?",
+        ];
+        let reports = [error.report(source)];
+        assert_eq!(Reporter::new(&sources, &reports).to_string(), expected.join("\n"));
+    }
+
+    #[test]
+    fn reports_the_allowed_names_when_none_is_close() {
+        let error = ConfigError {
+            kind: classify("unknown variant `fatal`, expected `error` or `warn`"),
+            contract: None,
+            range: None,
+        };
+        let mut sources = SourceMap::new();
+        let report = error.report(sources.add("zenith.toml", ""));
+        let expected =
+            ["error: unknown value `fatal`", "  |", "  = help: expected `error` or `warn`"];
+        assert_eq!(Reporter::new(&sources, &[report]).to_string(), expected.join("\n"));
     }
 }

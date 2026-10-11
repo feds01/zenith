@@ -2,7 +2,9 @@
 //! documented example passes both, and unknown keys and values fail both.
 
 use serde_json::{Value, json};
-use zenith_config::{json_schema, parse};
+
+use super::json_schema;
+use crate::{config::Config, contracts::CONTRACT_TYPES};
 
 /// The example configuration of the docs, with every table and contract
 /// type.
@@ -152,7 +154,7 @@ fn subschemas(schema: &Value) -> Vec<&Value> {
 
 #[test]
 fn the_example_is_valid() {
-    let config = parse(EXAMPLE).expect("the example parses");
+    let config = Config::parse(EXAMPLE).expect("the example parses");
     let types: Vec<_> = config.contracts.iter().map(|contract| contract.kind.type_name()).collect();
     assert_eq!(
         types,
@@ -199,8 +201,20 @@ fn the_schema_rejects_what_parsing_rejects() {
         mutate(&mut config);
         assert!(!schema_errors(&config).is_empty(), "the schema accepts {what}");
         let toml = toml::to_string(&config).expect("the config serialises");
-        assert!(parse(&toml).is_err(), "parsing accepts {what}");
+        assert!(Config::parse(&toml).is_err(), "parsing accepts {what}");
     }
+}
+
+#[test]
+fn the_schema_lists_every_contract_type() {
+    let schema = json_schema();
+    let types: Vec<_> = schema["$defs"]["ContractTable"]["oneOf"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|branch| branch["properties"]["type"]["const"].as_str())
+        .collect();
+    assert_eq!(types, CONTRACT_TYPES.map(Some));
 }
 
 #[test]

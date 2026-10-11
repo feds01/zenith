@@ -1,4 +1,4 @@
-//! The `zenith.toml` file as written.
+//! The `zenith.toml` file as written, which is its schema.
 //!
 //! These types mirror the file one-to-one: serde deserialises them, rejecting
 //! unknown keys everywhere, and schemars describes them in the JSON Schema of
@@ -6,7 +6,7 @@
 //! are checked after deserialisation, such as selectors, are [`Located`], so
 //! that errors can point at them.
 
-use std::{borrow::Cow, fmt, mem, ops::Range};
+use std::{borrow::Cow, fmt};
 
 use indexmap::IndexMap;
 use schemars::{
@@ -18,12 +18,12 @@ use serde::{
 };
 use serde_json::Value;
 use zenith_graph::ImportKind;
+use zenith_utils::location::ByteRange;
 
-use crate::config::{AlertLevel, DEFAULT_BASELINE_PATH, Severity, StaleLevel};
-
-/// The contract types, as written in `type`.
-pub(crate) const CONTRACT_TYPES: [&str; 6] =
-    ["forbidden", "independence", "layers", "protected", "acyclic", "encapsulation"];
+use crate::{
+    config::{DEFAULT_BASELINE_PATH, StaleLevel},
+    contracts::{AlertLevel, Severity},
+};
 
 /// A value with the byte range that it was written at.
 #[derive(Debug, Default)]
@@ -33,13 +33,13 @@ pub(crate) struct Located<T> {
 
     /// Its byte range in the file. A default, which was not written, has an
     /// empty range.
-    pub(crate) span: Range<usize>,
+    pub(crate) range: ByteRange,
 }
 
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for Located<T> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let spanned = toml::Spanned::<T>::deserialize(deserializer)?;
-        Ok(Self { span: spanned.span(), value: spanned.into_inner() })
+        Ok(Self { range: spanned.span().into(), value: spanned.into_inner() })
     }
 }
 
@@ -431,7 +431,7 @@ contract_table! {
 
 /// The default entry points of an `encapsulation` contract.
 fn default_entrypoints() -> Vec<Located<String>> {
-    vec![Located { value: "index".to_string(), span: 0..0 }]
+    vec![Located { value: "index".to_string(), range: ByteRange::default() }]
 }
 
 /// A selector of modules: a path glob such as `web/src/domains/*`, a
@@ -543,20 +543,19 @@ impl<'de, T: Deserialize<'de>, V> Visitor<'de> for StringOrTable<T, V> {
 /// and check it.
 pub fn json_schema() -> Value {
     SchemaSettings::draft2020_12()
-        .with_transform(RecursiveTransform(tidy_schema))
+        .with_transform(RecursiveTransform(remove_null))
         .into_generator()
         .into_root_schema_for::<ConfigFile>()
         .to_value()
 }
 
-/// Remove `null` from a schema, since TOML has no null: an optional key is
-/// left out instead. Then put the keys that describe it first, for people
-/// reading the schema.
-fn tidy_schema(schema: &mut Schema) {
+/// Remove `null` from a schema. schemars allows it in every `Option`, with no
+/// setting to stop it, but TOML has no null: an optional key is left out
+/// instead.
+fn remove_null(schema: &mut Schema) {
     let Some(object) = schema.as_object_mut() else {
         return;
     };
-
     if object.get("default").is_some_and(Value::is_null) {
         object.remove("default");
     }
@@ -567,30 +566,7 @@ fn tidy_schema(schema: &mut Schema) {
             object.insert("type".to_string(), kind);
         }
     }
-
-    let mut entries: Vec<(String, Value)> = mem::take(object).into_iter().collect();
-    entries.sort_by_key(|(key, _)| match key.as_str() {
-        "$schema" => 0,
-        "title" => 1,
-        "description" => 2,
-        _ => 3,
-    });
-    object.extend(entries);
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_schema_lists_every_contract_type() {
-        let schema = json_schema();
-        let types: Vec<_> = schema["$defs"]["ContractTable"]["oneOf"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|branch| branch["properties"]["type"]["const"].as_str())
-            .collect();
-        assert_eq!(types, CONTRACT_TYPES.map(Some));
-    }
-}
+mod tests;

@@ -14,14 +14,18 @@
 //! in which `*` also matches `/`. A selector can also be a table that removes
 //! modules with `except`, or keeps only the files with a `directive`.
 //!
-//! This module only checks the syntax. Which modules a selector matches
-//! depends on the project, so the contracts resolve them.
+//! [`Selector::parse`] and [`IgnoreImport::parse`] check the syntax. Which
+//! modules a selector matches depends on the project, so the contracts
+//! resolve them.
 
 use std::fmt;
 
-use zenith_utils::glob::{Glob, GlobError, NamePattern};
+use zenith_utils::{
+    glob::{Glob, NamePattern},
+    location::ByteRange,
+};
 
-use crate::error::Location;
+use crate::error::SelectorError;
 
 /// A selector of modules, as written in the configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,8 +42,9 @@ pub struct Selector {
     /// The directive that files must have to be kept.
     directive: Option<String>,
 
-    /// Where the selector is written in the configuration file.
-    location: Option<Location>,
+    /// The byte range that the selector is written at in the configuration
+    /// file.
+    range: Option<ByteRange>,
 }
 
 /// What a selector matches.
@@ -84,76 +89,15 @@ impl BuiltinScheme {
     }
 }
 
-/// Why a selector is invalid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SelectorError {
-    /// The glob or name pattern is invalid.
-    Pattern(GlobError),
-
-    /// A path goes up with `..`, out of the project root.
-    ParentDir,
-
-    /// A `directive` is set on a selector that matches no files.
-    DirectiveWithoutFiles,
-}
-
-impl fmt::Display for SelectorError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Pattern(error) => write!(f, "{error}"),
-            Self::ParentDir => {
-                f.write_str("`..` is not allowed; paths are relative to the project root")
-            }
-            Self::DirectiveWithoutFiles => f.write_str(
-                "`directive` only applies to path and `pkg:` selectors, which match files",
-            ),
-        }
-    }
-}
-
-impl std::error::Error for SelectorError {}
-
-impl From<GlobError> for SelectorError {
-    fn from(error: GlobError) -> Self {
-        Self::Pattern(error)
-    }
-}
-
 impl Selector {
-    /// Parse the string form of a selector. Surrounding whitespace and a
-    /// trailing `/` are ignored.
-    pub fn parse(raw: &str) -> Result<Self, SelectorError> {
-        let raw = raw.trim();
-        let target = if let Some(name) = raw.strip_prefix("pkg:") {
-            SelectorTarget::Package(NamePattern::new(name)?)
-        } else if let Some(name) = raw.strip_prefix("npm:") {
-            SelectorTarget::External(NamePattern::new(name)?)
-        } else if let Some(name) = raw.strip_prefix("node:") {
-            SelectorTarget::Builtin {
-                scheme: BuiltinScheme::Node,
-                pattern: NamePattern::new(name)?,
-            }
-        } else if let Some(name) = raw.strip_prefix("bun:") {
-            SelectorTarget::Builtin { scheme: BuiltinScheme::Bun, pattern: NamePattern::new(name)? }
-        } else {
-            let path = raw.strip_suffix('/').unwrap_or(raw);
-            if path.split('/').any(|segment| segment == "..") {
-                return Err(SelectorError::ParentDir);
-            }
-            SelectorTarget::Path(Glob::new(path)?)
-        };
-        Ok(Self {
-            raw: raw.to_string(),
-            target,
-            except: Vec::new(),
-            directive: None,
-            location: None,
-        })
+    /// A selector without filters, written as `raw`.
+    pub(crate) fn new(raw: String, target: SelectorTarget) -> Self {
+        Self { raw, target, except: Vec::new(), directive: None, range: None }
     }
 
     /// Record where the selector is written.
-    pub(crate) fn at(mut self, location: Location) -> Self {
-        self.location = Some(location);
+    pub(crate) fn at(mut self, range: ByteRange) -> Self {
+        self.range = Some(range);
         self
     }
 
@@ -195,11 +139,12 @@ impl Selector {
         self.directive.as_deref()
     }
 
-    /// Where the selector is written in the configuration file, for errors
-    /// found when resolving it. `None` for a selector that wasn't read from a
-    /// file. For the table form, this is the location of its `path`.
-    pub fn location(&self) -> Option<&Location> {
-        self.location.as_ref()
+    /// The byte range that the selector is written at in the configuration
+    /// file, for errors found when resolving it. `None` for a selector that
+    /// wasn't read from a file. For the table form, this is the range of its
+    /// `path`.
+    pub fn range(&self) -> Option<ByteRange> {
+        self.range
     }
 
     /// Whether matching nothing is a configuration error. Path and `pkg:`
@@ -236,68 +181,23 @@ pub struct IgnoreImport {
     /// The imported modules.
     imported: Selector,
 
-    /// Where the entry is written in the configuration file.
-    location: Option<Location>,
+    /// The byte range that the entry is written at in the configuration
+    /// file.
+    range: Option<ByteRange>,
 }
-
-/// Why an `ignore_imports` entry is invalid.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IgnoreImportError {
-    /// The entry doesn't have exactly one `->`.
-    Arrow,
-
-    /// One of the two selectors is invalid.
-    Selector {
-        /// The selector as written.
-        selector: String,
-
-        /// What is wrong with it.
-        error: SelectorError,
-    },
-}
-
-impl fmt::Display for IgnoreImportError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Arrow => f.write_str("expected `<importer> -> <imported>`"),
-            Self::Selector { selector, error } => {
-                write!(f, "invalid selector `{selector}`: {error}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for IgnoreImportError {}
 
 impl IgnoreImport {
-    /// Parse an `ignore_imports` entry.
-    pub fn parse(raw: &str) -> Result<Self, IgnoreImportError> {
-        let raw = raw.trim();
-        let mut sides = raw.split("->");
-        let (Some(importer), Some(imported), None) = (sides.next(), sides.next(), sides.next())
-        else {
-            return Err(IgnoreImportError::Arrow);
-        };
-        let parse = |side: &str| {
-            Selector::parse(side).map_err(|error| IgnoreImportError::Selector {
-                selector: side.trim().to_string(),
-                error,
-            })
-        };
-        Ok(Self {
-            raw: raw.to_string(),
-            importer: parse(importer)?,
-            imported: parse(imported)?,
-            location: None,
-        })
+    /// An entry written as `raw`, from `importer` to `imported`.
+    pub(crate) fn new(raw: String, importer: Selector, imported: Selector) -> Self {
+        Self { raw, importer, imported, range: None }
     }
 
     /// Record where the entry, and so its selectors, is written.
-    pub(crate) fn at(self, location: Location) -> Self {
+    pub(crate) fn at(self, range: ByteRange) -> Self {
         Self {
-            importer: self.importer.at(location),
-            imported: self.imported.at(location),
-            location: Some(location),
+            importer: self.importer.at(range),
+            imported: self.imported.at(range),
+            range: Some(range),
             ..self
         }
     }
@@ -317,11 +217,11 @@ impl IgnoreImport {
         &self.imported
     }
 
-    /// Where the entry is written in the configuration file, for reporting
-    /// an entry that matches no import. `None` for an entry that wasn't read
-    /// from a file.
-    pub fn location(&self) -> Option<&Location> {
-        self.location.as_ref()
+    /// The byte range that the entry is written at in the configuration
+    /// file, for reporting an entry that matches no import. `None` for an
+    /// entry that wasn't read from a file.
+    pub fn range(&self) -> Option<ByteRange> {
+        self.range
     }
 }
 
@@ -335,53 +235,6 @@ impl fmt::Display for IgnoreImport {
 mod tests {
     use super::*;
 
-    fn target(raw: &str) -> SelectorTarget {
-        Selector::parse(raw).unwrap().target
-    }
-
-    #[test]
-    fn parses_every_string_form() {
-        assert_eq!(
-            target("web/src/domains/*"),
-            SelectorTarget::Path(Glob::new("web/src/domains/*").unwrap())
-        );
-        assert_eq!(
-            target("pkg:@acme/*"),
-            SelectorTarget::Package(NamePattern::new("@acme/*").unwrap())
-        );
-        assert_eq!(
-            target("npm:@aws-sdk/*"),
-            SelectorTarget::External(NamePattern::new("@aws-sdk/*").unwrap())
-        );
-        assert_eq!(
-            target("node:fs"),
-            SelectorTarget::Builtin {
-                scheme: BuiltinScheme::Node,
-                pattern: NamePattern::new("fs").unwrap()
-            }
-        );
-        assert_eq!(
-            target("bun:*"),
-            SelectorTarget::Builtin {
-                scheme: BuiltinScheme::Bun,
-                pattern: NamePattern::new("*").unwrap()
-            }
-        );
-        // Next.js and TanStack file names need no escaping.
-        assert!(matches!(
-            target("web/src/app/(dashboard)/[id]/$slug.tsx"),
-            SelectorTarget::Path(_)
-        ));
-    }
-
-    #[test]
-    fn ignores_surrounding_whitespace_and_a_trailing_slash() {
-        let selector = Selector::parse("  web/src/ ").unwrap();
-        assert_eq!(selector.as_str(), "web/src/");
-        assert_eq!(selector.target, SelectorTarget::Path(Glob::new("web/src").unwrap()));
-        assert_eq!(selector.to_string(), "web/src/");
-    }
-
     #[test]
     fn only_path_and_package_selectors_must_match() {
         assert!(Selector::parse("web/src").unwrap().must_match());
@@ -389,24 +242,6 @@ mod tests {
         assert!(!Selector::parse("npm:sharp").unwrap().must_match());
         assert!(!Selector::parse("node:*").unwrap().must_match());
         assert!(!Selector::parse("bun:sqlite").unwrap().must_match());
-    }
-
-    #[test]
-    fn rejects_invalid_selectors() {
-        for (raw, error) in [
-            ("", SelectorError::Pattern(GlobError::Empty)),
-            ("pkg:", SelectorError::Pattern(GlobError::Empty)),
-            ("npm:", SelectorError::Pattern(GlobError::Empty)),
-            ("/abs", SelectorError::Pattern(GlobError::LeadingSlash)),
-            ("web//src", SelectorError::Pattern(GlobError::EmptySegment)),
-            ("web/src**", SelectorError::Pattern(GlobError::DoubleStar)),
-            ("web/{a,b", SelectorError::Pattern(GlobError::UnclosedBrace)),
-            ("npm:@acme/{a", SelectorError::Pattern(GlobError::UnclosedBrace)),
-            ("../up", SelectorError::ParentDir),
-            ("web/../../etc", SelectorError::ParentDir),
-        ] {
-            assert_eq!(Selector::parse(raw), Err(error), "{raw:?}");
-        }
     }
 
     #[test]
@@ -421,31 +256,5 @@ mod tests {
             assert_eq!(filter(raw, Some("use client")), Err(SelectorError::DirectiveWithoutFiles));
             assert!(filter(raw, None).is_ok());
         }
-    }
-
-    #[test]
-    fn parses_ignored_imports() {
-        let ignore = IgnoreImport::parse(" web/src/features/* -> pkg:@acme/shared ").unwrap();
-        assert_eq!(ignore.as_str(), "web/src/features/* -> pkg:@acme/shared");
-        assert_eq!(ignore.importer().as_str(), "web/src/features/*");
-        assert_eq!(ignore.imported().as_str(), "pkg:@acme/shared");
-        assert!(IgnoreImport::parse("web/src->npm:react").is_ok());
-    }
-
-    #[test]
-    fn rejects_invalid_ignored_imports() {
-        assert_eq!(IgnoreImport::parse("web/src"), Err(IgnoreImportError::Arrow));
-        assert_eq!(IgnoreImport::parse("a -> b -> c"), Err(IgnoreImportError::Arrow));
-        assert_eq!(
-            IgnoreImport::parse("web/src -> /abs"),
-            Err(IgnoreImportError::Selector {
-                selector: "/abs".into(),
-                error: SelectorError::Pattern(GlobError::LeadingSlash)
-            })
-        );
-        assert_eq!(
-            IgnoreImport::parse(" -> web").unwrap_err().to_string(),
-            "invalid selector ``: the pattern is empty"
-        );
     }
 }

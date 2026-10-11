@@ -3,19 +3,22 @@
 
 use std::ops::Range;
 
-use zenith_config::{
-    AlertLevel, BuiltinScheme, Config, ConfigError, ConfigErrorKind, ContractKind, Location,
-    SelectorError, SelectorTarget, Severity, StaleLevel, Tsconfig, parse,
-};
 use zenith_graph::KindSet;
 use zenith_utils::{
     glob::{Glob, GlobError, NamePattern},
     location::ByteRange,
 };
 
+use crate::{
+    config::{Config, StaleLevel, Tsconfig},
+    contracts::{AlertLevel, CONTRACT_TYPES, ContractKind, Severity},
+    error::{ConfigError, ConfigErrorKind, SelectorError},
+    selector::{BuiltinScheme, Selector, SelectorTarget},
+};
+
 /// Parse a configuration that must be valid.
 fn valid(contents: &str) -> Config {
-    match parse(contents) {
+    match Config::parse(contents) {
         Ok(config) => config,
         Err(errors) => panic!("unexpected errors: {}", render(contents, &errors).join("\n")),
     }
@@ -24,7 +27,7 @@ fn valid(contents: &str) -> Config {
 /// Parse a configuration that must be invalid, and render its errors as
 /// `line:column: message [the offending text]`.
 fn invalid(contents: &str) -> Vec<String> {
-    match parse(contents) {
+    match Config::parse(contents) {
         Ok(config) => panic!("expected errors, got {config:?}"),
         Err(errors) => render(contents, &errors),
     }
@@ -34,13 +37,21 @@ fn invalid(contents: &str) -> Vec<String> {
 fn render(contents: &str, errors: &[ConfigError]) -> Vec<String> {
     errors
         .iter()
-        .map(|error| match error.location {
-            Some(Location { line, column, range }) => {
+        .map(|error| match error.range {
+            Some(range) => {
+                let (line, column) = line_column(contents, range);
                 format!("{line}:{column}: {error} [{}]", &contents[Range::from(range)])
             }
             None => format!("{error}"),
         })
         .collect()
+}
+
+/// The 1-based line and column, in characters, of the start of `range`.
+fn line_column(contents: &str, range: ByteRange) -> (usize, usize) {
+    let before = &contents[..range.start() as usize];
+    let line_start = before.rfind('\n').map_or(0, |index| index + 1);
+    (before.matches('\n').count() + 1, before[line_start..].chars().count() + 1)
 }
 
 /// The only error of an invalid configuration.
@@ -51,8 +62,22 @@ fn only_error(contents: &str) -> String {
 }
 
 /// The strings of a list of selectors.
-fn selectors(selectors: &[zenith_config::Selector]) -> Vec<&str> {
+fn selectors(selectors: &[Selector]) -> Vec<&str> {
     selectors.iter().map(|selector| selector.as_str()).collect()
+}
+
+#[test]
+fn every_contract_type_is_parsed() {
+    for name in CONTRACT_TYPES {
+        let options = match name {
+            "forbidden" => "from = []\nto = []",
+            "layers" => "layers = [\"a\"]",
+            "protected" => "modules = []\nallowed_importers = []",
+            _ => "modules = []",
+        };
+        let contents = format!("[contracts.c]\ntype = \"{name}\"\n{options}\n");
+        assert_eq!(valid(&contents).contracts[0].kind.type_name(), name);
+    }
 }
 
 #[test]
@@ -557,9 +582,10 @@ fn values_of_the_wrong_type_are_errors() {
 #[test]
 fn syntax_errors_have_a_location() {
     assert_eq!(only_error("[files\n"), "1:7: invalid TOML: unclosed table, expected `]` []");
-    let errors = parse("[files]\n[files]\n").unwrap_err();
+    let contents = "[files]\n[files]\n";
+    let errors = Config::parse(contents).unwrap_err();
     assert!(matches!(errors[0].kind, ConfigErrorKind::Syntax { .. }), "{errors:?}");
-    assert_eq!(errors[0].location.as_ref().map(|location| location.line), Some(2));
+    assert_eq!(errors[0].range.map(|range| line_column(contents, range).0), Some(2));
 }
 
 #[test]
@@ -567,7 +593,7 @@ fn contract_ids_may_only_have_letters_digits_dashes_and_underscores() {
     valid("[contracts.Web_Layers-2]\ntype = \"acyclic\"\nmodules = [\"a\"]\n");
     for id in ["web layers", "web.layers", "", "é"] {
         let contents = format!("[contracts.\"{id}\"]\ntype = \"acyclic\"\nmodules = [\"a\"]\n");
-        let errors = parse(&contents).unwrap_err();
+        let errors = Config::parse(&contents).unwrap_err();
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].kind, ConfigErrorKind::InvalidContractId { id: id.to_string() });
         assert_eq!(errors[0].contract, None);
@@ -729,8 +755,8 @@ stale = "warning"
 
 #[test]
 fn errors_are_structured() {
-    let errors =
-        parse("[contracts.c]\ntype = \"forbidden\"\nfrom = [\"/a\"]\nto = []\n").unwrap_err();
+    let errors = Config::parse("[contracts.c]\ntype = \"forbidden\"\nfrom = [\"/a\"]\nto = []\n")
+        .unwrap_err();
     assert_eq!(
         errors,
         [ConfigError {
@@ -739,13 +765,13 @@ fn errors_are_structured() {
                 error: SelectorError::Pattern(GlobError::LeadingSlash),
             },
             contract: Some("c".into()),
-            location: Some(Location { line: 3, column: 9, range: ByteRange::new(41, 45) }),
+            range: Some(ByteRange::new(41, 45)),
         }]
     );
 }
 
 #[test]
-fn selectors_layers_and_ignored_imports_keep_their_location() {
+fn selectors_layers_and_ignored_imports_keep_their_range() {
     let contents = r#"
 [contracts.c]
 type = "layers"
@@ -756,24 +782,25 @@ ignore_imports = ["ui -> api"]
     let config = valid(contents);
     let contract = &config.contracts[0];
     let ContractKind::Layers(layers) = &contract.kind else { panic!("expected `layers`") };
-    let at = |location: Option<&Location>| {
-        let location = location.expect("a location");
-        (location.line, location.column, &contents[Range::from(location.range)])
+    let at = |range: Option<ByteRange>| {
+        let range = range.expect("a range");
+        let (line, column) = line_column(contents, range);
+        (line, column, &contents[Range::from(range)])
     };
 
     let container = &layers.containers[0];
-    assert_eq!(at(container.location()), (4, 24, "\"apps/*\""));
-    assert_eq!(at(container.except()[0].location()), (4, 44, "\"apps/legacy\""));
+    assert_eq!(at(container.range()), (4, 24, "\"apps/*\""));
+    assert_eq!(at(container.except()[0].range()), (4, 44, "\"apps/legacy\""));
     let layer = &layers.layers[0];
-    assert_eq!(at(layer.location.as_ref()), (5, 11, "\"ui | (api)\""));
+    assert_eq!(at(layer.range), (5, 11, "\"ui | (api)\""));
     for member in &layer.members {
-        assert_eq!(member.selector.location(), layer.location.as_ref());
+        assert_eq!(member.selector.range(), layer.range);
     }
     let ignore = &contract.ignore_imports[0];
-    assert_eq!(at(ignore.location()), (6, 19, "\"ui -> api\""));
-    assert_eq!(ignore.importer().location(), ignore.location());
-    assert_eq!(ignore.imported().location(), ignore.location());
+    assert_eq!(at(ignore.range()), (6, 19, "\"ui -> api\""));
+    assert_eq!(ignore.importer().range(), ignore.range());
+    assert_eq!(ignore.imported().range(), ignore.range());
 
     // Selectors from elsewhere, such as the command line, have none.
-    assert_eq!(zenith_config::Selector::parse("ui").map(|s| s.location().cloned()), Ok(None));
+    assert_eq!(Selector::parse("ui").map(|selector| selector.range()), Ok(None));
 }

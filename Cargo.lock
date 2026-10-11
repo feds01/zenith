@@ -1191,6 +1191,7 @@ dependencies = [
  "strsim",
  "tempfile",
  "toml",
+ "zenith_diagnostics",
  "zenith_graph",
  "zenith_utils",
 ]

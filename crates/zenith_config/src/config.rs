@@ -1,20 +1,29 @@
-//! The validated configuration of a zenith project.
+//! The validated configuration of a zenith project, and finding and loading
+//! its file.
 //!
-//! These types are what [`parse`](crate::parse) produces: defaults are filled
-//! in, and selectors, globs, layers and ignored imports are checked and
-//! compiled. Resolving selectors against the project is left to the
-//! contracts.
+//! These types are what [`Config::parse`] produces: defaults are filled in,
+//! and selectors, globs, layers and ignored imports are checked and compiled.
+//! Resolving selectors against the project is left to the contracts.
+
+use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use zenith_graph::KindSet;
-use zenith_utils::glob::{Glob, NamePattern};
+use zenith_utils::{
+    fs::{find_in_ancestors, read_text},
+    glob::{Glob, NamePattern},
+};
 
 use crate::{
-    layer::Layer,
-    selector::{IgnoreImport, Selector},
+    contracts::ContractConfig,
+    error::{ConfigError, LoadError},
+    parse,
 };
+
+/// The name of the configuration file.
+pub const CONFIG_FILE_NAME: &str = "zenith.toml";
 
 /// The configuration of a zenith project.
 #[derive(Debug, Clone, Default)]
@@ -36,6 +45,31 @@ pub struct Config {
 }
 
 impl Config {
+    /// Find the nearest configuration file in `start` or one of its
+    /// ancestors. A relative `start` is taken from the current directory.
+    pub fn discover(start: &Path) -> Option<PathBuf> {
+        find_in_ancestors(start, CONFIG_FILE_NAME)
+    }
+
+    /// Read a configuration file and parse it with [`Config::parse`].
+    pub fn load(path: &Path) -> Result<Self, LoadError> {
+        let contents =
+            read_text(path).map_err(|error| LoadError::Read { path: path.to_path_buf(), error })?;
+        Self::parse(&contents).map_err(|errors| LoadError::Invalid {
+            path: path.to_path_buf(),
+            contents,
+            errors,
+        })
+    }
+
+    /// Parse and validate the contents of a configuration file. On failure,
+    /// returns the errors, in the order of the file: the first error in the
+    /// structure of each table and contract, such as an unknown key, and
+    /// every invalid value, such as a selector.
+    pub fn parse(contents: &str) -> Result<Self, Vec<ConfigError>> {
+        parse::parse(contents)
+    }
+
     /// The contract with the given id.
     pub fn contract(&self, id: &str) -> Option<&ContractConfig> {
         self.contracts.iter().find(|contract| contract.id == id)
@@ -145,181 +179,68 @@ pub enum StaleLevel {
     Warn,
 }
 
-/// How severe a broken contract is.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum Severity {
-    /// A broken contract fails the check.
-    #[default]
-    Error,
+#[cfg(test)]
+mod tests {
+    use std::fs;
 
-    /// A broken contract is reported without failing the check.
-    Warn,
-}
+    use tempfile::TempDir;
 
-/// How to report an `ignore_imports` entry that matches no import.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum AlertLevel {
-    /// The contract is broken.
-    #[default]
-    Error,
+    use super::*;
 
-    /// A warning is reported.
-    Warn,
-
-    /// Nothing is reported.
-    None,
-}
-
-/// A contract, with the options that every contract type shares.
-#[derive(Debug, Clone)]
-pub struct ContractConfig {
-    /// The id, which `--contract`, the baseline and `zenith-ignore` comments
-    /// refer to.
-    pub id: String,
-
-    /// The title shown in output. Defaults to the id.
-    pub name: String,
-
-    /// How severe it is when the contract is broken.
-    pub severity: Severity,
-
-    /// The import kinds the contract ignores: its own `exclude_kinds`, or
-    /// else `[analysis] exclude_kinds`.
-    pub exclude_kinds: KindSet,
-
-    /// Imports to remove before checking, in the order of the file.
-    pub ignore_imports: Vec<IgnoreImport>,
-
-    /// How to report an `ignore_imports` entry that matches no import.
-    pub unmatched_ignore_imports: AlertLevel,
-
-    /// Text shown under the violations, e.g. how to fix them.
-    pub guidance: Option<String>,
-
-    /// The contract type and its own options.
-    pub kind: ContractKind,
-}
-
-/// A contract type, with the options of that type.
-#[derive(Debug, Clone)]
-pub enum ContractKind {
-    /// The `from` modules must not import the `to` modules.
-    Forbidden(ForbiddenConfig),
-
-    /// The modules must not depend on one another.
-    Independence(IndependenceConfig),
-
-    /// Higher layers may import lower layers, never the reverse.
-    Layers(LayersConfig),
-
-    /// Only the allowed importers may directly import the modules.
-    Protected(ProtectedConfig),
-
-    /// The modules must not form dependency cycles.
-    Acyclic(AcyclicConfig),
-
-    /// The modules may only be imported through their entry points.
-    Encapsulation(EncapsulationConfig),
-}
-
-impl ContractKind {
-    /// The name of the contract type, as written in `type`.
-    pub const fn type_name(&self) -> &'static str {
-        match self {
-            Self::Forbidden(_) => "forbidden",
-            Self::Independence(_) => "independence",
-            Self::Layers(_) => "layers",
-            Self::Protected(_) => "protected",
-            Self::Acyclic(_) => "acyclic",
-            Self::Encapsulation(_) => "encapsulation",
-        }
+    #[test]
+    fn discovers_the_nearest_config_file() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("web/src")).unwrap();
+        fs::write(root.join(CONFIG_FILE_NAME), "").unwrap();
+        assert_eq!(Config::discover(&root.join("web/src")), Some(root.join(CONFIG_FILE_NAME)));
     }
-}
 
-/// The options of a `forbidden` contract.
-#[derive(Debug, Clone)]
-pub struct ForbiddenConfig {
-    /// The modules that must not import the `to` modules.
-    pub from: Vec<Selector>,
+    #[test]
+    fn loads_a_config_with_a_byte_order_mark() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(CONFIG_FILE_NAME);
+        fs::write(&path, "\u{feff}[baseline]\nstale = \"warn\"\n").unwrap();
+        assert_eq!(Config::load(&path).unwrap().baseline.stale, StaleLevel::Warn);
+    }
 
-    /// The modules that must not be imported.
-    pub to: Vec<Selector>,
+    #[test]
+    fn tells_unreadable_from_invalid_configs() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(CONFIG_FILE_NAME);
+        let error = Config::load(&path).unwrap_err();
+        assert!(matches!(&error, LoadError::Read { path: p, .. } if *p == path), "{error:?}");
+        assert!(error.to_string().starts_with("could not read `"), "{error}");
 
-    /// Whether only direct imports count, rather than chains of imports.
-    pub allow_indirect_imports: bool,
-}
+        let contents = "[files]\nexclud = []\n\n[contracts.a]\ntype = \"layer\"\n";
+        fs::write(&path, contents).unwrap();
+        let error = Config::load(&path).unwrap_err();
+        let LoadError::Invalid { contents: read, errors, .. } = &error else {
+            panic!("expected an invalid config, got {error:?}");
+        };
+        assert_eq!(read, contents);
+        assert_eq!(errors.len(), 2);
 
-/// The options of an `independence` contract.
-#[derive(Debug, Clone)]
-pub struct IndependenceConfig {
-    /// The modules that must not depend on one another.
-    pub modules: Vec<Selector>,
-
-    /// Whether only direct imports count, rather than chains of imports.
-    pub allow_indirect_imports: bool,
-}
-
-/// The options of a `layers` contract.
-#[derive(Debug, Clone)]
-pub struct LayersConfig {
-    /// The layers, from highest to lowest. There is at least one. With
-    /// `containers`, every member is a path selector relative to each
-    /// container.
-    pub layers: Vec<Layer>,
-
-    /// The containers that the layers are relative to, each checked on its
-    /// own. Empty when the layers are relative to the project root.
-    pub containers: Vec<Selector>,
-
-    /// Whether every child of every container must be declared as a layer.
-    /// Only set when there are containers.
-    pub exhaustive: bool,
-
-    /// The children exempt from the exhaustiveness check, matched against
-    /// the base name with or without its JS/TS extension.
-    pub exhaustive_ignores: Vec<NamePattern>,
-
-    /// Whether only direct imports count, rather than chains of imports.
-    pub allow_indirect_imports: bool,
-}
-
-/// The options of a `protected` contract.
-#[derive(Debug, Clone)]
-pub struct ProtectedConfig {
-    /// The protected modules.
-    pub modules: Vec<Selector>,
-
-    /// The only modules that may directly import the protected modules,
-    /// besides the protected modules themselves.
-    pub allowed_importers: Vec<Selector>,
-}
-
-/// The options of an `acyclic` contract.
-#[derive(Debug, Clone)]
-pub struct AcyclicConfig {
-    /// The modules that must not form dependency cycles.
-    pub modules: Vec<Selector>,
-
-    /// How many further generations of children to check as their own sets
-    /// of modules.
-    pub depth: u32,
-
-    /// Modules whose children are not checked.
-    pub skip: Vec<Selector>,
-}
-
-/// The options of an `encapsulation` contract.
-#[derive(Debug, Clone)]
-pub struct EncapsulationConfig {
-    /// The encapsulated modules.
-    pub modules: Vec<Selector>,
-
-    /// Globs, relative to each module, of the files that may be imported from
-    /// outside it. Defaults to `index`.
-    pub entrypoints: Vec<Glob>,
-
-    /// Modules that may import any file of the encapsulated modules.
-    pub allowed_importers: Vec<Selector>,
+        // The errors are shown in context.
+        let path = path.display();
+        let expected = [
+            "error: unknown key `exclud`".to_string(),
+            format!(" --> {path}:2:1"),
+            "  |".to_string(),
+            "2 | exclud = []".to_string(),
+            "  | ^^^^^^".to_string(),
+            "  |".to_string(),
+            "  = help: did you mean `exclude`?".to_string(),
+            String::new(),
+            "error: unknown contract type `layer`".to_string(),
+            format!(" --> {path}:5:8"),
+            "  |".to_string(),
+            "5 | type = \"layer\"".to_string(),
+            "  |        ^^^^^^^".to_string(),
+            "  |".to_string(),
+            "  = note: in contract `a`".to_string(),
+            "  = help: did you mean `layers`?".to_string(),
+        ];
+        assert_eq!(error.to_string(), expected.join("\n"));
+    }
 }

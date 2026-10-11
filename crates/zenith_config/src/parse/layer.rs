@@ -1,96 +1,13 @@
-//! The layers of a `layers` contract.
-//!
-//! A layer is written as a string of one or more members:
-//!
-//! - `"a"` is a single layer. Members are selectors, so `"apps/*"` works.
-//! - `"a | b"` puts independent siblings in one layer: they may not import each
-//!   other. `|` may be written with or without spaces.
-//! - `"a : b"` puts siblings in one layer that may import each other. `:` only
-//!   separates members when surrounded by whitespace, because selectors such as
-//!   `pkg:a` contain it too.
-//! - `"(a)"` makes a member optional, so a container may lack it.
-//!
-//! A layer written as a table can also be `closed`.
+//! Parsing the strings that layers are written as, and the layers of a
+//! `layers` contract.
 
-use std::fmt;
-
+use super::Parser;
 use crate::{
-    error::Location,
-    selector::{Selector, SelectorError},
+    contracts::{Layer, LayerMember},
+    error::{ConfigErrorKind, LayerError},
+    schema::{LayerValue, Located},
+    selector::{Selector, SelectorTarget},
 };
-
-/// One layer of a `layers` contract.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Layer {
-    /// The members of the layer, in the order written. There is at least
-    /// one.
-    pub members: Vec<LayerMember>,
-
-    /// Whether the members are independent siblings that may not import each
-    /// other (`|`), rather than siblings that may (`:`).
-    pub independent: bool,
-
-    /// Whether the layer is closed: the layers above it may not import the
-    /// layers below it.
-    pub closed: bool,
-
-    /// Where the layer is written in the configuration file, for errors found
-    /// when resolving it. Its members' selectors have the same location.
-    /// `None` for a layer that wasn't read from a file.
-    pub location: Option<Location>,
-}
-
-/// A member of a layer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LayerMember {
-    /// The modules of the member.
-    pub selector: Selector,
-
-    /// Whether the member may match nothing, written `(a)`.
-    pub optional: bool,
-}
-
-/// Why a layer is invalid.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LayerError {
-    /// The layer separates its members with both `|` and `:`.
-    MixedSeparators,
-
-    /// A member is empty, as in `"a | "`.
-    EmptyMember,
-
-    /// A member is not a valid selector.
-    Selector {
-        /// The member as written.
-        member: String,
-
-        /// What is wrong with it.
-        error: SelectorError,
-    },
-
-    /// The contract has `containers`, but a member is not a path, which
-    /// would be relative to each container.
-    NotRelative {
-        /// The member as written.
-        member: String,
-    },
-}
-
-impl fmt::Display for LayerError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MixedSeparators => f.write_str("a layer cannot mix `|` and `:` separators"),
-            Self::EmptyMember => f.write_str("a member is empty"),
-            Self::Selector { member, error } => write!(f, "invalid selector `{member}`: {error}"),
-            Self::NotRelative { member } => write!(
-                f,
-                "`{member}` is not a path; with `containers`, layers are paths relative to each container"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for LayerError {}
 
 impl Layer {
     /// Parse the string form of a layer.
@@ -121,17 +38,7 @@ impl Layer {
             })
             .collect::<Result<_, _>>()?;
 
-        Ok(Self { members, independent: !has_colon, closed, location: None })
-    }
-
-    /// Record where the layer, and so its members, is written.
-    pub(crate) fn at(self, location: Location) -> Self {
-        let members = self
-            .members
-            .into_iter()
-            .map(|member| LayerMember { selector: member.selector.at(location), ..member })
-            .collect();
-        Self { members, location: Some(location), ..self }
+        Ok(Self { members, independent: !has_colon, closed, range: None })
     }
 }
 
@@ -151,9 +58,42 @@ fn split_spaced_colons(raw: &str) -> Vec<&str> {
     parts
 }
 
+impl Parser {
+    /// Parse a layer of a `layers` contract. With `relative`, its members
+    /// must be paths, relative to each container.
+    pub(super) fn parse_layer(
+        &mut self,
+        value: &Located<LayerValue>,
+        relative: bool,
+    ) -> Option<Layer> {
+        let (raw, range, closed) = match &value.value {
+            LayerValue::String(raw) => (raw, value.range, false),
+            LayerValue::Table(table) => (&table.layer.value, table.layer.range, table.closed),
+        };
+        let layer = Layer::parse(raw, closed).and_then(|layer| {
+            let not_relative = layer.members.iter().find(|member| {
+                relative && !matches!(member.selector.target(), SelectorTarget::Path(_))
+            });
+            match not_relative {
+                Some(member) => {
+                    Err(LayerError::NotRelative { member: member.selector.as_str().to_string() })
+                }
+                None => Ok(layer.at(range)),
+            }
+        });
+        self.check(layer, Some(range), |error| ConfigErrorKind::InvalidLayer {
+            layer: raw.clone(),
+            error,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use zenith_utils::glob::GlobError;
+
     use super::*;
+    use crate::error::SelectorError;
 
     /// The members of a layer as `(selector, optional)` pairs.
     fn members(layer: &Layer) -> Vec<(&str, bool)> {
@@ -206,7 +146,7 @@ mod tests {
             Layer::parse("a | /b", false),
             Err(LayerError::Selector {
                 member: "/b".into(),
-                error: SelectorError::Pattern(zenith_utils::glob::GlobError::LeadingSlash)
+                error: SelectorError::Pattern(GlobError::LeadingSlash)
             })
         );
         assert_eq!(

@@ -1,241 +1,239 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "zenith.toml",
-  "description": "The configuration of a zenith project. It lives at the project root, which\nall of its paths are relative to.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "files": {
-      "description": "Which files to scan for imports.",
-      "$ref": "#/$defs/FilesTable"
+      "$ref": "#/$defs/FilesTable",
+      "description": "Which files to scan for imports."
     },
     "resolve": {
-      "description": "How import specifiers are resolved.",
-      "$ref": "#/$defs/ResolveTable"
+      "$ref": "#/$defs/ResolveTable",
+      "description": "How import specifiers are resolved."
     },
     "analysis": {
-      "description": "Defaults that apply to every contract.",
-      "$ref": "#/$defs/AnalysisTable"
+      "$ref": "#/$defs/AnalysisTable",
+      "description": "Defaults that apply to every contract."
     },
     "baseline": {
-      "description": "The baseline of known violations, which `zenith check` ignores so that\nonly new violations fail it.",
-      "$ref": "#/$defs/BaselineTable"
+      "$ref": "#/$defs/BaselineTable",
+      "description": "The baseline of known violations, which `zenith check` ignores so that\nonly new violations fail it."
     },
     "contracts": {
-      "description": "The architecture contracts, keyed by id. Ids may contain ASCII\nletters, digits, `-` and `_`, and are what `--contract`, the baseline\nand `zenith-ignore` comments refer to.",
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/ContractTable"
-      }
+      },
+      "description": "The architecture contracts, keyed by id. Ids may contain ASCII\nletters, digits, `-` and `_`, and are what `--contract`, the baseline\nand `zenith-ignore` comments refer to."
     }
   },
+  "title": "zenith.toml",
+  "description": "The configuration of a zenith project. It lives at the project root, which\nall of its paths are relative to.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
     "FilesTable": {
-      "description": "Which files to scan for imports.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "include": {
-          "description": "Globs of the files to scan. Defaults to every JavaScript and\nTypeScript file, `**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`.",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "exclude": {
-          "description": "Globs of files and directories to skip, on top of the default\nexcludes, such as `node_modules` and `.next`.",
           "type": "array",
           "items": {
             "type": "string"
           },
+          "description": "Globs of the files to scan. Defaults to every JavaScript and\nTypeScript file, `**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`."
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Globs of files and directories to skip, on top of the default\nexcludes, such as `node_modules` and `.next`.",
           "default": []
         },
         "respect_gitignore": {
-          "description": "Whether to skip the files that `.gitignore`, `.ignore` and the global\ngit excludes ignore.",
           "type": "boolean",
+          "description": "Whether to skip the files that `.gitignore`, `.ignore` and the global\ngit excludes ignore.",
           "default": true
         }
-      }
+      },
+      "description": "Which files to scan for imports."
     },
     "ResolveTable": {
-      "description": "How import specifiers are resolved.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "tsconfig": {
-          "description": "Which `tsconfig.json` files to use: `\"auto\"` (the default) uses the\nnearest one of each file, `\"off\"` uses none, and any other value is\nthe path of the one to use for every file.",
-          "type": "string"
+          "type": "string",
+          "description": "Which `tsconfig.json` files to use: `\"auto\"` (the default) uses the\nnearest one of each file, `\"off\"` uses none, and any other value is\nthe path of the one to use for every file."
         },
         "conditions": {
-          "description": "The condition names to match in `exports` maps, replacing the\ndefaults: `types`, `source`, `import`, `module`, `require`, `node`\nand `default`. Conditions are matched in the order that each package\nlists them.",
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "The condition names to match in `exports` maps, replacing the\ndefaults: `types`, `source`, `import`, `module`, `require`, `node`\nand `default`. Conditions are matched in the order that each package\nlists them."
         },
         "main_fields": {
-          "description": "The `package.json` fields that point at a package's entry point,\nreplacing the defaults: `module`, then `main`.",
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "The `package.json` fields that point at a package's entry point,\nreplacing the defaults: `module`, then `main`."
         },
         "extensions": {
-          "description": "The extensions to try, in order, when a specifier has none, replacing\nthe defaults: `.ts`, `.tsx`, `.d.ts`, `.mts`, `.cts`, `.js`, `.jsx`,\n`.mjs`, `.cjs` and `.json`.",
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "The extensions to try, in order, when a specifier has none, replacing\nthe defaults: `.ts`, `.tsx`, `.d.ts`, `.mts`, `.cts`, `.js`, `.jsx`,\n`.mjs`, `.cjs` and `.json`."
         },
         "alias": {
-          "description": "Bundler-only aliases: a specifier prefix, and the path that it maps\nto.",
           "type": "object",
           "additionalProperties": {
             "type": "string"
           },
+          "description": "Bundler-only aliases: a specifier prefix, and the path that it maps\nto.",
           "default": {}
         },
         "ignore_unresolved": {
-          "description": "Name patterns of specifiers that are expected not to resolve, so are\nnot reported as unresolved, e.g. `\"/*\"` for files served from a public\ndirectory, or `\"virtual:*\"`.",
           "type": "array",
           "items": {
             "type": "string"
           },
+          "description": "Name patterns of specifiers that are expected not to resolve, so are\nnot reported as unresolved, e.g. `\"/*\"` for files served from a public\ndirectory, or `\"virtual:*\"`.",
           "default": []
         }
-      }
+      },
+      "description": "How import specifiers are resolved."
     },
     "AnalysisTable": {
-      "description": "Defaults that apply to every contract.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "exclude_kinds": {
-          "description": "The import kinds that contracts ignore unless they set their own\n`exclude_kinds`, e.g. `[\"type\"]` to exempt type-only imports.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/ImportKind"
           },
+          "description": "The import kinds that contracts ignore unless they set their own\n`exclude_kinds`, e.g. `[\"type\"]` to exempt type-only imports.",
           "default": []
         }
-      }
+      },
+      "description": "Defaults that apply to every contract."
     },
     "ImportKind": {
-      "description": "How an import is made. Contracts can exclude imports of given kinds, e.g.\nto exempt type-only imports.",
       "oneOf": [
         {
-          "description": "A static value import or re-export: `import x from \"s\"`, `import \"s\"`,\n`export * from \"s\"`.",
           "type": "string",
-          "const": "value"
+          "const": "value",
+          "description": "A static value import or re-export: `import x from \"s\"`, `import \"s\"`,\n`export * from \"s\"`."
         },
         {
-          "description": "A type-only import that is erased at runtime: `import type`, an\nimport whose specifiers are all `type`, or `typeof import(\"s\")`.",
           "type": "string",
-          "const": "type"
+          "const": "type",
+          "description": "A type-only import that is erased at runtime: `import type`, an\nimport whose specifiers are all `type`, or `typeof import(\"s\")`."
         },
         {
-          "description": "A dynamic `import(\"s\")` with a literal specifier.",
           "type": "string",
-          "const": "dynamic"
+          "const": "dynamic",
+          "description": "A dynamic `import(\"s\")` with a literal specifier."
         },
         {
-          "description": "A CommonJS `require(\"s\")` or TypeScript `import x = require(\"s\")`.",
           "type": "string",
-          "const": "require"
+          "const": "require",
+          "description": "A CommonJS `require(\"s\")` or TypeScript `import x = require(\"s\")`."
         }
-      ]
+      ],
+      "description": "How an import is made. Contracts can exclude imports of given kinds, e.g.\nto exempt type-only imports."
     },
     "BaselineTable": {
-      "description": "The baseline of known violations.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "path": {
-          "description": "The path of the baseline file.",
           "type": "string",
+          "description": "The path of the baseline file.",
           "default": "zenith.baseline.json"
         },
         "stale": {
-          "description": "How to report baseline entries whose import no longer exists:\n`\"error\"` fails the check, so that the baseline can only shrink, and\n`\"warn\"` reports a warning.",
           "$ref": "#/$defs/StaleLevel",
+          "description": "How to report baseline entries whose import no longer exists:\n`\"error\"` fails the check, so that the baseline can only shrink, and\n`\"warn\"` reports a warning.",
           "default": "error"
         }
-      }
+      },
+      "description": "The baseline of known violations."
     },
     "StaleLevel": {
-      "description": "How to report baseline entries whose import no longer exists.",
       "oneOf": [
         {
-          "description": "Stale entries fail the check, so the baseline can only shrink.",
           "type": "string",
-          "const": "error"
+          "const": "error",
+          "description": "Stale entries fail the check, so the baseline can only shrink."
         },
         {
-          "description": "Stale entries are reported as warnings.",
           "type": "string",
-          "const": "warn"
+          "const": "warn",
+          "description": "Stale entries are reported as warnings."
         }
-      ]
+      ],
+      "description": "How to report baseline entries whose import no longer exists."
     },
     "ContractTable": {
-      "description": "An architecture contract. Its `type` says what it checks.",
       "oneOf": [
         {
-          "description": "The `from` modules must not import the `to` modules, directly or\nthrough other modules.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "from": {
-              "description": "The modules that must not import the `to` modules.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/SelectorValue"
-              }
+              },
+              "description": "The modules that must not import the `to` modules."
             },
             "to": {
-              "description": "The modules that must not be imported. External packages (`npm:`)\nand builtins (`node:`) are allowed.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/SelectorValue"
-              }
+              },
+              "description": "The modules that must not be imported. External packages (`npm:`)\nand builtins (`node:`) are allowed."
             },
             "allow_indirect_imports": {
-              "description": "If `true`, only direct imports count, rather than chains of\nimports too.",
               "type": "boolean",
+              "description": "If `true`, only direct imports count, rather than chains of\nimports too.",
               "default": false
             },
             "name": {
-              "description": "The title shown in output. Defaults to the contract id.",
-              "type": "string"
+              "type": "string",
+              "description": "The title shown in output. Defaults to the contract id."
             },
             "severity": {
-              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
               "$ref": "#/$defs/Severity",
+              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
               "default": "error"
             },
             "exclude_kinds": {
-              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/ImportKind"
-              }
+              },
+              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
             },
             "ignore_imports": {
-              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
               "type": "array",
               "items": {
                 "type": "string"
               },
+              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
               "default": []
             },
             "unmatched_ignore_imports": {
-              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
               "$ref": "#/$defs/AlertLevel",
+              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
               "default": "error"
             },
             "guidance": {
-              "description": "Text shown under the violations, e.g. how to fix them.",
-              "type": "string"
+              "type": "string",
+              "description": "Text shown under the violations, e.g. how to fix them."
             },
             "type": {
               "type": "string",
@@ -246,57 +244,57 @@
             "type",
             "from",
             "to"
-          ]
+          ],
+          "description": "The `from` modules must not import the `to` modules, directly or\nthrough other modules."
         },
         {
-          "description": "The modules must not depend on one another, directly or through other\nmodules.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "modules": {
-              "description": "The modules that must not depend on one another.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/SelectorValue"
-              }
+              },
+              "description": "The modules that must not depend on one another."
             },
             "allow_indirect_imports": {
-              "description": "If `true`, only direct imports count, rather than chains of\nimports too.",
               "type": "boolean",
+              "description": "If `true`, only direct imports count, rather than chains of\nimports too.",
               "default": false
             },
             "name": {
-              "description": "The title shown in output. Defaults to the contract id.",
-              "type": "string"
+              "type": "string",
+              "description": "The title shown in output. Defaults to the contract id."
             },
             "severity": {
-              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
               "$ref": "#/$defs/Severity",
+              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
               "default": "error"
             },
             "exclude_kinds": {
-              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/ImportKind"
-              }
+              },
+              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
             },
             "ignore_imports": {
-              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
               "type": "array",
               "items": {
                 "type": "string"
               },
+              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
               "default": []
             },
             "unmatched_ignore_imports": {
-              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
               "$ref": "#/$defs/AlertLevel",
+              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
               "default": "error"
             },
             "guidance": {
-              "description": "Text shown under the violations, e.g. how to fix them.",
-              "type": "string"
+              "type": "string",
+              "description": "Text shown under the violations, e.g. how to fix them."
             },
             "type": {
               "type": "string",
@@ -306,77 +304,77 @@
           "required": [
             "type",
             "modules"
-          ]
+          ],
+          "description": "The modules must not depend on one another, directly or through other\nmodules."
         },
         {
-          "description": "Higher layers may import lower layers, never the reverse.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "layers": {
-              "description": "The layers, from highest to lowest. Higher layers may import lower\nlayers, never the reverse.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/LayerValue"
-              }
+              },
+              "description": "The layers, from highest to lowest. Higher layers may import lower\nlayers, never the reverse."
             },
             "containers": {
-              "description": "If set, the layers are paths relative to each container, and each\ncontainer is checked on its own.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/SelectorValue"
-              }
+              },
+              "description": "If set, the layers are paths relative to each container, and each\ncontainer is checked on its own."
             },
             "exhaustive": {
-              "description": "Whether every child of every container must be declared as a\nlayer. Requires `containers`.",
               "type": "boolean",
+              "description": "Whether every child of every container must be declared as a\nlayer. Requires `containers`.",
               "default": false
             },
             "exhaustive_ignores": {
-              "description": "Children exempt from `exhaustive`: name patterns matched against\nthe base name with or without its JS/TS extension, so `index`\nmatches `index.ts`.",
               "type": "array",
               "items": {
                 "type": "string"
               },
+              "description": "Children exempt from `exhaustive`: name patterns matched against\nthe base name with or without its JS/TS extension, so `index`\nmatches `index.ts`.",
               "default": []
             },
             "allow_indirect_imports": {
-              "description": "If `true`, only direct imports count, rather than chains of\nimports too.",
               "type": "boolean",
+              "description": "If `true`, only direct imports count, rather than chains of\nimports too.",
               "default": false
             },
             "name": {
-              "description": "The title shown in output. Defaults to the contract id.",
-              "type": "string"
+              "type": "string",
+              "description": "The title shown in output. Defaults to the contract id."
             },
             "severity": {
-              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
               "$ref": "#/$defs/Severity",
+              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
               "default": "error"
             },
             "exclude_kinds": {
-              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/ImportKind"
-              }
+              },
+              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
             },
             "ignore_imports": {
-              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
               "type": "array",
               "items": {
                 "type": "string"
               },
+              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
               "default": []
             },
             "unmatched_ignore_imports": {
-              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
               "$ref": "#/$defs/AlertLevel",
+              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
               "default": "error"
             },
             "guidance": {
-              "description": "Text shown under the violations, e.g. how to fix them.",
-              "type": "string"
+              "type": "string",
+              "description": "Text shown under the violations, e.g. how to fix them."
             },
             "type": {
               "type": "string",
@@ -386,59 +384,59 @@
           "required": [
             "type",
             "layers"
-          ]
+          ],
+          "description": "Higher layers may import lower layers, never the reverse."
         },
         {
-          "description": "Only the allowed importers, and the modules themselves, may directly\nimport the modules.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "modules": {
-              "description": "The protected modules.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/SelectorValue"
-              }
+              },
+              "description": "The protected modules."
             },
             "allowed_importers": {
-              "description": "The only modules that may directly import the protected modules,\nbesides the protected modules themselves.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/SelectorValue"
-              }
+              },
+              "description": "The only modules that may directly import the protected modules,\nbesides the protected modules themselves."
             },
             "name": {
-              "description": "The title shown in output. Defaults to the contract id.",
-              "type": "string"
+              "type": "string",
+              "description": "The title shown in output. Defaults to the contract id."
             },
             "severity": {
-              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
               "$ref": "#/$defs/Severity",
+              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
               "default": "error"
             },
             "exclude_kinds": {
-              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/ImportKind"
-              }
+              },
+              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
             },
             "ignore_imports": {
-              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
               "type": "array",
               "items": {
                 "type": "string"
               },
+              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
               "default": []
             },
             "unmatched_ignore_imports": {
-              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
               "$ref": "#/$defs/AlertLevel",
+              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
               "default": "error"
             },
             "guidance": {
-              "description": "Text shown under the violations, e.g. how to fix them.",
-              "type": "string"
+              "type": "string",
+              "description": "Text shown under the violations, e.g. how to fix them."
             },
             "type": {
               "type": "string",
@@ -449,66 +447,66 @@
             "type",
             "modules",
             "allowed_importers"
-          ]
+          ],
+          "description": "Only the allowed importers, and the modules themselves, may directly\nimport the modules."
         },
         {
-          "description": "The modules must not form dependency cycles.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "modules": {
-              "description": "The modules that must not form dependency cycles, e.g. `[\"pkg:*\"]`.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/SelectorValue"
-              }
+              },
+              "description": "The modules that must not form dependency cycles, e.g. `[\"pkg:*\"]`."
             },
             "depth": {
-              "description": "How many further generations of children to check: with `1`, the\nchildren of each directory module must not form cycles either.",
               "type": "integer",
               "format": "uint32",
               "minimum": 0,
+              "description": "How many further generations of children to check: with `1`, the\nchildren of each directory module must not form cycles either.",
               "default": 0
             },
             "skip": {
-              "description": "Modules whose children are not checked.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/SelectorValue"
-              }
+              },
+              "description": "Modules whose children are not checked."
             },
             "name": {
-              "description": "The title shown in output. Defaults to the contract id.",
-              "type": "string"
+              "type": "string",
+              "description": "The title shown in output. Defaults to the contract id."
             },
             "severity": {
-              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
               "$ref": "#/$defs/Severity",
+              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
               "default": "error"
             },
             "exclude_kinds": {
-              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/ImportKind"
-              }
+              },
+              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
             },
             "ignore_imports": {
-              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
               "type": "array",
               "items": {
                 "type": "string"
               },
+              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
               "default": []
             },
             "unmatched_ignore_imports": {
-              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
               "$ref": "#/$defs/AlertLevel",
+              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
               "default": "error"
             },
             "guidance": {
-              "description": "Text shown under the violations, e.g. how to fix them.",
-              "type": "string"
+              "type": "string",
+              "description": "Text shown under the violations, e.g. how to fix them."
             },
             "type": {
               "type": "string",
@@ -518,69 +516,69 @@
           "required": [
             "type",
             "modules"
-          ]
+          ],
+          "description": "The modules must not form dependency cycles."
         },
         {
-          "description": "Code outside each module may only import it through its entry points.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "modules": {
-              "description": "The encapsulated modules, which must be directories.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/SelectorValue"
-              }
+              },
+              "description": "The encapsulated modules, which must be directories."
             },
             "entrypoints": {
-              "description": "Globs, relative to each module, of the files that code outside it\nmay import. They ignore JS/TS extensions, so `index` matches\n`index.ts`, and match files only: `public/**` exposes a directory.",
               "type": "array",
               "items": {
                 "type": "string"
               },
+              "description": "Globs, relative to each module, of the files that code outside it\nmay import. They ignore JS/TS extensions, so `index` matches\n`index.ts`, and match files only: `public/**` exposes a directory.",
               "default": [
                 "index"
               ]
             },
             "allowed_importers": {
-              "description": "Modules that may import any file of the encapsulated modules, e.g.\ntests.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/SelectorValue"
-              }
+              },
+              "description": "Modules that may import any file of the encapsulated modules, e.g.\ntests."
             },
             "name": {
-              "description": "The title shown in output. Defaults to the contract id.",
-              "type": "string"
+              "type": "string",
+              "description": "The title shown in output. Defaults to the contract id."
             },
             "severity": {
-              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
               "$ref": "#/$defs/Severity",
+              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
               "default": "error"
             },
             "exclude_kinds": {
-              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/ImportKind"
-              }
+              },
+              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
             },
             "ignore_imports": {
-              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
               "type": "array",
               "items": {
                 "type": "string"
               },
+              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
               "default": []
             },
             "unmatched_ignore_imports": {
-              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
               "$ref": "#/$defs/AlertLevel",
+              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
               "default": "error"
             },
             "guidance": {
-              "description": "Text shown under the violations, e.g. how to fix them.",
-              "type": "string"
+              "type": "string",
+              "description": "Text shown under the violations, e.g. how to fix them."
             },
             "type": {
               "type": "string",
@@ -590,115 +588,117 @@
           "required": [
             "type",
             "modules"
-          ]
+          ],
+          "description": "Code outside each module may only import it through its entry points."
         }
-      ]
+      ],
+      "description": "An architecture contract. Its `type` says what it checks."
     },
     "SelectorValue": {
-      "description": "A selector of modules: a path glob such as `web/src/domains/*`, a\nworkspace package (`pkg:@acme/*`), an external package (`npm:react`), a\nbuiltin (`node:*` or `bun:*`), or a table that filters one.",
       "anyOf": [
         {
-          "description": "A selector.",
-          "type": "string"
+          "type": "string",
+          "description": "A selector."
         },
         {
-          "description": "A selector with filters.",
-          "$ref": "#/$defs/SelectorTable"
+          "$ref": "#/$defs/SelectorTable",
+          "description": "A selector with filters."
         }
-      ]
+      ],
+      "description": "A selector of modules: a path glob such as `web/src/domains/*`, a\nworkspace package (`pkg:@acme/*`), an external package (`npm:react`), a\nbuiltin (`node:*` or `bun:*`), or a table that filters one."
     },
     "SelectorTable": {
-      "description": "A selector with filters.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "path": {
-          "description": "The selector, in any of its string forms.",
-          "type": "string"
+          "type": "string",
+          "description": "The selector, in any of its string forms."
         },
         "except": {
-          "description": "Selectors of modules to remove from each matched module.",
           "type": "array",
           "items": {
             "type": "string"
           },
+          "description": "Selectors of modules to remove from each matched module.",
           "default": []
         },
         "directive": {
-          "description": "Keep only the files that start with this directive, such as\n`\"use client\"`, each as a module of its own.",
-          "type": "string"
+          "type": "string",
+          "description": "Keep only the files that start with this directive, such as\n`\"use client\"`, each as a module of its own."
         }
       },
       "required": [
         "path"
-      ]
+      ],
+      "description": "A selector with filters."
     },
     "Severity": {
-      "description": "How severe a broken contract is.",
       "oneOf": [
         {
-          "description": "A broken contract fails the check.",
           "type": "string",
-          "const": "error"
+          "const": "error",
+          "description": "A broken contract fails the check."
         },
         {
-          "description": "A broken contract is reported without failing the check.",
           "type": "string",
-          "const": "warn"
+          "const": "warn",
+          "description": "A broken contract is reported without failing the check."
         }
-      ]
+      ],
+      "description": "How severe a broken contract is."
     },
     "AlertLevel": {
-      "description": "How to report an `ignore_imports` entry that matches no import.",
       "oneOf": [
         {
-          "description": "The contract is broken.",
           "type": "string",
-          "const": "error"
+          "const": "error",
+          "description": "The contract is broken."
         },
         {
-          "description": "A warning is reported.",
           "type": "string",
-          "const": "warn"
+          "const": "warn",
+          "description": "A warning is reported."
         },
         {
-          "description": "Nothing is reported.",
           "type": "string",
-          "const": "none"
+          "const": "none",
+          "description": "Nothing is reported."
         }
-      ]
+      ],
+      "description": "How to report an `ignore_imports` entry that matches no import."
     },
     "LayerValue": {
-      "description": "A layer of a `layers` contract: `\"a\"`, `\"a | b\"` for independent siblings\nthat may not import each other, `\"a : b\"` for siblings that may, and\n`\"(a)\"` for a member that may be missing. Members are selectors.",
       "anyOf": [
         {
-          "description": "A layer.",
-          "type": "string"
+          "type": "string",
+          "description": "A layer."
         },
         {
-          "description": "A layer with options.",
-          "$ref": "#/$defs/LayerTable"
+          "$ref": "#/$defs/LayerTable",
+          "description": "A layer with options."
         }
-      ]
+      ],
+      "description": "A layer of a `layers` contract: `\"a\"`, `\"a | b\"` for independent siblings\nthat may not import each other, `\"a : b\"` for siblings that may, and\n`\"(a)\"` for a member that may be missing. Members are selectors."
     },
     "LayerTable": {
-      "description": "A layer with options.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "layer": {
-          "description": "The layer, in its string form.",
-          "type": "string"
+          "type": "string",
+          "description": "The layer, in its string form."
         },
         "closed": {
-          "description": "Whether the layer is closed: the layers above it may not import the\nlayers below it.",
           "type": "boolean",
+          "description": "Whether the layer is closed: the layers above it may not import the\nlayers below it.",
           "default": false
         }
       },
       "required": [
         "layer"
-      ]
+      ],
+      "description": "A layer with options."
     }
   }
 }

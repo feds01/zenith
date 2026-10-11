@@ -12,6 +12,7 @@ publish = false
 bitflags = { workspace = true }
 fixedbitset = { workspace = true }
 index_vec = { workspace = true }
+rayon = { workspace = true }
 rustc-hash = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }

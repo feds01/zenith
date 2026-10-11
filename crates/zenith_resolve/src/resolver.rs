@@ -64,6 +64,18 @@ pub enum Resolved {
     Ignored(Box<UnresolvedReason>),
 }
 
+impl Resolved {
+    /// An unresolved specifier, for this reason.
+    fn unresolved(reason: UnresolvedReason) -> Self {
+        Self::Unresolved(Box::new(reason))
+    }
+
+    /// An unresolved specifier, for a resolver error.
+    fn failed(failure: ResolveFailure) -> Self {
+        Self::unresolved(UnresolvedReason::Failed(failure))
+    }
+}
+
 // A `Resolved` is made for every import, so it is kept small: the reason of an
 // unresolved import, the rare case, is boxed.
 #[cfg(target_pointer_width = "64")]
@@ -111,6 +123,19 @@ impl fmt::Display for UnresolvedReason {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolveFailure(ResolveError);
 
+impl ResolveFailure {
+    /// Whether the resolver failed to load a `tsconfig.json`.
+    fn is_tsconfig_error(&self) -> bool {
+        matches!(
+            self.0,
+            ResolveError::TsconfigNotFound(_)
+                | ResolveError::TsconfigLoadFailed { .. }
+                | ResolveError::TsconfigCircularExtend(_)
+                | ResolveError::TsconfigSelfReference(_)
+        )
+    }
+}
+
 impl fmt::Display for ResolveFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
@@ -154,7 +179,7 @@ pub struct Resolver {
     without_tsconfig: oxc_resolver::Resolver,
 
     /// The files whose `tsconfig.json` couldn't be loaded, and why.
-    tsconfig_errors: Mutex<FxHashMap<PathBuf, ResolveError>>,
+    tsconfig_errors: Mutex<FxHashMap<PathBuf, ResolveFailure>>,
 
     /// The canonical project root.
     root: PathBuf,
@@ -279,18 +304,20 @@ impl Resolver {
         if let Some((scheme, _)) = split_scheme(specifier) {
             return match scheme {
                 "node" | "bun" => Resolved::Builtin(squash_builtin(specifier).to_string()),
-                _ => unresolved(UnresolvedReason::UnsupportedScheme(scheme.to_string())),
+                _ => Resolved::unresolved(UnresolvedReason::UnsupportedScheme(scheme.to_string())),
             };
         }
 
         let error = match self.resolve_file(file, specifier) {
             Ok(resolution) => return self.classify(specifier, resolution.path()),
-            Err(ResolveError::Builtin { mut resolved, .. }) => {
+            Err(ResolveFailure(ResolveError::Builtin { mut resolved, .. })) => {
                 resolved.truncate(squash_builtin(&resolved).len());
                 return Resolved::Builtin(resolved);
             }
             // An alias matched, so the specifier doesn't name a package.
-            Err(error @ ResolveError::MatchedAliasNotFound(..)) => return failed(error),
+            Err(error @ ResolveFailure(ResolveError::MatchedAliasNotFound(..))) => {
+                return Resolved::failed(error);
+            }
             Err(error) => error,
         };
 
@@ -306,9 +333,9 @@ impl Resolver {
             // Blame the `tsconfig.json` if it couldn't be loaded, since it may
             // have had the `paths` that a non-relative specifier needs.
             None if !specifier.starts_with(['.', '/']) => {
-                failed(self.tsconfig_error(file).unwrap_or(error))
+                Resolved::failed(self.tsconfig_error(file).unwrap_or(error))
             }
-            None => failed(error),
+            None => Resolved::failed(error),
         }
     }
 
@@ -318,23 +345,23 @@ impl Resolver {
     /// kept for [`Self::tsconfig_error`]. Since the two resolvers share their
     /// caches, `oxc_resolver` then remembers that the file has no
     /// `tsconfig.json`, instead of failing to load it again for every import.
-    fn resolve_file(&self, file: &Path, specifier: &str) -> Result<Resolution, ResolveError> {
-        match self.inner.resolve_file(file, specifier) {
-            Err(error) if is_tsconfig_error(&error) => {
+    fn resolve_file(&self, file: &Path, specifier: &str) -> Result<Resolution, ResolveFailure> {
+        match self.inner.resolve_file(file, specifier).map_err(ResolveFailure) {
+            Err(error) if error.is_tsconfig_error() => {
                 let mut errors =
                     self.tsconfig_errors.lock().unwrap_or_else(PoisonError::into_inner);
                 if !errors.contains_key(file) {
                     errors.insert(file.to_path_buf(), error);
                 }
                 drop(errors);
-                self.without_tsconfig.resolve_file(file, specifier)
+                self.without_tsconfig.resolve_file(file, specifier).map_err(ResolveFailure)
             }
             result => result,
         }
     }
 
     /// Why the `tsconfig.json` of `file` couldn't be loaded, if it couldn't.
-    fn tsconfig_error(&self, file: &Path) -> Option<ResolveError> {
+    fn tsconfig_error(&self, file: &Path) -> Option<ResolveFailure> {
         self.tsconfig_errors.lock().unwrap_or_else(PoisonError::into_inner).get(file).cloned()
     }
 
@@ -355,7 +382,7 @@ impl Resolver {
                 match exports::resolve(exports, &subpath, &self.conditions) {
                     Some(target) => target,
                     None => {
-                        return unresolved(UnresolvedReason::NotExported {
+                        return Resolved::unresolved(UnresolvedReason::NotExported {
                             package: package.to_string(),
                             subpath,
                         });
@@ -371,7 +398,7 @@ impl Resolver {
         };
         match self.resolve_file(&entry.manifest, &request) {
             Ok(resolution) => self.classify(specifier, resolution.path()),
-            Err(error) => failed(error),
+            Err(error) => Resolved::failed(error),
         }
     }
 
@@ -386,30 +413,9 @@ impl Resolver {
         let (specifier, _) = split_query(specifier);
         match package_name(specifier).map(str::to_string).or_else(|| package_from_path(path)) {
             Some(package) => Resolved::External { package, found: true },
-            None => unresolved(UnresolvedReason::OutsideRoot(path.to_path_buf())),
+            None => Resolved::unresolved(UnresolvedReason::OutsideRoot(path.to_path_buf())),
         }
     }
-}
-
-/// Whether a resolver error is about loading a `tsconfig.json`.
-fn is_tsconfig_error(error: &ResolveError) -> bool {
-    matches!(
-        error,
-        ResolveError::TsconfigNotFound(_)
-            | ResolveError::TsconfigLoadFailed { .. }
-            | ResolveError::TsconfigCircularExtend(_)
-            | ResolveError::TsconfigSelfReference(_)
-    )
-}
-
-/// An unresolved specifier, for this reason.
-fn unresolved(reason: UnresolvedReason) -> Resolved {
-    Resolved::Unresolved(Box::new(reason))
-}
-
-/// An unresolved specifier, for a resolver error.
-fn failed(error: ResolveError) -> Resolved {
-    unresolved(UnresolvedReason::Failed(ResolveFailure(error)))
 }
 
 #[cfg(test)]
@@ -711,7 +717,7 @@ mod tests {
             internal("packages/designSystem/src/icons/outline/star.tsx")
         );
         let not_exported = |subpath: &str| {
-            unresolved(UnresolvedReason::NotExported {
+            Resolved::unresolved(UnresolvedReason::NotExported {
                 package: "@acme/design-system".to_string(),
                 subpath: subpath.to_string(),
             })
@@ -892,7 +898,7 @@ mod tests {
         assert_eq!(resolver.resolve(&from, "@vendor/sdk"), external("@vendor/sdk", true));
         let outside = resolver.resolve(&from, "../../shared/util");
         let shared = project.root.parent().unwrap().join("shared").join("util.ts");
-        assert_eq!(outside, unresolved(UnresolvedReason::OutsideRoot(shared)));
+        assert_eq!(outside, Resolved::unresolved(UnresolvedReason::OutsideRoot(shared)));
     }
 
     #[test]
@@ -917,7 +923,7 @@ mod tests {
         let resolved = resolver.resolve(&project.path("main.ts"), "virtual:pwa-register");
         assert_eq!(
             resolved,
-            unresolved(UnresolvedReason::UnsupportedScheme("virtual".to_string()))
+            Resolved::unresolved(UnresolvedReason::UnsupportedScheme("virtual".to_string()))
         );
         if let Resolved::Unresolved(reason) = resolved {
             assert_eq!(reason.to_string(), "unsupported `virtual:` specifier");

@@ -193,8 +193,8 @@ impl GraphBuilder {
 
     /// Record the directive prologue of a scanned file, e.g.
     /// `["use client"]`, replacing any recorded before.
-    pub fn set_directives(&mut self, file: FileHandle, directives: Vec<String>) {
-        self.nodes[NodeHandle::from(file)].directives = ThinVec::from(directives);
+    pub fn set_directives(&mut self, file: FileHandle, directives: ThinVec<String>) {
+        self.nodes[NodeHandle::from(file)].directives = directives;
     }
 
     /// Record an import from `importer` to `imported`.
@@ -321,6 +321,8 @@ fn is_scheme_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use thin_vec::thin_vec;
+
     use super::*;
     use crate::{
         ImportKind,
@@ -373,7 +375,7 @@ mod tests {
                 let app = builder.add_file("web/src/app.ts").unwrap();
                 let react = builder.add_external("npm:react").unwrap();
                 builder.add_import(app, react, detail(1, ImportKind::Value));
-                builder.set_directives(app, vec!["use client".to_string()]);
+                builder.set_directives(app, thin_vec!["use client".to_string()]);
             },
             |builder| {
                 let api = builder.add_file("web/src/api/client.ts").unwrap();

@@ -26,11 +26,9 @@ pub(crate) fn graph_of(imports: &[(&str, &str)]) -> Graph {
     builder.finish()
 }
 
-/// An import detail on `line`, with a span made up from the line.
+/// An import detail on `line`, with a range made up from the line.
 pub(crate) fn detail(line: u32, kind: ImportKind) -> ImportDetail {
     ImportDetail {
-        line,
-        column: 1,
         range: ByteRange::new(line * 100, line * 100 + 10),
         specifier: format!("./module-{line}"),
         kind,

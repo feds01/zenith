@@ -33,6 +33,12 @@ impl ImportKind {
     pub const ALL: [ImportKind; 4] =
         [ImportKind::Value, ImportKind::Type, ImportKind::Dynamic, ImportKind::Require];
 
+    /// The kind of a static import or re-export: [`ImportKind::Type`] if it
+    /// imports only types, and [`ImportKind::Value`] otherwise.
+    pub const fn of_static(type_only: bool) -> ImportKind {
+        if type_only { ImportKind::Type } else { ImportKind::Value }
+    }
+
     /// The name of the kind as it appears in configuration and reports.
     pub const fn name(self) -> &'static str {
         match self {
@@ -114,6 +120,12 @@ mod tests {
         let flags = [KindSet::VALUE, KindSet::TYPE, KindSet::DYNAMIC, KindSet::REQUIRE];
         assert_eq!(ImportKind::ALL.map(KindSet::from), flags);
         assert_eq!(KindSet::all().kinds().collect::<Vec<_>>(), ImportKind::ALL);
+    }
+
+    #[test]
+    fn static_imports_are_values_unless_type_only() {
+        assert_eq!(ImportKind::of_static(true), ImportKind::Type);
+        assert_eq!(ImportKind::of_static(false), ImportKind::Value);
     }
 
     #[test]

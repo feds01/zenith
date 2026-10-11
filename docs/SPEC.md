@@ -95,13 +95,14 @@ to packages by name with `pkg:` selectors ([§3](#3-selectors)).
 ### 2.4 Imports (edges)
 
 An **import** is a directed edge from a file node to a file, external package
-or builtin node, with one or more **details**. Each detail records the line,
-column and span of the statement, the raw specifier, and its **kind**:
+or builtin node, with one or more **details**. Each detail records the byte
+range of the statement (reports work out its line and column from that), the
+raw specifier, and its **kind**:
 
 | Kind | Produced by |
 |---|---|
 | `value` | `import x from "s"`, `import "s"`, `export { a } from "s"`, `export * from "s"`, `export * as ns from "s"` |
-| `type` | `import type …`, `export type …`, `import { type A, type B }` where *every* specifier is type-only, `export type * from`, `typeof import("s")` and other TS import types, `import type x = require("s")` |
+| `type` | `import type …`, `export type …`, `import { type A, type B }` or `export { type A, type B } from` where *every* specifier is type-only, `export type * from`, `typeof import("s")` and other TS import types, `import type x = require("s")` |
 | `dynamic` | `import("s")` with a string-literal or substitution-free template argument |
 | `require` | `require("s")` with a literal argument, `import x = require("s")` |
 
@@ -620,8 +621,10 @@ import { y } from "@/app/(dashboard)/types"; // zenith-ignore web-layers
 ```
 
 - Syntax: `zenith-ignore <id>[ <id>…][: <reason>]`, in a line or block comment.
-- A suppression applies to imports that start on the same line (trailing
-  comment) or on the next line. It removes those import details from the
+  Ids may also be separated by commas.
+- A suppression applies to imports that start on the same line (a trailing
+  comment, or a block comment before the import) or, for a comment on a line
+  of its own, on the next line. It removes those import details from the
   named contracts only.
 - An unused suppression is a warning. **(settled)** It is unused if it names
   no contract, names an unknown contract, or none of the contracts it names

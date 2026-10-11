@@ -13,6 +13,7 @@ repository = "https://github.com/feds01/zenith"
 zenith_config = { path = "crates/zenith_config" }
 zenith_diagnostics = { path = "crates/zenith_diagnostics" }
 zenith_graph = { path = "crates/zenith_graph" }
+zenith_parse = { path = "crates/zenith_parse" }
 zenith_resolve = { path = "crates/zenith_resolve" }
 zenith_utils = { path = "crates/zenith_utils" }
 zenith_workspace = { path = "crates/zenith_workspace" }
@@ -29,7 +30,12 @@ ignore = { version = "0.4.33" }
 index_vec = { version = "0.1.4" }
 indexmap = { version = "2.14.2", features = ["serde"] }
 log = { version = "0.4.34" }
+oxc_allocator = { version = "0.153.0" }
+oxc_ast = { version = "0.153.0" }
+oxc_ast_visit = { version = "0.153.0" }
+oxc_parser = { version = "0.153.0" }
 oxc_resolver = { version = "11.24.3" }
+oxc_span = { version = "0.153.0" }
 path-absolutize = { version = "4.0.1" }
 rayon = { version = "1.12.0" }
 rustc-hash = { version = "2.1.3" }

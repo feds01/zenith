@@ -110,15 +110,10 @@ impl Node {
 /// One import statement or expression that creates an import edge.
 ///
 /// Details order by their position in the importing file, which is source
-/// order.
+/// order. A report that shows a line and column works them out from the
+/// range and the file's text.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ImportDetail {
-    /// The 1-based line of the start of the import.
-    pub line: u32,
-
-    /// The 1-based column of the start of the import, in characters.
-    pub column: u32,
-
     /// Where the import is in the importing file.
     pub range: ByteRange,
 
@@ -434,6 +429,8 @@ impl Adjacency {
 
 #[cfg(test)]
 mod tests {
+    use thin_vec::thin_vec;
+
     use super::*;
     use crate::{
         GraphBuilder,
@@ -623,8 +620,8 @@ mod tests {
     fn scanned_files_keep_their_directives() {
         let mut builder = GraphBuilder::new();
         let page = builder.add_file("web/app/page.tsx").unwrap();
-        builder.set_directives(page, vec!["use strict".to_string()]);
-        builder.set_directives(page, vec!["use client".to_string(), "use strict".to_string()]);
+        builder.set_directives(page, thin_vec!["use strict".to_string()]);
+        builder.set_directives(page, thin_vec!["use client".to_string(), "use strict".to_string()]);
         builder.add_file("web/app/styles.css").unwrap();
         let graph = builder.finish();
 

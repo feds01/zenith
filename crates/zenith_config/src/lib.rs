@@ -21,7 +21,7 @@ mod selector;
 
 pub use config::{
     AnalysisConfig, BaselineConfig, CONFIG_FILE_NAME, Config, FilesConfig, ResolveConfig,
-    StaleLevel, Tsconfig,
+    SOURCE_EXTENSIONS, StaleLevel, Tsconfig,
 };
 pub use contracts::{
     AcyclicConfig, AlertLevel, ContractConfig, ContractKind, EncapsulationConfig, ForbiddenConfig,

@@ -1,0 +1,260 @@
+//! The session: one project, and everything the stages have found in it.
+
+use std::path::PathBuf;
+
+use zenith_config::{Config, SOURCE_EXTENSIONS, Tsconfig};
+use zenith_graph::{Graph, GraphBuilder};
+use zenith_parse::ParsedFile;
+use zenith_resolve::{Resolved, Resolver, ResolverError, ResolverSettings, TsconfigMode};
+use zenith_workspace::{WalkSettings, Workspace};
+
+use crate::{FileError, UnresolvedImport};
+
+/// A project, and what the stages of the pipeline have found in it so far.
+///
+/// Each field that a stage fills in names it. Until that stage has run, the
+/// field is empty.
+#[derive(Debug)]
+pub struct Session {
+    /// The canonical project root.
+    pub root: PathBuf,
+
+    /// The project's configuration.
+    pub config: Config,
+
+    /// The source files to scan, sorted by path. Found by the
+    /// [`Discover`](crate::StageKind::Discover) stage.
+    pub files: Vec<SourceFile>,
+
+    /// The workspace packages. Found by the
+    /// [`Discover`](crate::StageKind::Discover) stage.
+    pub workspace: Workspace,
+
+    /// What the parser found in each file, in the order of `files`. Filled
+    /// in by the [`Parse`](crate::StageKind::Parse) stage, and taken by the
+    /// [`Graph`](crate::StageKind::Graph) stage.
+    pub parsed: Vec<ParsedFile>,
+
+    /// What each import of each file resolved to, in the order of `files` and
+    /// of their imports. Filled in by the
+    /// [`Resolve`](crate::StageKind::Resolve) stage, and taken by the
+    /// [`Graph`](crate::StageKind::Graph) stage.
+    pub resolved: Vec<Vec<Resolved>>,
+
+    /// The module tree and import graph. Built by the
+    /// [`Graph`](crate::StageKind::Graph) stage; until then it holds only the
+    /// root.
+    pub graph: Graph,
+
+    /// The source files that could not be read or parsed in full, sorted by
+    /// file. Found by the [`Parse`](crate::StageKind::Parse) stage.
+    pub file_errors: Vec<FileError>,
+
+    /// The imports that could not be resolved, sorted by file, then in source
+    /// order. Imports that match `ignore_unresolved` are left out. Found by
+    /// the [`Graph`](crate::StageKind::Graph) stage.
+    pub unresolved: Vec<UnresolvedImport>,
+
+    /// Counts of what the stages found.
+    pub stats: Stats,
+}
+
+/// A source file to scan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceFile {
+    /// Its absolute path.
+    pub path: PathBuf,
+
+    /// Its POSIX path relative to the root, which is its name in the graph.
+    pub name: String,
+}
+
+/// Counts of what the stages found, beyond what the session holds.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Stats {
+    /// The dynamic imports and `require` calls whose specifier is not a
+    /// literal, which are left out of the graph.
+    pub non_literal_imports: usize,
+
+    /// The imports of external packages that aren't installed, so are named
+    /// from their specifier alone.
+    pub missing_packages: usize,
+}
+
+impl Session {
+    /// A session for the project at `root`, which must be canonical,
+    /// configured by `config`. Nothing has been found in it yet.
+    pub fn new(root: PathBuf, config: Config) -> Self {
+        Self {
+            root,
+            config,
+            files: Vec::new(),
+            workspace: Workspace::default(),
+            parsed: Vec::new(),
+            resolved: Vec::new(),
+            graph: GraphBuilder::new().finish(),
+            file_errors: Vec::new(),
+            unresolved: Vec::new(),
+            stats: Stats::default(),
+        }
+    }
+
+    /// Which files to scan, as the configuration says.
+    pub fn walk_settings(&self) -> WalkSettings {
+        let files = &self.config.files;
+        WalkSettings {
+            include: files.include.clone(),
+            exclude: files.exclude.clone(),
+            respect_gitignore: files.respect_gitignore,
+            source_extensions: SOURCE_EXTENSIONS,
+        }
+    }
+
+    /// How to resolve specifiers, as the configuration says, with the
+    /// workspace packages found so far. Paths in the configuration are
+    /// relative to the root.
+    pub fn resolver_settings(&self) -> ResolverSettings {
+        let resolve = &self.config.resolve;
+        let mut settings = ResolverSettings::new(self.root.clone());
+        settings.tsconfig = match &resolve.tsconfig {
+            Tsconfig::Auto => TsconfigMode::Auto,
+            Tsconfig::Off => TsconfigMode::Off,
+            Tsconfig::File(path) => TsconfigMode::File(self.root.join(path)),
+        };
+        if let Some(conditions) = &resolve.conditions {
+            settings.conditions = conditions.clone();
+        }
+        if let Some(main_fields) = &resolve.main_fields {
+            settings.main_fields = main_fields.clone();
+        }
+        if let Some(extensions) = &resolve.extensions {
+            settings.extensions = extensions.clone();
+        }
+        settings.aliases = resolve
+            .alias
+            .iter()
+            .map(|(alias, path)| (alias.clone(), self.root.join(path)))
+            .collect();
+        settings.workspace_packages = self
+            .workspace
+            .packages
+            .iter()
+            .map(|package| (package.name.clone(), package.path.clone()))
+            .collect();
+        settings.ignore_unresolved = resolve.ignore_unresolved.clone();
+        settings
+    }
+
+    /// A resolver configured by [`Session::resolver_settings`]. Run the
+    /// [`Discover`](crate::StageKind::Discover) stage first, so that workspace
+    /// packages resolve without `node_modules`.
+    pub fn resolver(&self) -> Result<Resolver, ResolverError> {
+        Resolver::new(self.resolver_settings())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use zenith_workspace::WorkspacePackage;
+
+    use super::*;
+
+    /// A session for a project at `/repo` with the configuration `toml`.
+    fn session(toml: &str) -> Session {
+        Session::new(PathBuf::from("/repo"), Config::parse(toml).unwrap())
+    }
+
+    #[test]
+    fn a_new_session_has_found_nothing() {
+        let session = session("");
+        assert!(session.files.is_empty() && session.parsed.is_empty());
+        assert!(session.resolved.is_empty() && session.workspace.packages.is_empty());
+        assert_eq!(session.graph.node_count(), 1);
+        assert!(session.file_errors.is_empty() && session.unresolved.is_empty());
+    }
+
+    #[test]
+    fn defaults_scan_every_source_file_and_resolve_like_typescript() {
+        let session = session("");
+        let walk = session.walk_settings();
+        assert!(walk.include.is_none() && walk.exclude.is_empty());
+        assert!(walk.respect_gitignore);
+        assert_eq!(walk.source_extensions, SOURCE_EXTENSIONS);
+
+        let defaults = ResolverSettings::new(PathBuf::from("/repo"));
+        let settings = session.resolver_settings();
+        assert_eq!(settings.root, Path::new("/repo"));
+        assert_eq!(settings.tsconfig, TsconfigMode::Auto);
+        assert_eq!(settings.conditions, defaults.conditions);
+        assert_eq!(settings.main_fields, defaults.main_fields);
+        assert_eq!(settings.extensions, defaults.extensions);
+        assert!(settings.aliases.is_empty() && settings.ignore_unresolved.is_empty());
+        assert!(settings.workspace_packages.is_empty());
+    }
+
+    #[test]
+    fn the_configuration_replaces_the_defaults() {
+        let session = session(
+            r#"
+            [files]
+            include = ["web/**"]
+            exclude = ["**/*.test.ts"]
+            respect_gitignore = false
+
+            [resolve]
+            tsconfig = "web/tsconfig.json"
+            conditions = ["browser", "import"]
+            main_fields = ["main"]
+            extensions = [".ts", ".js"]
+            alias = { "types" = "web/src/types", "~" = "web" }
+            ignore_unresolved = ["virtual:*"]
+            "#,
+        );
+        let globs = |globs: &[zenith_utils::glob::Glob]| -> Vec<String> {
+            globs.iter().map(|glob| glob.as_str().to_string()).collect()
+        };
+        let walk = session.walk_settings();
+        assert_eq!(globs(walk.include.as_deref().unwrap()), ["web/**"]);
+        assert_eq!(globs(&walk.exclude), ["**/*.test.ts"]);
+        assert!(!walk.respect_gitignore);
+
+        let settings = session.resolver_settings();
+        assert_eq!(settings.tsconfig, TsconfigMode::File(PathBuf::from("/repo/web/tsconfig.json")));
+        assert_eq!(settings.conditions, ["browser", "import"]);
+        assert_eq!(settings.main_fields, ["main"]);
+        assert_eq!(settings.extensions, [".ts", ".js"]);
+        // Aliases keep the order of the file, and point into the root.
+        assert_eq!(
+            settings.aliases,
+            [
+                ("types".to_string(), PathBuf::from("/repo/web/src/types")),
+                ("~".to_string(), PathBuf::from("/repo/web")),
+            ]
+        );
+        let patterns: Vec<_> =
+            settings.ignore_unresolved.iter().map(|pattern| pattern.as_str()).collect();
+        assert_eq!(patterns, ["virtual:*"]);
+    }
+
+    #[test]
+    fn tsconfig_files_can_be_turned_off() {
+        let settings = session("[resolve]\ntsconfig = \"off\"\n").resolver_settings();
+        assert_eq!(settings.tsconfig, TsconfigMode::Off);
+    }
+
+    #[test]
+    fn the_resolver_knows_the_workspace_packages() {
+        let mut session = session("");
+        session.workspace.packages.push(WorkspacePackage {
+            name: "@acme/ui".to_string(),
+            dir: "packages/ui".to_string(),
+            path: PathBuf::from("/repo/packages/ui"),
+        });
+        assert_eq!(
+            session.resolver_settings().workspace_packages,
+            [("@acme/ui".to_string(), PathBuf::from("/repo/packages/ui"))]
+        );
+    }
+}

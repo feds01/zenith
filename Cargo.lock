@@ -1980,6 +1980,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "zenith_pipeline"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "rayon",
+ "tempfile",
+ "thin-vec",
+ "zenith_config",
+ "zenith_graph",
+ "zenith_parse",
+ "zenith_resolve",
+ "zenith_utils",
+ "zenith_workspace",
+]
+
+[[package]]
 name = "zenith_resolve"
 version = "0.1.0"
 dependencies = [

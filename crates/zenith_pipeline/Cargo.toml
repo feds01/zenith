@@ -1,0 +1,27 @@
+[package]
+name = "zenith_pipeline"
+version = "0.1.0"
+description = "Runs the stages that turn a zenith project into its import graph"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = false
+
+[dependencies]
+zenith_config = { workspace = true }
+zenith_graph = { workspace = true }
+zenith_parse = { workspace = true }
+zenith_resolve = { workspace = true }
+zenith_utils = { workspace = true }
+zenith_workspace = { workspace = true }
+
+log = { workspace = true }
+rayon = { workspace = true }
+thin-vec = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

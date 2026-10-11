@@ -10,6 +10,7 @@ license = "MIT"
 repository = "https://github.com/feds01/zenith"
 
 [workspace.dependencies]
+zenith_config = { path = "crates/zenith_config" }
 zenith_graph = { path = "crates/zenith_graph" }
 zenith_resolve = { path = "crates/zenith_resolve" }
 zenith_utils = { path = "crates/zenith_utils" }

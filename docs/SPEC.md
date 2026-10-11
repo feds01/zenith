@@ -206,7 +206,8 @@ file names need no escaping:
 
 `path` takes any string-form selector. `except` takes a list of selectors.
 `directive` is an exact directive string from the file's prologue
-([§2.6](#26-directives)).
+([§2.6](#26-directives)); it only applies to path and `pkg:` selectors,
+since the others match no files.
 
 **(settled)** A selector with a `directive` resolves to **one unit per matching
 file**, rather than one per matched directory. "`use client` file X reaches
@@ -712,13 +713,13 @@ imports and excluded modules, so this needs no new algorithms.
 | Crate | Responsibility |
 |---|---|
 | `zenith` | The binary: `cli.rs`, `commands/*`, `crash.rs`, `version.rs`, `build.rs` |
-| `zenith_config` | Config types (serde + schemars), discovery, TOML parsing, validation into typed contract definitions |
+| `zenith_config` | Config types (serde + schemars), discovery, TOML parsing, validation into typed contract definitions, including the syntax of selectors, layers and ignored imports |
 | `zenith_workspace` | File walker (adapted from the ruff-derived resolver in teamsearch and bracketlint), workspace package discovery |
 | `zenith_parse` | oxc-based extraction of imports, directives and suppression comments |
 | `zenith_resolve` | `oxc_resolver` setup and resolution classification, plus `exports`-aware workspace resolution |
 | `zenith_graph` | The module tree and import graph: interned tokens, hierarchy, edges with details, pathfinding, chains, layers, cycle breakers (a grimp port). No IO. |
 | `zenith_index` | Orchestrates walk, parse and resolve into a `Graph` |
-| `zenith_contracts` | Selectors and units, per-contract views, the six contract types, the findings model, baseline, suppressions |
+| `zenith_contracts` | Resolving selectors into units, per-contract views, the six contract types, the findings model, baseline, suppressions |
 | `zenith_reporting` | Renderers (`pretty`, `compact`, `json`, `github`) using `annotate-snippets` |
 | `zenith_utils` | Logging, output streams, highlighting, the glob dialect and name patterns, printing helpers, tree writing, line index, byte ranges, timers, path helpers (mostly from bracketlint), and what can be told about a specifier from its text (package names, schemes, queries) |
 

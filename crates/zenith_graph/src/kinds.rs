@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use bitflags::bitflags;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -54,54 +55,47 @@ impl fmt::Display for ImportKind {
     }
 }
 
-/// A set of [`ImportKind`]s, stored as a bit set.
-#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct KindSet(u8);
+bitflags! {
+    /// A set of [`ImportKind`]s, with one flag per kind. A single kind
+    /// converts into the set that holds just it.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+    pub struct KindSet: u8 {
+        /// [`ImportKind::Value`].
+        const VALUE = ImportKind::Value.bit();
 
-impl KindSet {
-    /// The empty set.
-    pub const EMPTY: KindSet = KindSet(0);
+        /// [`ImportKind::Type`].
+        const TYPE = ImportKind::Type.bit();
 
-    /// Whether the set contains `kind`.
-    pub const fn contains(self, kind: ImportKind) -> bool {
-        self.0 & kind.bit() != 0
-    }
+        /// [`ImportKind::Dynamic`].
+        const DYNAMIC = ImportKind::Dynamic.bit();
 
-    /// Add `kind` to the set.
-    pub fn insert(&mut self, kind: ImportKind) {
-        self.0 |= kind.bit();
-    }
-
-    /// Whether the set is empty.
-    pub const fn is_empty(self) -> bool {
-        self.0 == 0
-    }
-
-    /// Iterate over the kinds in the set, in the order of [`ImportKind::ALL`].
-    pub fn iter(self) -> impl Iterator<Item = ImportKind> {
-        ImportKind::ALL.into_iter().filter(move |kind| self.contains(*kind))
+        /// [`ImportKind::Require`].
+        const REQUIRE = ImportKind::Require.bit();
     }
 }
 
-impl fmt::Debug for KindSet {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_set().entries(self.iter()).finish()
+impl KindSet {
+    /// Iterate over the kinds in the set, in the order of [`ImportKind::ALL`].
+    pub fn kinds(self) -> impl Iterator<Item = ImportKind> {
+        ImportKind::ALL.into_iter().filter(move |kind| self.contains((*kind).into()))
+    }
+}
+
+impl From<ImportKind> for KindSet {
+    fn from(kind: ImportKind) -> Self {
+        KindSet::from_bits_retain(kind.bit())
     }
 }
 
 impl FromIterator<ImportKind> for KindSet {
     fn from_iter<T: IntoIterator<Item = ImportKind>>(iter: T) -> Self {
-        let mut set = KindSet::EMPTY;
-        set.extend(iter);
-        set
+        iter.into_iter().map(KindSet::from).collect()
     }
 }
 
 impl Extend<ImportKind> for KindSet {
     fn extend<T: IntoIterator<Item = ImportKind>>(&mut self, iter: T) {
-        for kind in iter {
-            self.insert(kind);
-        }
+        self.extend(iter.into_iter().map(KindSet::from));
     }
 }
 
@@ -110,13 +104,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_kind_has_its_own_bit() {
+    fn every_kind_has_its_own_flag() {
         // `KindSet` relies on `ALL` listing every kind once, in declaration
         // order, and on the kinds fitting in a `u8`.
         assert!(ImportKind::ALL.len() <= u8::BITS as usize);
         for (index, kind) in ImportKind::ALL.into_iter().enumerate() {
             assert_eq!(kind as usize, index);
         }
+        let flags = [KindSet::VALUE, KindSet::TYPE, KindSet::DYNAMIC, KindSet::REQUIRE];
+        assert_eq!(ImportKind::ALL.map(KindSet::from), flags);
+        assert_eq!(KindSet::all().kinds().collect::<Vec<_>>(), ImportKind::ALL);
     }
 
     #[test]
@@ -132,29 +129,27 @@ mod tests {
 
     #[test]
     fn kind_sets_hold_any_combination_of_kinds() {
-        let mut set = KindSet::EMPTY;
+        let mut set = KindSet::empty();
         assert!(set.is_empty());
-        assert_eq!(set.iter().count(), 0);
+        assert_eq!(set.kinds().count(), 0);
 
-        set.insert(ImportKind::Require);
-        set.insert(ImportKind::Type);
-        set.insert(ImportKind::Type);
+        set.extend([ImportKind::Require, ImportKind::Type, ImportKind::Type]);
         assert!(!set.is_empty());
-        assert!(set.contains(ImportKind::Type));
-        assert!(set.contains(ImportKind::Require));
-        assert!(!set.contains(ImportKind::Value));
-        assert!(!set.contains(ImportKind::Dynamic));
-        assert_eq!(set.iter().collect::<Vec<_>>(), [ImportKind::Type, ImportKind::Require]);
-        assert_eq!(format!("{set:?}"), "{Type, Require}");
+        assert!(set.contains(ImportKind::Type.into()));
+        assert!(set.contains(ImportKind::Require.into()));
+        assert!(!set.contains(ImportKind::Value.into()));
+        assert!(!set.contains(ImportKind::Dynamic.into()));
+        assert_eq!(set.kinds().collect::<Vec<_>>(), [ImportKind::Type, ImportKind::Require]);
+        assert_eq!(format!("{set:?}"), "KindSet(TYPE | REQUIRE)");
     }
 
     #[test]
     fn kind_sets_collect_from_kinds() {
         let set: KindSet = [ImportKind::Dynamic, ImportKind::Value].into_iter().collect();
-        assert_eq!(set.iter().collect::<Vec<_>>(), [ImportKind::Value, ImportKind::Dynamic]);
+        assert_eq!(set.kinds().collect::<Vec<_>>(), [ImportKind::Value, ImportKind::Dynamic]);
 
         let all: KindSet = ImportKind::ALL.into_iter().collect();
-        assert!(ImportKind::ALL.into_iter().all(|kind| all.contains(kind)));
-        assert_eq!(KindSet::default(), KindSet::EMPTY);
+        assert_eq!(all, KindSet::all());
+        assert_eq!(KindSet::default(), KindSet::empty());
     }
 }

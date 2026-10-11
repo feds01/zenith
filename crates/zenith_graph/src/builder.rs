@@ -3,27 +3,37 @@
 
 use std::{fmt, mem};
 
+use index_vec::{IndexVec, index_vec};
 use rustc_hash::FxHashMap;
+use thin_vec::ThinVec;
+use zenith_utils::path::{is_relative_posix, posix_parent};
 
 use crate::{Graph, ImportDetail, ModuleId, NodeKind, graph::NodeParts};
 
-/// A handle to a file while a graph is being built.
-///
-/// Only files have imports, so [`GraphBuilder::add_import`] takes the
-/// importer as a file handle. Handles are not [`ModuleId`]s, since ids are
-/// assigned by [`GraphBuilder::finish`], and a handle only means something to
-/// the builder that returned it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FileHandle(u32);
+index_vec::define_index_type! {
+    /// A handle to a file while a graph is being built.
+    ///
+    /// Only files have imports, so [`GraphBuilder::add_import`] takes the
+    /// importer as a file handle. Handles are not [`ModuleId`]s, since ids
+    /// are assigned by [`GraphBuilder::finish`], and a handle only means
+    /// something to the builder that returned it.
+    pub struct FileHandle = u32;
+    DEBUG_FORMAT = "FileHandle({})";
+    MAX_INDEX = u32::MAX as usize;
+}
 
-/// A handle to anything an import can point at while a graph is being built:
-/// a file, an external package or a builtin. Files convert into it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct NodeHandle(u32);
+index_vec::define_index_type! {
+    /// A handle to anything an import can point at while a graph is being
+    /// built: a file, an external package or a builtin. Files convert into
+    /// it.
+    pub struct NodeHandle = u32;
+    DEBUG_FORMAT = "NodeHandle({})";
+    MAX_INDEX = u32::MAX as usize;
+}
 
 impl From<FileHandle> for NodeHandle {
     fn from(file: FileHandle) -> Self {
-        NodeHandle(file.0)
+        NodeHandle::from_foreign(file)
     }
 }
 
@@ -102,20 +112,20 @@ struct PendingNode {
 
     /// The handle of the parent directory, or `None` for the root and for
     /// external packages and builtins.
-    parent: Option<u32>,
+    parent: Option<NodeHandle>,
 
     /// The directive prologue of a scanned file.
-    directives: Vec<String>,
+    directives: ThinVec<String>,
 }
 
 /// An import while the graph is being built.
 #[derive(Debug)]
 struct PendingImport {
     /// The handle of the importing file.
-    importer: u32,
+    importer: NodeHandle,
 
     /// The handle of the imported node.
-    imported: u32,
+    imported: NodeHandle,
 
     /// The import statement or expression.
     detail: ImportDetail,
@@ -130,10 +140,10 @@ struct PendingImport {
 pub struct GraphBuilder {
     /// The handle of every node, by name. This holds the only copy of each
     /// name until [`GraphBuilder::finish`] moves the names into the graph.
-    handles: FxHashMap<String, u32>,
+    handles: FxHashMap<String, NodeHandle>,
 
     /// Every node, indexed by handle. The root directory is handle 0.
-    nodes: Vec<PendingNode>,
+    nodes: IndexVec<NodeHandle, PendingNode>,
 
     /// Every import, in insertion order.
     imports: Vec<PendingImport>,
@@ -148,24 +158,25 @@ impl Default for GraphBuilder {
 impl GraphBuilder {
     /// Create a builder containing only the root directory.
     pub fn new() -> Self {
-        let mut handles = FxHashMap::default();
-        handles.insert(String::new(), 0);
-        let root = PendingNode { kind: NodeKind::Directory, parent: None, directives: Vec::new() };
-        Self { handles, nodes: vec![root], imports: Vec::new() }
+        let root =
+            PendingNode { kind: NodeKind::Directory, parent: None, directives: ThinVec::new() };
+        let nodes = index_vec![root];
+        let handles = FxHashMap::from_iter([(String::new(), NodeHandle::new(0))]);
+        Self { handles, nodes, imports: Vec::new() }
     }
 
     /// Add a file by its POSIX path relative to the root, e.g.
     /// `web/src/app.ts`, along with its ancestor directories. Adding a file
     /// that exists returns its handle.
     pub fn add_file(&mut self, path: &str) -> Result<FileHandle, GraphError> {
-        if !is_normalised_path(path) {
+        if !is_relative_posix(path) {
             return Err(GraphError::InvalidPath { path: path.to_string() });
         }
         if let Some(&handle) = self.handles.get(path) {
-            return self.expect_kind(handle, path, NodeKind::File).map(FileHandle);
+            return self.expect_kind(handle, path, NodeKind::File).map(FileHandle::from_foreign);
         }
-        let parent = self.directory(parent_path(path))?;
-        self.insert(path, NodeKind::File, Some(parent)).map(FileHandle)
+        let parent = self.directory(posix_parent(path))?;
+        self.insert(path, NodeKind::File, Some(parent)).map(FileHandle::from_foreign)
     }
 
     /// Add an external package by its name, e.g. `npm:react`. Adding one that
@@ -183,7 +194,7 @@ impl GraphBuilder {
     /// Record the directive prologue of a scanned file, e.g.
     /// `["use client"]`, replacing any recorded before.
     pub fn set_directives(&mut self, file: FileHandle, directives: Vec<String>) {
-        self.nodes[file.0 as usize].directives = directives;
+        self.nodes[NodeHandle::from(file)].directives = ThinVec::from(directives);
     }
 
     /// Record an import from `importer` to `imported`.
@@ -196,9 +207,9 @@ impl GraphBuilder {
         imported: impl Into<NodeHandle>,
         detail: ImportDetail,
     ) {
-        let imported = imported.into();
-        if importer.0 != imported.0 {
-            self.imports.push(PendingImport { importer: importer.0, imported: imported.0, detail });
+        let (importer, imported) = (importer.into(), imported.into());
+        if importer != imported {
+            self.imports.push(PendingImport { importer, imported, detail });
         }
     }
 
@@ -206,18 +217,18 @@ impl GraphBuilder {
     pub fn finish(self) -> Graph {
         let GraphBuilder { handles, mut nodes, imports } = self;
 
-        let mut names: Vec<Box<str>> = vec![Box::default(); nodes.len()];
+        let mut names: IndexVec<NodeHandle, String> = index_vec![String::new(); nodes.len()];
         for (name, handle) in handles {
-            names[handle as usize] = name.into_boxed_str();
+            names[handle] = name;
         }
 
         // Names are unique, so sorting by them is a total order, and the root
         // (`""`) comes first.
-        let mut order: Vec<usize> = (0..nodes.len()).collect();
+        let mut order: Vec<NodeHandle> = nodes.indices().collect();
         order.sort_unstable_by(|a, b| names[*a].cmp(&names[*b]));
-        let mut ids = vec![ModuleId::ROOT; nodes.len()];
+        let mut ids: IndexVec<NodeHandle, ModuleId> = index_vec![ModuleId::ROOT; nodes.len()];
         for (index, handle) in order.iter().enumerate() {
-            ids[*handle] = ModuleId::from_index(index);
+            ids[*handle] = ModuleId::new(index);
         }
 
         let parts = order
@@ -228,16 +239,14 @@ impl GraphBuilder {
                     name: mem::take(&mut names[*handle]),
                     kind: node.kind,
                     directives: mem::take(&mut node.directives),
-                    parent: node.parent.map(|parent| ids[parent as usize]),
+                    parent: node.parent.map(|parent| ids[parent]),
                 }
             })
             .collect();
 
         let mut imports: Vec<_> = imports
             .into_iter()
-            .map(|import| {
-                (ids[import.importer as usize], ids[import.imported as usize], import.detail)
-            })
+            .map(|import| (ids[import.importer], ids[import.imported], import.detail))
             .collect();
         imports.sort_unstable();
         imports.dedup();
@@ -251,25 +260,30 @@ impl GraphBuilder {
             return Err(GraphError::InvalidName { name: name.to_string() });
         }
         if let Some(&handle) = self.handles.get(name) {
-            return self.expect_kind(handle, name, kind).map(NodeHandle);
+            return self.expect_kind(handle, name, kind);
         }
-        self.insert(name, kind, None).map(NodeHandle)
+        self.insert(name, kind, None)
     }
 
     /// Find or add the directory at `path` and its ancestors. Nothing is
     /// added unless every ancestor that exists is a directory.
-    fn directory(&mut self, path: &str) -> Result<u32, GraphError> {
+    fn directory(&mut self, path: &str) -> Result<NodeHandle, GraphError> {
         if let Some(&handle) = self.handles.get(path) {
             return self.expect_kind(handle, path, NodeKind::Directory);
         }
-        let parent = self.directory(parent_path(path))?;
+        let parent = self.directory(posix_parent(path))?;
         self.insert(path, NodeKind::Directory, Some(parent))
     }
 
     /// Check that the node with `handle` and `name` has the kind it is being
     /// added as.
-    fn expect_kind(&self, handle: u32, name: &str, added: NodeKind) -> Result<u32, GraphError> {
-        let existing = self.nodes[handle as usize].kind;
+    fn expect_kind(
+        &self,
+        handle: NodeHandle,
+        name: &str,
+        added: NodeKind,
+    ) -> Result<NodeHandle, GraphError> {
+        let existing = self.nodes[handle].kind;
         if existing == added {
             Ok(handle)
         } else {
@@ -282,30 +296,17 @@ impl GraphBuilder {
         &mut self,
         name: &str,
         kind: NodeKind,
-        parent: Option<u32>,
-    ) -> Result<u32, GraphError> {
+        parent: Option<NodeHandle>,
+    ) -> Result<NodeHandle, GraphError> {
         // Every node's index, and the end of the preorder (the node count),
         // must fit in a `u32`.
-        let handle = u32::try_from(self.nodes.len())
-            .ok()
-            .filter(|handle| *handle < u32::MAX)
-            .ok_or(GraphError::TooManyNodes)?;
+        if self.nodes.len() >= u32::MAX as usize {
+            return Err(GraphError::TooManyNodes);
+        }
+        let handle = self.nodes.push(PendingNode { kind, parent, directives: ThinVec::new() });
         self.handles.insert(name.to_string(), handle);
-        self.nodes.push(PendingNode { kind, parent, directives: Vec::new() });
         Ok(handle)
     }
-}
-
-/// The directory that contains `path`, which is `""` (the root) for a path
-/// with one segment.
-fn parent_path(path: &str) -> &str {
-    path.rsplit_once('/').map_or("", |(parent, _)| parent)
-}
-
-/// Whether `path` is a normalised POSIX path relative to the root: one or
-/// more segments separated by single `/`s, none of them `.` or `..`.
-fn is_normalised_path(path: &str) -> bool {
-    !path.is_empty() && path.split('/').all(|segment| !matches!(segment, "" | "." | ".."))
 }
 
 /// Whether `name` has the form `<scheme>:<name>`, with an alphanumeric

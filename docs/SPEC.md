@@ -714,7 +714,7 @@ imports and excluded modules, so this needs no new algorithms.
 | `zenith_index` | Orchestrates walk, parse and resolve into a `Graph` |
 | `zenith_contracts` | Selectors and units, per-contract views, the six contract types, the findings model, baseline, suppressions |
 | `zenith_reporting` | Renderers (`pretty`, `compact`, `json`, `github`) using `annotate-snippets` |
-| `zenith_utils` | Logging, output streams, highlighting, the glob dialect and name patterns, printing helpers, tree writing, line index, timers, path helpers (mostly from bracketlint) |
+| `zenith_utils` | Logging, output streams, highlighting, the glob dialect and name patterns, printing helpers, tree writing, line index, byte ranges, timers, path helpers (mostly from bracketlint) |
 
 **(settled)** The UI snapshot harness lives at `crates/zenith/tests/ui.rs` (a
 `harness = false` integration test using `libtest-mimic`), not in a separate

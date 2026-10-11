@@ -5,10 +5,9 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use crate::ModuleId;
+use fixedbitset::{Block, FixedBitSet};
 
-/// The number of nodes one word of a [`NodeSet`] holds.
-const WORD_BITS: usize = u64::BITS as usize;
+use crate::ModuleId;
 
 /// A set of [`ModuleId`]s, stored as a bit set indexed by id.
 ///
@@ -16,9 +15,10 @@ const WORD_BITS: usize = u64::BITS as usize;
 /// of node names, so anything derived from a set is deterministic.
 #[derive(Clone, Default)]
 pub struct NodeSet {
-    /// One bit per node id, least significant bit first. Trailing words may
-    /// be zero, so equality and hashing ignore them.
-    words: Vec<u64>,
+    /// One bit per node id. The bit set grows to fit the largest id inserted,
+    /// so two equal sets can differ in length: equality and hashing ignore
+    /// trailing zero blocks, where [`FixedBitSet`]'s own compare the length.
+    bits: FixedBitSet,
 }
 
 impl NodeSet {
@@ -36,85 +36,57 @@ impl NodeSet {
 
     /// Add a node to the set. Returns whether it was newly added.
     pub fn insert(&mut self, id: ModuleId) -> bool {
-        let (word, bit) = position(id);
-        if word >= self.words.len() {
-            self.words.resize(word + 1, 0);
-        }
-        let added = self.words[word] & bit == 0;
-        self.words[word] |= bit;
+        let added = !self.bits.contains(id.index());
+        self.bits.grow_and_insert(id.index());
         added
     }
 
     /// Whether the set contains a node.
     pub fn contains(&self, id: ModuleId) -> bool {
-        let (word, bit) = position(id);
-        self.words.get(word).is_some_and(|word| word & bit != 0)
+        self.bits.contains(id.index())
     }
 
     /// Whether the set is empty.
     pub fn is_empty(&self) -> bool {
-        self.words.iter().all(|word| *word == 0)
+        self.bits.is_clear()
     }
 
     /// The number of nodes in the set.
     pub fn len(&self) -> usize {
-        self.words.iter().map(|word| word.count_ones() as usize).sum()
+        self.bits.count_ones(..)
     }
 
     /// Add every node of `other` to this set.
     pub fn union_with(&mut self, other: &NodeSet) {
-        if other.words.len() > self.words.len() {
-            self.words.resize(other.words.len(), 0);
-        }
-        for (word, other) in self.words.iter_mut().zip(&other.words) {
-            *word |= other;
-        }
+        self.bits.union_with(&other.bits);
     }
 
     /// Remove every node of `other` from this set.
     pub fn difference_with(&mut self, other: &NodeSet) {
-        for (word, other) in self.words.iter_mut().zip(&other.words) {
-            *word &= !other;
-        }
+        self.bits.difference_with(&other.bits);
     }
 
     /// Whether this set shares any node with `other`.
     pub fn intersects(&self, other: &NodeSet) -> bool {
-        self.words.iter().zip(&other.words).any(|(a, b)| a & b != 0)
+        !self.bits.is_disjoint(&other.bits)
     }
 
     /// Iterate over the nodes in ascending id order.
     pub fn iter(&self) -> impl Iterator<Item = ModuleId> + '_ {
-        self.words.iter().enumerate().flat_map(|(index, word)| {
-            let mut word = *word;
-            std::iter::from_fn(move || {
-                if word == 0 {
-                    return None;
-                }
-                let bit = word.trailing_zeros() as usize;
-                // Clear the lowest set bit.
-                word &= word - 1;
-                Some(ModuleId::from_index(index * WORD_BITS + bit))
-            })
-        })
+        self.bits.ones().map(ModuleId::new)
     }
 
-    /// The words up to and including the last non-zero one.
-    fn significant_words(&self) -> &[u64] {
-        let len = self.words.iter().rposition(|word| *word != 0).map_or(0, |last| last + 1);
-        &self.words[..len]
+    /// The blocks up to and including the last non-zero one.
+    fn significant_blocks(&self) -> &[Block] {
+        let blocks = self.bits.as_slice();
+        let len = blocks.iter().rposition(|block| *block != 0).map_or(0, |last| last + 1);
+        &blocks[..len]
     }
-}
-
-/// The word that holds `id`, and the bit for `id` within it.
-fn position(id: ModuleId) -> (usize, u64) {
-    let index = id.index();
-    (index / WORD_BITS, 1 << (index % WORD_BITS))
 }
 
 impl PartialEq for NodeSet {
     fn eq(&self, other: &Self) -> bool {
-        self.significant_words() == other.significant_words()
+        self.significant_blocks() == other.significant_blocks()
     }
 }
 
@@ -122,7 +94,7 @@ impl Eq for NodeSet {}
 
 impl Hash for NodeSet {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.significant_words().hash(state);
+        self.significant_blocks().hash(state);
     }
 }
 
@@ -157,7 +129,7 @@ mod tests {
     use super::*;
 
     fn set(indices: &[usize]) -> NodeSet {
-        indices.iter().map(|index| ModuleId::from_index(*index)).collect()
+        indices.iter().map(|index| ModuleId::new(*index)).collect()
     }
 
     fn indices(set: &NodeSet) -> Vec<usize> {
@@ -165,19 +137,19 @@ mod tests {
     }
 
     #[test]
-    fn inserts_and_finds_nodes_across_words() {
+    fn inserts_and_finds_nodes_across_blocks() {
         let mut nodes = NodeSet::new();
         assert!(nodes.is_empty());
-        assert!(nodes.insert(ModuleId::from_index(200)));
-        assert!(nodes.insert(ModuleId::from_index(1)));
-        assert!(nodes.insert(ModuleId::from_index(64)));
-        assert!(!nodes.insert(ModuleId::from_index(64)));
+        assert!(nodes.insert(ModuleId::new(200)));
+        assert!(nodes.insert(ModuleId::new(1)));
+        assert!(nodes.insert(ModuleId::new(64)));
+        assert!(!nodes.insert(ModuleId::new(64)));
 
         assert!(!nodes.is_empty());
         assert_eq!(nodes.len(), 3);
-        assert!(nodes.contains(ModuleId::from_index(64)));
-        assert!(!nodes.contains(ModuleId::from_index(63)));
-        assert!(!nodes.contains(ModuleId::from_index(10_000)));
+        assert!(nodes.contains(ModuleId::new(64)));
+        assert!(!nodes.contains(ModuleId::new(63)));
+        assert!(!nodes.contains(ModuleId::new(10_000)));
         assert_eq!(indices(&nodes), [1, 64, 200]);
         assert_eq!(indices(&NodeSet::single(ModuleId::ROOT)), [0]);
     }
@@ -195,13 +167,14 @@ mod tests {
         nodes.difference_with(&set(&[1, 300, 400]));
         assert_eq!(indices(&nodes), [2, 64, 200]);
 
-        nodes.extend([ModuleId::from_index(5)]);
+        nodes.extend([ModuleId::new(5)]);
         assert_eq!(indices(&nodes), [2, 5, 64, 200]);
     }
 
     #[test]
     fn equal_sets_compare_and_hash_equal_however_they_were_built() {
-        // Removing the only node of the last word leaves a trailing zero word.
+        // Removing the only node of the last block leaves a trailing zero
+        // block.
         let mut shrunk = set(&[3, 500]);
         shrunk.difference_with(&set(&[500]));
         let direct = set(&[3]);

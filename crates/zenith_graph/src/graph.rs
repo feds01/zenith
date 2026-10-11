@@ -1,32 +1,29 @@
 //! The graph: the module tree of a project, its external packages and
 //! builtins, and the imports between them.
 
+use index_vec::{IndexSlice, IndexVec};
+use thin_vec::ThinVec;
+use zenith_utils::location::ByteRange;
+
 use crate::{ImportKind, NodeSet};
 
-/// An opaque handle to a node in a [`Graph`].
-///
-/// Ids are assigned in alphabetical (byte-wise) order of node names when the
-/// graph is built, so sorting by id is the same as sorting by name. This keeps
-/// every traversal, and therefore every report, deterministic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ModuleId(u32);
+index_vec::define_index_type! {
+    /// An opaque handle to a node in a [`Graph`].
+    ///
+    /// Ids are assigned in alphabetical (byte-wise) order of node names when
+    /// the graph is built, so sorting by id is the same as sorting by name.
+    /// This keeps every traversal, and therefore every report, deterministic.
+    ///
+    /// [`ModuleId::index`] runs from 0 up to the graph's node count, so it
+    /// can index side tables with one entry per node.
+    pub struct ModuleId = u32;
+    DEBUG_FORMAT = "ModuleId({})";
+    MAX_INDEX = u32::MAX as usize;
+}
 
 impl ModuleId {
     /// The root directory of the project, whose name is `""`.
-    pub const ROOT: ModuleId = ModuleId(0);
-
-    /// Create an id from an index. The builder never creates more nodes than
-    /// a `u32` can index.
-    pub(crate) fn from_index(index: usize) -> Self {
-        debug_assert!(u32::try_from(index).is_ok(), "node index {index} does not fit in a `u32`");
-        Self(index as u32)
-    }
-
-    /// The index of the node, from 0 up to the graph's node count. Use it for
-    /// side tables with one entry per node.
-    pub fn index(self) -> usize {
-        self.0 as usize
-    }
+    pub const ROOT: ModuleId = ModuleId::from_raw_unchecked(0);
 }
 
 /// What a node in the graph represents.
@@ -64,8 +61,9 @@ pub struct Node {
     /// What the node represents.
     kind: NodeKind,
 
-    /// The directive prologue of a scanned file.
-    directives: Vec<String>,
+    /// The directive prologue of a scanned file. Almost every node has none,
+    /// so this is a [`ThinVec`]: one pointer wide, where a `Vec` is three.
+    directives: ThinVec<String>,
 
     /// The position of the node in [`Graph::preorder`].
     pre: u32,
@@ -121,12 +119,8 @@ pub struct ImportDetail {
     /// The 1-based column of the start of the import, in characters.
     pub column: u32,
 
-    /// The byte offset of the start of the import in the importing file.
-    pub start: u32,
-
-    /// The byte offset just past the end of the import in the importing
-    /// file.
-    pub end: u32,
+    /// Where the import is in the importing file.
+    pub range: ByteRange,
 
     /// The specifier as written in the source, e.g. `@acme/ui` or `./api`.
     pub specifier: String,
@@ -149,7 +143,7 @@ pub struct ImportDetail {
 #[derive(Debug)]
 pub struct Graph {
     /// Every node, indexed by id, so sorted by name.
-    nodes: Vec<Node>,
+    nodes: IndexVec<ModuleId, Node>,
 
     /// The children of every node.
     children: Adjacency,
@@ -178,13 +172,13 @@ pub struct Graph {
 #[derive(Debug)]
 pub(crate) struct NodeParts {
     /// The node's name.
-    pub(crate) name: Box<str>,
+    pub(crate) name: String,
 
     /// What the node represents.
     pub(crate) kind: NodeKind,
 
     /// The directive prologue of a scanned file.
-    pub(crate) directives: Vec<String>,
+    pub(crate) directives: ThinVec<String>,
 
     /// The parent directory, or `None` for the root and for external
     /// packages and builtins.
@@ -210,7 +204,7 @@ impl Graph {
             nodes
                 .iter()
                 .enumerate()
-                .filter_map(|(index, node)| Some((node.parent?, ModuleId::from_index(index)))),
+                .filter_map(|(index, node)| Some((node.parent?, ModuleId::new(index)))),
         );
 
         // Imports are sorted by importer, then imported, then detail, so each
@@ -233,10 +227,10 @@ impl Graph {
             edges.iter().map(|(importer, imported)| (*imported, *importer)),
         );
 
-        let mut nodes: Vec<Node> = nodes
+        let mut nodes: IndexVec<ModuleId, Node> = nodes
             .into_iter()
             .map(|node| Node {
-                name: node.name,
+                name: node.name.into_boxed_str(),
                 kind: node.kind,
                 directives: node.directives,
                 pre: 0,
@@ -256,7 +250,7 @@ impl Graph {
 
     /// Get a node.
     pub fn node(&self, id: ModuleId) -> &Node {
-        &self.nodes[id.index()]
+        &self.nodes[id]
     }
 
     /// The name of a node.
@@ -266,12 +260,12 @@ impl Graph {
 
     /// Look up a node by name.
     pub fn id(&self, name: &str) -> Option<ModuleId> {
-        self.nodes.binary_search_by(|node| node.name().cmp(name)).ok().map(ModuleId::from_index)
+        self.nodes.binary_search_by(|node| node.name().cmp(name)).ok()
     }
 
     /// Every node id, in ascending order.
     pub fn ids(&self) -> impl ExactSizeIterator<Item = ModuleId> + use<> {
-        (0..self.nodes.len()).map(ModuleId::from_index)
+        self.nodes.indices()
     }
 
     /// The children of a node. Only directories have children.
@@ -346,7 +340,10 @@ impl Graph {
 /// Record the preorder position and subtree end of every node, and return
 /// the preorder: the module tree depth first from the root, then the external
 /// packages and builtins.
-fn assign_preorder(nodes: &mut [Node], children: &Adjacency) -> Vec<ModuleId> {
+fn assign_preorder(
+    nodes: &mut IndexSlice<ModuleId, [Node]>,
+    children: &Adjacency,
+) -> Vec<ModuleId> {
     /// A step of the depth-first traversal.
     enum Visit {
         /// Record the node and queue its children.
@@ -367,19 +364,19 @@ fn assign_preorder(nodes: &mut [Node], children: &Adjacency) -> Vec<ModuleId> {
     while let Some(visit) = stack.pop() {
         match visit {
             Visit::Enter(id) => {
-                nodes[id.index()].pre = position(&preorder);
+                nodes[id].pre = position(&preorder);
                 preorder.push(id);
                 stack.push(Visit::Exit(id));
                 stack.extend(children.get(id).iter().rev().map(|child| Visit::Enter(*child)));
             }
-            Visit::Exit(id) => nodes[id.index()].post = position(&preorder),
+            Visit::Exit(id) => nodes[id].post = position(&preorder),
         }
     }
 
-    for (index, node) in nodes.iter_mut().enumerate() {
+    for (id, node) in nodes.iter_mut_enumerated() {
         if !node.is_internal() {
             node.pre = position(&preorder);
-            preorder.push(ModuleId::from_index(index));
+            preorder.push(id);
             node.post = position(&preorder);
         }
     }

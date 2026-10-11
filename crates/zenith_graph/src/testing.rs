@@ -1,5 +1,7 @@
 //! Helpers for the crate's unit tests.
 
+use zenith_utils::location::ByteRange;
+
 use crate::{Graph, GraphBuilder, ImportDetail, ImportKind, ModuleId, NodeHandle};
 
 /// Build a graph from `(importer, imported)` pairs. Importers are files. An
@@ -28,8 +30,7 @@ pub(crate) fn detail(line: u32, kind: ImportKind) -> ImportDetail {
     ImportDetail {
         line,
         column: 1,
-        start: line * 100,
-        end: line * 100 + 10,
+        range: ByteRange::new(line * 100, line * 100 + 10),
         specifier: format!("./module-{line}"),
         kind,
     }

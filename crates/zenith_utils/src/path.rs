@@ -45,6 +45,19 @@ pub fn relative_posix(root: &Path, path: &Path) -> Option<String> {
     Some(out)
 }
 
+/// Whether `path` is a normalised POSIX path relative to a root, such as
+/// [`relative_posix`] makes: one or more segments separated by single `/`s,
+/// none of them `.` or `..`. The root itself, `""`, is not.
+pub fn is_relative_posix(path: &str) -> bool {
+    !path.is_empty() && path.split('/').all(|segment| !matches!(segment, "" | "." | ".."))
+}
+
+/// The directory that contains the relative POSIX `path`, which is `""` (the
+/// root) for a path with one segment.
+pub fn posix_parent(path: &str) -> &str {
+    path.rsplit_once('/').map_or("", |(parent, _)| parent)
+}
+
 #[cfg(test)]
 mod tests {
     use std::env;
@@ -59,6 +72,23 @@ mod tests {
         assert_eq!(relative_posix(root, Path::new("/other/x.ts")), None);
         assert_eq!(relative_posix(root, Path::new("/repo/../etc/passwd")), None);
         assert_eq!(relative_posix(root, root).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn relative_posix_paths_are_normalised() {
+        for path in ["a.ts", "web/src/app.ts", "web/(group)/.hidden/page.tsx"] {
+            assert!(is_relative_posix(path), "{path:?}");
+        }
+        for path in ["", "/a.ts", "a/", "a//b.ts", "./a.ts", "a/./b.ts", "a/../b.ts", ".", ".."] {
+            assert!(!is_relative_posix(path), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn the_parent_of_a_top_level_path_is_the_root() {
+        assert_eq!(posix_parent("web/src/app.ts"), "web/src");
+        assert_eq!(posix_parent("web"), "");
+        assert_eq!(posix_parent(""), "");
     }
 
     #[cfg(windows)]

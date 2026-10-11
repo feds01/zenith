@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn edge_sets_hold_directed_pairs() {
-        let [a, b, c] = [1, 2, 3].map(ModuleId::from_index);
+        let [a, b, c] = [1, 2, 3].map(ModuleId::new);
         let mut edges = EdgeSet::new();
         assert!(edges.insert(a, b));
         assert!(!edges.insert(a, b));

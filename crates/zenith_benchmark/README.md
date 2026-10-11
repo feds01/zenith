@@ -15,7 +15,7 @@ just bench glob_is_match --sample-count 20
 Extra arguments go to divan, so `just bench --help` lists its options.
 Allocations are counted with divan's `AllocProfiler`, which only sees the
 benchmark's own thread, so the allocations of the walk's worker threads
-don't show up in its counts.
+don't show up in its counts, and nor do the parse and resolve workers'.
 
 In CI, the CodSpeed workflow runs them under CodSpeed's simulation and
 memory instruments, on every commit to `main` and on PRs that touch the
@@ -30,6 +30,8 @@ benchmarked crates.
 | `glob` | `name_pattern_is_match`: matching a name pattern | Five patterns, against every workspace and npm package name |
 | `workspace` | `walk`: finding the files to scan, with the default settings | Repositories of 1k, 10k and 50k source files |
 | `workspace` | `discover_packages`: finding the workspace packages | The same repositories |
+| `pipeline` | `pipeline`: running every stage up to the graph, with the default configuration | The same repositories |
+| `pipeline` | `parse`, `resolve`, `graph`: each of those stages on its own | The same repositories |
 
 The 50k-file repository is only used locally; CodSpeed's simulation would
 take too long on it.

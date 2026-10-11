@@ -16,6 +16,10 @@ name = "glob"
 harness = false
 
 [[bench]]
+name = "pipeline"
+harness = false
+
+[[bench]]
 name = "workspace"
 harness = false
 
@@ -30,6 +34,8 @@ heck = { workspace = true }
 tempfile = { workspace = true }
 
 [dev-dependencies]
+zenith_pipeline = { workspace = true }
+
 divan = { workspace = true }
 
 [lints]

@@ -1,6 +1,7 @@
 //! Utilities shared by the zenith crates: file reading and path helpers,
-//! source locations, what can be told about an import specifier from its text,
-//! and the glob dialect that selectors are written in.
+//! source locations and line indexes, what can be told about an import
+//! specifier from its text, and the glob dialect that selectors are written
+//! in.
 
 pub mod fs;
 pub mod glob;

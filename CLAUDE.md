@@ -49,8 +49,8 @@ it when responsibilities move. On `main` today:
   directives.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`, its
   classification, and `exports`-aware workspace resolution.
-- `zenith_utils`: file reading, path and specifier helpers, byte ranges, and
-  the glob dialect and name patterns.
+- `zenith_utils`: file reading, path and specifier helpers, byte ranges, the
+  glob dialect and name patterns, and the line index.
 - `zenith_workspace`: the file walker and workspace package discovery.
 
 Key invariants:

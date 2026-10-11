@@ -1,0 +1,19 @@
+[package]
+name = "zenith_resolve"
+version = "0.1.0"
+description = "Resolves import specifiers the way TypeScript and bundlers do"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = false
+
+[dependencies]
+oxc_resolver = { workspace = true }
+zenith_utils = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

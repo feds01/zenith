@@ -534,9 +534,11 @@ webpack's enhanced-resolve, through `resolve_file`. With
 `extends` and project references honoured. Defaults:
 
 - `extensions`: `.ts .tsx .d.ts .mts .cts .js .jsx .mjs .cjs .json`
-- `extension_alias`: `.js → [.ts, .tsx, .js]`, `.jsx → [.tsx, .jsx]`, `.mjs → [.mts, .mjs]`, `.cjs → [.cts, .cjs]`
+- `extension_alias`, in the order TypeScript tries them:
+  `.js → [.ts, .tsx, .d.ts, .js, .jsx]`, `.jsx → [.tsx, .ts, .d.ts, .jsx, .js]`,
+  `.mjs → [.mts, .d.mts, .mjs]`, `.cjs → [.cts, .d.cts, .cjs]`
 - `builtin_modules: true`, `symlinks: true` (realpath, so bun and pnpm links
-  land on workspace sources)
+  land on workspace sources), `node_path: false` (`NODE_PATH` is ignored)
 - **Workspace fallback (settled):** when normal resolution of a bare
   specifier fails and its package name is a workspace package, zenith resolves
   it directly against the package directory. If the package has an `exports`
@@ -555,7 +557,7 @@ Each resolution is then classified:
 | Result | Becomes |
 |---|---|
 | path inside the root, not under `node_modules` | internal file node |
-| path under `node_modules`, or outside the root | `npm:<package name taken from the specifier>` |
+| path under `node_modules`, or outside the root | `npm:<package name taken from the specifier>` (for a specifier that isn't a package name, from the path after its last `node_modules`); unresolved if there is none |
 | builtin error | `node:<name>` (or `bun:<name>`) |
 | a bare specifier that fails to resolve | `npm:<package name>`, flagged *unresolved*. This keeps `npm:` contracts working in CI without `node_modules`. |
 | a relative or absolute specifier that fails | unresolved, not in the graph, reported as a warning (unless it matches `ignore_unresolved`) |

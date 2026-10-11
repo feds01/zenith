@@ -11,6 +11,7 @@ repository = "https://github.com/feds01/zenith"
 
 [workspace.dependencies]
 zenith_graph = { path = "crates/zenith_graph" }
+zenith_resolve = { path = "crates/zenith_resolve" }
 zenith_utils = { path = "crates/zenith_utils" }
 zenith_workspace = { path = "crates/zenith_workspace" }
 
@@ -23,6 +24,7 @@ fixedbitset = { version = "0.5.7" }
 ignore = { version = "0.4.33" }
 index_vec = { version = "0.1.4" }
 log = { version = "0.4.34" }
+oxc_resolver = { version = "11.24.3" }
 path-absolutize = { version = "4.0.1" }
 rustc-hash = { version = "2.1.3" }
 schemars = { version = "1.2.2", features = ["indexmap2"] }

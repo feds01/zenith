@@ -95,8 +95,9 @@ to packages by name with `pkg:` selectors ([§3](#3-selectors)).
 ### 2.4 Imports (edges)
 
 An **import** is a directed edge from a file node to a file, external package
-or builtin node, with one or more **details**. Each detail records the line,
-column and span of the statement, the raw specifier, and its **kind**:
+or builtin node, with one or more **details**. Each detail records the byte
+range of the statement (reports work out its line and column from that), the
+raw specifier, and its **kind**:
 
 | Kind | Produced by |
 |---|---|

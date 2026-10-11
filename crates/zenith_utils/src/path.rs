@@ -52,6 +52,14 @@ pub fn is_relative_posix(path: &str) -> bool {
     !path.is_empty() && path.split('/').all(|segment| !matches!(segment, "" | "." | ".."))
 }
 
+/// Whether `extension` is a file extension with its leading `.`, such as `.ts`
+/// or `.d.ts`: no path separators, and no empty parts between the `.`s.
+pub fn is_extension(extension: &str) -> bool {
+    extension.strip_prefix('.').is_some_and(|name| {
+        !name.contains(['/', '\\']) && name.split('.').all(|part| !part.is_empty())
+    })
+}
+
 /// The directory that contains the relative POSIX `path`, which is `""` (the
 /// root) for a path with one segment.
 pub fn posix_parent(path: &str) -> &str {
@@ -81,6 +89,16 @@ mod tests {
         }
         for path in ["", "/a.ts", "a/", "a//b.ts", "./a.ts", "a/./b.ts", "a/../b.ts", ".", ".."] {
             assert!(!is_relative_posix(path), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn extensions_start_with_a_dot() {
+        for extension in [".ts", ".d.ts", ".json", ".module.css"] {
+            assert!(is_extension(extension), "{extension:?}");
+        }
+        for extension in ["", ".", "..", "ts", "d.ts", ".d..ts", ".ts.", "./ts", ".a/b", ".a\\b"] {
+            assert!(!is_extension(extension), "{extension:?}");
         }
     }
 

@@ -534,9 +534,11 @@ webpack's enhanced-resolve, through `resolve_file`. With
 `extends` and project references honoured. Defaults:
 
 - `extensions`: `.ts .tsx .d.ts .mts .cts .js .jsx .mjs .cjs .json`
-- `extension_alias`: `.js → [.ts, .tsx, .js]`, `.jsx → [.tsx, .jsx]`, `.mjs → [.mts, .mjs]`, `.cjs → [.cts, .cjs]`
+- `extension_alias`, in the order TypeScript tries them:
+  `.js → [.ts, .tsx, .d.ts, .js, .jsx]`, `.jsx → [.tsx, .ts, .d.ts, .jsx, .js]`,
+  `.mjs → [.mts, .d.mts, .mjs]`, `.cjs → [.cts, .d.cts, .cjs]`
 - `builtin_modules: true`, `symlinks: true` (realpath, so bun and pnpm links
-  land on workspace sources)
+  land on workspace sources), `node_path: false` (`NODE_PATH` is ignored)
 - **Workspace fallback (settled):** when normal resolution of a bare
   specifier fails and its package name is a workspace package, zenith resolves
   it directly against the package directory. If the package has an `exports`
@@ -545,6 +547,10 @@ webpack's enhanced-resolve, through `resolve_file`. With
   does not export is unresolved, matching TypeScript and Node. Without
   `exports`, the subpath is a path inside the package. So workspace imports
   resolve identically with and without `node_modules`.
+- A file whose `tsconfig.json` can't be loaded (because it extends one in a
+  package that isn't installed, say) is resolved without it. A non-relative
+  specifier that then fails is unresolved, with the `tsconfig.json` error as
+  the reason.
 - **Default conditions (settled):** `types`, `source`, `import`, `module`,
   `require`, `node`, `default`. They are matched in the order the package
   lists them. `types` is included so that internal TS packages resolve to
@@ -555,10 +561,10 @@ Each resolution is then classified:
 | Result | Becomes |
 |---|---|
 | path inside the root, not under `node_modules` | internal file node |
-| path under `node_modules`, or outside the root | `npm:<package name taken from the specifier>` |
-| builtin error | `node:<name>` (or `bun:<name>`) |
+| path under `node_modules`, or outside the root | `npm:<package name taken from the specifier>` (for a specifier that isn't a package name, from the path after its last `node_modules`); unresolved if there is none |
+| builtin error, or a `node:` or `bun:` specifier | `node:<name>` (or `bun:<name>`) |
 | a bare specifier that fails to resolve | `npm:<package name>`, flagged *unresolved*. This keeps `npm:` contracts working in CI without `node_modules`. |
-| a relative or absolute specifier that fails | unresolved, not in the graph, reported as a warning (unless it matches `ignore_unresolved`) |
+| any other specifier that fails: relative or absolute, another URL scheme (`virtual:`), a path alias that can't be a package name (`@/x`, `~/x`), or a `[resolve] alias` match | unresolved, not in the graph, reported as a warning (unless it matches `ignore_unresolved`) |
 
 `zenith check` prints one summary line for unresolved imports, and
 `--show-unresolved` lists them.
@@ -714,7 +720,7 @@ imports and excluded modules, so this needs no new algorithms.
 | `zenith_index` | Orchestrates walk, parse and resolve into a `Graph` |
 | `zenith_contracts` | Selectors and units, per-contract views, the six contract types, the findings model, baseline, suppressions |
 | `zenith_reporting` | Renderers (`pretty`, `compact`, `json`, `github`) using `annotate-snippets` |
-| `zenith_utils` | Logging, output streams, highlighting, the glob dialect and name patterns, printing helpers, tree writing, line index, byte ranges, timers, path helpers (mostly from bracketlint) |
+| `zenith_utils` | Logging, output streams, highlighting, the glob dialect and name patterns, printing helpers, tree writing, line index, byte ranges, timers, path helpers (mostly from bracketlint), and what can be told about a specifier from its text (package names, schemes, queries) |
 
 **(settled)** The UI snapshot harness lives at `crates/zenith/tests/ui.rs` (a
 `harness = false` integration test using `libtest-mimic`), not in a separate

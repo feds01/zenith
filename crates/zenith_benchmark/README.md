@@ -17,6 +17,10 @@ Allocations are counted with divan's `AllocProfiler`, which only sees the
 benchmark's own thread, so the allocations of the walk's worker threads
 don't show up in its counts.
 
+In CI, the CodSpeed workflow runs them under CodSpeed's simulation and
+memory instruments, on every commit to `main` and on PRs that touch the
+benchmarked crates.
+
 ## What is measured
 
 | Bench | Benchmark | Input |

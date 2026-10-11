@@ -2,8 +2,8 @@
 //! `pathfinding.rs` and `import_chain_queries.rs`.
 //!
 //! A chain is a path of imports: `[a, b, c]` means that `a` imports `b` and
-//! `b` imports `c`. Every search runs against a [`GraphView`], so it never
-//! uses the imports that a contract ignores.
+//! `b` imports `c`. The searches are methods of [`GraphView`], so they never
+//! use the imports that a contract ignores.
 
 use std::iter;
 
@@ -11,117 +11,90 @@ use rustc_hash::FxHashMap;
 
 use crate::{EdgeSet, GraphView, ModuleId, NodeSet};
 
-/// Find a shortest import chain from a member of `from` to a member of `to`.
-///
-/// This is grimp's bidirectional breadth-first search: it expands one level
-/// of imports forwards from `from`, then one level of importers backwards
-/// from `to`, until the two searches meet. Nodes are expanded in ascending id
-/// order, so the chain found is deterministic.
-///
-/// No chain passes through a member of `excluded_nodes`, or uses an import in
-/// `excluded_imports` (on top of those the view leaves out). The ends of a
-/// chain are never excluded, so `excluded_nodes` may contain members of
-/// `from` and `to`.
-///
-/// Returns `None` if there is no chain, or if `from` and `to` share a node:
-/// overlapping sets don't describe an import between them, so contracts skip
-/// them.
-pub fn find_shortest_chain(
-    view: &GraphView,
-    from: &NodeSet,
-    to: &NodeSet,
-    excluded_nodes: &NodeSet,
-    excluded_imports: &EdgeSet,
-) -> Option<Vec<ModuleId>> {
-    if from.intersects(to) {
-        return None;
+impl GraphView<'_> {
+    /// Find a shortest import chain from a member of `from` to a member of
+    /// `to`.
+    ///
+    /// This is grimp's bidirectional breadth-first search: it expands one
+    /// level of imports forwards from `from`, then one level of importers
+    /// backwards from `to`, until the two searches meet. Nodes are expanded
+    /// in ascending id order, so the chain found is deterministic.
+    ///
+    /// No chain passes through a member of `excluded_nodes`, or uses an
+    /// import in `excluded_imports` (on top of those the view leaves out).
+    /// The ends of a chain are never excluded, so `excluded_nodes` may
+    /// contain members of `from` and `to`.
+    ///
+    /// Returns `None` if there is no chain, or if `from` and `to` share a
+    /// node: overlapping sets don't describe an import between them, so
+    /// contracts skip them.
+    pub fn find_shortest_chain(
+        &self,
+        from: &NodeSet,
+        to: &NodeSet,
+        excluded_nodes: &NodeSet,
+        excluded_imports: &EdgeSet,
+    ) -> Option<Vec<ModuleId>> {
+        if from.intersects(to) {
+            return None;
+        }
+        ChainSearch::default().run(self, from, to, excluded_nodes, excluded_imports)
     }
-    ChainSearch::default().run(view, from, to, excluded_nodes, excluded_imports)
-}
 
-/// Find the shortest import chains from `from` to `to`, as grimp's
-/// `_find_shortest_chains` does.
-///
-/// After each chain is found, its imports are excluded and the search runs
-/// again, until no chain is left. So no import appears in two chains, and
-/// the chains are in the order they were found: every direct import first,
-/// in ascending order, then the indirect chains, shortest first.
-///
-/// Chains never pass through `excluded_nodes`, as in [`find_shortest_chain`].
-/// Overlapping `from` and `to` have no chains.
-pub fn find_shortest_chains(
-    view: &GraphView,
-    from: &NodeSet,
-    to: &NodeSet,
-    excluded_nodes: &NodeSet,
-) -> Vec<Vec<ModuleId>> {
-    let (direct, indirect) =
-        search_chains(&mut ChainSearch::default(), view, from, to, excluded_nodes);
-    direct.into_iter().map(|(a, b)| vec![a, b]).chain(indirect).collect()
-}
+    /// Find the shortest import chains from `from` to `to`, as grimp's
+    /// `_find_shortest_chains` does.
+    ///
+    /// After each chain is found, its imports are excluded and the search
+    /// runs again, until no chain is left. So no import appears in two
+    /// chains, and the chains are in the order they were found: every direct
+    /// import first, in ascending order, then the indirect chains, shortest
+    /// first.
+    ///
+    /// Chains never pass through `excluded_nodes`, as in
+    /// [`Self::find_shortest_chain`]. Overlapping `from` and `to` have no
+    /// chains.
+    pub fn find_shortest_chains(
+        &self,
+        from: &NodeSet,
+        to: &NodeSet,
+        excluded_nodes: &NodeSet,
+    ) -> Vec<Vec<ModuleId>> {
+        let (direct, indirect) = ChainSearch::default().find_chains(self, from, to, excluded_nodes);
+        direct.into_iter().map(|(a, b)| vec![a, b]).chain(indirect).collect()
+    }
 
-/// Every node that imports a member of `targets`, directly or through other
-/// nodes (grimp's `find_downstream_modules`).
-///
-/// As in grimp, the members of `targets` are never part of the result, even
-/// if they import each other.
-pub fn find_downstream(view: &GraphView, targets: &NodeSet) -> NodeSet {
-    let mut seen = targets.clone();
-    let mut stack: Vec<ModuleId> = targets.iter().collect();
-    while let Some(module) = stack.pop() {
-        for importer in view.importers_of(module) {
-            if seen.insert(importer) {
-                stack.push(importer);
+    /// Every node that imports a member of `targets`, directly or through
+    /// other nodes (grimp's `find_downstream_modules`).
+    ///
+    /// As in grimp, the members of `targets` are never part of the result,
+    /// even if they import each other.
+    pub fn find_downstream(&self, targets: &NodeSet) -> NodeSet {
+        let mut seen = targets.clone();
+        let mut stack: Vec<ModuleId> = targets.iter().collect();
+        while let Some(module) = stack.pop() {
+            for importer in self.importers_of(module) {
+                if seen.insert(importer) {
+                    stack.push(importer);
+                }
             }
         }
-    }
-    seen.difference_with(targets);
-    seen
-}
-
-/// Every direct import from a member of `from` to a member of `to`, in
-/// ascending order.
-pub(crate) fn direct_imports<'a>(
-    view: &'a GraphView,
-    from: &'a NodeSet,
-    to: &'a NodeSet,
-) -> impl Iterator<Item = (ModuleId, ModuleId)> + 'a {
-    from.iter().flat_map(move |importer| {
-        view.imports_of(importer)
-            .filter(|imported| to.contains(*imported))
-            .map(move |imported| (importer, imported))
-    })
-}
-
-/// The chains of [`find_shortest_chains`], split into the direct imports and
-/// the indirect chains, which have at least one node between their ends.
-///
-/// `search` holds the buffers, so a caller that runs many searches can reuse
-/// them.
-pub(crate) fn search_chains(
-    search: &mut ChainSearch,
-    view: &GraphView,
-    from: &NodeSet,
-    to: &NodeSet,
-    excluded_nodes: &NodeSet,
-) -> (Vec<(ModuleId, ModuleId)>, Vec<Vec<ModuleId>>) {
-    if from.intersects(to) {
-        return (Vec::new(), Vec::new());
+        seen.difference_with(targets);
+        seen
     }
 
-    // While a direct import is left, the first level of the search finds the
-    // lowest one, so repeated searches find every direct import first, in
-    // ascending order. Collecting them in one pass gives the same chains
-    // without a search for each.
-    let direct: Vec<_> = direct_imports(view, from, to).collect();
-    let mut excluded_imports: EdgeSet = direct.iter().copied().collect();
-
-    let mut indirect = Vec::new();
-    while let Some(chain) = search.run(view, from, to, excluded_nodes, &excluded_imports) {
-        excluded_imports.extend(chain.array_windows().map(|&[a, b]| (a, b)));
-        indirect.push(chain);
+    /// Every direct import from a member of `from` to a member of `to`, in
+    /// ascending order.
+    pub(crate) fn direct_imports<'a>(
+        &'a self,
+        from: &'a NodeSet,
+        to: &'a NodeSet,
+    ) -> impl Iterator<Item = (ModuleId, ModuleId)> + 'a {
+        from.iter().flat_map(move |importer| {
+            self.imports_of(importer)
+                .filter(|imported| to.contains(*imported))
+                .map(move |imported| (importer, imported))
+        })
     }
-    (direct, indirect)
 }
 
 /// The state of a bidirectional search, kept between runs so that repeated
@@ -152,6 +125,38 @@ pub(crate) struct ChainSearch {
 }
 
 impl ChainSearch {
+    /// The chains of [`GraphView::find_shortest_chains`], split into the
+    /// direct imports and the indirect chains, which have at least one node
+    /// between their ends.
+    ///
+    /// A caller that runs many searches can keep one `ChainSearch` to reuse
+    /// its buffers.
+    pub(crate) fn find_chains(
+        &mut self,
+        view: &GraphView,
+        from: &NodeSet,
+        to: &NodeSet,
+        excluded_nodes: &NodeSet,
+    ) -> (Vec<(ModuleId, ModuleId)>, Vec<Vec<ModuleId>>) {
+        if from.intersects(to) {
+            return (Vec::new(), Vec::new());
+        }
+
+        // While a direct import is left, the first level of the search finds
+        // the lowest one, so repeated searches find every direct import
+        // first, in ascending order. Collecting them in one pass gives the
+        // same chains without a search for each.
+        let direct: Vec<_> = view.direct_imports(from, to).collect();
+        let mut excluded_imports: EdgeSet = direct.iter().copied().collect();
+
+        let mut indirect = Vec::new();
+        while let Some(chain) = self.run(view, from, to, excluded_nodes, &excluded_imports) {
+            excluded_imports.extend(chain.array_windows().map(|&[a, b]| (a, b)));
+            indirect.push(chain);
+        }
+        (direct, indirect)
+    }
+
     /// Find a shortest chain from `from` to `to`, which must not overlap.
     fn run(
         &mut self,
@@ -257,7 +262,7 @@ mod tests {
     use super::*;
     use crate::{
         Graph,
-        testing::{Random, graph_of, id, in_both_orders, names},
+        testing::{graph_of, id, in_both_orders, names, random_imports, seeded_rng},
     };
 
     /// The set of the nodes called `names`.
@@ -274,7 +279,7 @@ mod tests {
     ) -> Option<Vec<&'g str>> {
         let view = GraphView::new(graph);
         let (from, to, excluded) = (set(graph, from), set(graph, to), set(graph, excluded));
-        find_shortest_chain(&view, &from, &to, &excluded, &EdgeSet::new())
+        view.find_shortest_chain(&from, &to, &excluded, &EdgeSet::new())
             .map(|chain| names(graph, chain))
     }
 
@@ -282,7 +287,7 @@ mod tests {
     fn chains<'g>(view: &GraphView<'g>, from: &str, to: &str) -> Vec<Vec<&'g str>> {
         let graph = view.graph();
         let (from, to) = (graph.members(id(graph, from)), graph.members(id(graph, to)));
-        find_shortest_chains(view, &from, &to, &NodeSet::new())
+        view.find_shortest_chains(&from, &to, &NodeSet::new())
             .into_iter()
             .map(|chain| names(graph, chain))
             .collect()
@@ -322,8 +327,7 @@ mod tests {
         let none = NodeSet::new();
         for import in [(a, x), (x, d)] {
             let excluded: EdgeSet = [import].into_iter().collect();
-            let chain = find_shortest_chain(
-                &view,
+            let chain = view.find_shortest_chain(
                 &NodeSet::single(a),
                 &NodeSet::single(d),
                 &none,
@@ -371,13 +375,13 @@ mod tests {
 
         let from: NodeSet = [a, b].into_iter().collect();
         let to: NodeSet = [b, c].into_iter().collect();
-        assert_eq!(find_shortest_chain(&view, &from, &to, &none, &EdgeSet::new()), None);
-        assert!(find_shortest_chains(&view, &from, &to, &none).is_empty());
+        assert_eq!(view.find_shortest_chain(&from, &to, &none, &EdgeSet::new()), None);
+        assert!(view.find_shortest_chains(&from, &to, &none).is_empty());
 
         let a = NodeSet::single(a);
-        assert_eq!(find_shortest_chain(&view, &none, &a, &none, &EdgeSet::new()), None);
-        assert_eq!(find_shortest_chain(&view, &a, &none, &none, &EdgeSet::new()), None);
-        assert!(find_shortest_chains(&view, &a, &none, &none).is_empty());
+        assert_eq!(view.find_shortest_chain(&none, &a, &none, &EdgeSet::new()), None);
+        assert_eq!(view.find_shortest_chain(&a, &none, &none, &EdgeSet::new()), None);
+        assert!(view.find_shortest_chains(&a, &none, &none).is_empty());
     }
 
     #[test]
@@ -538,7 +542,7 @@ mod tests {
         ]);
         let view = GraphView::new(&graph);
         let [low, mid, high] = ["low", "mid", "high"].map(|name| graph.members(id(&graph, name)));
-        let chains = find_shortest_chains(&view, &low, &high, &mid);
+        let chains = view.find_shortest_chains(&low, &high, &mid);
         assert_eq!(
             chains.into_iter().map(|chain| names(&graph, chain)).collect::<Vec<_>>(),
             [vec!["low/e.ts", "high/c.ts"], vec!["low/a.ts", "utils/d.ts", "high/c.ts"]]
@@ -555,8 +559,7 @@ mod tests {
 
         let view = GraphView::with_excluded(&graph, [(a, c), (b, c)].into_iter().collect());
         assert!(chains(&view, "a.ts", "c.ts").is_empty());
-        let chain = find_shortest_chain(
-            &view,
+        let chain = view.find_shortest_chain(
             &NodeSet::single(a),
             &NodeSet::single(c),
             &NodeSet::new(),
@@ -591,7 +594,7 @@ mod tests {
     ) -> Vec<Vec<ModuleId>> {
         let mut chains = Vec::new();
         let mut excluded = EdgeSet::new();
-        while let Some(chain) = find_shortest_chain(view, from, to, excluded_nodes, &excluded) {
+        while let Some(chain) = view.find_shortest_chain(from, to, excluded_nodes, &excluded) {
             excluded.extend(chain.array_windows().map(|&[a, b]| (a, b)));
             chains.push(chain);
         }
@@ -630,34 +633,34 @@ mod tests {
 
     #[test]
     fn chains_are_valid_and_shortest_on_generated_graphs() {
-        let mut random = Random::new();
+        let mut random = seeded_rng();
         let files: Vec<String> = (0..12).map(|index| format!("src/{index:02}.ts")).collect();
 
         for _ in 0..300 {
-            let count = random.below(30);
-            let imports = random.imports(&files, count);
+            let count = random.usize(..30);
+            let imports = random_imports(&mut random, &files, count);
             if imports.is_empty() {
                 continue;
             }
             let graph = graph_of(&imports);
             let view = GraphView::new(&graph);
             let (from_count, to_count, excluded_count) =
-                (1 + random.below(3), 1 + random.below(3), random.below(4));
+                (1 + random.usize(..3), 1 + random.usize(..3), random.usize(..4));
             let mut pick = |count: usize| -> NodeSet {
-                (0..count).filter_map(|_| graph.id(&files[random.below(files.len())])).collect()
+                (0..count).filter_map(|_| graph.id(&files[random.usize(..files.len())])).collect()
             };
             let from = pick(from_count);
             let mut to = pick(to_count);
             to.difference_with(&from);
             let excluded = pick(excluded_count);
 
-            let chain = find_shortest_chain(&view, &from, &to, &excluded, &EdgeSet::new());
+            let chain = view.find_shortest_chain(&from, &to, &excluded, &EdgeSet::new());
             let expected = reference_length(&view, &from, &to, &excluded);
             assert_eq!(chain.as_ref().map(|chain| chain.len() - 1), expected, "{imports:?}");
 
             // Collecting the direct imports up front must give the same chains,
             // in order, as a search for every chain.
-            let chains = find_shortest_chains(&view, &from, &to, &excluded);
+            let chains = view.find_shortest_chains(&from, &to, &excluded);
             assert_eq!(chains, repeated_searches(&view, &from, &to, &excluded), "{imports:?}");
             assert_eq!(chains.is_empty(), expected.is_none());
             let mut used = EdgeSet::new();
@@ -715,15 +718,15 @@ mod tests {
         let view = GraphView::new(&graph);
         let targets = set(&graph, &["t1.ts", "t2.ts"]);
         assert_eq!(
-            names(&graph, find_downstream(&view, &targets).iter()),
+            names(&graph, view.find_downstream(&targets).iter()),
             ["a.ts", "b.ts", "c.ts", "f.ts"]
         );
-        assert!(find_downstream(&view, &set(&graph, &["f.ts"])).contains(id(&graph, "a.ts")));
-        assert!(find_downstream(&view, &set(&graph, &["c.ts"])).is_empty());
-        assert!(find_downstream(&view, &NodeSet::new()).is_empty());
+        assert!(view.find_downstream(&set(&graph, &["f.ts"])).contains(id(&graph, "a.ts")));
+        assert!(view.find_downstream(&set(&graph, &["c.ts"])).is_empty());
+        assert!(view.find_downstream(&NodeSet::new()).is_empty());
 
         let [b, t1] = ["b.ts", "t1.ts"].map(|name| id(&graph, name));
         let view = GraphView::with_excluded(&graph, [(b, t1)].into_iter().collect());
-        assert_eq!(names(&graph, find_downstream(&view, &targets).iter()), ["c.ts"]);
+        assert_eq!(names(&graph, view.find_downstream(&targets).iter()), ["c.ts"]);
     }
 }

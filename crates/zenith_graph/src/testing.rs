@@ -1,5 +1,6 @@
 //! Helpers for the crate's unit tests.
 
+use fastrand::Rng;
 use zenith_utils::location::ByteRange;
 
 use crate::{Graph, GraphBuilder, ImportDetail, ImportKind, ModuleId, NodeHandle};
@@ -59,35 +60,21 @@ pub(crate) fn in_both_orders<T: PartialEq + std::fmt::Debug>(
     forwards
 }
 
-/// A xorshift random number generator with a fixed seed, so that generated
-/// graphs are the same on every run.
-pub(crate) struct Random(u64);
+/// A random number generator with a fixed seed, so that generated graphs are
+/// the same on every run.
+pub(crate) fn seeded_rng() -> Rng {
+    Rng::with_seed(0x9e37_79b9_7f4a_7c15)
+}
 
-impl Random {
-    /// A generator with the fixed seed.
-    pub(crate) fn new() -> Self {
-        Self(0x9e37_79b9_7f4a_7c15)
-    }
-
-    /// A number from 0 up to, but not including, `bound`.
-    pub(crate) fn below(&mut self, bound: usize) -> usize {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        (self.0 % bound as u64) as usize
-    }
-
-    /// Up to `count` imports between random `files`, none of a file by
-    /// itself.
-    pub(crate) fn imports<'a>(
-        &mut self,
-        files: &'a [String],
-        count: usize,
-    ) -> Vec<(&'a str, &'a str)> {
-        (0..count)
-            .map(|_| (self.below(files.len()), self.below(files.len())))
-            .filter(|(importer, imported)| importer != imported)
-            .map(|(importer, imported)| (files[importer].as_str(), files[imported].as_str()))
-            .collect()
-    }
+/// Up to `count` imports between random `files`, none of a file by itself.
+pub(crate) fn random_imports<'a>(
+    rng: &mut Rng,
+    files: &'a [String],
+    count: usize,
+) -> Vec<(&'a str, &'a str)> {
+    (0..count)
+        .map(|_| (rng.usize(..files.len()), rng.usize(..files.len())))
+        .filter(|(importer, imported)| importer != imported)
+        .map(|(importer, imported)| (files[importer].as_str(), files[imported].as_str()))
+        .collect()
 }

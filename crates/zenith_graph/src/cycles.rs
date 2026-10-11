@@ -43,7 +43,7 @@ impl UnitGraph {
     ///
     /// Imports within a unit, and imports of nodes outside every unit, are
     /// not dependencies. The order of `units` breaks ties in
-    /// [`nominate_cycle_breakers`].
+    /// [`Self::nominate_cycle_breakers`].
     pub fn build(view: &GraphView, units: &[NodeSet]) -> Self {
         // Only the members matter, so look them up in a map of their own
         // rather than a table of every node in the graph.
@@ -87,6 +87,108 @@ impl UnitGraph {
         &self.dependencies
     }
 
+    /// Nominate the dependencies to remove so that the units become acyclic,
+    /// sorted by importer then imported unit. Empty when they already are.
+    ///
+    /// This is grimp's weighted variant of the Eades–Lin–Smyth heuristic for
+    /// the minimum feedback arc set. The units are put in order: first the
+    /// sources, which nothing left imports; last the sinks, which import
+    /// nothing left; and in between the rest, picking the unit with the
+    /// highest weighted out-degree minus in-degree each time. Every
+    /// dependency that points backwards in that order is a breaker.
+    ///
+    /// Ties go to the unit that comes first, so pass the units in
+    /// alphabetical order of their labels to break ties alphabetically, as
+    /// grimp does.
+    pub fn nominate_cycle_breakers(&self) -> Vec<UnitDependency> {
+        let unit_count = self.unit_count;
+        let mut peeling = Peeling::new(self);
+
+        // Sources go first. Removing one can make the units it imports
+        // sources.
+        let mut front = Vec::with_capacity(unit_count);
+        let mut ready: Vec<usize> =
+            (0..unit_count).filter(|unit| peeling.is_source(*unit)).collect();
+        while let Some(unit) = ready.pop() {
+            peeling.remove(unit);
+            front.push(unit);
+            ready.extend(
+                self.dependencies_of(unit)
+                    .iter()
+                    .map(|dependency| dependency.imported)
+                    .filter(|imported| peeling.is_source(*imported)),
+            );
+        }
+
+        // Sinks go last, each before the sinks it imports, which were
+        // removed first.
+        let mut back = Vec::new();
+        let mut ready: Vec<usize> = (0..unit_count).filter(|unit| peeling.is_sink(*unit)).collect();
+        while let Some(unit) = ready.pop() {
+            peeling.remove(unit);
+            back.push(unit);
+            ready.extend(
+                peeling.importers[unit]
+                    .iter()
+                    .map(|index| self.dependencies[*index].importer)
+                    .filter(|importer| peeling.is_sink(*importer)),
+            );
+        }
+
+        // The rest go in between, the unit that imports the others most, net
+        // of their imports of it, first.
+        while let Some(unit) = peeling.most_importing() {
+            peeling.remove(unit);
+            front.push(unit);
+        }
+
+        let mut position = vec![0; unit_count];
+        for (index, unit) in front.iter().chain(back.iter().rev()).enumerate() {
+            position[*unit] = index;
+        }
+        self.dependencies
+            .iter()
+            .filter(|dependency| position[dependency.imported] < position[dependency.importer])
+            .copied()
+            .collect()
+    }
+
+    /// The shortest path of dependencies from unit `from` to unit `to`, as
+    /// unit indices from `from` to `to`, e.g. to show a cycle through a
+    /// breaker. Ties go to the units that come first. The path from a unit to
+    /// itself is just the unit.
+    ///
+    /// Panics if `from` or `to` is not the index of a unit.
+    pub fn find_path(&self, from: usize, to: usize) -> Option<Vec<usize>> {
+        assert!(
+            from < self.unit_count && to < self.unit_count,
+            "units {from} and {to} are not both among the {} units",
+            self.unit_count
+        );
+        // The unit each unit was first reached from. `from` is its own, so
+        // that it is never reached again.
+        let mut parents: Vec<Option<usize>> = vec![None; self.unit_count];
+        parents[from] = Some(from);
+        let mut queue = VecDeque::from([from]);
+        while let Some(unit) = queue.pop_front() {
+            if unit == to {
+                let mut path: Vec<_> =
+                    iter::successors(Some(to), |&node| parents[node].filter(|_| node != from))
+                        .collect();
+                path.reverse();
+                return Some(path);
+            }
+            for dependency in self.dependencies_of(unit) {
+                let parent = &mut parents[dependency.imported];
+                if parent.is_none() {
+                    *parent = Some(unit);
+                    queue.push_back(dependency.imported);
+                }
+            }
+        }
+        None
+    }
+
     /// The dependencies of `unit` on other units, sorted by imported unit.
     fn dependencies_of(&self, unit: usize) -> &[UnitDependency] {
         let start = self.dependencies.partition_point(|dependency| dependency.importer < unit);
@@ -95,109 +197,37 @@ impl UnitGraph {
     }
 }
 
-/// Nominate the dependencies to remove so that the units become acyclic,
-/// sorted by importer then imported unit. Empty when they already are.
+/// The units left while [`UnitGraph::nominate_cycle_breakers`] puts them in
+/// order, with the weighted degrees among them.
 ///
-/// This is grimp's weighted variant of the Eades–Lin–Smyth heuristic for
-/// the minimum feedback arc set. The units are put in order: first the
-/// sources, which nothing left imports; last the sinks, which import nothing
-/// left; and in between the rest, picking the unit with the highest weighted
-/// out-degree minus in-degree each time. Every dependency that points
-/// backwards in that order is a breaker.
+/// The ordering takes the units out one at a time, and each choice looks only
+/// at the dependencies between the units still left: a unit is a source when
+/// no unit left imports it, a sink when it imports no unit left, and
+/// otherwise ranks by its out-weight minus its in-weight. Rather than recount
+/// the weights for every choice, `Peeling` keeps them up to date:
+/// [`remove`](Self::remove) takes a unit's dependencies off the in-weights of
+/// the units it imports, and its importers' dependencies on it off their
+/// out-weights.
 ///
-/// Ties go to the unit that comes first, so pass the units in alphabetical
-/// order of their labels to break ties alphabetically, as grimp does.
-pub fn nominate_cycle_breakers(units: &UnitGraph) -> Vec<UnitDependency> {
-    let unit_count = units.unit_count;
-    let mut peeling = Peeling::new(units);
-
-    // Sources go first. Removing one can make the units it imports sources.
-    let mut front = Vec::with_capacity(unit_count);
-    let mut ready: Vec<usize> = (0..unit_count).filter(|unit| peeling.is_source(*unit)).collect();
-    while let Some(unit) = ready.pop() {
-        peeling.remove(unit);
-        front.push(unit);
-        ready.extend(
-            units
-                .dependencies_of(unit)
-                .iter()
-                .map(|dependency| dependency.imported)
-                .filter(|imported| peeling.is_source(*imported)),
-        );
-    }
-
-    // Sinks go last, each before the sinks it imports, which were removed
-    // first.
-    let mut back = Vec::new();
-    let mut ready: Vec<usize> = (0..unit_count).filter(|unit| peeling.is_sink(*unit)).collect();
-    while let Some(unit) = ready.pop() {
-        peeling.remove(unit);
-        back.push(unit);
-        ready.extend(
-            peeling.importers[unit]
-                .iter()
-                .map(|index| units.dependencies[*index].importer)
-                .filter(|importer| peeling.is_sink(*importer)),
-        );
-    }
-
-    // The rest go in between, the unit that imports the others most, net of
-    // their imports of it, first.
-    while let Some(unit) = peeling.most_importing() {
-        peeling.remove(unit);
-        front.push(unit);
-    }
-
-    let mut position = vec![0; unit_count];
-    for (index, unit) in front.iter().chain(back.iter().rev()).enumerate() {
-        position[*unit] = index;
-    }
-    units
-        .dependencies
-        .iter()
-        .filter(|dependency| position[dependency.imported] < position[dependency.importer])
-        .copied()
-        .collect()
-}
-
-/// The shortest path of dependencies from unit `from` to unit `to`, as unit
-/// indices from `from` to `to`, e.g. to show a cycle through a breaker. Ties
-/// go to the units that come first. The path from a unit to itself is just
-/// the unit.
+/// For example, take a cycle where `a` imports `b` three times, `b` imports
+/// `c` twice and `c` imports `a` once:
 ///
-/// Panics if `from` or `to` is not the index of a unit.
-pub fn find_unit_path(units: &UnitGraph, from: usize, to: usize) -> Option<Vec<usize>> {
-    assert!(
-        from < units.unit_count && to < units.unit_count,
-        "units {from} and {to} are not both among the {} units",
-        units.unit_count
-    );
-    // The unit each unit was first reached from. `from` is its own, so that
-    // it is never reached again.
-    let mut parents: Vec<Option<usize>> = vec![None; units.unit_count];
-    parents[from] = Some(from);
-    let mut queue = VecDeque::from([from]);
-    while let Some(unit) = queue.pop_front() {
-        if unit == to {
-            let mut path: Vec<_> =
-                iter::successors(Some(to), |&node| parents[node].filter(|_| node != from))
-                    .collect();
-            path.reverse();
-            return Some(path);
-        }
-        for dependency in units.dependencies_of(unit) {
-            let parent = &mut parents[dependency.imported];
-            if parent.is_none() {
-                *parent = Some(unit);
-                queue.push_back(dependency.imported);
-            }
-        }
-    }
-    None
-}
-
-/// The units left while [`nominate_cycle_breakers`] orders them, with the
-/// weighted degrees among them.
+/// | unit | out | in | out - in |
+/// | ---- | --- | -- | -------- |
+/// | `a`  | 3   | 1  | 2        |
+/// | `b`  | 2   | 3  | -1       |
+/// | `c`  | 1   | 2  | -1       |
+///
+/// No unit is a source or a sink, so [`most_importing`](Self::most_importing)
+/// picks `a`. Removing it takes `a -> b` off `b`'s in-weight and `c -> a` off
+/// `c`'s out-weight, which leaves `b` at 2 - 0 and `c` at 0 - 2, so `b` goes
+/// next and `c` last. In the order `a`, `b`, `c`, only `c -> a` points
+/// backwards, so the lightest dependency of the cycle is its breaker.
+///
+/// Removing a unit can also make new sources and sinks. If `x` imports `y`,
+/// `y` imports `z`, and nothing imports `x`, then `x` is the only source at
+/// first. Removing it leaves `y` with an in-weight of 0, so `y` is a source
+/// next, then `z`. Sinks peel off the other end of a chain in the same way.
 struct Peeling<'u> {
     /// The unit graph.
     units: &'u UnitGraph,
@@ -338,7 +368,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            nominate_cycle_breakers(&units),
+            units.nominate_cycle_breakers(),
             [UnitDependency { importer: 1, imported: 0, weight: 1 }]
         );
     }
@@ -351,7 +381,7 @@ mod tests {
         let view = GraphView::with_excluded(&graph, [(y, x)].into_iter().collect());
         let unit_graph = UnitGraph::build(&view, &units);
         assert_eq!(pairs(unit_graph.dependencies()), [(0, 1)]);
-        assert!(nominate_cycle_breakers(&unit_graph).is_empty());
+        assert!(unit_graph.nominate_cycle_breakers().is_empty());
     }
 
     #[test]
@@ -362,9 +392,9 @@ mod tests {
             ("a/x.ts", "c/z.ts"),
             ("d/w.ts", "b/y.ts"),
         ]);
-        assert!(nominate_cycle_breakers(&units_of(&graph, &["a", "b", "c", "d"])).is_empty());
-        assert!(nominate_cycle_breakers(&units_of(&graph, &["a"])).is_empty());
-        assert!(nominate_cycle_breakers(&UnitGraph::default()).is_empty());
+        assert!(units_of(&graph, &["a", "b", "c", "d"]).nominate_cycle_breakers().is_empty());
+        assert!(units_of(&graph, &["a"]).nominate_cycle_breakers().is_empty());
+        assert!(UnitGraph::default().nominate_cycle_breakers().is_empty());
     }
 
     #[test]
@@ -380,19 +410,19 @@ mod tests {
         ]);
         let units = units_of(&graph, &["blue", "green", "red"]);
         assert_eq!(
-            nominate_cycle_breakers(&units),
+            units.nominate_cycle_breakers(),
             [UnitDependency { importer: 2, imported: 0, weight: 1 }]
         );
-        assert_eq!(find_unit_path(&units, 0, 2), Some(vec![0, 1, 2]));
+        assert_eq!(units.find_path(0, 2), Some(vec![0, 1, 2]));
     }
 
     #[test]
     fn a_two_way_dependency_breaks_its_lighter_side() {
         let graph = graph_of(&[("a/x.ts", "b/y.ts"), ("a/z.ts", "b/y.ts"), ("b/y.ts", "a/x.ts")]);
-        assert_eq!(pairs(&nominate_cycle_breakers(&units_of(&graph, &["a", "b"]))), [(1, 0)]);
+        assert_eq!(pairs(&units_of(&graph, &["a", "b"]).nominate_cycle_breakers()), [(1, 0)]);
 
         let graph = graph_of(&[("a/x.ts", "b/y.ts"), ("b/y.ts", "a/x.ts"), ("b/z.ts", "a/x.ts")]);
-        assert_eq!(pairs(&nominate_cycle_breakers(&units_of(&graph, &["a", "b"]))), [(0, 1)]);
+        assert_eq!(pairs(&units_of(&graph, &["a", "b"]).nominate_cycle_breakers()), [(0, 1)]);
     }
 
     #[test]
@@ -410,7 +440,7 @@ mod tests {
         ];
         let breakers = in_both_orders(&imports, |graph| {
             let units = units_of(graph, &["a.ts", "b.ts", "c.ts", "d.ts", "e.ts", "f.ts"]);
-            pairs(&nominate_cycle_breakers(&units))
+            pairs(&units.nominate_cycle_breakers())
         });
         assert_eq!(breakers, [(5, 0)]);
     }
@@ -433,7 +463,7 @@ mod tests {
         ]);
         let names = ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts", "f.ts", "g.ts", "h.ts", "i.ts"];
         let units = units_of(&graph, &names);
-        assert_eq!(pairs(&nominate_cycle_breakers(&units)), [(5, 3)]);
+        assert_eq!(pairs(&units.nominate_cycle_breakers()), [(5, 3)]);
     }
 
     #[test]
@@ -451,13 +481,13 @@ mod tests {
         let units = units_of(&graph, &["a", "b", "c", "d", "e"]);
         // `b` has the highest out-degree minus in-degree, so it goes first
         // and `a -> b` points backwards.
-        let breakers = nominate_cycle_breakers(&units);
+        let breakers = units.nominate_cycle_breakers();
         assert_eq!(pairs(&breakers), [(0, 1), (3, 4)]);
 
         // Removing the breakers leaves no cycle.
         let mut acyclic = units.clone();
         acyclic.dependencies.retain(|dependency| !breakers.contains(dependency));
-        assert!(nominate_cycle_breakers(&acyclic).is_empty());
+        assert!(acyclic.nominate_cycle_breakers().is_empty());
     }
 
     #[test]
@@ -472,22 +502,22 @@ mod tests {
             ("e.ts", "a.ts"),
         ]);
         let units = units_of(&graph, &["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"]);
-        assert_eq!(find_unit_path(&units, 0, 3), Some(vec![0, 1, 3]));
-        assert_eq!(find_unit_path(&units, 0, 4), Some(vec![0, 4]));
-        assert_eq!(find_unit_path(&units, 1, 0), Some(vec![1, 3, 4, 0]));
-        assert_eq!(find_unit_path(&units, 2, 2), Some(vec![2]));
-        assert_eq!(find_unit_path(&units, 3, 1), Some(vec![3, 4, 0, 1]));
+        assert_eq!(units.find_path(0, 3), Some(vec![0, 1, 3]));
+        assert_eq!(units.find_path(0, 4), Some(vec![0, 4]));
+        assert_eq!(units.find_path(1, 0), Some(vec![1, 3, 4, 0]));
+        assert_eq!(units.find_path(2, 2), Some(vec![2]));
+        assert_eq!(units.find_path(3, 1), Some(vec![3, 4, 0, 1]));
 
         let graph = graph_of(&[("a.ts", "b.ts")]);
         let units = units_of(&graph, &["a.ts", "b.ts"]);
-        assert_eq!(find_unit_path(&units, 1, 0), None);
+        assert_eq!(units.find_path(1, 0), None);
     }
 
     #[test]
     #[should_panic(expected = "not both among the 2 units")]
     fn unit_paths_need_units_at_both_ends() {
         let graph = graph_of(&[("a.ts", "b.ts")]);
-        find_unit_path(&units_of(&graph, &["a.ts", "b.ts"]), 0, 2);
+        units_of(&graph, &["a.ts", "b.ts"]).find_path(0, 2);
     }
 
     #[test]
@@ -502,7 +532,7 @@ mod tests {
         ];
         let (_, breakers) = in_both_orders(&imports, |graph| {
             let units = units_of(graph, &["pkg/client", "pkg/core", "pkg/ui"]);
-            (units.dependencies().to_vec(), nominate_cycle_breakers(&units))
+            (units.dependencies().to_vec(), units.nominate_cycle_breakers())
         });
         assert!(!breakers.is_empty());
     }

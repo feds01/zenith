@@ -20,6 +20,7 @@ argfile = { version = "1.0.0" }
 bitflags = { version = "2.13.2" }
 clap = { version = "4.6.7", features = ["derive", "env", "wrap_help"] }
 dunce = { version = "1.0.5" }
+fastrand = { version = "2.5.0" }
 fixedbitset = { version = "0.5.7" }
 ignore = { version = "0.4.33" }
 index_vec = { version = "0.1.4" }

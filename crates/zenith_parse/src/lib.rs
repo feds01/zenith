@@ -5,14 +5,15 @@
 //! [oxc](https://oxc.rs), then walks the syntax tree for every form that
 //! imports a module, classifying each by its [`ImportKind`]. Alongside the
 //! imports, the [`ParsedFile`] holds the file's directive prologue (e.g.
-//! `"use client"`), the dynamic imports and `require` calls whose specifier
-//! is not a literal, and any syntax errors. Everything is located by its byte
-//! range in the file.
+//! `"use client"`), its `zenith-ignore` suppression comments, the dynamic
+//! imports and `require` calls whose specifier is not a literal, and any
+//! syntax errors. Everything is located by its byte range in the file.
 //!
 //! Parsing is the hottest part of a run: every source file of a monorepo is
 //! parsed, in parallel. Each thread parses into its own arena, which is reset
 //! rather than freed between files, and the results own nothing from it.
 
+mod suppressions;
 mod visitor;
 
 use std::{borrow::Cow, cell::RefCell, fmt, io, mem, path::Path};
@@ -21,6 +22,7 @@ use oxc_allocator::Allocator;
 use oxc_ast_visit::Visit;
 use oxc_parser::{ParseOptions, Parser};
 use oxc_span::{LabeledSpan, SourceType, Span};
+pub use suppressions::Suppression;
 use thin_vec::ThinVec;
 use zenith_diagnostics::{self as diagnostics, Report, SourceId};
 use zenith_graph::{ImportDetail, ImportKind};
@@ -50,6 +52,9 @@ pub struct ParsedFile {
     /// statements at the very top of the file, each as written between its
     /// quotes.
     pub directives: ThinVec<String>,
+
+    /// The `zenith-ignore` comments, in source order.
+    pub suppressions: ThinVec<Suppression>,
 
     /// The syntax errors, in source order. The parser recovers from some
     /// errors and keeps what it found. When it can't, the rest of the result
@@ -126,7 +131,7 @@ impl ParsedFile {
     }
 
     /// Parse `source`, the text of the file at `path`, and extract its
-    /// imports and directives.
+    /// imports, directives and suppressions.
     ///
     /// ```
     /// # use std::path::Path;
@@ -173,7 +178,8 @@ impl ParsedFile {
         let parsed = Parser::new(allocator, source, source_type).with_options(options).parse();
 
         // 2. Collect the syntax errors. If the parser gave up, the syntax tree is
-        //    empty, so there is nothing more to collect.
+        //    empty. The comments were kept, but leave them out too, rather than report
+        //    suppressions with no imports to apply to.
         let mut errors: ThinVec<SyntaxError> = parsed
             .diagnostics
             .into_iter()
@@ -191,15 +197,16 @@ impl ParsedFile {
         visitor.visit_program(&parsed.program);
         let (imports, non_literal_imports) = visitor.finish();
 
-        // 4. Read the directive prologue.
+        // 4. Read the directive prologue and the suppression comments.
         let directives = parsed
             .program
             .directives
             .iter()
             .map(|directive| directive.directive.as_str().to_owned())
             .collect();
+        let suppressions = Suppression::collect(source, &parsed.program.comments);
 
-        Self { imports, non_literal_imports, directives, errors }
+        Self { imports, non_literal_imports, directives, suppressions, errors }
     }
 }
 
@@ -326,7 +333,8 @@ mod tests {
 
     #[test]
     fn recoverable_syntax_errors_keep_the_rest() {
-        let source = "'use client';\nimport a from './a';\nconst b;\nimport('./c');\n";
+        let source =
+            "'use client';\nimport a from './a';\nconst b;\nimport('./c'); // zenith-ignore d\n";
         let parsed = ParsedFile::parse_source(Path::new("x.ts"), source);
         let errors: Vec<_> = parsed
             .errors
@@ -337,6 +345,7 @@ mod tests {
         let specifiers: Vec<_> = parsed.imports.iter().map(|i| i.specifier.as_str()).collect();
         assert_eq!(specifiers, ["./a", "./c"]);
         assert_eq!(parsed.directives, ["use client"]);
+        assert_eq!(parsed.suppressions.len(), 1);
     }
 
     #[test]
@@ -358,7 +367,7 @@ class D implements E
 
     #[test]
     fn fatal_syntax_errors_are_reported_with_their_range() {
-        let source = "'use client';\nimport a from './a';\nconst = ;\n";
+        let source = "'use client';\n// zenith-ignore a\nimport a from './a';\nconst = ;\n";
         let parsed = ParsedFile::parse_source(Path::new("x.ts"), source);
         assert_eq!(parsed.errors.len(), 1, "{:?}", parsed.errors);
         let error = &parsed.errors[0];

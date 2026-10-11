@@ -621,8 +621,10 @@ import { y } from "@/app/(dashboard)/types"; // zenith-ignore web-layers
 ```
 
 - Syntax: `zenith-ignore <id>[ <id>…][: <reason>]`, in a line or block comment.
-- A suppression applies to imports that start on the same line (trailing
-  comment) or on the next line. It removes those import details from the
+  Ids may also be separated by commas.
+- A suppression applies to imports that start on the same line (a trailing
+  comment, or a block comment before the import) or, for a comment on a line
+  of its own, on the next line. It removes those import details from the
   named contracts only.
 - An unused suppression is a warning. **(settled)** It is unused if it names
   no contract, names an unknown contract, or none of the contracts it names

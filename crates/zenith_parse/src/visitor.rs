@@ -9,9 +9,7 @@ use oxc_ast_visit::{Visit, walk};
 use oxc_span::Span;
 use thin_vec::ThinVec;
 use zenith_graph::{ImportDetail, ImportKind};
-use zenith_utils::location::ByteRange;
-
-use crate::NonLiteralImport;
+use zenith_utils::location::{ByteRange, Located};
 
 /// Collects the imports of one file as it walks the syntax tree.
 #[derive(Default)]
@@ -19,18 +17,18 @@ pub(crate) struct ImportVisitor {
     /// The imports found so far.
     imports: Vec<ImportDetail>,
 
-    /// The imports with non-literal specifiers found so far.
-    non_literal_imports: ThinVec<NonLiteralImport>,
+    /// The kinds of the imports with non-literal specifiers found so far.
+    non_literal_imports: ThinVec<Located<ImportKind>>,
 }
 
 impl ImportVisitor {
     /// The imports and the imports with non-literal specifiers, each in
     /// source order.
-    pub(crate) fn finish(mut self) -> (Vec<ImportDetail>, ThinVec<NonLiteralImport>) {
+    pub(crate) fn finish(mut self) -> (Vec<ImportDetail>, ThinVec<Located<ImportKind>>) {
         // The tree is walked in source order, so these are almost always
         // sorted already, which the sort detects in linear time.
         self.imports.sort_by_key(|import| import.range);
-        self.non_literal_imports.sort_by_key(|import| import.range);
+        self.non_literal_imports.sort();
         (self.imports, self.non_literal_imports)
     }
 
@@ -44,66 +42,55 @@ impl ImportVisitor {
     }
 
     /// Record a dynamic import or `require` call made by the code at `span`,
-    /// whose specifier argument is `argument`.
+    /// whose specifier argument is `argument`. The specifier must be a string
+    /// literal, or a template literal without substitutions, to be resolved.
     fn call(&mut self, argument: Option<&Expression>, kind: ImportKind, span: Span) {
-        match argument.and_then(literal_specifier) {
+        let specifier = match argument {
+            Some(Expression::StringLiteral(literal)) => Some(literal.value.as_str()),
+            Some(Expression::TemplateLiteral(template)) => {
+                template.single_quasi().map(|quasi| quasi.as_str())
+            }
+            _ => None,
+        };
+        match specifier {
             Some(specifier) => self.import(specifier, kind, span),
-            None => self
-                .non_literal_imports
-                .push(NonLiteralImport { kind, range: ByteRange::new(span.start, span.end) }),
+            None => {
+                self.non_literal_imports
+                    .push(Located::new(ByteRange::new(span.start, span.end), kind));
+            }
         }
     }
-}
-
-/// The value of a string literal, or of a template literal without
-/// substitutions.
-fn literal_specifier<'e>(expression: &'e Expression) -> Option<&'e str> {
-    match expression {
-        Expression::StringLiteral(literal) => Some(literal.value.as_str()),
-        Expression::TemplateLiteral(template) => {
-            template.single_quasi().map(|quasi| quasi.as_str())
-        }
-        _ => None,
-    }
-}
-
-/// The kind of a static import or re-export: `type` if it imports only
-/// types, and `value` otherwise.
-fn static_kind(type_only: bool) -> ImportKind {
-    if type_only { ImportKind::Type } else { ImportKind::Value }
-}
-
-/// Whether `specifiers` is not empty and every one of them is type-only.
-fn every_type<T>(specifiers: &[T], is_type: impl Fn(&T) -> bool) -> bool {
-    !specifiers.is_empty() && specifiers.iter().all(is_type)
 }
 
 // None of the import statements contain an import, so the visitor does not
 // walk into them, but the expressions and import types may.
 impl<'a> Visit<'a> for ImportVisitor {
     fn visit_import_declaration(&mut self, it: &ImportDeclaration<'a>) {
-        // A default or namespace import can't be marked `type` on its own.
+        // Type-only when every specifier is marked `type`. A default or
+        // namespace import can't be marked `type` on its own.
         let type_only = it.import_kind.is_type()
             || it.specifiers.as_ref().is_some_and(|specifiers| {
-                every_type(specifiers, |specifier| {
-                    matches!(
-                        specifier,
-                        ImportDeclarationSpecifier::ImportSpecifier(specifier)
-                            if specifier.import_kind.is_type()
-                    )
-                })
+                !specifiers.is_empty()
+                    && specifiers.iter().all(|specifier| {
+                        matches!(
+                            specifier,
+                            ImportDeclarationSpecifier::ImportSpecifier(specifier)
+                                if specifier.import_kind.is_type()
+                        )
+                    })
             });
-        self.import(it.source.value.as_str(), static_kind(type_only), it.span);
+        self.import(it.source.value.as_str(), ImportKind::of_static(type_only), it.span);
     }
 
     fn visit_export_from_declaration(&mut self, it: &ExportFromDeclaration<'a>) {
         let type_only = it.export_kind.is_type()
-            || every_type(&it.specifiers, |specifier| specifier.export_kind.is_type());
-        self.import(it.source.value.as_str(), static_kind(type_only), it.span);
+            || (!it.specifiers.is_empty()
+                && it.specifiers.iter().all(|specifier| specifier.export_kind.is_type()));
+        self.import(it.source.value.as_str(), ImportKind::of_static(type_only), it.span);
     }
 
     fn visit_export_all_declaration(&mut self, it: &ExportAllDeclaration<'a>) {
-        let kind = static_kind(it.export_kind.is_type());
+        let kind = ImportKind::of_static(it.export_kind.is_type());
         self.import(it.source.value.as_str(), kind, it.span);
     }
 
@@ -143,11 +130,11 @@ mod tests {
     use std::{ops::Range, path::Path};
 
     use super::*;
-    use crate::ParsedFile;
+    use crate::Parser;
 
     /// The specifier and kind of each import in `source`, parsed as `path`.
     fn kinds(path: &str, source: &str) -> Vec<(String, ImportKind)> {
-        let parsed = ParsedFile::parse_source(Path::new(path), source);
+        let parsed = Parser::new().parse_source(Path::new(path), source);
         assert!(parsed.errors.is_empty(), "{source:?}: {:?}", parsed.errors);
         parsed.imports.into_iter().map(|import| (import.specifier, import.kind)).collect()
     }
@@ -280,7 +267,7 @@ mod tests {
             "const url = import.meta.url;",
             "import a = A.B;",
         ] {
-            let parsed = ParsedFile::parse_source(Path::new("x.ts"), source);
+            let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
             assert_eq!(parsed.imports, [], "{source}");
             assert_eq!(parsed.non_literal_imports, [], "{source}");
         }
@@ -296,12 +283,12 @@ const d = require('./' + name);
 const e = require(...names);
 const f = import('./f');
 ";
-        let parsed = ParsedFile::parse_source(Path::new("x.ts"), source);
+        let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
         assert_eq!(kinds("x.ts", source), [("./f".to_string(), Dynamic)]);
         let found: Vec<_> = parsed
             .non_literal_imports
             .iter()
-            .map(|import| (import.kind, &source[Range::from(import.range)]))
+            .map(|import| (import.value, &source[Range::from(import.range)]))
             .collect();
         assert_eq!(
             found,

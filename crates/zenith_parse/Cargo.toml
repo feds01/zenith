@@ -21,6 +21,8 @@ oxc_span = { workspace = true }
 thin-vec = { workspace = true }
 
 [dev-dependencies]
+zenith_config = { workspace = true }
+
 tempfile = { workspace = true }
 
 [lints]

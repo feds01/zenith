@@ -76,11 +76,16 @@ impl Config {
     }
 }
 
+/// The extensions, without the `.`, of the JavaScript and TypeScript files
+/// that zenith scans when `[files] include` is not set. Declaration files
+/// (`.d.ts`) are `ts` files.
+pub const SOURCE_EXTENSIONS: &[&str] = &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
+
 /// Which files to scan for imports.
 #[derive(Debug, Clone)]
 pub struct FilesConfig {
-    /// Globs of the files to scan. `None` scans every JavaScript and
-    /// TypeScript file.
+    /// Globs of the files to scan. `None` scans every file with one of the
+    /// [`SOURCE_EXTENSIONS`].
     pub include: Option<Vec<Glob>>,
 
     /// Globs of files and directories to skip, on top of the default

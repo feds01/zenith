@@ -1,5 +1,5 @@
-//! Locations within a source file: byte ranges, and the line index that
-//! finds the line an offset is on.
+//! Locations within a source file: byte ranges, values located by them, and
+//! the line index that finds the line an offset is on.
 
 use std::{fmt, iter, ops::Range};
 
@@ -62,6 +62,27 @@ impl From<Range<usize>> for ByteRange {
 impl fmt::Display for ByteRange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}..{}", self.start, self.end)
+    }
+}
+
+/// A value with the byte range of the source that it was found at, such as
+/// an import or a comment.
+///
+/// Located values order by their range first, so sorting them puts them in
+/// source order.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Located<T> {
+    /// Where the value is in the source.
+    pub range: ByteRange,
+
+    /// The value.
+    pub value: T,
+}
+
+impl<T> Located<T> {
+    /// A value found at `range`.
+    pub fn new(range: ByteRange, value: T) -> Self {
+        Self { range, value }
     }
 }
 
@@ -154,6 +175,17 @@ mod tests {
         // is empty too.
         assert_eq!(found, ["ab\r\n", "cd\n", "", ""]);
         assert_eq!(lines.line_range(4), ByteRange::new(7, 7));
+    }
+
+    #[test]
+    fn located_values_sort_into_source_order() {
+        let mut found = [
+            Located::new(ByteRange::new(9, 12), "b"),
+            Located::new(ByteRange::new(0, 4), "z"),
+            Located::new(ByteRange::new(5, 8), "a"),
+        ];
+        found.sort();
+        assert_eq!(found.map(|located| located.value), ["z", "a", "b"]);
     }
 
     #[test]

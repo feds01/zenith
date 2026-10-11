@@ -1763,6 +1763,7 @@ dependencies = [
  "oxc_span",
  "tempfile",
  "thin-vec",
+ "zenith_config",
  "zenith_diagnostics",
  "zenith_graph",
  "zenith_utils",

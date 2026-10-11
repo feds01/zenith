@@ -22,13 +22,13 @@
 
 use oxc_ast::Comment;
 use thin_vec::ThinVec;
-use zenith_utils::location::{ByteRange, LineIndex};
+use zenith_utils::location::{ByteRange, LineIndex, Located};
 
 /// The word that starts a suppression comment.
 const MARKER: &str = "zenith-ignore";
 
 /// A `zenith-ignore` comment, which removes the imports that start on its
-/// target line from the contracts it names.
+/// target line from the contracts it names. It is located by the comment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Suppression {
     /// The ids of the contracts it suppresses, as written. Empty if it names
@@ -37,9 +37,6 @@ pub struct Suppression {
 
     /// The reason given after the `:`, if any.
     pub reason: Option<String>,
-
-    /// Where the comment is in the file.
-    pub range: ByteRange,
 
     /// The target line, including its line ending. The suppression applies to
     /// the imports that start in it. Past the last line, it is the empty
@@ -50,7 +47,7 @@ pub struct Suppression {
 impl Suppression {
     /// The suppressions among `comments`, the comments of `source` in source
     /// order.
-    pub(crate) fn collect(source: &str, comments: &[Comment]) -> ThinVec<Suppression> {
+    pub(crate) fn collect(source: &str, comments: &[Comment]) -> ThinVec<Located<Suppression>> {
         // Most files have no suppressions, so index the lines only once one
         // is found.
         let mut lines = None;
@@ -59,33 +56,32 @@ impl Suppression {
             .filter_map(|comment| {
                 let (contracts, reason) = parse_comment(source, comment)?;
                 let lines = lines.get_or_insert_with(|| LineIndex::new(source));
-                Some(Suppression {
-                    contracts,
-                    reason,
-                    range: ByteRange::new(comment.span.start, comment.span.end),
-                    target: target_line(source, lines, comments, comment),
-                })
+                let suppression =
+                    Suppression { contracts, reason, target: target_line(lines, comment) };
+                Some(Located::new(
+                    ByteRange::new(comment.span.start, comment.span.end),
+                    suppression,
+                ))
             })
             .collect()
     }
 }
 
-/// The target line of `comment`, one of `comments` in `source`, whose line
-/// index is `lines`.
-fn target_line(
-    source: &str,
-    lines: &LineIndex,
-    comments: &[Comment],
-    comment: &Comment,
-) -> ByteRange {
+/// The target line of `comment`, in a source whose line index is `lines`.
+///
+/// The parser records whether a comment trails code, and where the token
+/// after it starts, so other comments next to it are never mistaken for code.
+fn target_line(lines: &LineIndex, comment: &Comment) -> ByteRange {
     let first_line = lines.line(comment.span.start);
     let last_line = lines.line(comment.span.end.saturating_sub(1));
-    let (first, last) = (lines.line_range(first_line), lines.line_range(last_line));
-    if has_code(source, comments, first.start(), comment.span.start) {
-        first
-    } else if has_code(source, comments, comment.span.end, last.end()) {
-        last
+    if comment.is_trailing() {
+        // After code on its first line.
+        lines.line_range(first_line)
+    } else if !comment.followed_by_newline() && lines.line(comment.attached_to) == last_line {
+        // Before code on its last line.
+        lines.line_range(last_line)
     } else {
+        // On a line, or lines, of its own.
         lines.line_range(last_line + 1)
     }
 }
@@ -130,41 +126,24 @@ fn join_lines(text: &str) -> String {
     joined
 }
 
-/// Whether the bytes `from..to` of `source` hold code: anything but
-/// whitespace and `comments`, which are in source order.
-fn has_code(source: &str, comments: &[Comment], from: u32, to: u32) -> bool {
-    let is_code = |from: u32, to: u32| {
-        source.get(from as usize..to as usize).is_some_and(|text| !text.trim().is_empty())
-    };
-    let first = comments.partition_point(|comment| comment.span.end <= from);
-    let mut position = from;
-    for comment in comments[first..].iter().take_while(|comment| comment.span.start < to) {
-        if is_code(position, comment.span.start) {
-            return true;
-        }
-        position = position.max(comment.span.end);
-    }
-    is_code(position, to)
-}
-
 #[cfg(test)]
 mod tests {
     use std::{ops::Range, path::Path};
 
     use super::*;
-    use crate::ParsedFile;
+    use crate::Parser;
 
     /// The suppressions in `source`, as `(contracts, reason, target line)`.
     fn suppressions(source: &str) -> Vec<(Vec<String>, Option<String>, u32)> {
-        let parsed = ParsedFile::parse_source(Path::new("x.ts"), source);
+        let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
         assert!(parsed.errors.is_empty(), "{source:?}: {:?}", parsed.errors);
         let lines = LineIndex::new(source);
         parsed
             .suppressions
             .into_iter()
             .map(|suppression| {
-                let target_line = lines.line(suppression.target.start());
-                (suppression.contracts, suppression.reason, target_line)
+                let Suppression { contracts, reason, target } = suppression.value;
+                (contracts, reason, lines.line(target.start()))
             })
             .collect()
     }
@@ -267,12 +246,13 @@ import c from 'c';
     #[test]
     fn records_the_comment_and_its_target_line() {
         let source = "import a from 'a'; // zenith-ignore a\nconst é = 1; /* zenith-ignore b */\n";
-        let parsed = ParsedFile::parse_source(Path::new("x.ts"), source);
+        let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
         let found: Vec<_> = parsed
             .suppressions
             .iter()
             .map(|suppression| {
-                (&source[Range::from(suppression.range)], &source[Range::from(suppression.target)])
+                let target = suppression.value.target;
+                (&source[Range::from(suppression.range)], &source[Range::from(target)])
             })
             .collect();
         assert_eq!(
@@ -285,8 +265,8 @@ import c from 'c';
         // A comment on the last line, with nothing after it, applies to the
         // empty range at the end of the file.
         let source = "import a from 'a';\n// zenith-ignore a";
-        let parsed = ParsedFile::parse_source(Path::new("x.ts"), source);
+        let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
         let end = source.len() as u32;
-        assert_eq!(parsed.suppressions[0].target, ByteRange::new(end, end));
+        assert_eq!(parsed.suppressions[0].value.target, ByteRange::new(end, end));
     }
 }

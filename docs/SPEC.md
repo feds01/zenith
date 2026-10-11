@@ -237,7 +237,8 @@ the `(optional)` syntax ([§4.4](#44-layers)).
 
 Contracts are tables under `[contracts.<id>]`. The id is required: it is
 used by `--contract`, the baseline and suppression comments. Ids are
-kebab-case and unique by construction, since they are TOML keys.
+kebab-case by convention, may only contain ASCII letters, digits, `-` and
+`_`, and are unique by construction, since they are TOML keys.
 
 ### 4.1 Shared options
 

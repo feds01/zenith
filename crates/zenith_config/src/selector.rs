@@ -21,6 +21,8 @@ use std::fmt;
 
 use zenith_utils::glob::{Glob, GlobError, NamePattern};
 
+use crate::error::Location;
+
 /// A selector of modules, as written in the configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Selector {
@@ -35,6 +37,9 @@ pub struct Selector {
 
     /// The directive that files must have to be kept.
     directive: Option<String>,
+
+    /// Where the selector is written in the configuration file.
+    location: Option<Location>,
 }
 
 /// What a selector matches.
@@ -137,12 +142,24 @@ impl Selector {
             }
             SelectorTarget::Path(Glob::new(path)?)
         };
-        Ok(Self { raw: raw.to_string(), target, except: Vec::new(), directive: None })
+        Ok(Self {
+            raw: raw.to_string(),
+            target,
+            except: Vec::new(),
+            directive: None,
+            location: None,
+        })
+    }
+
+    /// Record where the selector is written.
+    pub(crate) fn at(mut self, location: Location) -> Self {
+        self.location = Some(location);
+        self
     }
 
     /// Add the filters of the table form: modules to remove, and a directive
     /// that files must have.
-    pub fn with_filters(
+    pub(crate) fn with_filters(
         mut self,
         except: Vec<Selector>,
         directive: Option<String>,
@@ -178,6 +195,13 @@ impl Selector {
         self.directive.as_deref()
     }
 
+    /// Where the selector is written in the configuration file, for errors
+    /// found when resolving it. `None` for a selector that wasn't read from a
+    /// file. For the table form, this is the location of its `path`.
+    pub fn location(&self) -> Option<&Location> {
+        self.location.as_ref()
+    }
+
     /// Whether matching nothing is a configuration error. Path and `pkg:`
     /// selectors must match something, to catch typos and renames. `npm:`
     /// and builtin selectors may match nothing: it means nothing imports
@@ -211,6 +235,9 @@ pub struct IgnoreImport {
 
     /// The imported modules.
     imported: Selector,
+
+    /// Where the entry is written in the configuration file.
+    location: Option<Location>,
 }
 
 /// Why an `ignore_imports` entry is invalid.
@@ -257,7 +284,22 @@ impl IgnoreImport {
                 error,
             })
         };
-        Ok(Self { raw: raw.to_string(), importer: parse(importer)?, imported: parse(imported)? })
+        Ok(Self {
+            raw: raw.to_string(),
+            importer: parse(importer)?,
+            imported: parse(imported)?,
+            location: None,
+        })
+    }
+
+    /// Record where the entry, and so its selectors, is written.
+    pub(crate) fn at(self, location: Location) -> Self {
+        Self {
+            importer: self.importer.at(location),
+            imported: self.imported.at(location),
+            location: Some(location),
+            ..self
+        }
     }
 
     /// The entry as written.
@@ -273,6 +315,13 @@ impl IgnoreImport {
     /// The imported modules.
     pub fn imported(&self) -> &Selector {
         &self.imported
+    }
+
+    /// Where the entry is written in the configuration file, for reporting
+    /// an entry that matches no import. `None` for an entry that wasn't read
+    /// from a file.
+    pub fn location(&self) -> Option<&Location> {
+        self.location.as_ref()
     }
 }
 

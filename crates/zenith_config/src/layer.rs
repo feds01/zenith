@@ -14,7 +14,10 @@
 
 use std::fmt;
 
-use crate::selector::{Selector, SelectorError};
+use crate::{
+    error::Location,
+    selector::{Selector, SelectorError},
+};
 
 /// One layer of a `layers` contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +33,11 @@ pub struct Layer {
     /// Whether the layer is closed: the layers above it may not import the
     /// layers below it.
     pub closed: bool,
+
+    /// Where the layer is written in the configuration file, for errors found
+    /// when resolving it. Its members' selectors have the same location.
+    /// `None` for a layer that wasn't read from a file.
+    pub location: Option<Location>,
 }
 
 /// A member of a layer.
@@ -59,6 +67,13 @@ pub enum LayerError {
         /// What is wrong with it.
         error: SelectorError,
     },
+
+    /// The contract has `containers`, but a member is not a path, which
+    /// would be relative to each container.
+    NotRelative {
+        /// The member as written.
+        member: String,
+    },
 }
 
 impl fmt::Display for LayerError {
@@ -67,6 +82,10 @@ impl fmt::Display for LayerError {
             Self::MixedSeparators => f.write_str("a layer cannot mix `|` and `:` separators"),
             Self::EmptyMember => f.write_str("a member is empty"),
             Self::Selector { member, error } => write!(f, "invalid selector `{member}`: {error}"),
+            Self::NotRelative { member } => write!(
+                f,
+                "`{member}` is not a path; with `containers`, layers are paths relative to each container"
+            ),
         }
     }
 }
@@ -102,7 +121,17 @@ impl Layer {
             })
             .collect::<Result<_, _>>()?;
 
-        Ok(Self { members, independent: !has_colon, closed })
+        Ok(Self { members, independent: !has_colon, closed, location: None })
+    }
+
+    /// Record where the layer, and so its members, is written.
+    pub(crate) fn at(self, location: Location) -> Self {
+        let members = self
+            .members
+            .into_iter()
+            .map(|member| LayerMember { selector: member.selector.at(location), ..member })
+            .collect();
+        Self { members, location: Some(location), ..self }
     }
 }
 

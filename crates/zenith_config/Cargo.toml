@@ -9,7 +9,15 @@ repository = { workspace = true }
 publish = false
 
 [dependencies]
+indexmap = { workspace = true }
+serde = { workspace = true }
+strsim = { workspace = true }
+toml = { workspace = true }
+zenith_graph = { workspace = true }
 zenith_utils = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

@@ -66,6 +66,20 @@ pub fn posix_parent(path: &str) -> &str {
     path.rsplit_once('/').map_or("", |(parent, _)| parent)
 }
 
+/// The POSIX `path` without the longest of `extensions` (each without its
+/// leading `.`) that it ends with, e.g. `src/types` for `src/types.d.ts` given
+/// `ts` and `d.ts`. `None` if it ends with none of them, or if its file name
+/// is only an extension, e.g. `src/.ts`.
+pub fn strip_extension<'p>(path: &'p str, extensions: &[&str]) -> Option<&'p str> {
+    // The longest extension leaves the shortest stem.
+    let stem = extensions
+        .iter()
+        .filter_map(|extension| path.strip_suffix(extension)?.strip_suffix('.'))
+        .min_by_key(|stem| stem.len())?;
+    let name = stem.rsplit('/').next().unwrap_or(stem);
+    (!name.is_empty()).then_some(stem)
+}
+
 #[cfg(test)]
 mod tests {
     use std::env;
@@ -128,5 +142,27 @@ mod tests {
     fn missing_paths_are_normalised() {
         let cwd = env::current_dir().unwrap();
         assert_eq!(adjust_canonicalisation("no-such-dir/x/../y.ts"), cwd.join("no-such-dir/y.ts"));
+    }
+
+    #[test]
+    fn strips_the_longest_extension_given() {
+        let extensions = ["ts", "d.ts", "tsx", "cjs"];
+        for (path, stem) in [
+            ("a/types.ts", Some("a/types")),
+            ("a/types.d.ts", Some("a/types")),
+            ("a/Button.tsx", Some("a/Button")),
+            ("a/.eslintrc.cjs", Some("a/.eslintrc")),
+            ("types.ts", Some("types")),
+            // Only the extensions given, and only whole ones.
+            ("a/styles.css", None),
+            ("a/cts", None),
+            ("a/Makefile", None),
+            // A file name must be more than its extension.
+            ("a/.ts", None),
+            (".d.ts", None),
+        ] {
+            assert_eq!(strip_extension(path, &extensions), stem, "{path}");
+        }
+        assert_eq!(strip_extension("a/types.ts", &[]), None);
     }
 }

@@ -81,6 +81,12 @@ impl Config {
 /// (`.d.ts`) are `ts` files.
 pub const SOURCE_EXTENSIONS: &[&str] = &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
 
+/// The extensions, without the `.`, that a path selector may leave off a
+/// file's path, so `src/types` matches the file `src/types.ts` as well as the
+/// directory `src/types`.
+pub const OPTIONAL_EXTENSIONS: &[&str] =
+    &["ts", "tsx", "mts", "cts", "d.ts", "js", "jsx", "mjs", "cjs"];
+
 /// Which files to scan for imports.
 #[derive(Debug, Clone)]
 pub struct FilesConfig {
@@ -191,6 +197,13 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn selectors_may_leave_off_every_source_extension() {
+        for extension in SOURCE_EXTENSIONS {
+            assert!(OPTIONAL_EXTENSIONS.contains(extension), "{extension}");
+        }
+    }
 
     #[test]
     fn discovers_the_nearest_config_file() {

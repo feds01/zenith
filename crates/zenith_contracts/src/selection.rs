@@ -10,39 +10,12 @@
 //!
 //! When a path glob matches nested nodes, such as `web/**` matching both
 //! `web/src` and `web/src/app.ts`, only the outermost become units, since they
-//! contain the inner ones.
+//! contain the inner ones. The graph and the workspace do the matching; this
+//! module puts the matches together.
 
-use zenith_config::{SOURCE_EXTENSIONS, Selector, SelectorTarget};
-use zenith_graph::{Graph, ModuleId, Node, NodeKind, NodeSet};
-use zenith_utils::{
-    glob::{Glob, NamePattern},
-    path::posix_parent,
-};
+use zenith_config::{OPTIONAL_EXTENSIONS, Selector, SelectorTarget};
+use zenith_graph::{Graph, NodeSet, Unit};
 use zenith_workspace::Workspace;
-
-/// A labelled set of the nodes that take part in imports, which contracts
-/// reason about.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Unit {
-    /// How the unit is shown: the path of a directory or file, the name of a
-    /// workspace package, or the name of an external package or builtin, e.g.
-    /// `npm:react`.
-    pub label: String,
-
-    /// The node the unit was matched from: a directory, a file, an external
-    /// package or a builtin.
-    pub root: ModuleId,
-
-    /// The files in the subtree of a directory, or the node itself.
-    pub members: NodeSet,
-}
-
-impl Unit {
-    /// The unit of a node, labelled by its name.
-    fn of_node(graph: &Graph, id: ModuleId) -> Self {
-        Self { label: graph.name(id).to_string(), root: id, members: graph.members(id) }
-    }
-}
 
 /// The units that a selector resolves to in a project.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -63,16 +36,25 @@ impl Selection {
     /// Resolve `selector` against a project's `graph` and the `workspace`
     /// packages that `pkg:` selectors match.
     pub fn resolve(selector: &Selector, graph: &Graph, workspace: &Workspace) -> Self {
-        let mut units = match selector.target() {
+        let mut units: Vec<Unit> = match selector.target() {
             SelectorTarget::Path(glob) => {
-                match_paths(graph, glob).into_iter().map(|id| Unit::of_node(graph, id)).collect()
+                let found = graph.find_paths(glob, OPTIONAL_EXTENSIONS);
+                found.into_iter().map(|id| graph.unit(id)).collect()
             }
-            SelectorTarget::Package(pattern) => package_units(graph, workspace, pattern),
+            SelectorTarget::Package(pattern) => workspace
+                .find_packages(pattern)
+                .filter_map(|package| {
+                    // A package with no files in the graph has no node.
+                    let id = graph.id(&package.dir)?;
+                    Some(Unit { label: package.name.clone(), ..graph.unit(id) })
+                })
+                .collect(),
             SelectorTarget::External(pattern) => {
-                leaf_units(graph, NodeKind::External, "npm", pattern)
+                graph.find_leaves("npm", pattern).into_iter().map(|id| graph.unit(id)).collect()
             }
             SelectorTarget::Builtin { scheme, pattern } => {
-                leaf_units(graph, NodeKind::Builtin, scheme.as_str(), pattern)
+                let found = graph.find_leaves(scheme.as_str(), pattern);
+                found.into_iter().map(|id| graph.unit(id)).collect()
             }
         };
         let matched = !units.is_empty();
@@ -95,7 +77,7 @@ impl Selection {
                     graph.node(*id).directives().iter().any(|found| found == directive)
                 }));
             }
-            units = files.iter().map(|id| Unit::of_node(graph, id)).collect();
+            units = files.iter().map(|id| graph.unit(id)).collect();
         }
 
         Self { units, matched }
@@ -111,116 +93,13 @@ impl Selection {
     }
 }
 
-/// The outermost internal nodes that `glob` matches, in tree order.
-fn match_paths(graph: &Graph, glob: &Glob) -> Vec<ModuleId> {
-    let prefix = glob.literal_prefix();
-
-    // A literal glob names one path, which may be a file's without its
-    // extension, so only the children of its parent can match.
-    if glob.is_literal() {
-        let Some(parent) = graph.id(posix_parent(&prefix)) else {
-            return Vec::new();
-        };
-        return graph
-            .children(parent)
-            .iter()
-            .copied()
-            .filter(|id| matches(glob, graph.node(*id)))
-            .collect();
-    }
-
-    // Otherwise, every match is in the subtree of the literal prefix. Once a node
-    // matches, its descendants are skipped.
-    let Some(start) = graph.id(&prefix) else {
-        return Vec::new();
-    };
-    let subtree = graph.subtree(start);
-    let mut matched = Vec::new();
-    let mut position = 0;
-    while let Some(&id) = subtree.get(position) {
-        if matches(glob, graph.node(id)) {
-            matched.push(id);
-            position += graph.subtree(id).len();
-        } else {
-            position += 1;
-        }
-    }
-    matched
-}
-
-/// Whether `glob` matches an internal node: its path, or for a file, its
-/// path without its JavaScript or TypeScript extension, so `src/types`
-/// matches `src/types.ts`.
-fn matches(glob: &Glob, node: &Node) -> bool {
-    match node.kind() {
-        NodeKind::Directory => glob.is_match(node.name()),
-        NodeKind::File => {
-            glob.is_match(node.name())
-                || strip_source_extension(node.name()).is_some_and(|stem| glob.is_match(stem))
-        }
-        NodeKind::External | NodeKind::Builtin => false,
-    }
-}
-
-/// A file's path without its JavaScript or TypeScript extension, e.g.
-/// `src/types` for `src/types.d.ts`. `None` for other files, and for files
-/// whose name is only an extension, e.g. `src/.ts`.
-fn strip_source_extension(path: &str) -> Option<&str> {
-    let stem = match path.strip_suffix(".d.ts") {
-        Some(stem) => stem,
-        None => {
-            let (stem, extension) = path.rsplit_once('.')?;
-            SOURCE_EXTENSIONS.contains(&extension).then_some(stem)?
-        }
-    };
-    (!stem.is_empty() && !stem.ends_with('/')).then_some(stem)
-}
-
-/// The units of the workspace packages whose name matches `pattern`, in order
-/// of their directories. `pkg:*` never matches the root package, which would
-/// contain everything, so only its exact name does, and it comes last.
-fn package_units(graph: &Graph, workspace: &Workspace, pattern: &NamePattern) -> Vec<Unit> {
-    let root = workspace
-        .root_package
-        .as_ref()
-        .filter(|root| pattern.is_literal() && pattern.is_match(&root.name));
-    workspace
-        .packages
-        .iter()
-        .filter(|package| pattern.is_match(&package.name))
-        .chain(root)
-        .filter_map(|package| {
-            // A package with no files in the graph has no node.
-            let id = graph.id(&package.dir)?;
-            Some(Unit { label: package.name.clone(), ..Unit::of_node(graph, id) })
-        })
-        .collect()
-}
-
-/// The units of the external packages or builtins of `scheme`, e.g. `npm`,
-/// whose name matches `pattern`, by name.
-fn leaf_units(graph: &Graph, kind: NodeKind, scheme: &str, pattern: &NamePattern) -> Vec<Unit> {
-    graph
-        .ids()
-        .filter(|id| {
-            let node = graph.node(*id);
-            node.kind() == kind
-                && node
-                    .name()
-                    .split_once(':')
-                    .is_some_and(|(prefix, name)| prefix == scheme && pattern.is_match(name))
-        })
-        .map(|id| Unit::of_node(graph, id))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
     use thin_vec::thin_vec;
     use zenith_config::{Config, ContractKind};
-    use zenith_graph::GraphBuilder;
+    use zenith_graph::{GraphBuilder, ModuleId};
     use zenith_workspace::WorkspacePackage;
 
     use super::*;
@@ -402,19 +281,6 @@ mod tests {
         );
         assert_eq!(labels(&project, &selector("web/src/missing")), (Vec::new(), false));
         assert_eq!(labels(&project, &selector("missing/types")), (Vec::new(), false));
-    }
-
-    #[test]
-    fn strips_only_source_extensions() {
-        assert_eq!(strip_source_extension("a/types.ts"), Some("a/types"));
-        assert_eq!(strip_source_extension("a/types.d.ts"), Some("a/types"));
-        assert_eq!(strip_source_extension("a/Button.tsx"), Some("a/Button"));
-        assert_eq!(strip_source_extension("a/server.mjs"), Some("a/server"));
-        assert_eq!(strip_source_extension("a/.eslintrc.cjs"), Some("a/.eslintrc"));
-        assert_eq!(strip_source_extension("a/styles.css"), None);
-        assert_eq!(strip_source_extension("a/Makefile"), None);
-        assert_eq!(strip_source_extension("a/.ts"), None);
-        assert_eq!(strip_source_extension(".d.ts"), None);
     }
 
     #[test]

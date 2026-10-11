@@ -1945,7 +1945,6 @@ dependencies = [
  "thin-vec",
  "zenith_config",
  "zenith_graph",
- "zenith_utils",
  "zenith_workspace",
 ]
 

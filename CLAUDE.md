@@ -37,7 +37,8 @@ it when responsibilities move. On `main` today:
 - `zenith`: the CLI (`cli.rs`, `commands/*`, `crash.rs`, and `version.rs`
   with `build.rs` for git commit stamping).
 - `zenith_graph`: the module tree and import graph model, import kinds, node
-  sets, and graph views that leave out imports.
+  sets, graph views that leave out imports, and the grimp algorithms that run
+  on them: shortest import chains, layers and cycle breakers.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`, its
   classification, and `exports`-aware workspace resolution.
 - `zenith_utils`: file reading, path and specifier helpers, byte ranges, and

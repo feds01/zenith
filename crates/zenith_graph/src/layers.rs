@@ -1,25 +1,51 @@
 //! Layered architectures, ported from grimp's `higher_order_queries.rs`.
 //!
-//! An architecture is a list of [`Level`]s from highest to lowest, each with
-//! one or more layers. Higher layers may import lower ones, never the
-//! reverse. A query on a [`GraphView`] returns every [`PackageDependency`]
-//! that breaks the architecture, with the [`Route`]s of imports that make it.
+//! A query on a [`GraphView`] checks an [`Architecture`], and returns every
+//! [`PackageDependency`] that breaks it with the [`Route`]s of imports that
+//! make it.
 
-use std::fmt;
+use std::{cmp::Ordering, fmt};
 
+use index_vec::IndexVec;
 use rayon::prelude::*;
 
 use crate::{GraphView, ModuleId, NodeSet, pathfinding::ChainSearch};
 
-/// One level of a layered architecture: one or more layers at the same
-/// height.
+index_vec::define_index_type! {
+    /// A level of an [`Architecture`], where 0 is the highest.
+    pub struct LevelId = u32;
+    MAX_INDEX = u32::MAX as usize;
+}
+
+index_vec::define_index_type! {
+    /// A layer of a [`Level`].
+    pub struct LayerId = u32;
+    MAX_INDEX = u32::MAX as usize;
+}
+
+/// A layered architecture: a list of [`Level`]s, from highest to lowest.
+///
+/// A layer may not import a layer at a higher level, a sibling at an
+/// independent level, or a lower layer across a closed level.
+///
+/// For example, take the levels `api`, `services` and `db`, one layer each,
+/// with `services` closed. `services` and `db` may not import `api`, and `db`
+/// may not import `services`. `api` may not import `db` either: it must go
+/// through `services`. Were `services` an independent level of the layers
+/// `users` and `billing`, they could not import each other.
+#[derive(Debug, Clone, Default)]
+pub struct Architecture {
+    /// The levels, highest first.
+    levels: IndexVec<LevelId, Level>,
+}
+
+/// One level of an [`Architecture`]: one or more layers at the same height.
 #[derive(Debug, Clone, Default)]
 pub struct Level {
     /// The layers at this level, each the set of its member nodes. Layers
     /// must not overlap. A layer may be empty, e.g. an optional layer that a
-    /// container lacks, so that layer indices stay the same in every
-    /// container.
-    pub layers: Vec<NodeSet>,
+    /// container lacks, so that layer ids stay the same in every container.
+    pub layers: IndexVec<LayerId, NodeSet>,
 
     /// Whether the layers at this level may not import each other.
     pub independent: bool,
@@ -30,16 +56,16 @@ pub struct Level {
     pub closed: bool,
 }
 
-/// A layer of an architecture: its level, and its index within the level.
+/// A layer of an architecture: its level, and the layer within the level.
 ///
 /// Refs order by level, then layer, so from the highest layer to the lowest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LayerRef {
-    /// The index of the level, where 0 is the highest.
-    pub level: usize,
+    /// The level of the layer.
+    pub level: LevelId,
 
-    /// The index of the layer within its level.
-    pub layer: usize,
+    /// The layer within its level.
+    pub layer: LayerId,
 }
 
 /// An illegal dependency of one layer on another, as grimp names it.
@@ -64,9 +90,14 @@ pub struct PackageDependency {
 /// member of the importing layer that imports its first node as heads, and
 /// every member of the imported layer that its last node imports as tails.
 /// Heads and tails are never empty, and are in ascending id order.
+///
+/// For example, if `low/a.ts` and `low/d.ts` import `utils.ts`, which
+/// imports `high/b.ts` and `high/c.ts`, then `low` reaches `high` by one
+/// route, with the heads `low/a.ts` and `low/d.ts`, the middle `utils.ts`,
+/// and the tails `high/b.ts` and `high/c.ts`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Route {
-    /// The heads, then the middle, then the tails, in one allocation.
+    /// The heads, then the middle, then the tails.
     nodes: Vec<ModuleId>,
 
     /// The index in `nodes` where the middle starts.
@@ -81,6 +112,59 @@ pub struct Route {
 // tails.
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(size_of::<Route>() == 32);
+
+impl Architecture {
+    /// The architecture of `levels`, highest first.
+    pub fn new(levels: impl IntoIterator<Item = Level>) -> Self {
+        Self { levels: levels.into_iter().collect() }
+    }
+
+    /// The members of `layer`.
+    pub fn layer(&self, layer: LayerRef) -> &NodeSet {
+        &self.levels[layer.level].layers[layer.layer]
+    }
+
+    /// The members of every layer.
+    fn members(&self) -> NodeSet {
+        let mut members = NodeSet::new();
+        for layer in self.levels.iter().flat_map(|level| &level.layers) {
+            members.union_with(layer);
+        }
+        members
+    }
+
+    /// Every layer, from the highest to the lowest.
+    fn layers(&self) -> impl Iterator<Item = LayerRef> + '_ {
+        self.levels.iter_enumerated().flat_map(|(id, level)| {
+            level.layers.indices().map(move |layer| LayerRef { level: id, layer })
+        })
+    }
+
+    /// The `(importer, imported)` pairs of layers that may not import each
+    /// other, sorted.
+    fn illegal_pairs(&self) -> Vec<(LayerRef, LayerRef)> {
+        self.layers()
+            .flat_map(|importer| self.layers().map(move |imported| (importer, imported)))
+            .filter(|&(importer, imported)| self.forbids(importer, imported))
+            .collect()
+    }
+
+    /// Whether `importer` may not import `imported`.
+    fn forbids(&self, importer: LayerRef, imported: LayerRef) -> bool {
+        match importer.level.cmp(&imported.level) {
+            // Lower imports higher.
+            Ordering::Greater => true,
+            // A sibling at an independent level.
+            Ordering::Equal => {
+                importer.layer != imported.layer && self.levels[importer.level].independent
+            }
+            // Higher imports lower, across a closed level between them.
+            Ordering::Less => {
+                self.levels[importer.level + 1..imported.level].iter().any(|level| level.closed)
+            }
+        }
+    }
+}
 
 impl Route {
     /// The route of a direct `(importer, imported)` import.
@@ -133,32 +217,26 @@ impl fmt::Debug for Route {
 }
 
 impl GraphView<'_> {
-    /// Find every dependency that breaks the layered architecture `levels`
-    /// (highest first), sorted by importer and then imported layer.
+    /// Find every dependency that breaks `architecture`, sorted by importer
+    /// and then imported layer.
     ///
-    /// The illegal dependencies are: a lower layer importing a higher one; a
-    /// layer importing a sibling at an independent level; and a layer
-    /// importing a lower layer across a closed level. Chains between two
-    /// layers may not pass through any other layer, so `low -> mid -> high`
-    /// is reported as the two dependencies `low -> mid` and `mid -> high`,
-    /// not a third `low -> high`. The pairs of layers are searched in
-    /// parallel.
-    pub fn find_illegal_dependencies_for_layers(&self, levels: &[Level]) -> Vec<PackageDependency> {
-        let mut all_layer_members = NodeSet::new();
-        for layer in levels.iter().flat_map(|level| &level.layers) {
-            all_layer_members.union_with(layer);
-        }
+    /// Chains between two layers may not pass through any other layer, so
+    /// `low -> mid -> high` is reported as the two dependencies `low -> mid`
+    /// and `mid -> high`, not a third `low -> high`. The pairs of layers are
+    /// searched in parallel.
+    pub fn find_illegal_dependencies_for_layers(
+        &self,
+        architecture: &Architecture,
+    ) -> Vec<PackageDependency> {
+        let members = architecture.members();
 
         // A parallel collect keeps the sorted order of the pairs.
-        illegal_pairs(levels)
+        architecture
+            .illegal_pairs()
             .into_par_iter()
             .map_init(ChainSearch::default, |search, (importer, imported)| {
-                let routes = self.illegal_routes(
-                    search,
-                    layer(levels, importer),
-                    layer(levels, imported),
-                    &all_layer_members,
-                );
+                let (from, to) = (architecture.layer(importer), architecture.layer(imported));
+                let routes = self.illegal_routes(search, from, to, &members);
                 (!routes.is_empty()).then_some(PackageDependency { importer, imported, routes })
             })
             .flatten_iter()
@@ -169,39 +247,39 @@ impl GraphView<'_> {
     /// imports count. Every route is a direct import, with an empty middle.
     pub fn find_illegal_direct_dependencies_for_layers(
         &self,
-        levels: &[Level],
+        architecture: &Architecture,
     ) -> Vec<PackageDependency> {
-        illegal_pairs(levels)
+        architecture
+            .illegal_pairs()
             .into_iter()
             .filter_map(|(importer, imported)| {
-                let (from, to) = (layer(levels, importer), layer(levels, imported));
+                let (from, to) = (architecture.layer(importer), architecture.layer(imported));
                 if from.intersects(to) {
                     return None;
                 }
-                let routes: Vec<Route> = self.direct_imports(from, to).map(Route::direct).collect();
+                let routes: Vec<_> = self.direct_imports(from, to).map(Route::direct).collect();
                 (!routes.is_empty()).then_some(PackageDependency { importer, imported, routes })
             })
             .collect()
     }
 
     /// The routes from `from` to `to` that do not pass through any other
-    /// layer.
+    /// layer, given the `members` of every layer.
     fn illegal_routes(
         &self,
         search: &mut ChainSearch,
         from: &NodeSet,
         to: &NodeSet,
-        all_layer_members: &NodeSet,
+        members: &NodeSet,
     ) -> Vec<Route> {
         // Excluding every layer leaves out the other layers, since the ends
         // of a chain are never excluded.
-        let (direct, indirect) = search.find_chains(self, from, to, all_layer_members);
-        let mut routes: Vec<Route> = direct.into_iter().map(Route::direct).collect();
+        let (direct, indirect) = search.find_chains(self, from, to, members);
+        let mut routes: Vec<_> = direct.into_iter().map(Route::direct).collect();
 
         // Chains with the same middle make the same route, since its heads
         // and tails are every import into and out of the middle.
-        let mut middles: Vec<&[ModuleId]> =
-            indirect.iter().map(|chain| &chain[1..chain.len() - 1]).collect();
+        let mut middles: Vec<_> = indirect.iter().map(|chain| &chain[1..chain.len() - 1]).collect();
         middles.sort_unstable();
         middles.dedup();
         for middle in middles {
@@ -216,60 +294,21 @@ impl GraphView<'_> {
     }
 }
 
-/// The members of a layer.
-fn layer(levels: &[Level], layer: LayerRef) -> &NodeSet {
-    &levels[layer.level].layers[layer.layer]
-}
-
-/// The `(importer, imported)` pairs of layers that may not import each
-/// other, sorted.
-fn illegal_pairs(levels: &[Level]) -> Vec<(LayerRef, LayerRef)> {
-    let refs =
-        |level: usize| (0..levels[level].layers.len()).map(move |layer| LayerRef { level, layer });
-
-    let mut pairs = Vec::new();
-    for (index, level) in levels.iter().enumerate() {
-        for imported in refs(index) {
-            // Lower layers may not import it.
-            for lower in index + 1..levels.len() {
-                pairs.extend(refs(lower).map(|importer| (importer, imported)));
-            }
-
-            // Its siblings may not import it, if the level is independent.
-            if level.independent {
-                let siblings = refs(index).filter(|sibling| *sibling != imported);
-                pairs.extend(siblings.map(|sibling| (sibling, imported)));
-            }
-
-            // Higher layers may not import it across a closed level.
-            let mut closed = false;
-            for (higher, higher_level) in levels[..index].iter().enumerate().rev() {
-                if closed {
-                    pairs.extend(refs(higher).map(|importer| (importer, imported)));
-                }
-                closed |= higher_level.closed;
-            }
-        }
-    }
-
-    // Each rule makes pairs in its own direction, so there are no duplicates.
-    pairs.sort_unstable();
-    pairs
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
 
+    use index_vec::index_vec;
+
     use super::*;
     use crate::{
         EdgeSet, Graph,
-        testing::{graph_of, id, in_both_orders, names, random_imports, seeded_rng},
+        testing::{graph_of, id, in_both_orders, members, names, random_imports, seeded_rng},
     };
 
     /// A level of the members of the nodes called `names`, one layer each.
     fn level(graph: &Graph, names: &[&str], independent: bool, closed: bool) -> Level {
-        let layers = names.iter().map(|name| graph.members(id(graph, name))).collect();
+        let layers = names.iter().map(|name| members(graph, name)).collect();
         Level { layers, independent, closed }
     }
 
@@ -280,12 +319,17 @@ mod tests {
 
     /// A level of `count` empty layers.
     fn empty(count: usize, independent: bool, closed: bool) -> Level {
-        Level { layers: vec![NodeSet::new(); count], independent, closed }
+        Level { layers: index_vec![NodeSet::new(); count], independent, closed }
+    }
+
+    /// A ref to the layer at indices `level` and `layer`.
+    fn layer_ref(level: usize, layer: usize) -> LayerRef {
+        LayerRef { level: LevelId::new(level), layer: LayerId::new(layer) }
     }
 
     /// A ref to the only layer at a level.
     fn at(level: usize) -> LayerRef {
-        LayerRef { level, layer: 0 }
+        layer_ref(level, 0)
     }
 
     /// A route by name, as `(heads, middle, tails)`.
@@ -320,43 +364,52 @@ mod tests {
 
     #[test]
     fn lower_layers_may_not_import_higher_ones() {
-        let levels = [empty(1, false, false), empty(1, false, false), empty(1, false, false)];
-        assert_eq!(illegal_pairs(&levels), [(at(1), at(0)), (at(2), at(0)), (at(2), at(1))]);
+        let levels = Architecture::new([
+            empty(1, false, false),
+            empty(1, false, false),
+            empty(1, false, false),
+        ]);
+        assert_eq!(levels.illegal_pairs(), [(at(1), at(0)), (at(2), at(0)), (at(2), at(1))]);
     }
 
     #[test]
     fn independent_siblings_may_not_import_each_other() {
-        let a = LayerRef { level: 0, layer: 0 };
-        let b = LayerRef { level: 0, layer: 1 };
-        assert_eq!(illegal_pairs(&[empty(2, true, false)]), [(a, b), (b, a)]);
-        assert!(illegal_pairs(&[empty(2, false, false)]).is_empty());
+        let a = layer_ref(0, 0);
+        let b = layer_ref(0, 1);
+        assert_eq!(Architecture::new([empty(2, true, false)]).illegal_pairs(), [(a, b), (b, a)]);
+        assert!(Architecture::new([empty(2, false, false)]).illegal_pairs().is_empty());
 
         // Every layer below may not import either sibling.
-        let low = LayerRef { level: 1, layer: 0 };
+        let low = layer_ref(1, 0);
         assert_eq!(
-            illegal_pairs(&[empty(2, false, false), empty(1, true, false)]),
+            Architecture::new([empty(2, false, false), empty(1, true, false)]).illegal_pairs(),
             [(low, a), (low, b)]
         );
     }
 
     #[test]
     fn closed_levels_may_not_be_bypassed() {
-        let levels = [empty(1, false, false), empty(1, false, true), empty(1, false, false)];
+        let levels = Architecture::new([
+            empty(1, false, false),
+            empty(1, false, true),
+            empty(1, false, false),
+        ]);
         assert_eq!(
-            illegal_pairs(&levels),
+            levels.illegal_pairs(),
             [(at(0), at(2)), (at(1), at(0)), (at(2), at(0)), (at(2), at(1))]
         );
 
         // A closed level holds back every level above it from every level
         // below it. Closing the top or bottom level changes nothing.
-        let levels = [
+        let levels = Architecture::new([
             empty(1, false, true),
             empty(1, false, false),
             empty(1, false, true),
             empty(1, false, false),
             empty(1, false, true),
-        ];
-        let downwards: Vec<_> = illegal_pairs(&levels)
+        ]);
+        let downwards: Vec<_> = levels
+            .illegal_pairs()
             .into_iter()
             .filter(|(importer, imported)| importer < imported)
             .collect();
@@ -373,7 +426,11 @@ mod tests {
             ("high/g.ts", "low/a.ts"),
         ]);
         let view = GraphView::new(&graph);
-        let levels = [single(&graph, "high"), single(&graph, "mid"), single(&graph, "low")];
+        let levels = Architecture::new([
+            single(&graph, "high"),
+            single(&graph, "mid"),
+            single(&graph, "low"),
+        ]);
         let dependencies = view.find_illegal_dependencies_for_layers(&levels);
         assert_eq!(
             named(&graph, &dependencies),
@@ -399,7 +456,11 @@ mod tests {
     fn check_with(imports: &[(&'static str, &'static str)]) -> (Graph, Vec<PackageDependency>) {
         let graph = graph_of(&[&LEGAL[..], imports].concat());
         let view = GraphView::new(&graph);
-        let levels = [single(&graph, "high"), single(&graph, "medium"), single(&graph, "low")];
+        let levels = Architecture::new([
+            single(&graph, "high"),
+            single(&graph, "medium"),
+            single(&graph, "low"),
+        ]);
         let dependencies = view.find_illegal_dependencies_for_layers(&levels);
         (graph, dependencies)
     }
@@ -487,7 +548,7 @@ mod tests {
             ("f.ts", "high/green.ts"),
         ]);
         let view = GraphView::new(&graph);
-        let levels = [single(&graph, "high"), single(&graph, "low")];
+        let levels = Architecture::new([single(&graph, "high"), single(&graph, "low")]);
         let ends = |middle| (vec!["low/blue.ts"], middle, vec!["high/green.ts"]);
         assert_eq!(
             named(&graph, &view.find_illegal_dependencies_for_layers(&levels)),
@@ -500,8 +561,9 @@ mod tests {
         let graph = graph_of(&[("blue/alpha.ts", "green/beta.ts"), ("yellow.ts", "blue/alpha.ts")]);
         let view = GraphView::new(&graph);
         let siblings = level(&graph, &["blue", "green", "yellow.ts"], true, false);
-        let dependencies = view.find_illegal_dependencies_for_layers(&[siblings]);
-        let [blue, green, yellow] = [0, 1, 2].map(|layer| LayerRef { level: 0, layer });
+        let dependencies =
+            view.find_illegal_dependencies_for_layers(&Architecture::new([siblings]));
+        let [blue, green, yellow] = [0, 1, 2].map(|layer| layer_ref(0, layer));
         assert_eq!(
             named(&graph, &dependencies),
             [
@@ -519,8 +581,11 @@ mod tests {
             ("config/b.ts", "app/c.ts"),
         ]);
         let view = GraphView::new(&graph);
-        let levels = [single(&graph, "app"), level(&graph, &["types", "config"], false, false)];
-        let config = LayerRef { level: 1, layer: 1 };
+        let levels = Architecture::new([
+            single(&graph, "app"),
+            level(&graph, &["types", "config"], false, false),
+        ]);
+        let config = layer_ref(1, 1);
         assert_eq!(
             named(&graph, &view.find_illegal_dependencies_for_layers(&levels)),
             [(config, at(0), vec![direct("config/b.ts", "app/c.ts")])]
@@ -537,11 +602,18 @@ mod tests {
             ("utils.ts", "low/c.ts"),
         ]);
         let view = GraphView::new(&graph);
-        let open = [single(&graph, "high"), single(&graph, "mid"), single(&graph, "low")];
+        let open = Architecture::new([
+            single(&graph, "high"),
+            single(&graph, "mid"),
+            single(&graph, "low"),
+        ]);
         assert!(view.find_illegal_dependencies_for_layers(&open).is_empty());
 
-        let closed =
-            [single(&graph, "high"), level(&graph, &["mid"], false, true), single(&graph, "low")];
+        let closed = Architecture::new([
+            single(&graph, "high"),
+            level(&graph, &["mid"], false, true),
+            single(&graph, "low"),
+        ]);
         assert_eq!(
             named(&graph, &view.find_illegal_dependencies_for_layers(&closed)),
             [(
@@ -565,7 +637,11 @@ mod tests {
         let view = GraphView::new(&graph);
 
         // An optional middle layer that is missing.
-        let levels = [single(&graph, "high"), empty(1, false, false), single(&graph, "low")];
+        let levels = Architecture::new([
+            single(&graph, "high"),
+            empty(1, false, false),
+            single(&graph, "low"),
+        ]);
         assert_eq!(
             named(&graph, &view.find_illegal_dependencies_for_layers(&levels)),
             [(at(2), at(0), vec![direct("low/a.ts", "high/b.ts")])]
@@ -573,9 +649,9 @@ mod tests {
 
         // A missing sibling keeps the indices of the others.
         let mut siblings = level(&graph, &["high"], true, false);
-        siblings.layers.insert(0, NodeSet::new());
-        let levels = [siblings, single(&graph, "low")];
-        let high = LayerRef { level: 0, layer: 1 };
+        siblings.layers.insert(LayerId::new(0), NodeSet::new());
+        let levels = Architecture::new([siblings, single(&graph, "low")]);
+        let high = layer_ref(0, 1);
         assert_eq!(
             named(&graph, &view.find_illegal_dependencies_for_layers(&levels)),
             [(at(1), high, vec![direct("low/a.ts", "high/b.ts")])]
@@ -583,7 +659,11 @@ mod tests {
 
         // A closed level still closes when its layers are missing, as in
         // grimp.
-        let levels = [single(&graph, "high"), empty(1, false, true), single(&graph, "low")];
+        let levels = Architecture::new([
+            single(&graph, "high"),
+            empty(1, false, true),
+            single(&graph, "low"),
+        ]);
         assert_eq!(
             named(&graph, &view.find_illegal_dependencies_for_layers(&levels)),
             [
@@ -616,7 +696,10 @@ mod tests {
         ]);
         let view = GraphView::new(&graph);
         let levels_in = |container: &str| {
-            ["high", "medium", "low"].map(|layer| single(&graph, &format!("{container}/{layer}")))
+            Architecture::new(
+                ["high", "medium", "low"]
+                    .map(|layer| single(&graph, &format!("{container}/{layer}"))),
+            )
         };
 
         assert_eq!(
@@ -651,7 +734,7 @@ mod tests {
             ("low/e.ts", "high/b.ts"),
         ]);
         let view = GraphView::new(&graph);
-        let levels = [single(&graph, "high"), single(&graph, "low")];
+        let levels = Architecture::new([single(&graph, "high"), single(&graph, "low")]);
         assert_eq!(
             named(&graph, &view.find_illegal_direct_dependencies_for_layers(&levels)),
             [(
@@ -675,7 +758,7 @@ mod tests {
     fn overlapping_layers_have_no_dependencies() {
         let graph = graph_of(&[("web/a.ts", "web/lib/b.ts"), ("web/lib/b.ts", "web/c.ts")]);
         let view = GraphView::new(&graph);
-        let levels = [single(&graph, "web"), single(&graph, "web/lib")];
+        let levels = Architecture::new([single(&graph, "web"), single(&graph, "web/lib")]);
         assert!(view.find_illegal_dependencies_for_layers(&levels).is_empty());
         assert!(view.find_illegal_direct_dependencies_for_layers(&levels).is_empty());
     }
@@ -694,11 +777,11 @@ mod tests {
         ];
         let dependencies = in_both_orders(&imports, |graph| {
             let view = GraphView::new(graph);
-            let levels = [
+            let levels = Architecture::new([
                 level(graph, &["pkg/ui", "pkg/forms"], true, false),
                 single(graph, "pkg/client"),
                 single(graph, "pkg/core"),
-            ];
+            ]);
             format!("{:?}", named(graph, &view.find_illegal_dependencies_for_layers(&levels)))
         });
         assert!(dependencies.contains("lib/e.ts"));
@@ -708,18 +791,17 @@ mod tests {
     /// pairs without any chain, then search with every other layer excluded,
     /// and make a route of each direct chain and of each distinct middle,
     /// with heads and tails found by looking at every member of the layers.
-    fn reference_dependencies(view: &GraphView, levels: &[Level]) -> Vec<PackageDependency> {
-        let mut all_layer_members = NodeSet::new();
-        for layer in levels.iter().flat_map(|level| &level.layers) {
-            all_layer_members.union_with(layer);
-        }
+    fn reference_dependencies(
+        view: &GraphView,
+        architecture: &Architecture,
+    ) -> Vec<PackageDependency> {
         let mut dependencies = Vec::new();
-        for (importer, imported) in illegal_pairs(levels) {
-            let (from, to) = (layer(levels, importer), layer(levels, imported));
+        for (importer, imported) in architecture.illegal_pairs() {
+            let (from, to) = (architecture.layer(importer), architecture.layer(imported));
             if view.find_shortest_chain(from, to, &NodeSet::new(), &EdgeSet::new()).is_none() {
                 continue;
             }
-            let mut other_layers = all_layer_members.clone();
+            let mut other_layers = architecture.members();
             other_layers.difference_with(from);
             other_layers.difference_with(to);
 
@@ -767,16 +849,24 @@ mod tests {
             let graph = graph_of(&imports);
             let view = GraphView::new(&graph);
             // A layer whose files are never imported is missing.
-            let members = |name| graph.id(name).map_or_else(NodeSet::new, |id| graph.members(id));
-            let levels = [
-                Level { layers: vec![members("high")], independent: false, closed: random.bool() },
+            let layer = |name| graph.id(name).map_or_else(NodeSet::new, |id| graph.members(id));
+            let levels = Architecture::new([
                 Level {
-                    layers: vec![members("left"), members("right")],
+                    layers: index_vec![layer("high")],
+                    independent: false,
+                    closed: random.bool(),
+                },
+                Level {
+                    layers: index_vec![layer("left"), layer("right")],
                     independent: random.bool(),
                     closed: random.bool(),
                 },
-                Level { layers: vec![members("low")], independent: false, closed: random.bool() },
-            ];
+                Level {
+                    layers: index_vec![layer("low")],
+                    independent: false,
+                    closed: random.bool(),
+                },
+            ]);
 
             let dependencies = view.find_illegal_dependencies_for_layers(&levels);
             assert_eq!(dependencies, reference_dependencies(&view, &levels), "{imports:?}");

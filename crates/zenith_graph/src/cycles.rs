@@ -3,28 +3,35 @@
 //!
 //! A [`UnitGraph`] aggregates the direct imports between the members of a
 //! list of units into weighted dependencies between the units, which are
-//! referred to by their index in that list.
+//! referred to by their [`UnitId`], the index in that list.
 
-use std::{collections::VecDeque, iter, mem};
+use std::{cmp::Reverse, collections::VecDeque, iter, mem};
 
+use index_vec::{IndexSlice, IndexVec, index_vec};
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{GraphView, NodeSet};
+
+index_vec::define_index_type! {
+    /// A unit of a [`UnitGraph`]: its index in the list of units.
+    pub struct UnitId = u32;
+    MAX_INDEX = u32::MAX as usize;
+}
 
 /// A dependency of one unit on another.
 ///
 /// Dependencies order by importer, then imported unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct UnitDependency {
-    /// The index of the importing unit.
-    pub importer: usize,
+    /// The importing unit.
+    pub importer: UnitId,
 
-    /// The index of the imported unit.
-    pub imported: usize,
+    /// The imported unit.
+    pub imported: UnitId,
 
     /// The number of imports that make the dependency: the `(importer,
     /// imported)` pairs of members, however many statements make each pair.
-    pub weight: usize,
+    pub weight: u32,
 }
 
 /// The dependencies between a list of disjoint units, aggregated from the
@@ -36,6 +43,9 @@ pub struct UnitGraph {
 
     /// Every dependency, sorted by importer then imported unit.
     dependencies: Vec<UnitDependency>,
+
+    /// Every dependency, sorted by imported then importing unit.
+    by_imported: Vec<UnitDependency>,
 }
 
 impl UnitGraph {
@@ -45,11 +55,13 @@ impl UnitGraph {
     /// not dependencies. The order of `units` breaks ties in
     /// [`Self::nominate_cycle_breakers`].
     pub fn build(view: &GraphView, units: &[NodeSet]) -> Self {
+        let units: &IndexSlice<UnitId, [NodeSet]> = IndexSlice::new(units);
+
         // Only the members matter, so look them up in a map of their own
         // rather than a table of every node in the graph.
         let member_count = units.iter().map(NodeSet::len).sum();
         let mut unit_of = FxHashMap::with_capacity_and_hasher(member_count, FxBuildHasher);
-        for (index, unit) in units.iter().enumerate() {
+        for (index, unit) in units.iter_enumerated() {
             for member in unit.iter() {
                 let previous = unit_of.insert(member, index);
                 debug_assert!(previous.is_none(), "units must not overlap");
@@ -58,10 +70,10 @@ impl UnitGraph {
 
         // Count the imports of one unit at a time into `weights`, indexed by
         // imported unit, so the dependencies come out in order.
-        let mut weights = vec![0; units.len()];
+        let mut weights: IndexVec<UnitId, u32> = index_vec![0; units.len()];
         let mut targets = Vec::new();
         let mut dependencies = Vec::new();
-        for (importer, unit) in units.iter().enumerate() {
+        for (importer, unit) in units.iter_enumerated() {
             let imported = unit.iter().flat_map(|member| view.imports_of(member));
             for target in imported.filter_map(|node| unit_of.get(&node).copied()) {
                 if target != importer {
@@ -78,8 +90,15 @@ impl UnitGraph {
                 weight: mem::take(&mut weights[imported]),
             }));
         }
+        Self::new(units.len(), dependencies)
+    }
 
-        UnitGraph { unit_count: units.len(), dependencies }
+    /// The graph of `unit_count` units with `dependencies`, sorted by
+    /// importer then imported unit.
+    fn new(unit_count: usize, dependencies: Vec<UnitDependency>) -> Self {
+        let mut by_imported = dependencies.clone();
+        by_imported.sort_unstable_by_key(|dependency| (dependency.imported, dependency.importer));
+        Self { unit_count, dependencies, by_imported }
     }
 
     /// Every dependency, sorted by importer then imported unit.
@@ -101,38 +120,28 @@ impl UnitGraph {
     /// alphabetical order of their labels to break ties alphabetically, as
     /// grimp does.
     pub fn nominate_cycle_breakers(&self) -> Vec<UnitDependency> {
-        let unit_count = self.unit_count;
         let mut peeling = Peeling::new(self);
 
         // Sources go first. Removing one can make the units it imports
         // sources.
-        let mut front = Vec::with_capacity(unit_count);
-        let mut ready: Vec<usize> =
-            (0..unit_count).filter(|unit| peeling.is_source(*unit)).collect();
+        let mut front = Vec::with_capacity(self.unit_count);
+        let mut ready: Vec<_> = self.units().filter(|unit| peeling.is_source(*unit)).collect();
         while let Some(unit) = ready.pop() {
             peeling.remove(unit);
             front.push(unit);
-            ready.extend(
-                self.dependencies_of(unit)
-                    .iter()
-                    .map(|dependency| dependency.imported)
-                    .filter(|imported| peeling.is_source(*imported)),
-            );
+            let imported = self.dependencies_of(unit).iter().map(|dependency| dependency.imported);
+            ready.extend(imported.filter(|unit| peeling.is_source(*unit)));
         }
 
         // Sinks go last, each before the sinks it imports, which were
         // removed first.
         let mut back = Vec::new();
-        let mut ready: Vec<usize> = (0..unit_count).filter(|unit| peeling.is_sink(*unit)).collect();
+        let mut ready: Vec<_> = self.units().filter(|unit| peeling.is_sink(*unit)).collect();
         while let Some(unit) = ready.pop() {
             peeling.remove(unit);
             back.push(unit);
-            ready.extend(
-                peeling.importers[unit]
-                    .iter()
-                    .map(|index| self.dependencies[*index].importer)
-                    .filter(|importer| peeling.is_sink(*importer)),
-            );
+            let importers = self.dependencies_on(unit).iter().map(|dependency| dependency.importer);
+            ready.extend(importers.filter(|unit| peeling.is_sink(*unit)));
         }
 
         // The rest go in between, the unit that imports the others most, net
@@ -142,9 +151,9 @@ impl UnitGraph {
             front.push(unit);
         }
 
-        let mut position = vec![0; unit_count];
-        for (index, unit) in front.iter().chain(back.iter().rev()).enumerate() {
-            position[*unit] = index;
+        let mut position: IndexVec<UnitId, usize> = index_vec![0; self.unit_count];
+        for (index, unit) in front.into_iter().chain(back.into_iter().rev()).enumerate() {
+            position[unit] = index;
         }
         self.dependencies
             .iter()
@@ -153,27 +162,26 @@ impl UnitGraph {
             .collect()
     }
 
-    /// The shortest path of dependencies from unit `from` to unit `to`, as
-    /// unit indices from `from` to `to`, e.g. to show a cycle through a
-    /// breaker. Ties go to the units that come first. The path from a unit to
-    /// itself is just the unit.
+    /// The shortest path of dependencies from unit `from` to unit `to`, e.g.
+    /// to show a cycle through a breaker. Ties go to the units that come
+    /// first. The path from a unit to itself is just the unit.
     ///
-    /// Panics if `from` or `to` is not the index of a unit.
-    pub fn find_path(&self, from: usize, to: usize) -> Option<Vec<usize>> {
+    /// Panics if `from` or `to` is not a unit.
+    pub fn find_path(&self, from: UnitId, to: UnitId) -> Option<Vec<UnitId>> {
         assert!(
-            from < self.unit_count && to < self.unit_count,
-            "units {from} and {to} are not both among the {} units",
+            from.index() < self.unit_count && to.index() < self.unit_count,
+            "units {from:?} and {to:?} are not both among the {} units",
             self.unit_count
         );
         // The unit each unit was first reached from. `from` is its own, so
         // that it is never reached again.
-        let mut parents: Vec<Option<usize>> = vec![None; self.unit_count];
+        let mut parents: IndexVec<UnitId, Option<UnitId>> = index_vec![None; self.unit_count];
         parents[from] = Some(from);
         let mut queue = VecDeque::from([from]);
         while let Some(unit) = queue.pop_front() {
             if unit == to {
                 let mut path: Vec<_> =
-                    iter::successors(Some(to), |&node| parents[node].filter(|_| node != from))
+                    iter::successors(Some(to), |&unit| parents[unit].filter(|_| unit != from))
                         .collect();
                 path.reverse();
                 return Some(path);
@@ -189,11 +197,23 @@ impl UnitGraph {
         None
     }
 
+    /// Every unit, in order.
+    fn units(&self) -> impl Iterator<Item = UnitId> {
+        (0..self.unit_count).map(UnitId::from_usize)
+    }
+
     /// The dependencies of `unit` on other units, sorted by imported unit.
-    fn dependencies_of(&self, unit: usize) -> &[UnitDependency] {
+    fn dependencies_of(&self, unit: UnitId) -> &[UnitDependency] {
         let start = self.dependencies.partition_point(|dependency| dependency.importer < unit);
         let end = self.dependencies.partition_point(|dependency| dependency.importer <= unit);
         &self.dependencies[start..end]
+    }
+
+    /// The dependencies of other units on `unit`, sorted by importer.
+    fn dependencies_on(&self, unit: UnitId) -> &[UnitDependency] {
+        let start = self.by_imported.partition_point(|dependency| dependency.imported < unit);
+        let end = self.by_imported.partition_point(|dependency| dependency.imported <= unit);
+        &self.by_imported[start..end]
     }
 }
 
@@ -232,75 +252,60 @@ struct Peeling<'u> {
     /// The unit graph.
     units: &'u UnitGraph,
 
-    /// The positions in `units.dependencies` of each unit's importers.
-    importers: Vec<Vec<usize>>,
-
     /// Whether each unit is left.
-    left: Vec<bool>,
+    left: IndexVec<UnitId, bool>,
 
-    /// The total weight of each unit's dependencies on units left.
-    out_weight: Vec<usize>,
+    /// The total weight of each unit's dependencies on the units left, while
+    /// it is left.
+    out_weight: IndexVec<UnitId, i64>,
 
-    /// The total weight of the dependencies on each unit from units left.
-    in_weight: Vec<usize>,
+    /// The total weight of the dependencies on each unit from the units left,
+    /// while it is left.
+    in_weight: IndexVec<UnitId, i64>,
 }
 
 impl<'u> Peeling<'u> {
     /// Start with every unit left.
     fn new(units: &'u UnitGraph) -> Self {
-        let unit_count = units.unit_count;
-        let mut importers = vec![Vec::new(); unit_count];
-        let mut out_weight = vec![0; unit_count];
-        let mut in_weight = vec![0; unit_count];
-        for (index, dependency) in units.dependencies.iter().enumerate() {
-            importers[dependency.imported].push(index);
-            out_weight[dependency.importer] += dependency.weight;
-            in_weight[dependency.imported] += dependency.weight;
+        let mut out_weight = index_vec![0; units.unit_count];
+        let mut in_weight = index_vec![0; units.unit_count];
+        for dependency in &units.dependencies {
+            out_weight[dependency.importer] += i64::from(dependency.weight);
+            in_weight[dependency.imported] += i64::from(dependency.weight);
         }
-        Self { units, importers, left: vec![true; unit_count], out_weight, in_weight }
+        Self { units, left: index_vec![true; units.unit_count], out_weight, in_weight }
     }
 
     /// Whether `unit` is left and no unit left imports it. Every weight is
     /// at least 1, so a weight of 0 means no dependencies.
-    fn is_source(&self, unit: usize) -> bool {
+    fn is_source(&self, unit: UnitId) -> bool {
         self.left[unit] && self.in_weight[unit] == 0
     }
 
     /// Whether `unit` is left and imports no unit left.
-    fn is_sink(&self, unit: usize) -> bool {
+    fn is_sink(&self, unit: UnitId) -> bool {
         self.left[unit] && self.out_weight[unit] == 0
     }
 
     /// The unit left with the highest weighted out-degree minus in-degree,
     /// the first one on ties, or `None` when no unit is left.
-    fn most_importing(&self) -> Option<usize> {
-        let mut best: Option<usize> = None;
-        for unit in (0..self.units.unit_count).filter(|unit| self.left[*unit]) {
-            // `out(unit) - in(unit) > out(best) - in(best)`, without signs.
-            if best.is_none_or(|best| {
-                self.out_weight[unit] + self.in_weight[best]
-                    > self.out_weight[best] + self.in_weight[unit]
-            }) {
-                best = Some(unit);
-            }
-        }
-        best
+    fn most_importing(&self) -> Option<UnitId> {
+        // `min_by_key` keeps the first of equal keys.
+        self.left
+            .indices()
+            .filter(|unit| self.left[*unit])
+            .min_by_key(|unit| Reverse(self.out_weight[*unit] - self.in_weight[*unit]))
     }
 
-    /// Remove `unit`, and its dependencies from the degrees of the units
-    /// left.
-    fn remove(&mut self, unit: usize) {
+    /// Remove `unit`, and take its dependencies off the weights of the units
+    /// at their other ends.
+    fn remove(&mut self, unit: UnitId) {
         self.left[unit] = false;
         for dependency in self.units.dependencies_of(unit) {
-            if self.left[dependency.imported] {
-                self.in_weight[dependency.imported] -= dependency.weight;
-            }
+            self.in_weight[dependency.imported] -= i64::from(dependency.weight);
         }
-        for index in &self.importers[unit] {
-            let dependency = &self.units.dependencies[*index];
-            if self.left[dependency.importer] {
-                self.out_weight[dependency.importer] -= dependency.weight;
-            }
+        for dependency in self.units.dependencies_on(unit) {
+            self.out_weight[dependency.importer] -= i64::from(dependency.weight);
         }
     }
 }
@@ -310,18 +315,32 @@ mod tests {
     use super::*;
     use crate::{
         Graph, GraphBuilder, ImportKind,
-        testing::{detail, graph_of, id, in_both_orders},
+        testing::{detail, graph_of, id, in_both_orders, members},
     };
 
     /// The unit graph of the members of the nodes called `names`.
     fn units_of(graph: &Graph, names: &[&str]) -> UnitGraph {
-        let units: Vec<_> = names.iter().map(|name| graph.members(id(graph, name))).collect();
+        let units: Vec<_> = names.iter().map(|name| members(graph, name)).collect();
         UnitGraph::build(&GraphView::new(graph), &units)
     }
 
-    /// The `(importer, imported)` units of `dependencies`.
+    /// The `(importer, imported)` units of `dependencies`, as indices.
     fn pairs(dependencies: &[UnitDependency]) -> Vec<(usize, usize)> {
-        dependencies.iter().map(|dependency| (dependency.importer, dependency.imported)).collect()
+        dependencies
+            .iter()
+            .map(|dependency| (dependency.importer.index(), dependency.imported.index()))
+            .collect()
+    }
+
+    /// A dependency between the units at indices `importer` and `imported`.
+    fn dependency(importer: usize, imported: usize, weight: u32) -> UnitDependency {
+        UnitDependency { importer: UnitId::new(importer), imported: UnitId::new(imported), weight }
+    }
+
+    /// The path between the units at indices `from` and `to`, as indices.
+    fn path(units: &UnitGraph, from: usize, to: usize) -> Option<Vec<usize>> {
+        let path = units.find_path(UnitId::new(from), UnitId::new(to))?;
+        Some(path.into_iter().map(UnitId::index).collect())
     }
 
     #[test]
@@ -336,16 +355,15 @@ mod tests {
             ("c/v.ts", "outside.ts"),
         ]);
         let units = units_of(&graph, &["a", "b", "c"]);
-        assert_eq!(
-            units.dependencies(),
-            [
-                UnitDependency { importer: 0, imported: 1, weight: 3 },
-                UnitDependency { importer: 1, imported: 2, weight: 1 },
-            ]
-        );
-        assert_eq!(pairs(units.dependencies_of(0)), [(0, 1)]);
-        assert_eq!(pairs(units.dependencies_of(1)), [(1, 2)]);
-        assert!(units.dependencies_of(2).is_empty());
+        assert_eq!(units.dependencies(), [dependency(0, 1, 3), dependency(1, 2, 1)]);
+
+        let [a, b, c] = [0, 1, 2].map(UnitId::new);
+        assert_eq!(pairs(units.dependencies_of(a)), [(0, 1)]);
+        assert_eq!(pairs(units.dependencies_of(b)), [(1, 2)]);
+        assert!(units.dependencies_of(c).is_empty());
+        assert!(units.dependencies_on(a).is_empty());
+        assert_eq!(pairs(units.dependencies_on(b)), [(0, 1)]);
+        assert_eq!(pairs(units.dependencies_on(c)), [(1, 2)]);
     }
 
     #[test]
@@ -360,24 +378,15 @@ mod tests {
         let graph = builder.finish();
 
         let units = units_of(&graph, &["a", "b"]);
-        assert_eq!(
-            units.dependencies(),
-            [
-                UnitDependency { importer: 0, imported: 1, weight: 2 },
-                UnitDependency { importer: 1, imported: 0, weight: 1 },
-            ]
-        );
-        assert_eq!(
-            units.nominate_cycle_breakers(),
-            [UnitDependency { importer: 1, imported: 0, weight: 1 }]
-        );
+        assert_eq!(units.dependencies(), [dependency(0, 1, 2), dependency(1, 0, 1),]);
+        assert_eq!(units.nominate_cycle_breakers(), [dependency(1, 0, 1)]);
     }
 
     #[test]
     fn units_follow_the_imports_of_the_view() {
         let graph = graph_of(&[("a/x.ts", "b/y.ts"), ("b/y.ts", "a/x.ts")]);
         let [x, y] = ["a/x.ts", "b/y.ts"].map(|name| id(&graph, name));
-        let units = [graph.members(id(&graph, "a")), graph.members(id(&graph, "b"))];
+        let units = [members(&graph, "a"), members(&graph, "b")];
         let view = GraphView::with_excluded(&graph, [(y, x)].into_iter().collect());
         let unit_graph = UnitGraph::build(&view, &units);
         assert_eq!(pairs(unit_graph.dependencies()), [(0, 1)]);
@@ -409,11 +418,8 @@ mod tests {
             ("red/1.ts", "blue/1.ts"),
         ]);
         let units = units_of(&graph, &["blue", "green", "red"]);
-        assert_eq!(
-            units.nominate_cycle_breakers(),
-            [UnitDependency { importer: 2, imported: 0, weight: 1 }]
-        );
-        assert_eq!(units.find_path(0, 2), Some(vec![0, 1, 2]));
+        assert_eq!(units.nominate_cycle_breakers(), [dependency(2, 0, 1)]);
+        assert_eq!(path(&units, 0, 2), Some(vec![0, 1, 2]));
     }
 
     #[test]
@@ -485,8 +491,8 @@ mod tests {
         assert_eq!(pairs(&breakers), [(0, 1), (3, 4)]);
 
         // Removing the breakers leaves no cycle.
-        let mut acyclic = units.clone();
-        acyclic.dependencies.retain(|dependency| !breakers.contains(dependency));
+        let kept = units.dependencies.iter().filter(|dependency| !breakers.contains(dependency));
+        let acyclic = UnitGraph::new(units.unit_count, kept.copied().collect());
         assert!(acyclic.nominate_cycle_breakers().is_empty());
     }
 
@@ -502,22 +508,22 @@ mod tests {
             ("e.ts", "a.ts"),
         ]);
         let units = units_of(&graph, &["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"]);
-        assert_eq!(units.find_path(0, 3), Some(vec![0, 1, 3]));
-        assert_eq!(units.find_path(0, 4), Some(vec![0, 4]));
-        assert_eq!(units.find_path(1, 0), Some(vec![1, 3, 4, 0]));
-        assert_eq!(units.find_path(2, 2), Some(vec![2]));
-        assert_eq!(units.find_path(3, 1), Some(vec![3, 4, 0, 1]));
+        assert_eq!(path(&units, 0, 3), Some(vec![0, 1, 3]));
+        assert_eq!(path(&units, 0, 4), Some(vec![0, 4]));
+        assert_eq!(path(&units, 1, 0), Some(vec![1, 3, 4, 0]));
+        assert_eq!(path(&units, 2, 2), Some(vec![2]));
+        assert_eq!(path(&units, 3, 1), Some(vec![3, 4, 0, 1]));
 
         let graph = graph_of(&[("a.ts", "b.ts")]);
         let units = units_of(&graph, &["a.ts", "b.ts"]);
-        assert_eq!(units.find_path(1, 0), None);
+        assert_eq!(path(&units, 1, 0), None);
     }
 
     #[test]
     #[should_panic(expected = "not both among the 2 units")]
     fn unit_paths_need_units_at_both_ends() {
         let graph = graph_of(&[("a.ts", "b.ts")]);
-        units_of(&graph, &["a.ts", "b.ts"]).find_path(0, 2);
+        units_of(&graph, &["a.ts", "b.ts"]).find_path(UnitId::new(0), UnitId::new(2));
     }
 
     #[test]

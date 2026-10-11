@@ -3,7 +3,7 @@
 use fastrand::Rng;
 use zenith_utils::location::ByteRange;
 
-use crate::{Graph, GraphBuilder, ImportDetail, ImportKind, ModuleId, NodeHandle};
+use crate::{Graph, GraphBuilder, ImportDetail, ImportKind, ModuleId, NodeHandle, NodeSet};
 
 /// Build a graph from `(importer, imported)` pairs. Importers are files. An
 /// imported name starting with `npm:` is an external package, one starting
@@ -40,6 +40,11 @@ pub(crate) fn detail(line: u32, kind: ImportKind) -> ImportDetail {
 /// The id of the node called `name`.
 pub(crate) fn id(graph: &Graph, name: &str) -> ModuleId {
     graph.id(name).unwrap_or_else(|| panic!("no node `{name}`"))
+}
+
+/// The members of the node called `name`.
+pub(crate) fn members(graph: &Graph, name: &str) -> NodeSet {
+    graph.members(id(graph, name))
 }
 
 /// The names of `ids`, in order.

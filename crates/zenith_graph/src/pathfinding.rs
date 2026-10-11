@@ -262,7 +262,7 @@ mod tests {
     use super::*;
     use crate::{
         Graph,
-        testing::{graph_of, id, in_both_orders, names, random_imports, seeded_rng},
+        testing::{graph_of, id, in_both_orders, members, names, random_imports, seeded_rng},
     };
 
     /// The set of the nodes called `names`.
@@ -286,7 +286,7 @@ mod tests {
     /// The shortest chains between the members of two nodes, by name.
     fn chains<'g>(view: &GraphView<'g>, from: &str, to: &str) -> Vec<Vec<&'g str>> {
         let graph = view.graph();
-        let (from, to) = (graph.members(id(graph, from)), graph.members(id(graph, to)));
+        let (from, to) = (members(graph, from), members(graph, to));
         view.find_shortest_chains(&from, &to, &NodeSet::new())
             .into_iter()
             .map(|chain| names(graph, chain))
@@ -541,7 +541,7 @@ mod tests {
             ("low/e.ts", "high/c.ts"),
         ]);
         let view = GraphView::new(&graph);
-        let [low, mid, high] = ["low", "mid", "high"].map(|name| graph.members(id(&graph, name)));
+        let [low, mid, high] = ["low", "mid", "high"].map(|name| members(&graph, name));
         let chains = view.find_shortest_chains(&low, &high, &mid);
         assert_eq!(
             chains.into_iter().map(|chain| names(&graph, chain)).collect::<Vec<_>>(),

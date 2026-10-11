@@ -30,9 +30,9 @@ mod testing;
 mod view;
 
 pub use builder::{FileHandle, GraphBuilder, GraphError, NodeHandle};
-pub use cycles::{UnitDependency, UnitGraph};
+pub use cycles::{UnitDependency, UnitGraph, UnitId};
 pub use graph::{Graph, ImportDetail, ModuleId, Node, NodeKind};
 pub use kinds::{ImportKind, KindSet};
-pub use layers::{LayerRef, Level, PackageDependency, Route};
+pub use layers::{Architecture, LayerId, LayerRef, Level, LevelId, PackageDependency, Route};
 pub use node_set::NodeSet;
 pub use view::{EdgeSet, GraphView};

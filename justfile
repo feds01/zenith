@@ -37,6 +37,11 @@ run *args:
 test *args:
     cargo test "$@"
 
+# Regenerate zenith.schema.json from the config types
+schema:
+    cargo build -q -p zenith
+    cargo run -q -p zenith -- schema > zenith.schema.json
+
 # Run clippy, denying warnings
 clippy:
     cargo clippy --workspace --all-targets -- -D warnings

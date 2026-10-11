@@ -14,9 +14,12 @@ name = "zenith"
 path = "src/main.rs"
 
 [dependencies]
+zenith_config = { workspace = true }
+
 anyhow = { workspace = true }
 argfile = { workspace = true }
 clap = { workspace = true }
+serde_json = { workspace = true }
 wild = { workspace = true }
 
 # `publish = false` keeps the crate off crates.io; it must still be released

@@ -1,0 +1,572 @@
+//! The `zenith.toml` file as written, which is its schema.
+//!
+//! These types mirror the file one-to-one: serde deserialises them, rejecting
+//! unknown keys everywhere, and schemars describes them in the JSON Schema of
+//! the file, so their docs are written for the people editing it. Values that
+//! are checked after deserialisation, such as selectors, are [`Located`], so
+//! that errors can point at them.
+
+use std::{borrow::Cow, fmt};
+
+use indexmap::IndexMap;
+use schemars::{
+    JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings, transform::RecursiveTransform,
+};
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
+    de::{self, IgnoredAny, MapAccess, Visitor, value::MapAccessDeserializer},
+};
+use serde_json::Value;
+use zenith_graph::ImportKind;
+use zenith_utils::location::ByteRange;
+
+use crate::{
+    config::{DEFAULT_BASELINE_PATH, StaleLevel},
+    contracts::{AlertLevel, Severity},
+};
+
+/// A value with the byte range that it was written at.
+#[derive(Debug, Default)]
+pub(crate) struct Located<T> {
+    /// The value.
+    pub(crate) value: T,
+
+    /// Its byte range in the file. A default, which was not written, has an
+    /// empty range.
+    pub(crate) range: ByteRange,
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for Located<T> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let spanned = toml::Spanned::<T>::deserialize(deserializer)?;
+        Ok(Self { range: spanned.span().into(), value: spanned.into_inner() })
+    }
+}
+
+/// Serialised as the bare value, which is how schemars shows defaults.
+impl<T: Serialize> Serialize for Located<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.value.serialize(serializer)
+    }
+}
+
+/// Described as the bare value, since the location is not written.
+impl<T: JsonSchema> JsonSchema for Located<T> {
+    fn inline_schema() -> bool {
+        T::inline_schema()
+    }
+
+    fn schema_name() -> Cow<'static, str> {
+        T::schema_name()
+    }
+
+    fn schema_id() -> Cow<'static, str> {
+        T::schema_id()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        T::json_schema(generator)
+    }
+}
+
+/// The configuration of a zenith project. It lives at the project root, which
+/// all of its paths are relative to.
+// Each table is deserialised on its own, so that every table reports its
+// errors, and each contract's errors name it and point into it. This struct
+// only rejects unknown tables, and describes the tables for the schema.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, expecting = "a table")]
+#[schemars(title = "zenith.toml")]
+#[expect(dead_code, reason = "the tables are deserialised on their own")]
+pub(crate) struct ConfigFile {
+    /// Which files to scan for imports.
+    #[serde(default)]
+    #[schemars(with = "FilesTable")]
+    pub(crate) files: IgnoredAny,
+
+    /// How import specifiers are resolved.
+    #[serde(default)]
+    #[schemars(with = "ResolveTable")]
+    pub(crate) resolve: IgnoredAny,
+
+    /// Defaults that apply to every contract.
+    #[serde(default)]
+    #[schemars(with = "AnalysisTable")]
+    pub(crate) analysis: IgnoredAny,
+
+    /// The baseline of known violations, which `zenith check` ignores so that
+    /// only new violations fail it.
+    #[serde(default)]
+    #[schemars(with = "BaselineTable")]
+    pub(crate) baseline: IgnoredAny,
+
+    /// The architecture contracts, keyed by id. Ids may contain ASCII
+    /// letters, digits, `-` and `_`, and are what `--contract`, the baseline
+    /// and `zenith-ignore` comments refer to.
+    #[serde(default)]
+    #[schemars(with = "IndexMap<String, ContractTable>")]
+    pub(crate) contracts: IgnoredAny,
+}
+
+/// Which files to scan for imports.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields, expecting = "a table")]
+pub(crate) struct FilesTable {
+    /// Globs of the files to scan. Defaults to every JavaScript and
+    /// TypeScript file, `**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`.
+    pub(crate) include: Option<Vec<Located<String>>>,
+
+    /// Globs of files and directories to skip, on top of the default
+    /// excludes, such as `node_modules` and `.next`.
+    pub(crate) exclude: Vec<Located<String>>,
+
+    /// Whether to skip the files that `.gitignore`, `.ignore` and the global
+    /// git excludes ignore.
+    pub(crate) respect_gitignore: bool,
+}
+
+impl Default for FilesTable {
+    fn default() -> Self {
+        Self { include: None, exclude: Vec::new(), respect_gitignore: true }
+    }
+}
+
+/// How import specifiers are resolved.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields, expecting = "a table")]
+pub(crate) struct ResolveTable {
+    /// Which `tsconfig.json` files to use: `"auto"` (the default) uses the
+    /// nearest one of each file, `"off"` uses none, and any other value is
+    /// the path of the one to use for every file.
+    pub(crate) tsconfig: Option<String>,
+
+    /// The condition names to match in `exports` maps, replacing the
+    /// defaults: `types`, `source`, `import`, `module`, `require`, `node`
+    /// and `default`. Conditions are matched in the order that each package
+    /// lists them.
+    pub(crate) conditions: Option<Vec<String>>,
+
+    /// The `package.json` fields that point at a package's entry point,
+    /// replacing the defaults: `module`, then `main`.
+    pub(crate) main_fields: Option<Vec<String>>,
+
+    /// The extensions to try, in order, when a specifier has none, replacing
+    /// the defaults: `.ts`, `.tsx`, `.d.ts`, `.mts`, `.cts`, `.js`, `.jsx`,
+    /// `.mjs`, `.cjs` and `.json`.
+    pub(crate) extensions: Option<Vec<String>>,
+
+    /// Bundler-only aliases: a specifier prefix, and the path that it maps
+    /// to.
+    pub(crate) alias: IndexMap<String, String>,
+
+    /// Name patterns of specifiers that are expected not to resolve, so are
+    /// not reported as unresolved, e.g. `"/*"` for files served from a public
+    /// directory, or `"virtual:*"`.
+    pub(crate) ignore_unresolved: Vec<Located<String>>,
+}
+
+/// Defaults that apply to every contract.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields, expecting = "a table")]
+pub(crate) struct AnalysisTable {
+    /// The import kinds that contracts ignore unless they set their own
+    /// `exclude_kinds`, e.g. `["type"]` to exempt type-only imports.
+    pub(crate) exclude_kinds: Vec<ImportKind>,
+}
+
+/// The baseline of known violations.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields, expecting = "a table")]
+pub(crate) struct BaselineTable {
+    /// The path of the baseline file.
+    pub(crate) path: String,
+
+    /// How to report baseline entries whose import no longer exists:
+    /// `"error"` fails the check, so that the baseline can only shrink, and
+    /// `"warn"` reports a warning.
+    pub(crate) stale: StaleLevel,
+}
+
+impl Default for BaselineTable {
+    fn default() -> Self {
+        Self { path: DEFAULT_BASELINE_PATH.to_string(), stale: StaleLevel::default() }
+    }
+}
+
+/// An architecture contract. Its `type` says what it checks.
+#[derive(Debug, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub(crate) enum ContractTable {
+    /// The `from` modules must not import the `to` modules, directly or
+    /// through other modules.
+    Forbidden(ForbiddenTable),
+
+    /// The modules must not depend on one another, directly or through other
+    /// modules.
+    Independence(IndependenceTable),
+
+    /// Higher layers may import lower layers, never the reverse.
+    Layers(LayersTable),
+
+    /// Only the allowed importers, and the modules themselves, may directly
+    /// import the modules.
+    Protected(ProtectedTable),
+
+    /// The modules must not form dependency cycles.
+    Acyclic(AcyclicTable),
+
+    /// Code outside each module may only import it through its entry points.
+    Encapsulation(EncapsulationTable),
+}
+
+impl ContractTable {
+    /// The options that every contract type shares.
+    pub(crate) fn shared(&self) -> SharedOptions<'_> {
+        match self {
+            Self::Forbidden(table) => table.shared(),
+            Self::Independence(table) => table.shared(),
+            Self::Layers(table) => table.shared(),
+            Self::Protected(table) => table.shared(),
+            Self::Acyclic(table) => table.shared(),
+            Self::Encapsulation(table) => table.shared(),
+        }
+    }
+}
+
+/// The options that every contract type shares, as written.
+pub(crate) struct SharedOptions<'a> {
+    /// The title for output.
+    pub(crate) name: Option<&'a str>,
+
+    /// How severe it is when the contract is broken.
+    pub(crate) severity: Severity,
+
+    /// The import kinds to ignore, if set.
+    pub(crate) exclude_kinds: Option<&'a [ImportKind]>,
+
+    /// The imports to ignore.
+    pub(crate) ignore_imports: &'a [Located<String>],
+
+    /// How to report an `ignore_imports` entry that matches no import.
+    pub(crate) unmatched_ignore_imports: AlertLevel,
+
+    /// Text shown under the violations.
+    pub(crate) guidance: Option<&'a str>,
+}
+
+/// Declares the table of a contract type: its own keys, followed by the
+/// options that every contract type shares. The shared options are spelled
+/// out in each table, rather than flattened into it, because serde can only
+/// reject unknown keys, and keep their locations, without flattening.
+macro_rules! contract_table {
+    (
+        $(#[$meta:meta])*
+        $name:ident {
+            $(
+                $(#[$field_meta:meta])*
+                $field:ident: $ty:ty,
+            )*
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Deserialize, JsonSchema)]
+        #[serde(deny_unknown_fields, expecting = "a contract table")]
+        pub(crate) struct $name {
+            $(
+                $(#[$field_meta])*
+                pub(crate) $field: $ty,
+            )*
+
+            /// The title shown in output. Defaults to the contract id.
+            pub(crate) name: Option<String>,
+
+            /// `"warn"` reports the contract without failing the check when it
+            /// is broken, for gradual rollout.
+            #[serde(default)]
+            pub(crate) severity: Severity,
+
+            /// Import kinds to ignore, e.g. `["type"]` to exempt type-only
+            /// imports. Defaults to `[analysis] exclude_kinds`.
+            pub(crate) exclude_kinds: Option<Vec<ImportKind>>,
+
+            /// Imports to ignore, as `"<selector> -> <selector>"`: the direct
+            /// imports from the first selector's modules to the second's are
+            /// removed before checking.
+            #[serde(default)]
+            pub(crate) ignore_imports: Vec<Located<String>>,
+
+            /// How to report an `ignore_imports` entry that matches no import:
+            /// `"error"` breaks the contract, `"warn"` reports a warning, and
+            /// `"none"` says nothing.
+            #[serde(default)]
+            pub(crate) unmatched_ignore_imports: AlertLevel,
+
+            /// Text shown under the violations, e.g. how to fix them.
+            pub(crate) guidance: Option<String>,
+        }
+
+        impl $name {
+            /// The options that every contract type shares.
+            fn shared(&self) -> SharedOptions<'_> {
+                SharedOptions {
+                    name: self.name.as_deref(),
+                    severity: self.severity,
+                    exclude_kinds: self.exclude_kinds.as_deref(),
+                    ignore_imports: &self.ignore_imports,
+                    unmatched_ignore_imports: self.unmatched_ignore_imports,
+                    guidance: self.guidance.as_deref(),
+                }
+            }
+        }
+    };
+}
+
+contract_table! {
+    /// A `forbidden` contract.
+    ForbiddenTable {
+        /// The modules that must not import the `to` modules.
+        from: Vec<Located<SelectorValue>>,
+
+        /// The modules that must not be imported. External packages (`npm:`)
+        /// and builtins (`node:`) are allowed.
+        to: Vec<Located<SelectorValue>>,
+
+        /// If `true`, only direct imports count, rather than chains of
+        /// imports too.
+        #[serde(default)]
+        allow_indirect_imports: bool,
+    }
+}
+
+contract_table! {
+    /// An `independence` contract.
+    IndependenceTable {
+        /// The modules that must not depend on one another.
+        modules: Vec<Located<SelectorValue>>,
+
+        /// If `true`, only direct imports count, rather than chains of
+        /// imports too.
+        #[serde(default)]
+        allow_indirect_imports: bool,
+    }
+}
+
+contract_table! {
+    /// A `layers` contract.
+    LayersTable {
+        /// The layers, from highest to lowest. Higher layers may import lower
+        /// layers, never the reverse.
+        layers: Located<Vec<Located<LayerValue>>>,
+
+        /// If set, the layers are paths relative to each container, and each
+        /// container is checked on its own.
+        #[serde(default)]
+        containers: Vec<Located<SelectorValue>>,
+
+        /// Whether every child of every container must be declared as a
+        /// layer. Requires `containers`.
+        #[serde(default)]
+        exhaustive: Located<bool>,
+
+        /// Children exempt from `exhaustive`: name patterns matched against
+        /// the base name with or without its JS/TS extension, so `index`
+        /// matches `index.ts`.
+        #[serde(default)]
+        exhaustive_ignores: Vec<Located<String>>,
+
+        /// If `true`, only direct imports count, rather than chains of
+        /// imports too.
+        #[serde(default)]
+        allow_indirect_imports: bool,
+    }
+}
+
+contract_table! {
+    /// A `protected` contract.
+    ProtectedTable {
+        /// The protected modules.
+        modules: Vec<Located<SelectorValue>>,
+
+        /// The only modules that may directly import the protected modules,
+        /// besides the protected modules themselves.
+        allowed_importers: Vec<Located<SelectorValue>>,
+    }
+}
+
+contract_table! {
+    /// An `acyclic` contract.
+    AcyclicTable {
+        /// The modules that must not form dependency cycles, e.g. `["pkg:*"]`.
+        modules: Vec<Located<SelectorValue>>,
+
+        /// How many further generations of children to check: with `1`, the
+        /// children of each directory module must not form cycles either.
+        #[serde(default)]
+        depth: u32,
+
+        /// Modules whose children are not checked.
+        #[serde(default)]
+        skip: Vec<Located<SelectorValue>>,
+    }
+}
+
+contract_table! {
+    /// An `encapsulation` contract.
+    EncapsulationTable {
+        /// The encapsulated modules, which must be directories.
+        modules: Vec<Located<SelectorValue>>,
+
+        /// Globs, relative to each module, of the files that code outside it
+        /// may import. They ignore JS/TS extensions, so `index` matches
+        /// `index.ts`, and match files only: `public/**` exposes a directory.
+        #[serde(default = "default_entrypoints")]
+        entrypoints: Vec<Located<String>>,
+
+        /// Modules that may import any file of the encapsulated modules, e.g.
+        /// tests.
+        #[serde(default)]
+        allowed_importers: Vec<Located<SelectorValue>>,
+    }
+}
+
+/// The default entry points of an `encapsulation` contract.
+fn default_entrypoints() -> Vec<Located<String>> {
+    vec![Located { value: "index".to_string(), range: ByteRange::default() }]
+}
+
+/// A selector of modules: a path glob such as `web/src/domains/*`, a
+/// workspace package (`pkg:@acme/*`), an external package (`npm:react`), a
+/// builtin (`node:*` or `bun:*`), or a table that filters one.
+#[derive(Debug, JsonSchema)]
+#[serde(untagged)]
+pub(crate) enum SelectorValue {
+    /// A selector.
+    String(String),
+
+    /// A selector with filters.
+    Table(SelectorTable),
+}
+
+/// A selector with filters.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, expecting = "a selector table")]
+pub(crate) struct SelectorTable {
+    /// The selector, in any of its string forms.
+    pub(crate) path: Located<String>,
+
+    /// Selectors of modules to remove from each matched module.
+    #[serde(default)]
+    pub(crate) except: Vec<Located<String>>,
+
+    /// Keep only the files that start with this directive, such as
+    /// `"use client"`, each as a module of its own.
+    pub(crate) directive: Option<Located<String>>,
+}
+
+impl<'de> Deserialize<'de> for SelectorValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(StringOrTable {
+            expecting: "a selector string or table",
+            string: Self::String,
+            table: Self::Table,
+        })
+    }
+}
+
+/// A layer of a `layers` contract: `"a"`, `"a | b"` for independent siblings
+/// that may not import each other, `"a : b"` for siblings that may, and
+/// `"(a)"` for a member that may be missing. Members are selectors.
+#[derive(Debug, JsonSchema)]
+#[serde(untagged)]
+pub(crate) enum LayerValue {
+    /// A layer.
+    String(String),
+
+    /// A layer with options.
+    Table(LayerTable),
+}
+
+/// A layer with options.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields, expecting = "a layer table")]
+pub(crate) struct LayerTable {
+    /// The layer, in its string form.
+    pub(crate) layer: Located<String>,
+
+    /// Whether the layer is closed: the layers above it may not import the
+    /// layers below it.
+    #[serde(default)]
+    pub(crate) closed: bool,
+}
+
+impl<'de> Deserialize<'de> for LayerValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(StringOrTable {
+            expecting: "a layer string or table",
+            string: Self::String,
+            table: Self::Table,
+        })
+    }
+}
+
+/// Deserialises a string, or a table as `T`, into a `V`. Unlike an untagged
+/// enum, this deserialises the table directly, so that its errors name the
+/// offending key and keep their location.
+struct StringOrTable<T, V> {
+    /// What the value should be, for errors.
+    expecting: &'static str,
+
+    /// Makes the value of the string form.
+    string: fn(String) -> V,
+
+    /// Makes the value of the table form.
+    table: fn(T) -> V,
+}
+
+impl<'de, T: Deserialize<'de>, V> Visitor<'de> for StringOrTable<T, V> {
+    type Value = V;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.expecting)
+    }
+
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<V, E> {
+        Ok((self.string)(value.to_string()))
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<V, A::Error> {
+        T::deserialize(MapAccessDeserializer::new(map)).map(self.table)
+    }
+}
+
+/// The JSON Schema of the configuration file, which editors use to complete
+/// and check it.
+pub fn json_schema() -> Value {
+    SchemaSettings::draft2020_12()
+        .with_transform(RecursiveTransform(remove_null))
+        .into_generator()
+        .into_root_schema_for::<ConfigFile>()
+        .to_value()
+}
+
+/// Remove `null` from a schema. schemars allows it in every `Option`, with no
+/// setting to stop it, but TOML has no null: an optional key is left out
+/// instead.
+fn remove_null(schema: &mut Schema) {
+    let Some(object) = schema.as_object_mut() else {
+        return;
+    };
+    if object.get("default").is_some_and(Value::is_null) {
+        object.remove("default");
+    }
+    if let Some(Value::Array(types)) = object.get_mut("type") {
+        types.retain(|kind| kind != "null");
+        if let [kind] = types.as_slice() {
+            let kind = kind.clone();
+            object.insert("type".to_string(), kind);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

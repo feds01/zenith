@@ -49,6 +49,15 @@ impl From<ByteRange> for Range<usize> {
     }
 }
 
+/// A range of `usize` offsets, as parsers such as `toml` report them. The
+/// offsets must fit in a `u32`, so the source must be shorter than 4 GiB.
+impl From<Range<usize>> for ByteRange {
+    fn from(range: Range<usize>) -> Self {
+        let offset = |offset: usize| u32::try_from(offset).expect("a source is shorter than 4 GiB");
+        Self::new(offset(range.start), offset(range.end))
+    }
+}
+
 impl fmt::Display for ByteRange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}..{}", self.start, self.end)
@@ -69,6 +78,7 @@ mod tests {
 
         let source = "import x from './x'";
         assert_eq!(&source[Range::from(ByteRange::new(14, 19))], "'./x'");
+        assert_eq!(ByteRange::from(14..19), ByteRange::new(14, 19));
         assert_eq!(range.to_string(), "4..10");
     }
 

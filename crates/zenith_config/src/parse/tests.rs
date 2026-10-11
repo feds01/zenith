@@ -1,0 +1,806 @@
+//! Parsing and validating `zenith.toml`: every table and contract type, the
+//! defaults, and the errors with their locations.
+
+use std::ops::Range;
+
+use zenith_graph::KindSet;
+use zenith_utils::{
+    glob::{Glob, GlobError, NamePattern},
+    location::ByteRange,
+};
+
+use crate::{
+    config::{Config, StaleLevel, Tsconfig},
+    contracts::{AlertLevel, CONTRACT_TYPES, ContractKind, Severity},
+    error::{ConfigError, ConfigErrorKind, SelectorError},
+    selector::{BuiltinScheme, Selector, SelectorTarget},
+};
+
+/// Parse a configuration that must be valid.
+fn valid(contents: &str) -> Config {
+    match Config::parse(contents) {
+        Ok(config) => config,
+        Err(errors) => panic!("unexpected errors: {}", render(contents, &errors).join("\n")),
+    }
+}
+
+/// Parse a configuration that must be invalid, and render its errors as
+/// `line:column: message [the offending text]`.
+fn invalid(contents: &str) -> Vec<String> {
+    match Config::parse(contents) {
+        Ok(config) => panic!("expected errors, got {config:?}"),
+        Err(errors) => render(contents, &errors),
+    }
+}
+
+/// Render errors as `line:column: message [the offending text]`.
+fn render(contents: &str, errors: &[ConfigError]) -> Vec<String> {
+    errors
+        .iter()
+        .map(|error| match error.range {
+            Some(range) => {
+                let (line, column) = line_column(contents, range);
+                format!("{line}:{column}: {error} [{}]", &contents[Range::from(range)])
+            }
+            None => format!("{error}"),
+        })
+        .collect()
+}
+
+/// The 1-based line and column, in characters, of the start of `range`.
+fn line_column(contents: &str, range: ByteRange) -> (usize, usize) {
+    let before = &contents[..range.start() as usize];
+    let line_start = before.rfind('\n').map_or(0, |index| index + 1);
+    (before.matches('\n').count() + 1, before[line_start..].chars().count() + 1)
+}
+
+/// The only error of an invalid configuration.
+fn only_error(contents: &str) -> String {
+    let errors = invalid(contents);
+    assert_eq!(errors.len(), 1, "{errors:#?}");
+    errors.into_iter().next().unwrap_or_default()
+}
+
+/// The strings of a list of selectors.
+fn selectors(selectors: &[Selector]) -> Vec<&str> {
+    selectors.iter().map(|selector| selector.as_str()).collect()
+}
+
+#[test]
+fn every_contract_type_is_parsed() {
+    for name in CONTRACT_TYPES {
+        let options = match name {
+            "forbidden" => "from = []\nto = []",
+            "layers" => "layers = [\"a\"]",
+            "protected" => "modules = []\nallowed_importers = []",
+            _ => "modules = []",
+        };
+        let contents = format!("[contracts.c]\ntype = \"{name}\"\n{options}\n");
+        assert_eq!(valid(&contents).contracts[0].kind.type_name(), name);
+    }
+}
+
+#[test]
+fn an_empty_file_has_the_defaults_of_no_file() {
+    let parsed = ["", "[files]\n[resolve]\n[analysis]\n[baseline]\n[contracts]\n"].map(valid);
+    for config in [Config::default()].iter().chain(&parsed) {
+        assert_eq!(config.files.include, None);
+        assert!(config.files.exclude.is_empty());
+        assert!(config.files.respect_gitignore);
+        assert_eq!(config.resolve.tsconfig, Tsconfig::Auto);
+        assert_eq!(config.resolve.conditions, None);
+        assert_eq!(config.resolve.main_fields, None);
+        assert_eq!(config.resolve.extensions, None);
+        assert!(config.resolve.alias.is_empty());
+        assert!(config.resolve.ignore_unresolved.is_empty());
+        assert!(config.analysis.exclude_kinds.is_empty());
+        assert_eq!(config.baseline.path, "zenith.baseline.json");
+        assert_eq!(config.baseline.stale, StaleLevel::Error);
+        assert!(config.contracts.is_empty());
+    }
+}
+
+#[test]
+fn parses_the_global_tables() {
+    let config = valid(
+        r#"
+[files]
+include = ["**/*.{ts,tsx}"]
+exclude = ["experimental/**", "**/*.gen.ts"]
+respect_gitignore = false
+
+[resolve]
+tsconfig = "config/tsconfig.base.json"
+conditions = ["source", "import"]
+main_fields = ["main"]
+extensions = [".ts", ".js"]
+alias = { "types" = "web/src/types", "~" = "web/src" }
+ignore_unresolved = ["/*", "virtual:*"]
+
+[analysis]
+exclude_kinds = ["type", "dynamic"]
+
+[baseline]
+path = "config/zenith.baseline.json"
+stale = "warn"
+"#,
+    );
+
+    let globs =
+        |patterns: &[&str]| patterns.iter().map(|p| Glob::new(p).unwrap()).collect::<Vec<_>>();
+    assert_eq!(config.files.include, Some(globs(&["**/*.{ts,tsx}"])));
+    assert_eq!(config.files.exclude, globs(&["experimental/**", "**/*.gen.ts"]));
+    assert!(!config.files.respect_gitignore);
+
+    let resolve = &config.resolve;
+    assert_eq!(resolve.tsconfig, Tsconfig::File("config/tsconfig.base.json".into()));
+    assert_eq!(
+        resolve.conditions.as_deref(),
+        Some(&["source".to_string(), "import".to_string()][..])
+    );
+    assert_eq!(resolve.main_fields.as_deref(), Some(&["main".to_string()][..]));
+    assert_eq!(resolve.extensions.as_deref(), Some(&[".ts".to_string(), ".js".to_string()][..]));
+    // Aliases keep the order of the file.
+    let alias: Vec<_> = resolve.alias.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    assert_eq!(alias, [("types", "web/src/types"), ("~", "web/src")]);
+    assert_eq!(
+        resolve.ignore_unresolved,
+        [NamePattern::new("/*").unwrap(), NamePattern::new("virtual:*").unwrap()]
+    );
+
+    assert_eq!(config.analysis.exclude_kinds, KindSet::TYPE | KindSet::DYNAMIC);
+    assert_eq!(config.baseline.path, "config/zenith.baseline.json");
+    assert_eq!(config.baseline.stale, StaleLevel::Warn);
+}
+
+#[test]
+fn tsconfig_can_be_automatic_or_off() {
+    for (value, tsconfig) in [("auto", Tsconfig::Auto), ("off", Tsconfig::Off)] {
+        let config = valid(&format!("[resolve]\ntsconfig = \"{value}\"\n"));
+        assert_eq!(config.resolve.tsconfig, tsconfig);
+    }
+}
+
+#[test]
+fn parses_a_forbidden_contract() {
+    let config = valid(
+        r#"
+[contracts.client-safety]
+type = "forbidden"
+name = "Client components never reach server-only code"
+from = [{ path = "web/src/**", directive = "use client", except = ["web/src/legacy"] }]
+to = ["npm:sharp", "node:*", "bun:sqlite", "pkg:@acme/server"]
+allow_indirect_imports = true
+severity = "warn"
+exclude_kinds = ["type"]
+ignore_imports = ["web/src/lib/** -> npm:sharp"]
+unmatched_ignore_imports = "warn"
+guidance = "Keep server-only modules out of client bundles."
+"#,
+    );
+
+    let contract = &config.contracts[0];
+    assert_eq!(contract.id, "client-safety");
+    assert_eq!(contract.name, "Client components never reach server-only code");
+    assert_eq!(contract.severity, Severity::Warn);
+    assert_eq!(contract.exclude_kinds, KindSet::TYPE);
+    assert_eq!(contract.ignore_imports.len(), 1);
+    assert_eq!(contract.ignore_imports[0].importer().as_str(), "web/src/lib/**");
+    assert_eq!(contract.ignore_imports[0].imported().as_str(), "npm:sharp");
+    assert_eq!(contract.unmatched_ignore_imports, AlertLevel::Warn);
+    assert_eq!(
+        contract.guidance.as_deref(),
+        Some("Keep server-only modules out of client bundles.")
+    );
+    assert_eq!(contract.kind.type_name(), "forbidden");
+
+    let ContractKind::Forbidden(forbidden) = &contract.kind else { panic!("expected `forbidden`") };
+    assert!(forbidden.allow_indirect_imports);
+    let from = &forbidden.from[0];
+    assert_eq!(from.as_str(), "web/src/**");
+    assert_eq!(from.directive(), Some("use client"));
+    assert_eq!(selectors(from.except()), ["web/src/legacy"]);
+    assert_eq!(selectors(&forbidden.to), ["npm:sharp", "node:*", "bun:sqlite", "pkg:@acme/server"]);
+    assert!(matches!(forbidden.to[0].target(), SelectorTarget::External(_)));
+    assert!(matches!(
+        forbidden.to[2].target(),
+        SelectorTarget::Builtin { scheme: BuiltinScheme::Bun, .. }
+    ));
+    assert!(matches!(forbidden.to[3].target(), SelectorTarget::Package(_)));
+}
+
+#[test]
+fn parses_an_independence_contract() {
+    let config = valid(
+        r#"
+[contracts.features-independent]
+type = "independence"
+modules = ["web/src/features/*"]
+ignore_imports = ["web/src/features/* -> web/src/features/shared"]
+"#,
+    );
+    let ContractKind::Independence(independence) = &config.contracts[0].kind else {
+        panic!("expected `independence`")
+    };
+    assert_eq!(selectors(&independence.modules), ["web/src/features/*"]);
+    assert!(!independence.allow_indirect_imports);
+}
+
+#[test]
+fn parses_a_layers_contract() {
+    let config = valid(
+        r#"
+[contracts.package-tiers]
+type = "layers"
+layers = [
+  "pkg:web | pkg:sdk | apps/* | services/*",
+  { layer = "pkg:@acme/ui", closed = true },
+  "pkg:@acme/types : (pkg:@acme/config)",
+]
+allow_indirect_imports = true
+
+[contracts.domain-internals]
+type = "layers"
+containers = ["packages/api/src/domains/*"]
+layers = ["hooks", "api", "(types)"]
+exhaustive = true
+exhaustive_ignores = ["index", "*.test"]
+"#,
+    );
+
+    let ContractKind::Layers(tiers) = &config.contracts[0].kind else {
+        panic!("expected `layers`")
+    };
+    assert_eq!(tiers.layers.len(), 3);
+    assert_eq!(tiers.layers[0].members.len(), 4);
+    assert!(tiers.layers[0].independent);
+    assert!(!tiers.layers[0].closed);
+    assert!(tiers.layers[1].closed);
+    assert!(!tiers.layers[2].independent);
+    assert!(tiers.layers[2].members[1].optional);
+    assert!(tiers.containers.is_empty());
+    assert!(!tiers.exhaustive);
+    assert!(tiers.allow_indirect_imports);
+
+    let ContractKind::Layers(domains) = &config.contracts[1].kind else {
+        panic!("expected `layers`")
+    };
+    assert_eq!(selectors(&domains.containers), ["packages/api/src/domains/*"]);
+    assert!(domains.exhaustive);
+    assert_eq!(
+        domains.exhaustive_ignores,
+        [NamePattern::new("index").unwrap(), NamePattern::new("*.test").unwrap()]
+    );
+    assert!(domains.layers[2].members[0].optional);
+    assert_eq!(domains.layers[2].members[0].selector.as_str(), "types");
+}
+
+#[test]
+fn parses_a_protected_contract() {
+    let config = valid(
+        r#"
+[contracts.agents-are-api-only]
+type = "protected"
+modules = ["web/src/agents"]
+allowed_importers = ["web/src/app/api"]
+"#,
+    );
+    let ContractKind::Protected(protected) = &config.contracts[0].kind else {
+        panic!("expected `protected`")
+    };
+    assert_eq!(selectors(&protected.modules), ["web/src/agents"]);
+    assert_eq!(selectors(&protected.allowed_importers), ["web/src/app/api"]);
+}
+
+#[test]
+fn parses_an_acyclic_contract() {
+    let config = valid(
+        r#"
+[contracts.packages-acyclic]
+type = "acyclic"
+modules = ["pkg:*"]
+depth = 2
+skip = ["pkg:@acme/legacy"]
+"#,
+    );
+    let ContractKind::Acyclic(acyclic) = &config.contracts[0].kind else {
+        panic!("expected `acyclic`")
+    };
+    assert_eq!(selectors(&acyclic.modules), ["pkg:*"]);
+    assert_eq!(acyclic.depth, 2);
+    assert_eq!(selectors(&acyclic.skip), ["pkg:@acme/legacy"]);
+}
+
+#[test]
+fn parses_an_encapsulation_contract() {
+    let config = valid(
+        r#"
+[contracts.ui-public-surface]
+type = "encapsulation"
+modules = ["pkg:@acme/ui"]
+entrypoints = ["index", "src/components/*/index"]
+allowed_importers = ["**/*.test.ts"]
+"#,
+    );
+    let ContractKind::Encapsulation(encapsulation) = &config.contracts[0].kind else {
+        panic!("expected `encapsulation`")
+    };
+    assert_eq!(selectors(&encapsulation.modules), ["pkg:@acme/ui"]);
+    assert_eq!(
+        encapsulation.entrypoints,
+        [Glob::new("index").unwrap(), Glob::new("src/components/*/index").unwrap()]
+    );
+    assert_eq!(selectors(&encapsulation.allowed_importers), ["**/*.test.ts"]);
+}
+
+#[test]
+fn contracts_have_defaults() {
+    let config = valid(
+        r#"
+[analysis]
+exclude_kinds = ["type"]
+
+[contracts.a]
+type = "forbidden"
+from = ["a"]
+to = ["b"]
+
+[contracts.b]
+type = "encapsulation"
+modules = ["pkg:*"]
+
+[contracts.c]
+type = "acyclic"
+modules = ["pkg:*"]
+
+[contracts.d]
+type = "layers"
+layers = ["a"]
+"#,
+    );
+
+    for contract in &config.contracts {
+        assert_eq!(contract.name, contract.id);
+        assert_eq!(contract.severity, Severity::Error);
+        assert_eq!(contract.exclude_kinds, KindSet::TYPE);
+        assert!(contract.ignore_imports.is_empty());
+        assert_eq!(contract.unmatched_ignore_imports, AlertLevel::Error);
+        assert_eq!(contract.guidance, None);
+    }
+    let ContractKind::Forbidden(forbidden) = &config.contracts[0].kind else { panic!() };
+    assert!(!forbidden.allow_indirect_imports);
+    let ContractKind::Encapsulation(encapsulation) = &config.contracts[1].kind else { panic!() };
+    assert_eq!(encapsulation.entrypoints, [Glob::new("index").unwrap()]);
+    assert!(encapsulation.allowed_importers.is_empty());
+    let ContractKind::Acyclic(acyclic) = &config.contracts[2].kind else { panic!() };
+    assert_eq!(acyclic.depth, 0);
+    assert!(acyclic.skip.is_empty());
+    let ContractKind::Layers(layers) = &config.contracts[3].kind else { panic!() };
+    assert!(layers.containers.is_empty());
+    assert!(!layers.exhaustive);
+    assert!(layers.exhaustive_ignores.is_empty());
+    assert!(!layers.allow_indirect_imports);
+}
+
+#[test]
+fn a_contract_can_clear_the_excluded_kinds() {
+    let config = valid(
+        r#"
+[analysis]
+exclude_kinds = ["type"]
+
+[contracts.all-kinds]
+type = "acyclic"
+modules = ["pkg:*"]
+exclude_kinds = []
+"#,
+    );
+    assert!(config.contracts[0].exclude_kinds.is_empty());
+}
+
+#[test]
+fn contracts_keep_the_order_of_the_file() {
+    let config = valid(
+        r#"
+[contracts.zebra]
+type = "acyclic"
+modules = ["a"]
+
+[contracts.apple]
+type = "acyclic"
+modules = ["a"]
+
+[contracts.mango_2]
+type = "acyclic"
+modules = ["a"]
+"#,
+    );
+    let ids: Vec<_> = config.contracts.iter().map(|contract| contract.id.as_str()).collect();
+    assert_eq!(ids, ["zebra", "apple", "mango_2"]);
+    assert_eq!(config.contract("apple").map(|contract| contract.id.as_str()), Some("apple"));
+    assert!(config.contract("pear").is_none());
+}
+
+#[test]
+fn unknown_keys_are_errors_everywhere() {
+    for (contents, expected) in [
+        ("filez = 1\n", "1:1: unknown key `filez`; did you mean `files`? [filez]"),
+        ("[contract.a]\n", "1:2: unknown key `contract`; did you mean `contracts`? [contract]"),
+        ("[files]\nexclud = []\n", "2:1: unknown key `exclud`; did you mean `exclude`? [exclud]"),
+        (
+            "[resolve]\ntsconfg = \"off\"\n",
+            "2:1: unknown key `tsconfg`; did you mean `tsconfig`? [tsconfg]",
+        ),
+        (
+            "[analysis]\nexclude_kind = []\n",
+            "2:1: unknown key `exclude_kind`; did you mean `exclude_kinds`? [exclude_kind]",
+        ),
+        ("[baseline]\npth = \"a\"\n", "2:1: unknown key `pth`; did you mean `path`? [pth]"),
+        (
+            "[resolve]\nzzz = 1\n",
+            "2:1: unknown key `zzz`, expected one of `tsconfig`, `conditions`, `main_fields`, \
+             `extensions`, `alias`, `ignore_unresolved` [zzz]",
+        ),
+    ] {
+        assert_eq!(only_error(contents), expected, "{contents}");
+    }
+}
+
+#[test]
+fn unknown_keys_of_contracts_are_errors() {
+    for (contract, expected) in [
+        (
+            "type = \"forbidden\"\nfromm = [\"a\"]\nto = []",
+            "3:1: in contract `c`: unknown key `fromm`; did you mean `from`? [fromm]",
+        ),
+        (
+            "type = \"independence\"\nmodule = [\"a\"]",
+            "3:1: in contract `c`: unknown key `module`; did you mean `modules`? [module]",
+        ),
+        (
+            "type = \"layers\"\nlayers = [\"a\"]\nexhaustiv = true",
+            "4:1: in contract `c`: unknown key `exhaustiv`; did you mean `exhaustive`? [exhaustiv]",
+        ),
+        (
+            "type = \"protected\"\nmodules = []\nallowed_importer = []",
+            "4:1: in contract `c`: unknown key `allowed_importer`; did you mean `allowed_importers`? \
+             [allowed_importer]",
+        ),
+        (
+            "type = \"acyclic\"\nmodules = []\ndept = 1",
+            "4:1: in contract `c`: unknown key `dept`; did you mean `depth`? [dept]",
+        ),
+        (
+            "type = \"encapsulation\"\nmodules = []\nentrypoint = []",
+            "4:1: in contract `c`: unknown key `entrypoint`; did you mean `entrypoints`? [entrypoint]",
+        ),
+        (
+            "type = \"acyclic\"\nmodules = []\nsevrity = \"warn\"",
+            "4:1: in contract `c`: unknown key `sevrity`; did you mean `severity`? [sevrity]",
+        ),
+        (
+            "type = \"forbidden\"\nfrom = [{ paths = \"a\" }]\nto = []",
+            "3:11: in contract `c`: unknown key `paths`; did you mean `path`? [paths]",
+        ),
+        (
+            "type = \"layers\"\nlayers = [{ layer = \"a\", close = true }]",
+            "3:26: in contract `c`: unknown key `close`; did you mean `closed`? [close]",
+        ),
+        // A key of another contract type.
+        (
+            "type = \"forbidden\"\nfrom = []\nto = []\nmodules = []",
+            "5:1: in contract `c`: unknown key `modules`, expected one of `from`, `to`, \
+             `allow_indirect_imports`, `name`, `severity`, `exclude_kinds`, `ignore_imports`, \
+             `unmatched_ignore_imports`, `guidance` [modules]",
+        ),
+    ] {
+        let contents = format!("[contracts.c]\n{contract}\n");
+        assert_eq!(only_error(&contents), expected, "{contents}");
+    }
+}
+
+#[test]
+fn unknown_values_are_errors() {
+    for (contents, expected) in [
+        (
+            "[contracts.c]\ntype = \"layer\"\n",
+            "2:8: in contract `c`: unknown contract type `layer`; did you mean `layers`? [\"layer\"]",
+        ),
+        (
+            "[contracts.c]\ntype = \"cycles\"\n",
+            "2:8: in contract `c`: unknown contract type `cycles`; did you mean `acyclic`? [\"cycles\"]",
+        ),
+        (
+            "[contracts.c]\ntype = \"graph\"\n",
+            "2:8: in contract `c`: unknown contract type `graph`, expected one of `forbidden`, \
+             `independence`, `layers`, `protected`, `acyclic`, `encapsulation` [\"graph\"]",
+        ),
+        (
+            "[analysis]\nexclude_kinds = [\"types\"]\n",
+            "2:18: unknown value `types`; did you mean `type`? [\"types\"]",
+        ),
+        (
+            "[baseline]\nstale = \"warning\"\n",
+            "2:9: unknown value `warning`; did you mean `warn`? [\"warning\"]",
+        ),
+        (
+            "[contracts.c]\ntype = \"acyclic\"\nmodules = []\nseverity = \"fatal\"\n",
+            "4:12: in contract `c`: unknown value `fatal`, expected `error` or `warn` [\"fatal\"]",
+        ),
+        (
+            "[contracts.c]\ntype = \"acyclic\"\nmodules = []\nunmatched_ignore_imports = \"off\"\n",
+            "4:28: in contract `c`: unknown value `off`, expected one of `error`, `warn`, `none` \
+             [\"off\"]",
+        ),
+    ] {
+        assert_eq!(only_error(contents), expected, "{contents}");
+    }
+}
+
+#[test]
+fn values_of_the_wrong_type_are_errors() {
+    for (contents, expected) in [
+        ("files = 1\n", "1:9: invalid type: integer `1`, expected a table [1]"),
+        (
+            "[files]\nexclude = \"a\"\n",
+            "2:11: invalid type: string \"a\", expected an array [\"a\"]",
+        ),
+        (
+            "[files]\nrespect_gitignore = \"yes\"\n",
+            "2:21: invalid type: string \"yes\", expected a boolean [\"yes\"]",
+        ),
+        ("[resolve]\nalias = [\"a\"]\n", "2:9: invalid type: array, expected a table [[\"a\"]]"),
+        ("contracts = 1\n", "1:13: `contracts` must be a table [1]"),
+        ("[contracts]\nc = \"forbidden\"\n", "2:5: `contracts.c` must be a table [\"forbidden\"]"),
+        ("[contracts.c]\nfrom = []\n", "1:1: in contract `c`: missing key `type` [[contracts.c]]"),
+        ("[contracts.c]\ntype = 1\n", "2:8: in contract `c`: `type` must be a string [1]"),
+        (
+            "[contracts.c]\ntype = \"forbidden\"\nfrom = []\n",
+            "1:1: in contract `c`: missing key `to` [[contracts.c]]",
+        ),
+        (
+            "[contracts.c]\ntype = \"forbidden\"\nfrom = [1]\nto = []\n",
+            "3:9: in contract `c`: invalid type: integer `1`, expected a selector string or table [1]",
+        ),
+        (
+            "[contracts.c]\ntype = \"forbidden\"\nfrom = \"a\"\nto = []\n",
+            "3:8: in contract `c`: invalid type: string \"a\", expected an array [\"a\"]",
+        ),
+        (
+            "[contracts.c]\ntype = \"layers\"\nlayers = [[\"a\"]]\n",
+            "3:11: in contract `c`: invalid type: array, expected a layer string or table [[\"a\"]]",
+        ),
+        (
+            "[contracts.c]\ntype = \"acyclic\"\nmodules = []\ndepth = -1\n",
+            "4:9: in contract `c`: invalid value: integer `-1`, expected u32 [-1]",
+        ),
+    ] {
+        assert_eq!(only_error(contents), expected, "{contents}");
+    }
+}
+
+#[test]
+fn syntax_errors_have_a_location() {
+    assert_eq!(only_error("[files\n"), "1:7: invalid TOML: unclosed table, expected `]` []");
+    let contents = "[files]\n[files]\n";
+    let errors = Config::parse(contents).unwrap_err();
+    assert!(matches!(errors[0].kind, ConfigErrorKind::Syntax { .. }), "{errors:?}");
+    assert_eq!(errors[0].range.map(|range| line_column(contents, range).0), Some(2));
+}
+
+#[test]
+fn contract_ids_may_only_have_letters_digits_dashes_and_underscores() {
+    valid("[contracts.Web_Layers-2]\ntype = \"acyclic\"\nmodules = [\"a\"]\n");
+    for id in ["web layers", "web.layers", "", "é"] {
+        let contents = format!("[contracts.\"{id}\"]\ntype = \"acyclic\"\nmodules = [\"a\"]\n");
+        let errors = Config::parse(&contents).unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].kind, ConfigErrorKind::InvalidContractId { id: id.to_string() });
+        assert_eq!(errors[0].contract, None);
+    }
+}
+
+#[test]
+fn invalid_selectors_are_errors() {
+    for (contract, expected) in [
+        (
+            "type = \"forbidden\"\nfrom = [\"/web\"]\nto = []",
+            "3:9: in contract `c`: invalid selector `/web`: leading `/`; globs are relative to the \
+             project root [\"/web\"]",
+        ),
+        (
+            "type = \"forbidden\"\nfrom = []\nto = [\"npm:\"]",
+            "4:7: in contract `c`: invalid selector `npm:`: the pattern is empty [\"npm:\"]",
+        ),
+        (
+            "type = \"independence\"\nmodules = [\"web/../api\"]",
+            "3:12: in contract `c`: invalid selector `web/../api`: `..` is not allowed; paths are \
+             relative to the project root [\"web/../api\"]",
+        ),
+        (
+            "type = \"protected\"\nmodules = [\"a\"]\nallowed_importers = [{ path = \"b/{c\" }]",
+            "4:31: in contract `c`: invalid selector `b/{c`: unclosed `{` [\"b/{c\"]",
+        ),
+        (
+            "type = \"acyclic\"\nmodules = [{ path = \"a\", except = [\"a//b\"] }]",
+            "3:36: in contract `c`: invalid selector `a//b`: empty path segment [\"a//b\"]",
+        ),
+        (
+            "type = \"forbidden\"\nfrom = [{ path = \"npm:react\", directive = \"use client\" }]\nto = []",
+            "3:43: in contract `c`: invalid selector `npm:react`: `directive` only applies to path \
+             and `pkg:` selectors, which match files [\"use client\"]",
+        ),
+        (
+            "type = \"layers\"\nlayers = [\"a\"]\ncontainers = [\"a**\"]",
+            "4:15: in contract `c`: invalid selector `a**`: `**` must be a whole path segment; use \
+             `*` within a segment [\"a**\"]",
+        ),
+        (
+            "type = \"acyclic\"\nmodules = [\"a\"]\nskip = [\"\"]",
+            "4:9: in contract `c`: invalid selector ``: the pattern is empty [\"\"]",
+        ),
+        (
+            "type = \"encapsulation\"\nmodules = [\"pkg:\"]",
+            "3:12: in contract `c`: invalid selector `pkg:`: the pattern is empty [\"pkg:\"]",
+        ),
+    ] {
+        let contents = format!("[contracts.c]\n{contract}\n");
+        assert_eq!(only_error(&contents), expected, "{contents}");
+    }
+}
+
+#[test]
+fn invalid_globs_and_name_patterns_are_errors() {
+    for (contents, expected) in [
+        (
+            "[files]\ninclude = [\"/src\"]\n",
+            "2:12: invalid pattern `/src`: leading `/`; globs are relative to the project root [\"/src\"]",
+        ),
+        ("[files]\nexclude = [\"a/\"]\n", "2:12: invalid pattern `a/`: trailing `/` [\"a/\"]"),
+        (
+            "[resolve]\nignore_unresolved = [\"virtual:{\"]\n",
+            "2:22: invalid pattern `virtual:{`: unclosed `{` [\"virtual:{\"]",
+        ),
+        (
+            "[contracts.c]\ntype = \"layers\"\nlayers = [\"a\"]\ncontainers = [\"x\"]\nexhaustive = true\nexhaustive_ignores = [\"\\\\\"]\n",
+            "6:23: in contract `c`: invalid pattern `\\`: trailing `\\` [\"\\\\\"]",
+        ),
+        (
+            "[contracts.c]\ntype = \"encapsulation\"\nmodules = [\"a\"]\nentrypoints = [\"src//index\"]\n",
+            "4:16: in contract `c`: invalid pattern `src//index`: empty path segment [\"src//index\"]",
+        ),
+    ] {
+        assert_eq!(only_error(contents), expected, "{contents}");
+    }
+}
+
+#[test]
+fn invalid_layers_are_errors() {
+    for (contract, expected) in [
+        (
+            "layers = [\"a | b : c\"]",
+            "3:11: in contract `c`: invalid layer `a | b : c`: a layer cannot mix `|` and `:` \
+             separators [\"a | b : c\"]",
+        ),
+        (
+            "layers = [\"a |\"]",
+            "3:11: in contract `c`: invalid layer `a |`: a member is empty [\"a |\"]",
+        ),
+        (
+            "layers = [{ layer = \"a | /b\" }]",
+            "3:21: in contract `c`: invalid layer `a | /b`: invalid selector `/b`: leading `/`; globs \
+             are relative to the project root [\"a | /b\"]",
+        ),
+        (
+            "containers = [\"apps/*\"]\nlayers = [\"ui\", \"pkg:@acme/core\"]",
+            "4:17: in contract `c`: invalid layer `pkg:@acme/core`: `pkg:@acme/core` is not a path; \
+             with `containers`, layers are paths relative to each container [\"pkg:@acme/core\"]",
+        ),
+        ("layers = []", "3:10: in contract `c`: `layers` must list at least one layer [[]]"),
+        (
+            "layers = [\"a\"]\nexhaustive = true",
+            "4:14: in contract `c`: `exhaustive` requires `containers` [true]",
+        ),
+    ] {
+        let contents = format!("[contracts.c]\ntype = \"layers\"\n{contract}\n");
+        assert_eq!(only_error(&contents), expected, "{contents}");
+    }
+}
+
+#[test]
+fn every_error_is_reported_in_the_order_of_the_file() {
+    let contents = r#"
+[contracts.b]
+type = "forbidden"
+from = ["/a", "web/src"]
+to = ["npm:"]
+ignore_imports = ["oops"]
+
+[files]
+exclude = ["a//b"]
+
+[contracts.a]
+type = "acyclic"
+modules = []
+dept = 1
+
+[contracts.c]
+type = "layer"
+
+[resolve]
+tsconfg = "off"
+
+[baseline]
+stale = "warning"
+
+[filez]
+"#;
+    assert_eq!(
+        invalid(contents),
+        [
+            "4:9: in contract `b`: invalid selector `/a`: leading `/`; globs are relative to the \
+             project root [\"/a\"]",
+            "5:7: in contract `b`: invalid selector `npm:`: the pattern is empty [\"npm:\"]",
+            "6:19: in contract `b`: invalid `ignore_imports` entry `oops`: expected `<importer> -> \
+             <imported>` [\"oops\"]",
+            "9:12: invalid pattern `a//b`: empty path segment [\"a//b\"]",
+            "14:1: in contract `a`: unknown key `dept`; did you mean `depth`? [dept]",
+            "17:8: in contract `c`: unknown contract type `layer`; did you mean `layers`? [\"layer\"]",
+            "20:1: unknown key `tsconfg`; did you mean `tsconfig`? [tsconfg]",
+            "23:9: unknown value `warning`; did you mean `warn`? [\"warning\"]",
+            "25:2: unknown key `filez`; did you mean `files`? [filez]",
+        ]
+    );
+}
+
+#[test]
+fn errors_are_structured() {
+    let errors = Config::parse("[contracts.c]\ntype = \"forbidden\"\nfrom = [\"/a\"]\nto = []\n")
+        .unwrap_err();
+    assert_eq!(
+        errors,
+        [ConfigError {
+            kind: ConfigErrorKind::InvalidSelector {
+                selector: "/a".into(),
+                error: SelectorError::Pattern(GlobError::LeadingSlash),
+            },
+            contract: Some("c".into()),
+            range: Some(ByteRange::new(41, 45)),
+        }]
+    );
+}
+
+#[test]
+fn selectors_layers_and_ignored_imports_keep_their_range() {
+    let contents = r#"
+[contracts.c]
+type = "layers"
+containers = [{ path = "apps/*", except = ["apps/legacy"] }]
+layers = ["ui | (api)"]
+ignore_imports = ["ui -> api"]
+"#;
+    let config = valid(contents);
+    let contract = &config.contracts[0];
+    let ContractKind::Layers(layers) = &contract.kind else { panic!("expected `layers`") };
+    let at = |range: Option<ByteRange>| {
+        let range = range.expect("a range");
+        let (line, column) = line_column(contents, range);
+        (line, column, &contents[Range::from(range)])
+    };
+
+    let container = &layers.containers[0];
+    assert_eq!(at(container.range()), (4, 24, "\"apps/*\""));
+    assert_eq!(at(container.except()[0].range()), (4, 44, "\"apps/legacy\""));
+    let layer = &layers.layers[0];
+    assert_eq!(at(layer.range), (5, 11, "\"ui | (api)\""));
+    for member in &layer.members {
+        assert_eq!(member.selector.range(), layer.range);
+    }
+    let ignore = &contract.ignore_imports[0];
+    assert_eq!(at(ignore.range()), (6, 19, "\"ui -> api\""));
+    assert_eq!(ignore.importer().range(), ignore.range());
+    assert_eq!(ignore.imported().range(), ignore.range());
+
+    // Selectors from elsewhere, such as the command line, have none.
+    assert_eq!(Selector::parse("ui").map(|selector| selector.range()), Ok(None));
+}

@@ -1,8 +1,13 @@
 //! File reading helpers.
 
-use std::{fmt, fs, io, path::Path};
+use std::{
+    fmt, fs, io,
+    path::{Path, PathBuf},
+};
 
 use serde_json::Value;
+
+use crate::path::normalize_path;
 
 /// Read a text file, without a leading byte order mark, which editors on
 /// Windows often write and which npm, pnpm and yarn all accept.
@@ -48,6 +53,13 @@ pub fn read_json(path: &Path) -> Result<Value, ReadJsonError> {
     serde_json::from_str(&contents).map_err(ReadJsonError::Parse)
 }
 
+/// The nearest file named `name` in `start` or one of its ancestors, such as
+/// the configuration file that applies to a directory. Directories with that
+/// name are skipped. A relative `start` is taken from the current directory.
+pub fn find_in_ancestors(start: &Path, name: &str) -> Option<PathBuf> {
+    normalize_path(start).ancestors().map(|dir| dir.join(name)).find(|path| path.is_file())
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -78,5 +90,31 @@ mod tests {
         let error = read_json(&path).unwrap_err();
         assert!(matches!(error, ReadJsonError::Parse(_)));
         assert!(error.to_string().starts_with("invalid JSON: "), "{error}");
+    }
+
+    #[test]
+    fn finds_the_nearest_file_in_or_above_a_directory() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        let nested = root.join("web/src/app");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(root.join("a.toml"), "").unwrap();
+
+        assert_eq!(find_in_ancestors(root, "a.toml"), Some(root.join("a.toml")));
+        assert_eq!(find_in_ancestors(&nested, "a.toml"), Some(root.join("a.toml")));
+        assert_eq!(find_in_ancestors(&nested, "b.toml"), None);
+
+        fs::write(root.join("web/a.toml"), "").unwrap();
+        assert_eq!(find_in_ancestors(&nested, "a.toml"), Some(root.join("web/a.toml")));
+        assert_eq!(find_in_ancestors(root, "a.toml"), Some(root.join("a.toml")));
+    }
+
+    #[test]
+    fn skips_directories_with_the_name() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("web/a.toml")).unwrap();
+        fs::write(root.join("a.toml"), "").unwrap();
+        assert_eq!(find_in_ancestors(&root.join("web"), "a.toml"), Some(root.join("a.toml")));
     }
 }

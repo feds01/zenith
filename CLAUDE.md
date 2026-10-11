@@ -42,6 +42,8 @@ it when responsibilities move. On `main` today:
 - `zenith_config`: the `zenith.toml` types and JSON Schema, config discovery,
   parsing, and validation into typed contract definitions, including the
   syntax of selectors, layers and ignored imports.
+- `zenith_contracts`: resolving selectors into units, the labelled sets of
+  nodes that contracts reason about.
 - `zenith_diagnostics`: the errors and warnings reported about zenith's
   input, collected per pass and rendered as reports with labelled source
   excerpts using `annotate-snippets`.

@@ -1,0 +1,21 @@
+[package]
+name = "zenith_contracts"
+version = "0.1.0"
+description = "Checks zenith's architecture contracts against the import graph"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = false
+
+[dependencies]
+zenith_config = { workspace = true }
+zenith_graph = { workspace = true }
+zenith_utils = { workspace = true }
+zenith_workspace = { workspace = true }
+
+[dev-dependencies]
+thin-vec = { workspace = true }
+
+[lints]
+workspace = true

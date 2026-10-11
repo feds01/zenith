@@ -1939,6 +1939,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "zenith_contracts"
+version = "0.1.0"
+dependencies = [
+ "thin-vec",
+ "zenith_config",
+ "zenith_graph",
+ "zenith_utils",
+ "zenith_workspace",
+]
+
+[[package]]
 name = "zenith_diagnostics"
 version = "0.1.0"
 dependencies = [

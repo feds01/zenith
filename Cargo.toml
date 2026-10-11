@@ -52,7 +52,6 @@ strsim = { version = "0.11.1" }
 tempfile = { version = "3.27.0" }
 thin-vec = { version = "0.2.21" }
 toml = { version = "1.1.7", features = ["preserve_order"] }
-wild = { version = "2.2.1" }
 yaml-rust2 = { version = "0.13.0", default-features = false }
 
 [workspace.lints.rust]

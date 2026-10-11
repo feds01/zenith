@@ -22,6 +22,9 @@ use crate::{Reported, cli::GlobalArgs, reporting, sources::SourceFiles};
 pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
     let cwd = env::current_dir().context("could not read the current directory")?;
     let config_path = match (&global.config, &global.root) {
+        (Some(config), _) if !config.is_file() => {
+            bail!("the configuration file `{}` does not exist", config.display());
+        }
         (Some(config), _) => Some(config.clone()),
         (None, Some(root)) => Some(root.join(CONFIG_FILE_NAME)).filter(|path| path.is_file()),
         (None, None) => Config::discover(&cwd),

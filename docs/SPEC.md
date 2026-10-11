@@ -663,10 +663,13 @@ where warnings are broken contracts with `severity = "warn"`.
 `--root` points zenith at a project whose config lives elsewhere (used for
 corpus runs). `-v` shows info logs, `-vv` debug logs (all on stderr).
 
-The CLI mirrors teamsearch and bracketlint: clap derive, argfile expansion,
-`wild` globbing on Windows, a crash handler, and version info from `build.rs`.
-**(settled)** An `@path` argument is only expanded as an argfile when `path` is
-a file, so arguments like `@scope/pkg` pass through unchanged.
+The CLI mirrors teamsearch and bracketlint: clap derive, argfile expansion, a
+crash handler, and version info from `build.rs`. **(settled)** An `@path`
+argument is only expanded as an argfile when `path` is a file, so arguments
+like `@scope/pkg` pass through unchanged. **(settled)** Unlike them, zenith
+doesn't expand globs on Windows with `wild`: its arguments are selectors,
+whose globs zenith matches itself, and PowerShell passes `"web/src/*"` on
+without its quotes, so they couldn't be protected from expansion.
 
 ---
 
@@ -748,7 +751,7 @@ imports and excluded modules, so this needs no new algorithms.
 `oxc_parser`, `oxc_ast`, `oxc_ast_visit`, `oxc_allocator`, `oxc_span`,
 `oxc_resolver`, `rayon`, `ignore`, `clap`, `serde`, `toml`, `serde_json`,
 `schemars`, `annotate-snippets`, `rustc-hash`, `indexmap`, `anyhow`/`thiserror`,
-`log`, `wild`, `argfile`, `yaml-rust2` (for `pnpm-workspace.yaml`); for tests, `libtest-mimic` and `pretty_assertions`.
+`log`, `argfile`, `yaml-rust2` (for `pnpm-workspace.yaml`); for tests, `libtest-mimic` and `pretty_assertions`.
 
 ---
 

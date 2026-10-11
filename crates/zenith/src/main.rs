@@ -1,6 +1,6 @@
 //! Entry point of zenith.
 
-use std::process::ExitCode;
+use std::{env, process::ExitCode};
 
 use clap::Parser;
 use zenith::{
@@ -10,7 +10,9 @@ use zenith::{
 };
 
 pub fn main() -> ExitCode {
-    let args = match expand_args(wild::args_os()) {
+    // Arguments are passed on as they are, without expanding globs on
+    // Windows: selectors are globs that zenith matches itself.
+    let args = match expand_args(env::args_os()) {
         Ok(args) => args,
         Err(e) => {
             eprintln!("error: {e}");

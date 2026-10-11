@@ -36,7 +36,8 @@ const SEED: u64 = 0x2E41_7A11_5EED_0001;
 /// zenith should make of them.
 ///
 /// The repository is generated in memory by [`SyntheticRepo::new`], and
-/// written to disk by [`SyntheticRepo::write`].
+/// written to disk by [`SyntheticRepo::write`]. [`crate::TempRepo`] does both
+/// in a temporary directory.
 ///
 /// ```
 /// use zenith_benchmark::{ImportTarget, SyntheticRepo};

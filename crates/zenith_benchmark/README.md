@@ -1,13 +1,42 @@
 # zenith_benchmark
 
-Benchmarks for the zenith crates, and the synthetic monorepo that they run
-on.
+Benchmarks for the zenith crates, written with
+[divan](https://github.com/nvzqz/divan) through CodSpeed's
+`codspeed-divan-compat`.
+
+## Running
+
+```sh
+just bench               # every benchmark
+just bench walk          # only those whose name matches a regex
+just bench glob_is_match --sample-count 20
+```
+
+Extra arguments go to divan, so `just bench --help` lists its options.
+Allocations are counted with divan's `AllocProfiler`, which only sees the
+benchmark's own thread, so the allocations of the walk's worker threads
+don't show up in its counts.
+
+## What is measured
+
+| Bench | Benchmark | Input |
+|---|---|---|
+| `glob` | `glob_new`: compiling a glob | Seven globs, from a literal path to two `**` segments |
+| `glob` | `glob_is_match`: matching a glob | The same globs, against every source path of a 10k-file repository |
+| `glob` | `name_pattern_is_match`: matching a name pattern | Five patterns, against every workspace and npm package name |
+| `workspace` | `walk`: finding the files to scan, with the default settings | Repositories of 1k, 10k and 50k source files |
+| `workspace` | `discover_packages`: finding the workspace packages | The same repositories |
+
+The 50k-file repository is only used locally; CodSpeed's simulation would
+take too long on it.
 
 ## The synthetic repository
 
 `SyntheticRepo::new(n)` generates a TypeScript monorepo with exactly `n`
-source files, in memory. The generator uses a fixed-seed PRNG, so a size
-always gives the same files, byte for byte.
+source files, in memory; `TempRepo` writes one to a temporary directory, and
+`TempRepo::shared` writes each size once per benchmark binary, until the
+`TempRepo::remove_shared_on_drop` guard in `main` removes them. The generator
+uses a fixed-seed PRNG, so a size always gives the same files, byte for byte.
 
 It has about one `@acme/...` package per 250 files: libraries in `packages/`
 (some with `exports` maps, and with camel-cased directories), Node.js
@@ -24,5 +53,6 @@ packages' `dist` output, `.next` builds and `.gitignore`d `__generated__`
 code.
 
 `cargo test -p zenith_benchmark` checks that generation is deterministic,
-that each size has exactly its number of source files, and that every
-specifier leads to the file that its import records.
+that each size has exactly its number of source files, that every specifier
+leads to the file that its import records, and that the walk and package
+discovery find what the generator wrote.

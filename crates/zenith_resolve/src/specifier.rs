@@ -3,6 +3,31 @@
 
 use std::path::Path;
 
+/// Split a URL scheme off a specifier, so `virtual:pwa-register` is
+/// `("virtual", "pwa-register")`. A scheme starts with a lowercase ASCII
+/// letter, followed by lowercase letters, digits, `+`, `-` or `.`. It is at
+/// least two characters long, so a Windows drive letter is not a scheme.
+pub(crate) fn split_scheme(specifier: &str) -> Option<(&str, &str)> {
+    let (scheme, rest) = specifier.split_once(':')?;
+    let mut bytes = scheme.bytes();
+    let valid = scheme.len() >= 2
+        && bytes.next().is_some_and(|byte| byte.is_ascii_lowercase())
+        && bytes.all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'+' | b'-' | b'.')
+        });
+    valid.then_some((scheme, rest))
+}
+
+/// Split a specifier into its path and its `?query` or `#fragment`, which
+/// bundlers use for variants of a file, as in `./icon.svg?react`. A leading `#`
+/// starts a subpath import, not a fragment.
+pub(crate) fn split_query(specifier: &str) -> (&str, &str) {
+    match specifier.get(1..).and_then(|rest| rest.find(['?', '#'])) {
+        Some(index) => specifier.split_at(index + 1),
+        None => (specifier, ""),
+    }
+}
+
 /// A builtin without its subpath, so `node:fs/promises` is `node:fs`.
 pub(crate) fn squash_builtin(builtin: &str) -> &str {
     builtin.split_once('/').map_or(builtin, |(name, _)| name)
@@ -67,6 +92,30 @@ pub(crate) fn package_from_path(path: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn splits_schemes() {
+        assert_eq!(split_scheme("node:fs"), Some(("node", "fs")));
+        assert_eq!(split_scheme("bun:sqlite"), Some(("bun", "sqlite")));
+        assert_eq!(split_scheme("virtual:pwa-register"), Some(("virtual", "pwa-register")));
+        assert_eq!(split_scheme("astro:content"), Some(("astro", "content")));
+        assert_eq!(split_scheme("c:/repo/a.ts"), None);
+        assert_eq!(split_scheme(r"C:\repo\a.ts"), None);
+        assert_eq!(split_scheme("@scope/pkg:sub"), None);
+        assert_eq!(split_scheme("./a:b"), None);
+        assert_eq!(split_scheme("react"), None);
+    }
+
+    #[test]
+    fn splits_queries_and_fragments() {
+        assert_eq!(split_query("./icon.svg?react"), ("./icon.svg", "?react"));
+        assert_eq!(split_query("@acme/ui/styles.css?inline"), ("@acme/ui/styles.css", "?inline"));
+        assert_eq!(split_query("@acme/ui#main"), ("@acme/ui", "#main"));
+        assert_eq!(split_query("#internal?raw"), ("#internal", "?raw"));
+        assert_eq!(split_query("#internal"), ("#internal", ""));
+        assert_eq!(split_query("react"), ("react", ""));
+        assert_eq!(split_query(""), ("", ""));
+    }
 
     #[test]
     fn squashes_builtin_subpaths() {

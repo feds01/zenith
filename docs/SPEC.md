@@ -558,9 +558,9 @@ Each resolution is then classified:
 |---|---|
 | path inside the root, not under `node_modules` | internal file node |
 | path under `node_modules`, or outside the root | `npm:<package name taken from the specifier>` (for a specifier that isn't a package name, from the path after its last `node_modules`); unresolved if there is none |
-| builtin error | `node:<name>` (or `bun:<name>`) |
+| builtin error, or a `node:` or `bun:` specifier | `node:<name>` (or `bun:<name>`) |
 | a bare specifier that fails to resolve | `npm:<package name>`, flagged *unresolved*. This keeps `npm:` contracts working in CI without `node_modules`. |
-| a relative or absolute specifier that fails | unresolved, not in the graph, reported as a warning (unless it matches `ignore_unresolved`) |
+| any other specifier that fails: relative or absolute, another URL scheme (`virtual:`), a path alias that can't be a package name (`@/x`, `~/x`), or a `[resolve] alias` match | unresolved, not in the graph, reported as a warning (unless it matches `ignore_unresolved`) |
 
 `zenith check` prints one summary line for unresolved imports, and
 `--show-unresolved` lists them.

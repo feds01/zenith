@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use zenith_utils::glob::NamePattern;
+
 /// The default condition names for `exports` and `imports` maps. `types` is
 /// included so that internal TypeScript packages resolve to their sources,
 /// not to their build output.
@@ -58,6 +60,11 @@ pub struct ResolverSettings {
     /// for. An alias covers the specifier's subpaths too, so an alias of
     /// `types` to `web/src/types` maps `types/user` to `web/src/types/user`.
     pub aliases: Vec<(String, PathBuf)>,
+
+    /// Patterns of specifiers that are expected not to resolve, such as
+    /// `virtual:*`. They are [`Ignored`](crate::Resolved::Ignored) instead of
+    /// [`Unresolved`](crate::Resolved::Unresolved).
+    pub ignore_unresolved: Vec<NamePattern>,
 }
 
 impl ResolverSettings {
@@ -72,6 +79,7 @@ impl ResolverSettings {
             main_fields: strings(DEFAULT_MAIN_FIELDS),
             extensions: strings(DEFAULT_EXTENSIONS),
             aliases: Vec::new(),
+            ignore_unresolved: Vec::new(),
         }
     }
 }

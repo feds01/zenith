@@ -9,11 +9,11 @@ use oxc_resolver::{
     AliasValue, ResolveError, ResolveOptions, TsconfigDiscovery, TsconfigOptions,
     TsconfigReferences,
 };
-use zenith_utils::path::relative_posix;
+use zenith_utils::{glob::NamePattern, path::relative_posix};
 
 use crate::{
     settings::{ResolverSettings, TsconfigMode},
-    specifier::{package_from_path, package_name, squash_builtin},
+    specifier::{package_from_path, package_name, split_query, split_scheme, squash_builtin},
 };
 
 /// The files that an import with a JavaScript extension may stand for, in the
@@ -36,14 +36,23 @@ pub enum Resolved {
     External {
         /// The package name, without any subpath, e.g. `@tanstack/react-query`.
         package: String,
+
+        /// Whether the specifier resolved to a file. When it didn't (because
+        /// `node_modules` is not installed, say), the package is named from
+        /// the specifier alone.
+        found: bool,
     },
 
-    /// A runtime builtin without its subpath, e.g. `node:fs`. Node builtins
-    /// always have the `node:` prefix.
+    /// A runtime builtin without its subpath, e.g. `node:fs` or `bun:sqlite`.
+    /// Node builtins always have the `node:` prefix.
     Builtin(String),
 
     /// The specifier could not be resolved.
     Unresolved(UnresolvedReason),
+
+    /// The specifier could not be resolved, and it matches one of the
+    /// `ignore_unresolved` patterns, so that is expected.
+    Ignored(UnresolvedReason),
 }
 
 /// Why a specifier could not be resolved.
@@ -54,6 +63,9 @@ pub enum UnresolvedReason {
 
     /// It resolved to a file outside the project root that is in no package.
     OutsideRoot(PathBuf),
+
+    /// It has a URL scheme other than `node:` and `bun:`, such as `virtual:`.
+    UnsupportedScheme(String),
 }
 
 impl fmt::Display for UnresolvedReason {
@@ -63,6 +75,7 @@ impl fmt::Display for UnresolvedReason {
             Self::OutsideRoot(path) => {
                 write!(f, "resolved to `{}`, outside the project and in no package", path.display())
             }
+            Self::UnsupportedScheme(scheme) => write!(f, "unsupported `{scheme}:` specifier"),
         }
     }
 }
@@ -112,13 +125,23 @@ pub struct Resolver {
 
     /// The canonical project root.
     root: PathBuf,
+
+    /// Patterns of specifiers that are expected not to resolve.
+    ignore_unresolved: Vec<NamePattern>,
 }
 
 impl Resolver {
     /// Create a resolver.
     pub fn new(settings: ResolverSettings) -> Result<Self, ResolverError> {
-        let ResolverSettings { root, tsconfig, conditions, main_fields, extensions, aliases } =
-            settings;
+        let ResolverSettings {
+            root,
+            tsconfig,
+            conditions,
+            main_fields,
+            extensions,
+            aliases,
+            ignore_unresolved,
+        } = settings;
 
         if let Some(extension) = extensions.iter().find(|extension| !extension.starts_with('.')) {
             return Err(ResolverError::InvalidExtension(extension.clone()));
@@ -160,19 +183,46 @@ impl Resolver {
             ..ResolveOptions::default()
         };
 
-        Ok(Self { inner: oxc_resolver::Resolver::new(options), root })
+        Ok(Self { inner: oxc_resolver::Resolver::new(options), root, ignore_unresolved })
     }
 
     /// Resolve `specifier`, as imported by the file at the absolute path
     /// `file`.
     pub fn resolve(&self, file: &Path, specifier: &str) -> Resolved {
-        match self.inner.resolve_file(file, specifier) {
-            Ok(resolution) => self.classify(specifier, resolution.path()),
+        match self.resolve_specifier(file, specifier) {
+            Resolved::Unresolved(reason)
+                if self.ignore_unresolved.iter().any(|pattern| pattern.is_match(specifier)) =>
+            {
+                Resolved::Ignored(reason)
+            }
+            resolved => resolved,
+        }
+    }
+
+    /// Resolve `specifier`, without applying `ignore_unresolved`.
+    fn resolve_specifier(&self, file: &Path, specifier: &str) -> Resolved {
+        if let Some((scheme, _)) = split_scheme(specifier) {
+            return match scheme {
+                "node" | "bun" => Resolved::Builtin(squash_builtin(specifier).to_string()),
+                _ => Resolved::Unresolved(UnresolvedReason::UnsupportedScheme(scheme.to_string())),
+            };
+        }
+
+        let error = match self.inner.resolve_file(file, specifier) {
+            Ok(resolution) => return self.classify(specifier, resolution.path()),
             Err(ResolveError::Builtin { mut resolved, .. }) => {
                 resolved.truncate(squash_builtin(&resolved).len());
-                Resolved::Builtin(resolved)
+                return Resolved::Builtin(resolved);
             }
-            Err(error) => failed(error),
+            // An alias matched, so the specifier doesn't name a package.
+            Err(error @ ResolveError::MatchedAliasNotFound(..)) => return failed(error),
+            Err(error) => error,
+        };
+
+        let (path, _) = split_query(specifier);
+        match package_name(path) {
+            Some(package) => Resolved::External { package: package.to_string(), found: false },
+            None => failed(error),
         }
     }
 
@@ -184,8 +234,9 @@ impl Resolver {
         {
             return Resolved::Internal(relative);
         }
+        let (specifier, _) = split_query(specifier);
         match package_name(specifier).map(str::to_string).or_else(|| package_from_path(path)) {
-            Some(package) => Resolved::External { package },
+            Some(package) => Resolved::External { package, found: true },
             None => Resolved::Unresolved(UnresolvedReason::OutsideRoot(path.to_path_buf())),
         }
     }
@@ -251,8 +302,8 @@ mod tests {
         Resolved::Internal(path.to_string())
     }
 
-    fn external(package: &str) -> Resolved {
-        Resolved::External { package: package.to_string() }
+    fn external(package: &str, found: bool) -> Resolved {
+        Resolved::External { package: package.to_string(), found }
     }
 
     fn builtin(name: &str) -> Resolved {
@@ -332,6 +383,9 @@ mod tests {
         assert_eq!(resolver.resolve(&web, "@/lib/format"), internal("web/src/lib/format.ts"));
         assert_eq!(resolver.resolve(&admin, "@/lib/format"), internal("admin/app/lib/format.ts"));
         assert_eq!(resolver.resolve(&admin, "~config"), internal("admin/config.ts"));
+        // A path alias that doesn't resolve is not a package.
+        assert!(is_unresolved(&resolver.resolve(&web, "@/lib/missing")));
+        assert!(is_unresolved(&resolver.resolve(&web, "~config")));
     }
 
     #[test]
@@ -402,11 +456,27 @@ mod tests {
         let from = project.path("web/src/main.ts");
         let resolve = |specifier: &str| resolver.resolve(&from, specifier);
 
-        assert_eq!(resolve("@vendor/sdk"), external("@vendor/sdk"));
-        assert_eq!(resolve("@vendor/sdk/client"), external("@vendor/sdk"));
-        assert_eq!(resolve("chart-kit"), external("chart-kit"));
+        assert_eq!(resolve("@vendor/sdk"), external("@vendor/sdk", true));
+        assert_eq!(resolve("@vendor/sdk/client"), external("@vendor/sdk", true));
+        assert_eq!(resolve("chart-kit"), external("chart-kit", true));
         // A relative import into `node_modules` is named from the path.
-        assert_eq!(resolve("../../node_modules/@vendor/sdk/styles.css"), external("@vendor/sdk"));
+        assert_eq!(
+            resolve("../../node_modules/@vendor/sdk/styles.css"),
+            external("@vendor/sdk", true)
+        );
+        // A subpath that the package doesn't export is still an import of it.
+        assert_eq!(resolve("chart-kit/internal"), external("chart-kit", false));
+    }
+
+    #[test]
+    fn names_packages_that_are_not_installed_from_the_specifier() {
+        let project = Project::new(&[("web/src/main.ts", "")]);
+        let resolver = Resolver::new(project.settings()).unwrap();
+        let from = project.path("web/src/main.ts");
+
+        assert_eq!(resolver.resolve(&from, "@vendor/sdk"), external("@vendor/sdk", false));
+        assert_eq!(resolver.resolve(&from, "@vendor/sdk/client"), external("@vendor/sdk", false));
+        assert_eq!(resolver.resolve(&from, "chart-kit/lines"), external("chart-kit", false));
     }
 
     #[test]
@@ -426,7 +496,7 @@ mod tests {
         let resolver = Resolver::new(project.settings()).unwrap();
         let from = project.path("web/main.ts");
 
-        assert_eq!(resolver.resolve(&from, "@vendor/sdk"), external("@vendor/sdk"));
+        assert_eq!(resolver.resolve(&from, "@vendor/sdk"), external("@vendor/sdk", true));
         let outside = resolver.resolve(&from, "../../shared/util");
         let shared = project.root.parent().unwrap().join("shared").join("util.ts");
         assert_eq!(outside, Resolved::Unresolved(UnresolvedReason::OutsideRoot(shared)));
@@ -444,6 +514,21 @@ mod tests {
         assert_eq!(resolve("node:fs"), builtin("node:fs"));
         assert_eq!(resolve("node:fs/promises"), builtin("node:fs"));
         assert_eq!(resolve("node:test"), builtin("node:test"));
+        assert_eq!(resolve("bun:sqlite"), builtin("bun:sqlite"));
+    }
+
+    #[test]
+    fn other_schemes_are_unresolved() {
+        let project = Project::new(&[("main.ts", "")]);
+        let resolver = Resolver::new(project.settings()).unwrap();
+        let resolved = resolver.resolve(&project.path("main.ts"), "virtual:pwa-register");
+        assert_eq!(
+            resolved,
+            Resolved::Unresolved(UnresolvedReason::UnsupportedScheme("virtual".to_string()))
+        );
+        if let Resolved::Unresolved(reason) = resolved {
+            assert_eq!(reason.to_string(), "unsupported `virtual:` specifier");
+        }
     }
 
     #[test]
@@ -460,6 +545,33 @@ mod tests {
 
         assert_eq!(resolver.resolve(&from, "types"), internal("web/src/types/index.ts"));
         assert_eq!(resolver.resolve(&from, "types/user"), internal("web/src/types/user.ts"));
+        // The alias matched, so this is not the `types` package.
+        assert!(is_unresolved(&resolver.resolve(&from, "types/missing")));
+    }
+
+    #[test]
+    fn ignores_expected_unresolved_specifiers() {
+        let project = Project::new(&[("web/main.ts", ""), ("web/util.ts", "")]);
+        let mut settings = project.settings();
+        settings.ignore_unresolved = ["/*", "virtual:*", "~icons/*", "./*"]
+            .into_iter()
+            .map(|pattern| NamePattern::new(pattern).unwrap())
+            .collect();
+        let resolver = Resolver::new(settings).unwrap();
+        let from = project.path("web/main.ts");
+        let resolve = |specifier: &str| resolver.resolve(&from, specifier);
+
+        assert!(matches!(resolve("/logo.svg"), Resolved::Ignored(UnresolvedReason::Failed(_))));
+        assert_eq!(
+            resolve("virtual:pwa-register"),
+            Resolved::Ignored(UnresolvedReason::UnsupportedScheme("virtual".to_string()))
+        );
+        assert!(matches!(resolve("~icons/mdi/home"), Resolved::Ignored(_)));
+        assert!(matches!(resolve("./missing"), Resolved::Ignored(_)));
+        // Only unresolved specifiers are ignored.
+        assert_eq!(resolve("./util"), internal("web/util.ts"));
+        assert!(is_unresolved(&resolve("../missing")));
+        assert_eq!(resolve("chart-kit"), external("chart-kit", false));
     }
 
     #[cfg(unix)]

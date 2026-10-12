@@ -7,10 +7,16 @@ use zenith_config::Config;
 use zenith_contracts::{Contract, Exemptions};
 use zenith_pipeline::{Pipeline, Session, StageKind};
 
-// CodSpeed measures the allocations itself, in its memory mode.
+// The allocator of the `zenith` binary. CodSpeed measures the allocations
+// itself, in its memory mode.
 #[cfg(not(codspeed))]
 #[global_allocator]
-static ALLOC: divan::AllocProfiler = divan::AllocProfiler::system();
+static ALLOC: divan::AllocProfiler<mimalloc::MiMalloc> =
+    divan::AllocProfiler::new(mimalloc::MiMalloc);
+
+#[cfg(codspeed)]
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 /// The repository sizes, in source files.
 #[cfg(not(codspeed))]

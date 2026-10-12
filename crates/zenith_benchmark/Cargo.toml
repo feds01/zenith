@@ -46,6 +46,7 @@ zenith_contracts = { workspace = true }
 zenith_pipeline = { workspace = true }
 
 divan = { workspace = true }
+mimalloc = { workspace = true }
 
 [lints]
 workspace = true

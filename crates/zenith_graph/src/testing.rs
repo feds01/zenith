@@ -30,7 +30,7 @@ pub(crate) fn graph_of(imports: &[(&str, &str)]) -> Graph {
 pub(crate) fn detail(line: u32, kind: ImportKind) -> ImportDetail {
     ImportDetail {
         range: ByteRange::new(line * 100, line * 100 + 10),
-        specifier: format!("./module-{line}"),
+        specifier: format!("./module-{line}").into(),
         kind,
     }
 }

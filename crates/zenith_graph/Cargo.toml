@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 bitflags = { workspace = true }
+compact_str = { workspace = true }
 fixedbitset = { workspace = true }
 index_vec = { workspace = true }
 rayon = { workspace = true }

@@ -55,7 +55,8 @@ impl Project {
                 builder.add_file(imported).unwrap().into()
             };
             let range = ByteRange::new(line * 100, line * 100 + 10);
-            let detail = ImportDetail { range, specifier: format!("./import-{line}"), kind: *kind };
+            let detail =
+                ImportDetail { range, specifier: format!("./import-{line}").into(), kind: *kind };
             builder.add_import(importer, imported, detail);
         }
         for client in clients {

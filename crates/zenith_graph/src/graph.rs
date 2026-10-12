@@ -1,6 +1,7 @@
 //! The graph: the module tree of a project, its external packages and
 //! builtins, and the imports between them.
 
+use compact_str::CompactString;
 use index_vec::{IndexSlice, IndexVec};
 use serde::Serialize;
 use thin_vec::ThinVec;
@@ -120,7 +121,9 @@ pub struct ImportDetail {
     pub range: ByteRange,
 
     /// The specifier as written in the source, e.g. `@acme/ui` or `./api`.
-    pub specifier: String,
+    /// Most specifiers are short enough to be stored inline, without an
+    /// allocation of their own.
+    pub specifier: CompactString,
 
     /// How the import is made.
     pub kind: ImportKind,

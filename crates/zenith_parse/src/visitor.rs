@@ -36,7 +36,7 @@ impl ImportVisitor {
     fn import(&mut self, specifier: &str, kind: ImportKind, span: Span) {
         self.imports.push(ImportDetail {
             range: ByteRange::new(span.start, span.end),
-            specifier: specifier.to_owned(),
+            specifier: specifier.into(),
             kind,
         });
     }
@@ -136,7 +136,11 @@ mod tests {
     fn kinds(path: &str, source: &str) -> Vec<(String, ImportKind)> {
         let parsed = Parser::new().parse_source(Path::new(path), source);
         assert!(parsed.errors.is_empty(), "{source:?}: {:?}", parsed.errors);
-        parsed.imports.into_iter().map(|import| (import.specifier, import.kind)).collect()
+        parsed
+            .imports
+            .into_iter()
+            .map(|import| (import.specifier.into_string(), import.kind))
+            .collect()
     }
 
     /// Check that each source has one import, of `s` with the given kind.

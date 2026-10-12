@@ -48,7 +48,10 @@ it when responsibilities move. On `main` today:
   syntax of selectors, layers and ignored imports.
 - `zenith_contracts`: resolving selectors into units, the labelled sets of
   nodes that contracts reason about, from what the graph and the workspace
-  find, and failing on path and `pkg:` selectors that match nothing.
+  find, and failing on path and `pkg:` selectors that match nothing;
+  compiling contracts against a project, the view of the graph that each
+  checks against (without its excluded kinds and ignored imports), the
+  contract types (`forbidden`, `protected`), and the violations they find.
 - `zenith_diagnostics`: the errors and warnings reported about zenith's
   input, collected per pass and rendered as reports with labelled source
   excerpts using `annotate-snippets`.

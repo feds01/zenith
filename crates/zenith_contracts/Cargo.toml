@@ -10,8 +10,12 @@ publish = false
 
 [dependencies]
 zenith_config = { workspace = true }
+zenith_diagnostics = { workspace = true }
 zenith_graph = { workspace = true }
+zenith_utils = { workspace = true }
 zenith_workspace = { workspace = true }
+
+rayon = { workspace = true }
 
 [dev-dependencies]
 thin-vec = { workspace = true }

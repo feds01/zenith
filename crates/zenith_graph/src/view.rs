@@ -32,6 +32,21 @@ impl EdgeSet {
     pub fn contains(&self, importer: ModuleId, imported: ModuleId) -> bool {
         self.edges.contains(&(importer, imported))
     }
+
+    /// The imports of `graph` all of whose details are of the `kinds`. An
+    /// import with one detail of another kind is left out.
+    pub fn only_of_kinds(graph: &Graph, kinds: KindSet) -> Self {
+        if kinds.is_empty() {
+            return Self::new();
+        }
+        graph
+            .edges()
+            .filter(|(importer, imported)| {
+                let details = graph.details(*importer, *imported);
+                details.iter().all(|detail| kinds.contains(detail.kind.into()))
+            })
+            .collect()
+    }
 }
 
 impl fmt::Debug for EdgeSet {
@@ -85,17 +100,7 @@ impl<'g> GraphView<'g> {
     /// A view of the graph without the imports all of whose details are of
     /// the `excluded` kinds. An import with one detail of another kind stays.
     pub fn without_kinds(graph: &'g Graph, excluded: KindSet) -> Self {
-        if excluded.is_empty() {
-            return Self::new(graph);
-        }
-        let imports = graph
-            .edges()
-            .filter(|(importer, imported)| {
-                let details = graph.details(*importer, *imported);
-                details.iter().all(|detail| excluded.contains(detail.kind.into()))
-            })
-            .collect();
-        Self::with_excluded(graph, imports)
+        Self::with_excluded(graph, EdgeSet::only_of_kinds(graph, excluded))
     }
 
     /// The underlying graph, for the queries that don't depend on imports,

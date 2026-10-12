@@ -12,6 +12,10 @@ publish = false
 bench = false
 
 [[bench]]
+name = "contracts"
+harness = false
+
+[[bench]]
 name = "glob"
 harness = false
 
@@ -34,6 +38,7 @@ heck = { workspace = true }
 tempfile = { workspace = true }
 
 [dev-dependencies]
+zenith_contracts = { workspace = true }
 zenith_pipeline = { workspace = true }
 
 divan = { workspace = true }

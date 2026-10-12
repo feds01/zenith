@@ -32,6 +32,7 @@ benchmarked crates.
 | `workspace` | `discover_packages`: finding the workspace packages | The same repositories |
 | `pipeline` | `pipeline`: running every stage up to the graph, with the default configuration | The same repositories |
 | `pipeline` | `parse`, `resolve`, `graph`: each of those stages on its own | The same repositories |
+| `contracts` | `forbidden_without_chains`, `forbidden_with_chains`, `protected`: checking a contract, compiled beforehand | The same repositories |
 
 The 50k-file repository is only used locally; CodSpeed's simulation would
 take too long on it.

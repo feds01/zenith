@@ -1956,6 +1956,7 @@ dependencies = [
  "heck",
  "tempfile",
  "zenith_config",
+ "zenith_contracts",
  "zenith_graph",
  "zenith_pipeline",
  "zenith_utils",

@@ -84,7 +84,7 @@ impl GraphView<'_> {
 
     /// Every direct import from a member of `from` to a member of `to`, in
     /// ascending order.
-    pub(crate) fn direct_imports<'a>(
+    pub fn direct_imports<'a>(
         &'a self,
         from: &'a NodeSet,
         to: &'a NodeSet,

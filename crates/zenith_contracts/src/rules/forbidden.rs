@@ -3,7 +3,7 @@
 
 use rayon::prelude::*;
 use zenith_config::ForbiddenConfig;
-use zenith_graph::{GraphView, KindSet, ModuleId, NodeSet, Unit};
+use zenith_graph::{GraphView, KindSet, NodeSet, Unit};
 
 use crate::{Chain, Violation, contract::UnitResolver};
 
@@ -57,7 +57,8 @@ impl Forbidden {
                     return None;
                 }
                 let mut paths = if self.allow_indirect {
-                    direct_imports(view, &from.members, &to.members)
+                    let direct = view.direct_imports(&from.members, &to.members);
+                    direct.map(|(importer, imported)| vec![importer, imported]).collect()
                 } else if from.members.intersects(&reachers[to_index]) {
                     view.find_shortest_chains(&from.members, &to.members, &NodeSet::new())
                 } else {
@@ -79,17 +80,6 @@ impl Forbidden {
             })
             .collect()
     }
-}
-
-/// Every direct import from a member of `from` to a member of `to` in `view`,
-/// as a path of two nodes.
-fn direct_imports(view: &GraphView, from: &NodeSet, to: &NodeSet) -> Vec<Vec<ModuleId>> {
-    from.iter()
-        .flat_map(|importer| {
-            let imported = view.imports_of(importer).filter(|imported| to.contains(*imported));
-            imported.map(move |imported| vec![importer, imported])
-        })
-        .collect()
 }
 
 #[cfg(test)]

@@ -60,11 +60,12 @@ pub struct WalkSettings {
     pub source_extensions: &'static [&'static str],
 }
 
-/// The files found by [`walk`], as absolute paths, sorted.
+/// The files found by [`walk`], sorted.
 #[derive(Debug, Clone, Default)]
 pub struct WalkResult {
-    /// The source files to scan.
-    pub source_files: Vec<PathBuf>,
+    /// The source files to scan, as POSIX paths relative to the root, which
+    /// the walk works out to match them against globs anyway.
+    pub source_files: Vec<String>,
 
     /// Every `package.json` that isn't excluded, for workspace package
     /// discovery.
@@ -104,7 +105,7 @@ fn walk_with(root: &Path, settings: &WalkSettings, git_global: bool) -> WalkResu
     let mut result = result.into_inner().unwrap_or_else(PoisonError::into_inner);
     // Each path is found once, and comparing them by components would cost more
     // than the rest of the walk's own work.
-    result.source_files.sort_unstable_by(|a, b| compare_paths(a, b));
+    result.source_files.sort_unstable_by(|a, b| compare_paths(Path::new(a), Path::new(b)));
     result.package_jsons.sort_unstable_by(|a, b| compare_paths(a, b));
     result
 }
@@ -218,7 +219,7 @@ impl ParallelVisitor for Visitor<'_> {
                 .is_some_and(|extension| self.settings.source_extensions.contains(&extension)),
         };
         if included {
-            self.local.source_files.push(path.to_path_buf());
+            self.local.source_files.push(relative);
         }
 
         WalkState::Continue
@@ -267,7 +268,7 @@ mod tests {
         let relative = |paths: &[PathBuf]| -> Vec<String> {
             paths.iter().map(|path| relative_posix(root, path).unwrap()).collect()
         };
-        (relative(&result.source_files), relative(&result.package_jsons))
+        (result.source_files, relative(&result.package_jsons))
     }
 
     #[test]

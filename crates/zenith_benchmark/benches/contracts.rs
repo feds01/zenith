@@ -23,26 +23,7 @@ const SIZES: &[usize] = &[1_000, 10_000];
 
 /// The contracts that are benchmarked. Every repository has libraries in
 /// `packages/`, services in `services/` and apps in `apps/`.
-const CONTRACTS: &str = r#"
-# Libraries are lower than apps and services, so this searches every pair
-# without finding a chain.
-[contracts.libraries-below-apps]
-type = "forbidden"
-from = ["packages/*"]
-to = ["apps/*", "services/*"]
-
-# Apps reach builtins through libraries, so this finds chains.
-[contracts.apps-without-builtins]
-type = "forbidden"
-from = ["apps/*"]
-to = ["node:*"]
-
-# Libraries import each other, so this finds illegal imports.
-[contracts.libraries-for-apps]
-type = "protected"
-modules = ["packages/*"]
-allowed_importers = ["apps/*", "services/*"]
-"#;
+const CONTRACTS: &str = include_str!("contracts.toml");
 
 fn main() {
     let _remove_shared = TempRepo::remove_shared_on_drop();
@@ -88,4 +69,16 @@ fn forbidden_with_chains(bencher: Bencher, source_files: usize) {
 #[divan::bench(args = SIZES, sample_count = 10)]
 fn protected(bencher: Bencher, source_files: usize) {
     bench_contract(bencher, source_files, "libraries-for-apps");
+}
+
+/// An `independence` contract that finds dependencies.
+#[divan::bench(args = SIZES, sample_count = 10)]
+fn independence(bencher: Bencher, source_files: usize) {
+    bench_contract(bencher, source_files, "independent-libraries");
+}
+
+/// A `layers` contract of two levels, the upper one independent.
+#[divan::bench(args = SIZES, sample_count = 10)]
+fn layers(bencher: Bencher, source_files: usize) {
+    bench_contract(bencher, source_files, "tiers");
 }

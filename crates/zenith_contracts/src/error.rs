@@ -32,6 +32,32 @@ pub enum ContractErrorKind {
         selector: String,
     },
 
+    /// Two modules overlap where the contract needs them apart: the modules
+    /// of an `independence` contract, or the layers of a `layers` contract.
+    OverlappingModules {
+        /// The label of the first module.
+        first: String,
+
+        /// The label of the second module, which shares members with the
+        /// first.
+        second: String,
+    },
+
+    /// A container of a `layers` contract lacks a layer that isn't optional.
+    MissingLayer {
+        /// The layer's member, as written.
+        member: String,
+
+        /// The label of the container.
+        container: String,
+    },
+
+    /// A container of a `layers` contract is not a directory.
+    ContainerNotADirectory {
+        /// The label of the container.
+        container: String,
+    },
+
     /// The contract type isn't supported yet.
     Unsupported {
         /// The contract type, as written in `type`.
@@ -62,7 +88,11 @@ impl ContractErrorKind {
             Self::UnmatchedSelector { .. } => {
                 Some("check it for a typo, or for a module that was renamed or removed")
             }
-            Self::Unsupported { .. } => None,
+            Self::OverlappingModules { .. } => {
+                Some("a module can only be in one of them; narrow one with `except`")
+            }
+            Self::MissingLayer { .. } => Some("wrap the layer in parentheses to make it optional"),
+            Self::ContainerNotADirectory { .. } | Self::Unsupported { .. } => None,
         }
     }
 }
@@ -72,6 +102,15 @@ impl fmt::Display for ContractErrorKind {
         match self {
             Self::UnmatchedSelector { selector } => {
                 write!(f, "`{selector}` does not match anything")
+            }
+            Self::OverlappingModules { first, second } => {
+                write!(f, "`{first}` and `{second}` overlap")
+            }
+            Self::MissingLayer { member, container } => {
+                write!(f, "`{container}` has no layer `{member}`")
+            }
+            Self::ContainerNotADirectory { container } => {
+                write!(f, "the container `{container}` is not a directory")
             }
             Self::Unsupported { kind } => write!(f, "`{kind}` contracts are not supported yet"),
         }

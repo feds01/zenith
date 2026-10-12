@@ -145,18 +145,37 @@ pub(crate) struct UnitResolver<'a> {
     errors: Vec<ContractError>,
 }
 
-impl UnitResolver<'_> {
+impl<'a> UnitResolver<'a> {
+    /// The project's graph.
+    pub(crate) fn graph(&self) -> &'a Graph {
+        self.graph
+    }
+
+    /// The project's workspace packages.
+    pub(crate) fn workspace(&self) -> &'a Workspace {
+        self.workspace
+    }
+
     /// The units of `selectors`, in order, each unit once even if several
     /// selectors match it. A path or `pkg:` selector that matches nothing is
     /// an error.
     pub(crate) fn units(&mut self, selectors: &[Selector]) -> Vec<Unit> {
-        let mut units: Vec<Unit> = Vec::new();
+        self.located_units(selectors).into_iter().map(|(unit, _)| unit).collect()
+    }
+
+    /// The units of `selectors`, as [`Self::units`] finds them, each with the
+    /// range of the selector that matched it.
+    pub(crate) fn located_units(
+        &mut self,
+        selectors: &[Selector],
+    ) -> Vec<(Unit, Option<ByteRange>)> {
+        let mut units: Vec<(Unit, Option<ByteRange>)> = Vec::new();
         for selector in selectors {
             match Selection::try_resolve(selector, self.graph, self.workspace) {
                 Ok(selection) => {
                     for unit in selection.units {
-                        if !units.iter().any(|existing| existing.root == unit.root) {
-                            units.push(unit);
+                        if !units.iter().any(|(existing, _)| existing.root == unit.root) {
+                            units.push((unit, selector.range()));
                         }
                     }
                 }
@@ -167,6 +186,24 @@ impl UnitResolver<'_> {
             }
         }
         units
+    }
+
+    /// Report the first pair of `units` that overlap, at the range of the
+    /// later one.
+    pub(crate) fn ensure_apart(&mut self, units: &[(Unit, Option<ByteRange>)]) {
+        for (index, (first, _)) in units.iter().enumerate() {
+            let overlapping = units[index + 1..]
+                .iter()
+                .find(|(second, _)| first.members.intersects(&second.members));
+            if let Some((second, range)) = overlapping {
+                let kind = ContractErrorKind::OverlappingModules {
+                    first: first.label.clone(),
+                    second: second.label.clone(),
+                };
+                self.error(kind, *range);
+                return;
+            }
+        }
     }
 
     /// Record an error in the contract, at `range` in the configuration file.
@@ -225,11 +262,11 @@ allowed_importers = [\"web/aap\"]
         let project = Project::new(
             &values(&[("a/x.ts", "b/y.ts")]),
             &[],
-            "[contracts.i]\ntype = \"independence\"\nmodules = [\"a\", \"b\"]\n",
+            "[contracts.c]\ntype = \"acyclic\"\nmodules = [\"a\", \"b\"]\n",
         );
         let errors = project.compile().unwrap_err();
         assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].kind, ContractErrorKind::Unsupported { kind: "independence" });
+        assert_eq!(errors[0].kind, ContractErrorKind::Unsupported { kind: "acyclic" });
     }
 
     #[test]

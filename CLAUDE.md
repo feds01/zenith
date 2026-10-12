@@ -46,7 +46,8 @@ it when responsibilities move. On `main` today:
   monorepo that they run on.
 - `zenith_config`: the `zenith.toml` types and JSON Schema, config discovery,
   parsing, and validation into typed contract definitions, including the
-  syntax of selectors, layers and ignored imports.
+  syntax of selectors, layers and ignored imports, and the starter
+  configuration that `zenith init` writes.
 - `zenith_contracts`: resolving selectors into units, the labelled sets of
   nodes that contracts reason about, from what the graph and the workspace
   find, and failing on path and `pkg:` selectors that match nothing;

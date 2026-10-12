@@ -1,0 +1,6 @@
+# The starter keeps the two packages free of cycles, which they are not.
+init
+check
+# A second init only overwrites the configuration with `--force`.
+init
+init --force

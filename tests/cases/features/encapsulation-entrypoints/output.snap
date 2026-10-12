@@ -1,0 +1,14 @@
+$ zenith check
+exit: 1
+--- stdout
+error[feature-surface]: `src/feature` may only be imported through its entry points
+ --> src/app/deep.ts:1:22
+  |
+1 | import { impl } from "../feature/internal/impl";
+  |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `src/feature/internal/impl.ts`, which is internal
+
+Contracts
+  ✗ feature-surface  encapsulation  broken (1 violation)
+
+0 kept, 1 broken · 7 files, 6 imports
+

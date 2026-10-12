@@ -1,0 +1,11 @@
+# The same tree under two contracts: `|` siblings are independent, `:`
+# siblings may import each other.
+[contracts.independent-siblings]
+type = "layers"
+containers = ["src"]
+layers = ["app", "orders | billing", "base"]
+
+[contracts.coupled-siblings]
+type = "layers"
+containers = ["src"]
+layers = ["app", "orders : billing", "base"]

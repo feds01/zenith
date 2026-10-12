@@ -1,0 +1,13 @@
+$ zenith check
+exit: 2
+--- stderr
+error: `domains/billing` has no layer `hooks`
+ --> zenith.toml:5:11
+  |
+5 | layers = ["hooks", "api"]
+  |           ^^^^^^^
+  |
+  = note: in contract `domain-layers`
+  = help: wrap the layer in parentheses to make it optional
+
+

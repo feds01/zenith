@@ -6,7 +6,7 @@ use zenith_graph::{Graph, GraphBuilder, ImportDetail, ImportKind, NodeHandle};
 use zenith_utils::location::ByteRange;
 use zenith_workspace::Workspace;
 
-use crate::{Chain, Contract, ContractError, ContractReport, Link, Violation};
+use crate::{Chain, Contract, ContractError, ContractReport, CycleScope, Link, Violation};
 
 /// A project for testing contracts: a graph, no workspace packages, and a
 /// configuration.
@@ -87,20 +87,26 @@ impl Project {
             Violation::IllegalImports { module, imports } => {
                 imports.iter().map(|link| format!("{module}: {}", self.link(link))).collect()
             }
-            Violation::Cycle { scope, breakers } => breakers
-                .iter()
-                .map(|breaker| {
-                    let imports: Vec<_> =
-                        breaker.imports.iter().map(|link| self.link(link)).collect();
-                    format!(
-                        "{scope}: break {} -> {} ({}) in {}",
-                        breaker.importer,
-                        breaker.imported,
-                        imports.join(", "),
-                        breaker.cycle.join(" -> ")
-                    )
-                })
-                .collect(),
+            Violation::Cycle { scope, breakers } => {
+                let scope = match scope {
+                    CycleScope::Modules(selectors) => selectors.clone(),
+                    CycleScope::Children(unit) => format!("children of {unit}"),
+                };
+                breakers
+                    .iter()
+                    .map(|breaker| {
+                        let imports: Vec<_> =
+                            breaker.imports.iter().map(|link| self.link(link)).collect();
+                        format!(
+                            "{scope}: break {} -> {} ({}) in {}",
+                            breaker.importer,
+                            breaker.imported,
+                            imports.join(", "),
+                            breaker.cycle.join(" -> ")
+                        )
+                    })
+                    .collect()
+            }
             Violation::UndeclaredModule { container, module } => {
                 vec![format!("{container}: `{}` is not a layer", self.graph.name(*module))]
             }

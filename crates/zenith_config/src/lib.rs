@@ -20,8 +20,8 @@ mod schema;
 mod selector;
 
 pub use config::{
-    AnalysisConfig, BaselineConfig, CONFIG_FILE_NAME, Config, FilesConfig, OPTIONAL_EXTENSIONS,
-    ResolveConfig, SOURCE_EXTENSIONS, StaleLevel, Tsconfig,
+    AnalysisConfig, BaselineConfig, CONFIG_FILE_NAME, Config, ConfigFile, FilesConfig,
+    OPTIONAL_EXTENSIONS, ResolveConfig, SOURCE_EXTENSIONS, StaleLevel, Tsconfig,
 };
 pub use contracts::{
     AcyclicConfig, AlertLevel, ContractConfig, ContractKind, EncapsulationConfig, ForbiddenConfig,

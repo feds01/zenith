@@ -1,0 +1,10 @@
+# `src/util` is not a layer, so `low -> util -> high` is an indirect
+# violation. The second contract only checks direct imports.
+[contracts.indirect]
+type = "layers"
+layers = ["src/high", "src/low"]
+
+[contracts.direct-only]
+type = "layers"
+layers = ["src/high", "src/low"]
+allow_indirect_imports = true

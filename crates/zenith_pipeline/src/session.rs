@@ -3,9 +3,11 @@
 use std::path::PathBuf;
 
 use zenith_config::{Config, SOURCE_EXTENSIONS, Tsconfig};
+use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_parse::ParsedFile;
 use zenith_resolve::{Resolved, Resolver, ResolverError, ResolverSettings, TsconfigMode};
+use zenith_utils::printing::plural;
 use zenith_workspace::{WalkSettings, Workspace};
 
 use crate::{FileError, UnresolvedImport};
@@ -97,6 +99,45 @@ impl Session {
             unresolved: Vec::new(),
             stats: Stats::default(),
         }
+    }
+
+    /// A source map that reads the project's files when reports first need
+    /// them, with the configuration file in it if it was read from one, and
+    /// the id of the configuration file.
+    pub fn sources(&self) -> (SourceMap, Option<SourceId>) {
+        let mut sources = SourceMap::with_root(&self.root);
+        let config = self
+            .config
+            .file
+            .as_ref()
+            .map(|file| sources.add_file(&file.path, file.contents.as_str()));
+        (sources, config)
+    }
+
+    /// The warning about the imports that couldn't be resolved, listing
+    /// where each is if `list` is set, or `None` if there are none.
+    pub fn unresolved_report(&self, sources: &mut SourceMap, list: bool) -> Option<Report> {
+        if self.unresolved.is_empty() {
+            return None;
+        }
+        let title = format!("{} could not be resolved", plural(self.unresolved.len(), "import"));
+        let mut report = Report::warning(title);
+        if list {
+            let lines: Vec<_> = self
+                .unresolved
+                .iter()
+                .map(|import| {
+                    let (specifier, reason) = (&import.import.specifier, &import.reason);
+                    format!("  {}  `{specifier}`  ({reason})", import.location(sources))
+                })
+                .collect();
+            report.add_note(lines.join("\n"));
+        } else {
+            report.add_help(
+                "use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones",
+            );
+        }
+        Some(report)
     }
 
     /// Which files to scan, as the configuration says.

@@ -5,6 +5,8 @@
 //! in, and keep each import's [`ImportDetail`]s, so that a report can name the
 //! files and show where in them each import is.
 
+use std::fmt;
+
 use zenith_graph::{GraphView, ImportDetail, KindSet, ModuleId, Route};
 
 /// A direct import between two nodes, with the statements that make it.
@@ -118,9 +120,8 @@ pub enum Violation {
     /// The units of `scope` depend on each other in cycles, which removing
     /// the `breakers` would break.
     Cycle {
-        /// The units that form cycles: the selectors of the contract, or the
-        /// children of one of their units.
-        scope: String,
+        /// The units that form cycles.
+        scope: CycleScope,
 
         /// The dependencies to remove, in the order of their importing unit,
         /// then of the imported unit. There is at least one.
@@ -169,4 +170,27 @@ pub struct CycleBreaker {
     /// importer, the imported unit, and the units back to the importer, which
     /// is not repeated.
     pub cycle: Vec<String>,
+}
+
+/// The units that an `acyclic` contract finds cycles among.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CycleScope {
+    /// The modules of the contract, shown as its selectors are written, e.g.
+    /// `pkg:*`.
+    Modules(String),
+
+    /// The children of the unit with this label, checked because of the
+    /// contract's `depth`.
+    Children(String),
+}
+
+/// Shown as where the cycles are, e.g. ``in `pkg:*` `` or ``among the
+/// children of `web/src` ``.
+impl fmt::Display for CycleScope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Modules(selectors) => write!(f, "in `{selectors}`"),
+            Self::Children(unit) => write!(f, "among the children of `{unit}`"),
+        }
+    }
 }

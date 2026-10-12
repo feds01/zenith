@@ -1930,7 +1930,6 @@ dependencies = [
 name = "zenith"
 version = "0.1.0"
 dependencies = [
- "annotate-snippets",
  "anyhow",
  "argfile",
  "clap",
@@ -1943,6 +1942,7 @@ dependencies = [
  "zenith_diagnostics",
  "zenith_graph",
  "zenith_pipeline",
+ "zenith_reporting",
  "zenith_resolve",
  "zenith_utils",
 ]
@@ -1988,6 +1988,7 @@ dependencies = [
  "zenith_config",
  "zenith_diagnostics",
  "zenith_graph",
+ "zenith_reporting",
  "zenith_utils",
  "zenith_workspace",
 ]
@@ -1997,6 +1998,7 @@ name = "zenith_diagnostics"
 version = "0.1.0"
 dependencies = [
  "annotate-snippets",
+ "tempfile",
  "zenith_utils",
 ]
 
@@ -2049,6 +2051,14 @@ dependencies = [
  "zenith_resolve",
  "zenith_utils",
  "zenith_workspace",
+]
+
+[[package]]
+name = "zenith_reporting"
+version = "0.1.0"
+dependencies = [
+ "zenith_diagnostics",
+ "zenith_utils",
 ]
 
 [[package]]

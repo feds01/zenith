@@ -1,0 +1,14 @@
+$ zenith check
+exit: 1
+--- stdout
+error[closed-mid]: `src/high` must not import `src/low`
+ --> src/high/a.ts:2:21
+  |
+2 | import { low } from "../low/l";
+  |                     ^^^^^^^^^^ imports `src/low/l.ts`
+
+Contracts
+  ✗ closed-mid  layers  broken (1 violation)
+
+0 kept, 1 broken · 4 files, 5 imports
+

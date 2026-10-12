@@ -1,3 +1,4 @@
+check --show-unresolved
 # `/logo.svg` is expected not to resolve, so only `./missing` is listed.
 graph -v
 resolve src/ui/avatar.ts types/user

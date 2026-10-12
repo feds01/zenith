@@ -1,3 +1,19 @@
+$ zenith check
+exit: 1
+--- stdout
+error[tools-not-shared]: `tools` must not import `shared`
+ --> packages/tools/src/index.ts:1:24
+  |
+1 | import { shared } from "~shared/util";
+  |                        ^^^^^^^^^^^^^^ imports `shared/util.ts`
+
+Contracts
+  ✓ core-not-app           forbidden  kept
+  ✓ app-has-no-npm-config  forbidden  kept
+  ✗ tools-not-shared       forbidden  broken (1 violation)
+
+2 kept, 1 broken · 7 files, 5 imports
+
 $ zenith graph --depth 4
 exit: 0
 --- stdout

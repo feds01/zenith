@@ -1,0 +1,14 @@
+$ zenith check
+exit: 1
+--- stdout
+error[domain-layers]: `domains/billing/types` must not import `domains/billing/api`
+ --> domains/billing/types.ts:1:35
+  |
+1 | import { INVOICES_ENDPOINT } from "./api";
+  |                                   ^^^^^^^ imports `domains/billing/api.ts`
+
+Contracts
+  ✗ domain-layers  layers  broken (1 violation)
+
+0 kept, 1 broken · 5 files, 3 imports
+

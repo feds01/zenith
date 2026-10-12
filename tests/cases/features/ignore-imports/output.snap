@@ -1,0 +1,26 @@
+$ zenith check
+exit: 1
+--- stdout
+warning[unmatched-warns]: the ignored import `src/b -> src/a` matches no import
+ --> zenith.toml:7:37
+  |
+7 | ignore_imports = ["src/a -> src/b", "src/b -> src/a"]
+  |                                     ^^^^^^^^^^^^^^^^
+  |
+  = help: remove it, or set `unmatched_ignore_imports` to `none`
+
+error[unmatched-errors]: the ignored import `src/b -> src/a` matches no import
+  --> zenith.toml:14:37
+   |
+14 | ignore_imports = ["src/a -> src/b", "src/b -> src/a"]
+   |                                     ^^^^^^^^^^^^^^^^
+   |
+   = help: remove it, or set `unmatched_ignore_imports` to `warn` or `none`
+
+Contracts
+  ✓ unmatched-warns   forbidden  kept
+  ✗ unmatched-errors  forbidden  broken (1 violation)
+  ✓ unmatched-silent  forbidden  kept
+
+2 kept, 1 broken · 2 files, 1 import
+

@@ -1,0 +1,6 @@
+# `low -> mid -> high` is reported as `low -> mid` and `mid -> high`, never as
+# an indirect `low -> high`, because the search excludes the other layers.
+[contracts.three-tiers]
+type = "layers"
+containers = ["src"]
+layers = ["high", "mid", "low"]

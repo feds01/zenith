@@ -1,0 +1,11 @@
+# A broken warn-level contract does not fail the check.
+[contracts.gradual]
+type = "forbidden"
+from = ["src/a"]
+to = ["src/b"]
+severity = "warn"
+
+[contracts.strict]
+type = "forbidden"
+from = ["src/b"]
+to = ["src/a"]

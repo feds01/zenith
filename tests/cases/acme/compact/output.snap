@@ -1,0 +1,26 @@
+$ zenith check --format compact
+exit: 1
+--- stdout
+web/src/components/nav/Sidebar.tsx:3:32: error[web-layers]: `web/src/components` must not import `web/src/app`
+web/src/lib/campaign-links.ts:2:37: error[web-layers]: `web/src/lib` must not import `web/src/domains`
+web/src/lib/format.ts:1:40: error[web-layers]: `web/src/lib` must not import `web/src/domains`
+packages/utils/src/campaign-url.ts:1:27: error[package-tiers]: `pkg:@acme/utils` must not import `pkg:@acme/api`
+packages/utils/src/campaign-url.ts:1:27: error[packages-acyclic]: dependency cycle in `pkg:*`: @acme/utils -> @acme/api -> @acme/utils; remove `@acme/utils` -> `@acme/api` to break it
+web/src/domains/analytics/components/AnalyticsChart.tsx:3:36: error[client-safety]: `web/src/domains/analytics/components/AnalyticsChart.tsx` must not import `node:fs` (via web/src/domains/analytics/components/AnalyticsChart.tsx -> web/src/lib/files.ts -> node:fs)
+web/src/domains/campaigns/components/CampaignAiPanel.tsx:3:35: error[client-safety]: `web/src/domains/campaigns/components/CampaignAiPanel.tsx` must not import `npm:sharp` (via web/src/domains/campaigns/components/CampaignAiPanel.tsx -> packages/ai/index.ts -> (2 more) -> packages/ai/src/utils/images/to-model-image.ts -> npm:sharp)
+web/src/domains/campaigns/components/CampaignAiPanel.tsx:3:35: error[client-safety]: `web/src/domains/campaigns/components/CampaignAiPanel.tsx` must not import `npm:@mastra/core` (via web/src/domains/campaigns/components/CampaignAiPanel.tsx -> packages/ai/index.ts -> packages/ai/src/domains/research/index.ts -> npm:@mastra/core)
+services/mcp/src/tools.ts:1:31: warning[ai-public-surface]: `packages/ai/src/tools/index.ts` is internal to `@acme/ai`; import it through an entry point
+web/src/domains/campaigns/hooks/use-campaign-brief.ts:1:29: warning[ai-public-surface]: `packages/ai/src/domains/campaigns/brief.ts` is internal to `@acme/ai`; import it through an entry point
+packages/ai/src/domains/content/strategies/ads/index.ts:1:30: error[strategies-independent]: `packages/ai/src/domains/content/strategies/ads` must not import `packages/ai/src/domains/content/strategies/blueprints`
+web/src/components/assistant.tsx:1:32: error[mastra-protected]: `web/src/components/assistant.tsx` may not import the protected module `web/src/mastra`
+packages/api/src/domains/accounts/types.ts:1:35: error[api-domain-layers]: `packages/api/src/domains/accounts/types` must not import `packages/api/src/domains/accounts/api`
+packages/ai/src/connectors/editor.ts:1:32: error[legacy-freeze]: `@acme/ai` must not import `legacy-editor`
+1 kept, 8 broken, 1 warning · 78 files, 127 imports
+
+$ zenith check --format compact --show-unresolved --contract legacy-freeze
+exit: 1
+--- stdout
+packages/ai/src/connectors/editor.ts:1:32: error[legacy-freeze]: `@acme/ai` must not import `legacy-editor`
+sdk/src/client.ts:3:1: warning: could not resolve `./does-not-exist`: Cannot find module './does-not-exist'
+0 kept, 1 broken · 78 files, 127 imports
+

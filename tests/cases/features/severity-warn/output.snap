@@ -1,0 +1,15 @@
+$ zenith check
+exit: 0
+--- stdout
+warning[gradual]: `src/a` must not import `src/b`
+ --> src/a/x.ts:1:19
+  |
+1 | import { y } from "../b/y";
+  |                   ^^^^^^^^ imports `src/b/y.ts`
+
+Contracts
+  ! gradual  forbidden  broken (1 violation, warning only)
+  ✓ strict   forbidden  kept
+
+1 kept, 0 broken, 1 warning · 2 files, 1 import
+

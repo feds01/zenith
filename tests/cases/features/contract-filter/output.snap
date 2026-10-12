@@ -1,0 +1,19 @@
+$ zenith check --contract b-not-a
+exit: 1
+--- stdout
+error[b-not-a]: `src/b` must not import `src/a`
+ --> src/b/y.ts:1:24
+  |
+1 | import type { X } from "../a/types";
+  |                        ^^^^^^^^^^^^ imports `src/a/types.ts`
+
+Contracts
+  ✗ b-not-a  forbidden  broken (1 violation)
+
+0 kept, 1 broken · 3 files, 2 imports
+
+$ zenith check --contract nope
+exit: 2
+--- stderr
+error: there is no contract `nope`; the contracts are `a-not-b`, `b-not-a`
+

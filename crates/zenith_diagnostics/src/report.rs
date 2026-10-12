@@ -64,6 +64,10 @@ pub struct Report {
     /// What is wrong, in a line.
     pub title: String,
 
+    /// What the report is about, shown next to its kind, e.g. the contract in
+    /// `error[web-layers]: ...`.
+    pub id: Option<String>,
+
     /// The excerpts and notes, in the order that they are shown.
     pub contents: Vec<ReportElement>,
 }
@@ -71,7 +75,7 @@ pub struct Report {
 impl Report {
     /// A report with a title, and no excerpts or notes yet.
     pub fn new(kind: ReportKind, title: impl Into<String>) -> Self {
-        Self { kind, title: title.into(), contents: Vec::new() }
+        Self { kind, title: title.into(), id: None, contents: Vec::new() }
     }
 
     /// An error report.
@@ -82,6 +86,12 @@ impl Report {
     /// A warning report.
     pub fn warning(title: impl Into<String>) -> Self {
         Self::new(ReportKind::Warning, title)
+    }
+
+    /// Set what the report is about, e.g. a contract id.
+    pub fn with_id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
+        self
     }
 
     /// Whether the report is of an error.

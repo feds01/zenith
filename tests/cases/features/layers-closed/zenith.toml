@@ -1,0 +1,6 @@
+# `mid` is closed: `high` may import `mid`, but not bypass it to reach `low`
+# or `base`. `low` is not closed, so `mid` may skip it to reach `base`.
+[contracts.closed-mid]
+type = "layers"
+containers = ["src"]
+layers = ["high", { layer = "mid", closed = true }, "low", "base"]

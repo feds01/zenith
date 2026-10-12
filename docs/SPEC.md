@@ -711,13 +711,14 @@ load config ─► discover: walk files (ignore, parallel), workspace packages
 
 **(settled)** The pipeline is a list of registered **stages**, modelled on
 the Hash compiler's pipeline. Each stage has a kind, in the order above
-(`discover`, `parse`, `resolve`, `graph`, then the contract stages), reads
-what the stages before it put in a shared **session**, and adds what it
-finds. The pipeline runs the stages in order, times each one (for
-`--show-timings`), and stops at the first error, or after the stage that a
-command needs: `zenith resolve` stops after `discover`, and `graph` and `why`
-after `graph`. Each stage is a thin adapter over the crate that does its
-work, so those crates stay independent libraries.
+(`discover`, `parse`, `resolve`, `graph`), reads what the stages before it
+put in a shared **session**, and adds what it finds. The pipeline runs the
+stages in order, times each one (for `--show-timings`), and stops at the
+first error, or after the stage that a command needs: `zenith resolve` stops
+after `discover`, and `graph`, `why` and `check` after `graph`. Each stage is
+a thin adapter over the crate that does its work, so those crates stay
+independent libraries. `zenith check` then compiles the contracts against
+the graph, checks them in parallel, and renders what they find.
 
 Contracts never mutate or clone the graph, unlike import-linter, which
 deep-copies it per contract. Each contract builds a **view**: an
@@ -735,10 +736,10 @@ imports and excluded modules, so this needs no new algorithms.
 | `zenith_parse` | oxc-based extraction of imports, directives and suppression comments |
 | `zenith_resolve` | `oxc_resolver` setup and resolution classification, plus `exports`-aware workspace resolution |
 | `zenith_graph` | The module tree and import graph: interned tokens, hierarchy, edges with details, units, finding nodes by path glob or name pattern, views that leave out imports (by pair or by kind), pathfinding, chains, layers, cycle breakers (a grimp port), and module overviews (a node's children and the dependencies between them, as a tree, Graphviz or JSON). No IO. |
-| `zenith_pipeline` | The session that holds a project and what each stage found, the stages as adapters over the crates that do the work, the pipeline that runs them in order and times them, and reports of the files it could not read or parse |
-| `zenith_contracts` | Resolving selectors into units, per-contract views, the six contract types, the findings model, baseline, suppressions |
-| `zenith_reporting` | Renderers (`pretty`, `compact`, `json`, `github`) using `annotate-snippets` |
-| `zenith_diagnostics` | The errors and warnings about zenith's input, such as an invalid configuration file: typed errors collected per pass, and reports with labelled source excerpts and notes, rendered with `annotate-snippets` |
+| `zenith_pipeline` | The session that holds a project and what each stage found, the stages as adapters over the crates that do the work, the pipeline that runs them in order and times them, and reports of the files it could not read or parse and the imports it could not resolve |
+| `zenith_contracts` | Resolving selectors into units, per-contract views, the six contract types, the findings model and its reports (with excerpts of the imports that break a contract) and summary entries, baseline, suppressions |
+| `zenith_reporting` | The output of `zenith check`, without knowing what is checked: the reports that the domain crates make, then the summary of every contract, in the `pretty`, `compact`, `json` and `github` formats |
+| `zenith_diagnostics` | Reports with labelled source excerpts and notes, made by each crate from its own errors and findings, and rendered with `annotate-snippets`, in full or a line each; the source map, which reads a project's files when reports first need them and finds where a span is; and typed errors collected per pass |
 | `zenith_utils` | Logging, output streams, highlighting, the glob dialect and name patterns, printing helpers, tree writing, line index, byte ranges, timers, path helpers (mostly from bracketlint), the global thread pool, and what can be told about a specifier from its text (package names, schemes, queries) |
 | `zenith_benchmark` | The divan benchmarks, and the deterministic synthetic monorepo that they run on |
 

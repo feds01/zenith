@@ -1,0 +1,26 @@
+$ zenith check
+exit: 1
+--- stdout
+error[no-cycles]: dependency cycle in `src/*`
+ --> src/c/k.ts:1:21
+  |
+1 | import { one } from "../a/one";
+  |                     ^^^^^^^^^^ closes the cycle src/c -> src/a -> src/b -> src/c
+  |
+  = note: it could be made acyclic by removing 1 dependency:
+            src/c -> src/a (1 import)
+
+error[no-cycles]: dependency cycle among the children of `src/a`
+ --> src/a/two.ts:1:21
+  |
+1 | import { one } from "./one";
+  |                     ^^^^^^^ closes the cycle src/a/two.ts -> src/a/one.ts -> src/a/two.ts
+  |
+  = note: it could be made acyclic by removing 1 dependency:
+            src/a/two.ts -> src/a/one.ts (1 import)
+
+Contracts
+  ✗ no-cycles  acyclic  broken (2 violations)
+
+0 kept, 1 broken · 7 files, 9 imports
+

@@ -1,0 +1,13 @@
+$ zenith check
+exit: 2
+--- stderr
+error: `src/c` does not match anything
+ --> zenith.toml:4:7
+  |
+4 | to = ["src/c"]
+  |       ^^^^^^^
+  |
+  = note: in contract `a-not-c`
+  = help: check it for a typo, or for a module that was renamed or removed
+
+

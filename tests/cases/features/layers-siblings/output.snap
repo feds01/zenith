@@ -1,0 +1,15 @@
+$ zenith check
+exit: 1
+--- stdout
+error[independent-siblings]: `src/orders` must not import `src/billing`
+ --> src/orders/index.ts:1:25
+  |
+1 | import { invoice } from "../billing";
+  |                         ^^^^^^^^^^^^ imports `src/billing/index.ts`
+
+Contracts
+  ✗ independent-siblings  layers  broken (1 violation)
+  ✓ coupled-siblings      layers  kept
+
+1 kept, 1 broken · 4 files, 5 imports
+

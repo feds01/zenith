@@ -3,7 +3,7 @@
 use zenith_config::AcyclicConfig;
 use zenith_graph::{GraphView, KindSet, NodeKind, NodeSet, Unit, UnitGraph};
 
-use crate::{CycleBreaker, Link, Violation, contract::UnitResolver};
+use crate::{CycleBreaker, CycleScope, Link, Violation, contract::UnitResolver};
 
 /// A compiled `acyclic` contract.
 #[derive(Debug)]
@@ -11,8 +11,8 @@ pub(crate) struct Acyclic {
     /// The units that must not form cycles, which don't overlap.
     modules: Vec<Unit>,
 
-    /// How the units are shown: the contract's selectors, as written.
-    scope: String,
+    /// The units, as the contract's selectors are written.
+    scope: CycleScope,
 
     /// How many further generations of children to check, each as a set of
     /// units of its own.
@@ -32,7 +32,7 @@ impl Acyclic {
         let scope: Vec<_> = config.modules.iter().map(|selector| selector.as_str()).collect();
         Self {
             modules: located.into_iter().map(|(unit, _)| unit).collect(),
-            scope: scope.join(", "),
+            scope: CycleScope::Modules(scope.join(", ")),
             depth: config.depth,
             skip,
         }
@@ -43,7 +43,8 @@ impl Acyclic {
     /// violation per set of units with cycles.
     pub(crate) fn check(&self, view: &GraphView, excluded: KindSet) -> Vec<Violation> {
         let mut violations = Vec::new();
-        self.check_units(view, excluded, &self.scope, &self.modules, self.depth, &mut violations);
+        let scope = self.scope.clone();
+        self.check_units(view, excluded, scope, &self.modules, self.depth, &mut violations);
         violations
     }
 
@@ -53,7 +54,7 @@ impl Acyclic {
         &self,
         view: &GraphView,
         excluded: KindSet,
-        scope: &str,
+        scope: CycleScope,
         units: &[Unit],
         depth: u32,
         violations: &mut Vec<Violation>,
@@ -98,7 +99,7 @@ impl Acyclic {
             })
             .collect();
         if !breakers.is_empty() {
-            violations.push(Violation::Cycle { scope: scope.to_string(), breakers });
+            violations.push(Violation::Cycle { scope, breakers });
         }
 
         // 2. Check the children of each directory unit as units of their own, without
@@ -126,8 +127,8 @@ impl Acyclic {
                 })
                 .filter(|child| !child.members.is_empty())
                 .collect();
-            let scope = format!("children of {}", unit.label);
-            self.check_units(view, excluded, &scope, &children, depth - 1, violations);
+            let scope = CycleScope::Children(unit.label.clone());
+            self.check_units(view, excluded, scope, &children, depth - 1, violations);
         }
     }
 }

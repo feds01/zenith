@@ -1,0 +1,20 @@
+$ zenith check
+exit: 1
+--- stdout
+error[indirect]: `src/low` must not import `src/high`
+ --> src/low/l.ts:1:22
+  |
+1 | import { util } from "../util/u";
+  |                      ^^^^^^^^^^^ starts a chain of 2 imports
+  |
+  = note: import chain:
+            src/low/l.ts:1
+            -> src/util/u.ts:1
+            -> src/high/h.ts
+
+Contracts
+  ✗ indirect     layers  broken (1 violation)
+  ✓ direct-only  layers  kept
+
+1 kept, 1 broken · 3 files, 2 imports
+

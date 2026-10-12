@@ -10,12 +10,7 @@ error[web-layers]: `web/src/components` must not import `web/src/app`
   = help: Lower layers must not import higher ones. Move the shared code down a layer.
 
 error[web-layers]: `web/src/lib` must not import `web/src/domains`
- --> web/src/lib/campaign-links.ts:2:37
-  |
-2 | import { CAMPAIGNS_BASE_PATH } from "@/domains/campaigns/api/client";
-  |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `web/src/domains/campaigns/api/client.ts`
-  |
- ::: web/src/lib/format.ts:1:40
+ --> web/src/lib/format.ts:1:40
   |
 1 | import { CAMPAIGN_STATUS_LABELS } from "@/domains/campaigns/types";
   |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `web/src/domains/campaigns/types.ts`
@@ -119,12 +114,12 @@ warning: 1 import could not be resolved
   = help: use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
 
 Contracts
-  ✗ web-layers              layers         broken (3 violations)
+  ✗ web-layers              layers         broken (2 violations) · 1 suppressed
   ✗ package-tiers           layers         broken (1 violation)
   ✗ packages-acyclic        acyclic        broken (1 violation)
   ✗ client-safety           forbidden      broken (3 violations)
   ! ai-public-surface       encapsulation  broken (2 violations, warning only)
-  ✗ strategies-independent  independence   broken (1 violation)
+  ✗ strategies-independent  independence   broken (1 violation) · 2 ignored
   ✗ mastra-protected        protected      broken (1 violation)
   ✗ api-domain-layers       layers         broken (1 violation)
   ✗ legacy-freeze           forbidden      broken (1 violation)
@@ -162,12 +157,7 @@ error[web-layers]: `web/src/components` must not import `web/src/app`
   = help: Lower layers must not import higher ones. Move the shared code down a layer.
 
 error[web-layers]: `web/src/lib` must not import `web/src/domains`
- --> web/src/lib/campaign-links.ts:2:37
-  |
-2 | import { CAMPAIGNS_BASE_PATH } from "@/domains/campaigns/api/client";
-  |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `web/src/domains/campaigns/api/client.ts`
-  |
- ::: web/src/lib/format.ts:1:40
+ --> web/src/lib/format.ts:1:40
   |
 1 | import { CAMPAIGN_STATUS_LABELS } from "@/domains/campaigns/types";
   |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `web/src/domains/campaigns/types.ts`
@@ -179,7 +169,7 @@ warning: 1 import could not be resolved
   = help: use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
 
 Contracts
-  ✗ web-layers      layers     broken (3 violations)
+  ✗ web-layers      layers     broken (2 violations) · 1 suppressed
   ✓ sdk-standalone  forbidden  kept
 
 1 kept, 1 broken · 78 files, 127 imports

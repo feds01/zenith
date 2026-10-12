@@ -2,12 +2,13 @@
 
 use std::path::PathBuf;
 
+use thin_vec::ThinVec;
 use zenith_config::{Config, SOURCE_EXTENSIONS, Tsconfig};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
-use zenith_parse::ParsedFile;
+use zenith_parse::{ParsedFile, Suppression};
 use zenith_resolve::{Resolved, Resolver, ResolverError, ResolverSettings, TsconfigMode};
-use zenith_utils::printing::plural;
+use zenith_utils::{location::Located, printing::plural};
 use zenith_workspace::{WalkSettings, Workspace};
 
 use crate::{FileError, UnresolvedImport};
@@ -57,6 +58,10 @@ pub struct Session {
     /// the [`Graph`](crate::StageKind::Graph) stage.
     pub unresolved: Vec<UnresolvedImport>,
 
+    /// The `zenith-ignore` comments of the files that have any, sorted by
+    /// file. Kept by the [`Graph`](crate::StageKind::Graph) stage.
+    pub suppressions: Vec<FileSuppressions>,
+
     /// Counts of what the stages found.
     pub stats: Stats,
 }
@@ -69,6 +74,16 @@ pub struct SourceFile {
 
     /// Its POSIX path relative to the root, which is its name in the graph.
     pub name: String,
+}
+
+/// The `zenith-ignore` comments of a source file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileSuppressions {
+    /// The file, as a POSIX path relative to the root.
+    pub file: String,
+
+    /// Its suppressions, in source order. There is at least one.
+    pub suppressions: ThinVec<Located<Suppression>>,
 }
 
 /// Counts of what the stages found, beyond what the session holds.
@@ -97,6 +112,7 @@ impl Session {
             graph: GraphBuilder::new().finish(),
             file_errors: Vec::new(),
             unresolved: Vec::new(),
+            suppressions: Vec::new(),
             stats: Stats::default(),
         }
     }
@@ -214,6 +230,7 @@ mod tests {
         assert!(session.resolved.is_empty() && session.workspace.packages.is_empty());
         assert_eq!(session.graph.node_count(), 1);
         assert!(session.file_errors.is_empty() && session.unresolved.is_empty());
+        assert!(session.suppressions.is_empty());
     }
 
     #[test]

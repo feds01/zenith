@@ -1,0 +1,5 @@
+# Suppressions name one contract or several, before an import or after it.
+check
+check --format compact
+# Only suppressions of the checked contracts can be unused.
+check --contract b-protected

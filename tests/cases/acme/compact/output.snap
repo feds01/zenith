@@ -2,7 +2,6 @@ $ zenith check --format compact
 exit: 1
 --- stdout
 web/src/components/nav/Sidebar.tsx:3:32: error[web-layers]: `web/src/components` must not import `web/src/app`
-web/src/lib/campaign-links.ts:2:37: error[web-layers]: `web/src/lib` must not import `web/src/domains`
 web/src/lib/format.ts:1:40: error[web-layers]: `web/src/lib` must not import `web/src/domains`
 packages/utils/src/campaign-url.ts:1:27: error[package-tiers]: `pkg:@acme/utils` must not import `pkg:@acme/api`
 packages/utils/src/campaign-url.ts:1:27: error[packages-acyclic]: dependency cycle in `pkg:*`: @acme/utils -> @acme/api -> @acme/utils; remove `@acme/utils` -> `@acme/api` to break it

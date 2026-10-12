@@ -1984,10 +1984,13 @@ name = "zenith_contracts"
 version = "0.1.0"
 dependencies = [
  "rayon",
+ "rustc-hash",
  "thin-vec",
  "zenith_config",
  "zenith_diagnostics",
  "zenith_graph",
+ "zenith_parse",
+ "zenith_pipeline",
  "zenith_reporting",
  "zenith_utils",
  "zenith_workspace",

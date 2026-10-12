@@ -257,6 +257,44 @@ fn unresolved_imports_are_sorted_by_file_then_in_source_order() {
 }
 
 #[test]
+fn keeps_the_suppressions_of_the_files_that_have_any() {
+    let project = Project::new(&[
+        (
+            "b.ts",
+            b"// zenith-ignore x, y: legacy
+import './a';
+",
+        ),
+        (
+            "a.ts",
+            b"import './b'; // zenith-ignore z
+",
+        ),
+        (
+            "c.ts",
+            b"// not a suppression
+import './a';
+",
+        ),
+    ]);
+    let session = project.build("").unwrap();
+    let found: Vec<_> = session
+        .suppressions
+        .iter()
+        .flat_map(|file| {
+            file.suppressions.iter().map(|suppression| {
+                let value = &suppression.value;
+                (file.file.as_str(), value.contracts.join(" "), value.reason.as_deref())
+            })
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [("a.ts", "z".to_string(), None), ("b.ts", "x y".to_string(), Some("legacy"))]
+    );
+}
+
+#[test]
 fn unresolved_imports_are_reported_where_they_are() {
     let project = Project::new(&[("app.ts", b"// app\n\nimport './missing';\n")]);
     let session = project.build("").unwrap();

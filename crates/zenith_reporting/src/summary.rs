@@ -36,6 +36,9 @@ pub struct SummaryEntry {
     /// Whether it is kept.
     pub outcome: Outcome,
 
+    /// More about it, shown after its outcome, e.g. `3 ignored`.
+    pub details: Vec<String>,
+
     /// How long checking it took.
     pub duration: Duration,
 }
@@ -85,12 +88,16 @@ impl Summary {
                         )
                     }
                 };
+                let details = match entry.details.as_slice() {
+                    [] => String::new(),
+                    details => format!(" · {}", details.join(", ")),
+                };
                 let timing = match self.timings {
                     Some(_) => highlight(Modifier::Dim, format!(" · {:.1?}", entry.duration)),
                     None => String::new(),
                 };
                 let (id, kind) = (&entry.id, entry.kind);
-                format!("{mark} {id:<id_width$}  {kind:<kind_width$}  {status}{timing}")
+                format!("{mark} {id:<id_width$}  {kind:<kind_width$}  {status}{details}{timing}")
             })
             .collect()
     }
@@ -133,7 +140,13 @@ mod tests {
 
     /// An entry for the contract `id` of type `kind`.
     fn entry(id: &str, kind: &'static str, outcome: Outcome) -> SummaryEntry {
-        SummaryEntry { id: id.to_string(), kind, outcome, duration: Duration::ZERO }
+        SummaryEntry {
+            id: id.to_string(),
+            kind,
+            outcome,
+            details: Vec::new(),
+            duration: Duration::ZERO,
+        }
     }
 
     /// A summary of `entries`, of 1,234 files and 1 import.
@@ -176,10 +189,12 @@ mod tests {
     }
 
     #[test]
-    fn timings_follow_the_entries_and_the_totals() {
-        let mut timed = summary(vec![entry("a", "acyclic", Outcome::Kept)]);
+    fn details_follow_the_outcome_and_timings_follow_both() {
+        let mut detailed = entry("a", "acyclic", Outcome::Kept);
+        detailed.details = vec!["3 ignored".to_string(), "1 suppressed".to_string()];
+        let mut timed = summary(vec![detailed]);
         timed.timings = Some(vec![("parse", Duration::from_millis(3))]);
-        assert_eq!(timed.entry_lines(), ["✓ a  acyclic  kept · 0.0ns"]);
+        assert_eq!(timed.entry_lines(), ["✓ a  acyclic  kept · 3 ignored, 1 suppressed · 0.0ns"]);
         assert_eq!(timed.totals(), "1 kept, 0 broken · 1,234 files, 1 import · parse 3.0ms");
     }
 }

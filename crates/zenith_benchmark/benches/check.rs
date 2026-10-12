@@ -4,7 +4,7 @@
 use divan::Bencher;
 use zenith_benchmark::TempRepo;
 use zenith_config::Config;
-use zenith_contracts::Contract;
+use zenith_contracts::{Contract, Exemptions};
 use zenith_pipeline::{Pipeline, Session, StageKind};
 
 // CodSpeed measures the allocations itself, in its memory mode.
@@ -38,12 +38,13 @@ fn session(source_files: usize) -> Session {
 }
 
 /// Compile every contract of `session` against its graph, and check them in
-/// parallel.
+/// parallel, without the imports that its suppressions leave out.
 fn check_contracts(session: &Session) {
     let contracts =
         Contract::compile_all(&session.config.contracts, &session.graph, &session.workspace)
             .unwrap();
-    let reports = Contract::check_all(&contracts, &session.graph, &session.workspace);
+    let exemptions = Exemptions { suppressions: &session.suppressions };
+    let reports = Contract::check_all(&contracts, &session.graph, &session.workspace, &exemptions);
     divan::black_box(reports);
 }
 

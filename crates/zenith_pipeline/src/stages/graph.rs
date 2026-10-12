@@ -5,11 +5,11 @@ use std::mem;
 use zenith_graph::{GraphBuilder, NodeHandle};
 use zenith_resolve::Resolved;
 
-use crate::{PipelineError, Session, Stage, StageKind, UnresolvedImport};
+use crate::{FileSuppressions, PipelineError, Session, Stage, StageKind, UnresolvedImport};
 
 /// Builds the import graph from the parsed files and their resolved imports,
 /// which it takes out of the session. Imports that don't resolve are left out,
-/// and recorded in the session.
+/// and recorded in the session, which also keeps the files' suppressions.
 pub struct BuildGraph;
 
 impl Stage for BuildGraph {
@@ -29,6 +29,13 @@ impl Stage for BuildGraph {
             let handle = builder.add_file(&file.name)?;
             builder.set_directives(handle, parsed.directives);
             stats.non_literal_imports += parsed.non_literal_imports.len();
+            if !parsed.suppressions.is_empty() {
+                // The files are sorted, so the suppressions are too.
+                let suppressions = parsed.suppressions;
+                session
+                    .suppressions
+                    .push(FileSuppressions { file: file.name.clone(), suppressions });
+            }
 
             for (import, resolved) in parsed.imports.into_iter().zip(resolved) {
                 let target: NodeHandle = match resolved {

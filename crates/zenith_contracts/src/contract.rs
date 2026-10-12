@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use rayon::prelude::*;
 use zenith_config::{AlertLevel, ContractConfig, IgnoreImport, Selector};
 use zenith_graph::{Graph, Unit};
+use zenith_pipeline::FileSuppressions;
 use zenith_utils::location::ByteRange;
 use zenith_workspace::Workspace;
 
@@ -59,16 +60,27 @@ impl<'c> Contract<'c> {
     }
 
     /// Check the contract against `graph`, without the imports that the
-    /// contract leaves out: those only made by statements of its excluded
-    /// kinds, and those its `ignore_imports` match.
-    pub fn check(&self, graph: &Graph, workspace: &Workspace) -> ContractReport<'c> {
+    /// contract leaves out: the statements of its excluded kinds, those that
+    /// the project `exempts` from it, and the imports its `ignore_imports`
+    /// match.
+    pub fn check(
+        &self,
+        graph: &Graph,
+        workspace: &Workspace,
+        exempts: &Exemptions,
+    ) -> ContractReport<'c> {
         let start = Instant::now();
-        let ContractView { view, unmatched } = ContractView::new(self.config, graph, workspace);
-        let violations = self.rule.check(&view, self.config.exclude_kinds);
+        let mut view = ContractView::new(self.config, graph, workspace, exempts);
+        let violations = self.rule.check(&view.view, &view.statements);
+        view.used_suppressions.sort_unstable();
+        view.used_suppressions.dedup();
         ContractReport {
             config: self.config,
             violations,
-            unmatched_ignores: unmatched,
+            unmatched_ignores: view.unmatched,
+            ignored: view.ignored,
+            suppressed: view.suppressed,
+            used_suppressions: view.used_suppressions,
             duration: start.elapsed(),
         }
     }
@@ -79,9 +91,20 @@ impl<'c> Contract<'c> {
         contracts: &[Self],
         graph: &Graph,
         workspace: &Workspace,
+        exempts: &Exemptions,
     ) -> Vec<ContractReport<'c>> {
-        contracts.par_iter().map(|contract| contract.check(graph, workspace)).collect()
+        contracts.par_iter().map(|contract| contract.check(graph, workspace, exempts)).collect()
     }
+}
+
+/// What the project exempts from its contracts, besides the imports that
+/// each contract ignores itself.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Exemptions<'a> {
+    /// The `zenith-ignore` comments of the files that have any, sorted by
+    /// file. Each leaves the import statements that start on its target line
+    /// out of the contracts it names.
+    pub suppressions: &'a [FileSuppressions],
 }
 
 /// The result of checking a contract.
@@ -97,6 +120,16 @@ pub struct ContractReport<'c> {
     /// configuration. Whether they break the contract depends on its
     /// `unmatched_ignore_imports`.
     pub unmatched_ignores: Vec<&'c IgnoreImport>,
+
+    /// The number of imports that its `ignore_imports` left out.
+    pub ignored: usize,
+
+    /// The number of import statements that suppressions left out.
+    pub suppressed: usize,
+
+    /// The suppressions that left out a statement, sorted, as the index of
+    /// their file in the exempted suppressions and their index in it.
+    pub(crate) used_suppressions: Vec<(usize, usize)>,
 
     /// How long checking the contract took.
     pub duration: Duration,
@@ -213,7 +246,10 @@ impl<'a> UnitResolver<'a> {
 mod tests {
     use zenith_config::{AlertLevel, Severity};
 
-    use crate::testing::{Project, values};
+    use crate::{
+        Violation,
+        testing::{Project, values},
+    };
 
     #[test]
     fn every_unmatched_selector_is_an_error_at_its_place_in_the_file() {
@@ -291,6 +327,65 @@ ignore_imports = [\"a/x.ts -> b/y.ts\"]
     }
 
     #[test]
+    fn suppressed_statements_are_left_out_of_the_contracts_they_name() {
+        let toml = "[contracts.f]
+type = \"forbidden\"
+from = [\"a\"]
+to = [\"b\"]
+
+[contracts.g]
+type = \"forbidden\"
+from = [\"a\"]
+to = [\"b\"]
+ignore_imports = [\"a/w.ts -> b/z.ts\"]
+";
+        let imports = values(&[
+            ("a/x.ts", "b/y.ts"),
+            ("a/x.ts", "b/y.ts"),
+            ("a/w.ts", "b/z.ts"),
+            ("a/v.ts", "b/z.ts"),
+        ]);
+        let project = Project::new(&imports, &[], toml)
+            .suppress("a/x.ts", 1, "f")
+            .suppress("a/w.ts", 3, "f g")
+            .suppress("a/v.ts", 4, "g");
+
+        // The second statement of `a/x.ts` keeps its import in `f`, but the
+        // link only shows that statement. `a/v.ts` is only suppressed in `g`.
+        let report = project.check("f");
+        assert_eq!(project.findings("f"), ["a -> b: a/v.ts -> b/z.ts", "a -> b: a/x.ts -> b/y.ts"]);
+        let Violation::Dependency { chains, .. } = &report.violations[0] else {
+            panic!("expected a dependency, got {:?}", report.violations[0]);
+        };
+        let starts: Vec<_> =
+            chains[1].links[0].imports.iter().map(|import| import.range.start()).collect();
+        assert_eq!(starts, [200]);
+        assert_eq!((report.suppressed, report.ignored), (2, 0));
+
+        // In `g`, the import that is both suppressed and ignored counts once,
+        // as suppressed.
+        let report = project.check("g");
+        assert_eq!(project.findings("g"), ["a -> b: a/x.ts -> b/y.ts"]);
+        assert_eq!((report.suppressed, report.ignored), (2, 0));
+        assert!(report.unmatched_ignores.is_empty());
+    }
+
+    #[test]
+    fn ignored_imports_are_counted_once() {
+        let toml = "[contracts.f]
+type = \"forbidden\"
+from = [\"a\"]
+to = [\"b\"]
+ignore_imports = [\"a -> b\", \"a/x.ts -> b/y.ts\"]
+";
+        let project =
+            Project::new(&values(&[("a/x.ts", "b/y.ts"), ("a/w.ts", "b/y.ts")]), &[], toml);
+        let report = project.check("f");
+        assert!(report.is_kept());
+        assert_eq!((report.ignored, report.suppressed), (2, 0));
+    }
+
+    #[test]
     fn contracts_inherit_the_excluded_kinds_of_the_analysis() {
         let toml = "[analysis]
 exclude_kinds = [\"type\"]
@@ -322,7 +417,9 @@ exclude_kinds = []
         }
         let project = Project::new(&values(&[("x/a.ts", "y/b.ts")]), &[], &toml);
         let contracts = project.compile().unwrap();
-        let reports = crate::Contract::check_all(&contracts, &project.graph, &project.workspace);
+        let exemptions = project.exemptions();
+        let reports =
+            crate::Contract::check_all(&contracts, &project.graph, &project.workspace, &exemptions);
         let ids: Vec<_> = reports.iter().map(|report| report.config.id.as_str()).collect();
         assert_eq!(ids, ["c", "a", "b"]);
         assert!(reports.iter().all(|report| !report.is_kept() && report.finding_count() == 1));

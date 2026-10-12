@@ -76,8 +76,13 @@ mod tests {
         let mut report = Report::error("`web` must not import `api`").with_id("a");
         report.add_span(Span::new(file, ByteRange::new(7, 12)));
         let outcome = Outcome::Broken { findings: 1, kind: ReportKind::Error };
-        let entry =
-            SummaryEntry { id: "a".into(), kind: "forbidden", outcome, duration: Duration::ZERO };
+        let entry = SummaryEntry {
+            id: "a".into(),
+            kind: "forbidden",
+            outcome,
+            details: Vec::new(),
+            duration: Duration::ZERO,
+        };
         let summary = Summary { entries: vec![entry], files: 2, imports: 1, timings: None };
         Output { sources: &sources, reports: &[report], summary: &summary, format }.to_string()
     }

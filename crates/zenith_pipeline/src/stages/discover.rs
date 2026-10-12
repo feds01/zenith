@@ -22,7 +22,7 @@ impl Stage for Discover {
         let files = found
             .source_files
             .into_iter()
-            .filter_map(|path| Some(SourceFile { name: relative_posix(root, &path)?, path }))
+            .filter_map(|path| Some(SourceFile { name: relative_posix(root, &path)? }))
             .collect();
 
         session.files = files;

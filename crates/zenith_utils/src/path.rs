@@ -5,7 +5,7 @@
 
 use std::{
     cmp::Ordering,
-    path::{Component, MAIN_SEPARATOR, Path, PathBuf, is_separator},
+    path::{Component, MAIN_SEPARATOR, MAIN_SEPARATOR_STR, Path, PathBuf, is_separator},
 };
 
 use path_absolutize::Absolutize;
@@ -91,6 +91,17 @@ pub fn compare_paths(a: &Path, b: &Path) -> Ordering {
     }
     let (a, b) = (&a[start..], &b[start..]);
     a.iter().map(|byte| key(*byte)).cmp(b.iter().map(|byte| key(*byte)))
+}
+
+/// The absolute path of `name`, a POSIX path relative to `root` such as
+/// [`relative_posix`] makes, with the platform's separators.
+pub fn absolute_path(root: &Path, name: &str) -> PathBuf {
+    // A name is already a path where `/` is the separator, and joining it whole is
+    // much cheaper than pushing each of its segments.
+    match MAIN_SEPARATOR {
+        '/' => root.join(name),
+        _ => root.join(name.replace('/', MAIN_SEPARATOR_STR)),
+    }
 }
 
 /// Whether `path` is a normalised POSIX path relative to a root, such as
@@ -201,6 +212,19 @@ mod tests {
                 assert_eq!(compare_paths(a, b), a.cmp(b), "{a:?} {b:?}");
             }
         }
+    }
+
+    #[test]
+    fn names_relative_to_a_root_are_made_absolute_again() {
+        let root = Path::new("/repo");
+        for name in ["a.ts", "web/src/(group)/[id]/page.tsx"] {
+            let path = absolute_path(root, name);
+            assert_eq!(relative_posix(root, &path).as_deref(), Some(name));
+        }
+        assert_eq!(absolute_path(root, "web/a.ts"), root.join("web").join("a.ts"));
+        assert_eq!(absolute_path(root, ""), root);
+        assert_eq!(absolute_path(Path::new("/"), "a/b.ts"), Path::new("/").join("a").join("b.ts"));
+        assert_eq!(absolute_path(Path::new("/repo/"), "a.ts"), Path::new("/repo/a.ts"));
     }
 
     #[test]

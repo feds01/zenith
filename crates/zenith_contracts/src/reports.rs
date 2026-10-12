@@ -2,9 +2,7 @@
 //! `ignore_imports` entries that match nothing, in full or a finding each,
 //! and its line of the summary.
 
-use zenith_config::{
-    AlertLevel, BaselineConfig, ContractConfig, ContractKind, Severity, StaleLevel,
-};
+use zenith_config::{AlertLevel, BaselineConfig, ContractConfig, ContractKind, Severity};
 use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span};
 use zenith_graph::{Graph, ImportDetail, ImportKind};
 use zenith_reporting::{Outcome, Summary, SummaryEntry};
@@ -82,7 +80,7 @@ impl ContractReport<'_> {
             Outcome::Kept
         } else {
             let status = "kept, with a stale baseline".to_string();
-            Outcome::KeptWith { status, kind: stale_kind(self.config, baseline) }
+            Outcome::KeptWith { status, kind: baseline.stale_kind(self.config.severity) }
         };
         let left_out = [
             (self.baselined, "baselined"),
@@ -110,15 +108,6 @@ fn kind(config: &ContractConfig) -> ReportKind {
     match config.severity {
         Severity::Error => ReportKind::Error,
         Severity::Warn => ReportKind::Warning,
-    }
-}
-
-/// Stale baseline entries of `config` are errors if it is of `error` severity
-/// and the `baseline` makes them errors, and warnings otherwise.
-fn stale_kind(config: &ContractConfig, baseline: &BaselineConfig) -> ReportKind {
-    match (config.severity, baseline.stale) {
-        (Severity::Error, StaleLevel::Error) => ReportKind::Error,
-        _ => ReportKind::Warning,
     }
 }
 
@@ -198,7 +187,8 @@ impl ReportBuilder<'_> {
         }
         let config = report.config;
         let title = plural(entries.len(), "stale baseline entry");
-        let mut stale = Report::new(stale_kind(config, self.baseline), title).with_id(&config.id);
+        let kind = self.baseline.stale_kind(config.severity);
+        let mut stale = Report::new(kind, title).with_id(&config.id);
         let mut unlocated = Vec::new();
         for entry in entries.iter().take(MAX_STALE) {
             match self.entry_span(&config.id, entry) {
@@ -292,7 +282,7 @@ impl ReportBuilder<'_> {
         }
         for entry in &report.stale_entries {
             let title = format!("stale baseline entry `{entry}`: its import no longer exists");
-            let mut finding = Report::new(stale_kind(config, self.baseline), title);
+            let mut finding = Report::new(self.baseline.stale_kind(config.severity), title);
             if let Some(span) = self.entry_span(&config.id, entry) {
                 finding.add_span(span);
             }

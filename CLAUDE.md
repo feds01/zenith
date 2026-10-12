@@ -22,6 +22,8 @@ just lint     # clippy -D warnings + rustfmt --check
 just fmt      # format
 just run      # run the CLI from source
 just bench    # benchmarks; extra args go to divan, e.g. `just bench walk`
+just bench-ci  # measure the pushed branch with CodSpeed in CI
+just bench-instructions <bench> [filter]  # measure with CodSpeed locally, in Docker
 just corpus <path> <config>  # a release build on a local checkout, with a config in corpus/
 ```
 

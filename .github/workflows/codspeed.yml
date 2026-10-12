@@ -14,7 +14,8 @@ on:
       - "Cargo.lock"
       - "rust-toolchain.toml"
       - ".github/workflows/codspeed.yml"
-  # Lets CodSpeed backfill results for earlier commits
+  # Lets CodSpeed backfill results for earlier commits, and measure a branch
+  # without a PR (`just bench-ci`).
   workflow_dispatch:
 
 # A new push to a PR cancels its earlier run, but every run on `main` finishes.

@@ -63,6 +63,55 @@ schema:
 bench *args:
     cargo bench -p zenith_benchmark -- "$@"
 
+# Measure the current branch with CodSpeed in CI, once it is pushed, where the counts compare with main's
+bench-ci:
+    #!/usr/bin/env sh
+    set -eu
+    branch="$(git branch --show-current)"
+    git fetch -q origin "$branch"
+    if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$branch")" ]; then
+        echo "push $branch first: CI measures what is on GitHub" >&2
+        exit 1
+    fi
+    gh workflow run codspeed.yml --ref "$branch"
+    echo "Started the CodSpeed workflow on $branch; follow it with \`gh run watch\`."
+
+# Measure a benchmark with CodSpeed's simulation in a Linux container, e.g. `just bench-instructions contracts layers`; set CODSPEED_BASE to a run's id to compare with it
+bench-instructions bench *filter:
+    #!/usr/bin/env sh
+    set -eu
+    shift
+    docker build -q -t zenith-codspeed crates/zenith_benchmark/codspeed >/dev/null
+    # CodSpeed reads the repository to tell which commit it measured. A
+    # worktree's .git points into the main checkout, so both are mounted where
+    # they are here.
+    root="$(git rev-parse --show-toplevel)"
+    git_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+    # Fat LTO needs more memory than Docker usually has, so it is left out: the
+    # counts compare with each other, but not with CI's, which also runs on
+    # x86_64. Use `just bench-ci` for those.
+    docker run --rm -v "$root":"$root" -v "$git_dir":"$git_dir":ro -w "$root" \
+        -v zenith-codspeed-config:/root/.config/codspeed \
+        -v zenith-codspeed-cargo:/usr/local/cargo/registry \
+        -v zenith-codspeed-rustup:/usr/local/rustup \
+        -v zenith-codspeed-target:/target -e CARGO_TARGET_DIR=/target \
+        -e CARGO_PROFILE_RELEASE_LTO=false -e CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 \
+        -e RAYON_NUM_THREADS=1 -e CODSPEED_TOKEN -e CODSPEED_BASE \
+        zenith-codspeed sh -c '
+            set -eu
+            git config --global --add safe.directory "*"
+            cargo codspeed build -m simulation -p zenith_benchmark --bench "$0" >/dev/null
+            codspeed run -m simulation ${CODSPEED_BASE:+--base "$CODSPEED_BASE"} -- \
+                cargo codspeed run -p zenith_benchmark --bench "$0" "$@" || {
+                echo "If CodSpeed asks to log in, run \`just codspeed-login\` or set CODSPEED_TOKEN." >&2
+                exit 1
+            }' "{{bench}}" "$@"
+
+# Log the container of `just bench-instructions` in to CodSpeed, once
+codspeed-login:
+    docker build -q -t zenith-codspeed crates/zenith_benchmark/codspeed >/dev/null
+    docker run --rm -it -v zenith-codspeed-config:/root/.config/codspeed zenith-codspeed codspeed auth login
+
 # Run clippy, denying warnings
 clippy:
     cargo clippy --workspace --all-targets -- -D warnings

@@ -822,9 +822,9 @@ imports and excluded modules, so this needs no new algorithms.
 | Milestone | Scope |
 |---|---|
 | **M0** ✅ | Repository scaffold, toolchain, CI, release pipeline, this spec |
-| **M1** | Config, workspace discovery, walker, parse, resolve, graph; `zenith graph`, `why` and `resolve` as debugging tools |
-| **M2** | `forbidden`, `protected`, `independence` and `layers` contracts; `pretty` and `compact` output |
-| **M3** | `acyclic` and `encapsulation` |
+| **M1** ✅ | Config, workspace discovery, walker, parse, resolve, graph; `zenith graph`, `why` and `resolve` as debugging tools |
+| **M2** ✅ | `forbidden`, `protected`, `independence` and `layers` contracts; `pretty` and `compact` output |
+| **M3** ✅ | `acyclic` and `encapsulation` |
 | **M4** | Baseline, suppressions, `json` and `github` output, `severity`, `init` |
 | **M5** | Docs site, JSON schema publishing, and more distribution channels (an npm package, Homebrew) |
 | later | A `"use server"` boundary rule; `vi.mock` specifiers as optional edges; an incremental cache; barrel-precise (symbol-level) edges through pure re-export files; a `package.json` declared-dependency check; an outgoing allowlist contract; an LSP |

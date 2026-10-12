@@ -6,7 +6,7 @@ use zenith_graph::{EdgeSet, Graph, GraphView, ImportDetail, KindSet, ModuleId};
 use zenith_pipeline::FileSuppressions;
 use zenith_workspace::Workspace;
 
-use crate::{Exemptions, Selection};
+use crate::{Exemptions, Selection, baseline};
 
 /// The view of the graph that a contract checks against: the graph without
 /// the imports that the contract leaves out, and what it left out.
@@ -29,6 +29,13 @@ pub(crate) struct ContractView<'g, 'c> {
 
     /// The number of statements that suppressions left out.
     pub suppressed: usize,
+
+    /// The number of imports that the baseline left out.
+    pub baselined: usize,
+
+    /// The baseline entries of the contract whose import no longer exists, in
+    /// the order of the baseline.
+    pub stale_entries: Vec<String>,
 
     /// The suppressions that left out a statement, as the index of their file
     /// in the exempted suppressions and their index in it.
@@ -102,12 +109,29 @@ impl<'g, 'c> ContractView<'g, 'c> {
             }
         }
 
+        // 3. Leave out the imports that the baseline records for the contract. An entry
+        //    whose import no longer exists is stale.
+        let mut baselined = 0;
+        let mut stale_entries = Vec::new();
+        let entries = exempts.baseline.map_or(&[][..], |baseline| baseline.entries(&config.id));
+        for entry in entries {
+            match baseline::import(entry, graph) {
+                Some((importer, imported)) => {
+                    excluded.insert(importer, imported);
+                    baselined += 1;
+                }
+                None => stale_entries.push(entry.clone()),
+            }
+        }
+
         Self {
             view: GraphView::with_excluded(graph, excluded),
             statements,
             unmatched,
             ignored,
             suppressed,
+            baselined,
+            stale_entries,
             used_suppressions,
         }
     }

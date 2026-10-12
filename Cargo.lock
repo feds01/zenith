@@ -1985,6 +1985,9 @@ version = "0.1.0"
 dependencies = [
  "rayon",
  "rustc-hash",
+ "serde",
+ "serde_json",
+ "tempfile",
  "thin-vec",
  "zenith_config",
  "zenith_diagnostics",

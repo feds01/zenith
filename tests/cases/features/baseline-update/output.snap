@@ -1,0 +1,29 @@
+$ zenith check --format compact
+exit: 1
+--- stdout
+src/a/x.ts:1:19: error[a-not-b]: `src/a` must not import `src/b`
+zenith.baseline.json:5:7: warning[a-not-b]: stale baseline entry `src/a/gone.ts -> src/b/y.ts`: its import no longer exists
+zenith.baseline.json:8:7: warning[b-not-a]: stale baseline entry `src/b/gone.ts -> src/a/x.ts`: its import no longer exists
+1 kept, 1 broken · 2 stale baseline entries · 2 files, 1 import
+
+$ zenith baseline --contract b-not-a
+exit: 0
+--- stdout
+Wrote 2 baseline entries for 2 contracts to `zenith.baseline.json` (was 3).
+
+$ zenith baseline
+exit: 0
+--- stdout
+Wrote 1 baseline entry for 1 contract to `zenith.baseline.json` (was 2).
+--- stderr
+warning: the baseline gained 1 entry; review it before committing
+
+$ zenith check
+exit: 0
+--- stdout
+Contracts
+  ✓ a-not-b  forbidden  kept · 1 baselined
+  ✓ b-not-a  forbidden  kept
+
+2 kept, 0 broken · 2 files, 1 import
+

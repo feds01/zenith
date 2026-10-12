@@ -1,0 +1,12 @@
+[baseline]
+stale = "warn"
+
+[contracts.a-not-b]
+type = "forbidden"
+from = ["src/a"]
+to = ["src/b"]
+
+[contracts.b-not-a]
+type = "forbidden"
+from = ["src/b"]
+to = ["src/a"]

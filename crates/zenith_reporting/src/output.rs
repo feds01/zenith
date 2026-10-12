@@ -83,7 +83,13 @@ mod tests {
             details: Vec::new(),
             duration: Duration::ZERO,
         };
-        let summary = Summary { entries: vec![entry], files: 2, imports: 1, timings: None };
+        let summary = Summary {
+            entries: vec![entry],
+            files: 2,
+            imports: 1,
+            notes: Vec::new(),
+            timings: None,
+        };
         Output { sources: &sources, reports: &[report], summary: &summary, format }.to_string()
     }
 

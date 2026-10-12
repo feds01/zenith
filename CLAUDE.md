@@ -50,10 +50,10 @@ it when responsibilities move. On `main` today:
   nodes that contracts reason about, from what the graph and the workspace
   find, and failing on path and `pkg:` selectors that match nothing;
   compiling contracts against a project, the view of the graph that each
-  checks against (without its excluded kinds, ignored imports and
-  suppressed statements), the six contract types, the violations they
-  find, the suppressions that had no effect, and their reports and
-  summary entries.
+  checks against (without its excluded kinds, ignored imports, suppressed
+  statements and baselined imports), the six contract types, the
+  violations they find, the suppressions that had no effect, the baseline
+  file of known violations, and their reports and summary entries.
 - `zenith_diagnostics`: reports with labelled source excerpts, which each
   crate makes from its own errors and findings, rendered in full or a line
   each using `annotate-snippets`; the `SourceMap`, which reads a project's

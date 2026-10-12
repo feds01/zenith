@@ -1,0 +1,33 @@
+$ zenith baseline
+exit: 0
+--- stdout
+Wrote 12 baseline entries for 9 contracts to `zenith.baseline.json` (was 0).
+--- stderr
+warning: the baseline gained 12 entries; review them before committing
+
+$ zenith check
+exit: 0
+--- stdout
+warning: 1 import could not be resolved
+  |
+  = help: use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
+
+Contracts
+  ✓ web-layers              layers         kept · 2 baselined, 1 suppressed
+  ✓ package-tiers           layers         kept · 1 baselined
+  ✓ packages-acyclic        acyclic        kept · 1 baselined
+  ✓ client-safety           forbidden      kept · 2 baselined
+  ✓ ai-public-surface       encapsulation  kept · 2 baselined
+  ✓ strategies-independent  independence   kept · 1 baselined, 2 ignored
+  ✓ mastra-protected        protected      kept · 1 baselined
+  ✓ api-domain-layers       layers         kept · 1 baselined
+  ✓ legacy-freeze           forbidden      kept · 1 baselined
+  ✓ sdk-standalone          forbidden      kept
+
+10 kept, 0 broken · 78 files, 127 imports
+
+$ zenith baseline --prune
+exit: 0
+--- stdout
+Wrote 12 baseline entries for 9 contracts to `zenith.baseline.json` (was 12).
+

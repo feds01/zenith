@@ -6,6 +6,7 @@ use std::{env, path::Path};
 use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
 use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
+use zenith_contracts::Contract;
 use zenith_diagnostics::SourceMap;
 use zenith_pipeline::{FileError, FileErrorKind, Pipeline, Session, StageKind};
 use zenith_utils::{path::adjust_canonicalisation, printing::plural};
@@ -81,6 +82,35 @@ pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<Pipeli
         }
     }
     Ok(pipeline)
+}
+
+/// Compile the contracts of the session's configuration whose ids are in
+/// `ids`, or every contract if there are none, against its graph. An unknown
+/// id is an error. So are the contracts' errors, which are shown in the
+/// context of the configuration file.
+pub(crate) fn compile_contracts<'s>(
+    session: &'s Session,
+    ids: &[String],
+) -> Result<Vec<Contract<'s>>> {
+    let configs = &session.config.contracts;
+    for id in ids {
+        if session.config.contract(id).is_none() {
+            let known: Vec<_> = configs.iter().map(|config| format!("`{}`", config.id)).collect();
+            match known.as_slice() {
+                [] => bail!("there is no contract `{id}`; the configuration has no contracts"),
+                known => {
+                    bail!("there is no contract `{id}`; the contracts are {}", known.join(", "))
+                }
+            }
+        }
+    }
+    let selected = configs.iter().filter(|config| ids.is_empty() || ids.contains(&config.id));
+    Contract::compile_all(selected, &session.graph, &session.workspace).map_err(|errors| {
+        let (sources, config) = session.sources();
+        let reports: Vec<_> = errors.iter().map(|error| error.report(config)).collect();
+        reporting::emit(&sources, &reports);
+        Reported.into()
+    })
 }
 
 /// Load the configuration file at `path`. An invalid file is reported, with

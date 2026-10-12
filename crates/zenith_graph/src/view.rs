@@ -1,4 +1,5 @@
-//! A contract's view of a [`Graph`]: the graph with some imports excluded.
+//! A contract's view of a [`Graph`]: the graph with some imports excluded,
+//! and the boundaries that chains of imports don't pass through.
 
 use std::fmt;
 
@@ -89,6 +90,11 @@ impl Extend<(ModuleId, ModuleId)> for EdgeSet {
 /// filters (excluded kinds and suppressions). A pair with one surviving
 /// detail stays. The graph itself is shared by every view, and is never
 /// mutated or copied.
+///
+/// A view may also have **boundaries**: nodes that a chain of imports may
+/// start or end at, but not pass through, such as the `"use server"` files
+/// whose imports never reach the client code that imports them. They change
+/// the searches for chains, not the imports of the view.
 #[derive(Debug, Clone)]
 pub struct GraphView<'g> {
     /// The underlying graph.
@@ -96,6 +102,9 @@ pub struct GraphView<'g> {
 
     /// The imports that do not exist in this view.
     excluded: EdgeSet,
+
+    /// The nodes that chains may not pass through.
+    boundaries: NodeSet,
 }
 
 impl<'g> GraphView<'g> {
@@ -106,7 +115,18 @@ impl<'g> GraphView<'g> {
 
     /// A view of the graph without the `excluded` imports.
     pub fn with_excluded(graph: &'g Graph, excluded: EdgeSet) -> Self {
-        Self { graph, excluded }
+        Self { graph, excluded, boundaries: NodeSet::new() }
+    }
+
+    /// This view, with `boundaries` that chains may start or end at, but not
+    /// pass through.
+    pub fn with_boundaries(self, boundaries: NodeSet) -> Self {
+        Self { boundaries, ..self }
+    }
+
+    /// The nodes that chains may start or end at, but not pass through.
+    pub fn boundaries(&self) -> &NodeSet {
+        &self.boundaries
     }
 
     /// A view of the graph without the imports all of whose details are of

@@ -234,9 +234,10 @@ impl GraphView<'_> {
         architecture
             .illegal_pairs()
             .into_par_iter()
-            .map_init(ChainSearch::default, |search, (importer, imported)| {
+            .map(|(importer, imported)| {
                 let (from, to) = (architecture.layer(importer), architecture.layer(imported));
-                let routes = self.illegal_routes(search, from, to, &members);
+                let routes =
+                    ChainSearch::with(|search| self.illegal_routes(search, from, to, &members));
                 (!routes.is_empty()).then_some(PackageDependency { importer, imported, routes })
             })
             .flatten_iter()

@@ -5,9 +5,9 @@
 //! `b` imports `c`. The searches are methods of [`GraphView`], so they never
 //! use the imports that a contract ignores.
 
-use std::iter;
+use std::{cell::RefCell, iter};
 
-use rustc_hash::FxHashMap;
+use index_vec::IndexVec;
 
 use crate::{EdgeSet, GraphView, ModuleId, NodeSet};
 
@@ -38,7 +38,7 @@ impl GraphView<'_> {
         if from.intersects(to) {
             return None;
         }
-        ChainSearch::default().run(self, from, to, excluded_nodes, excluded_imports)
+        ChainSearch::with(|search| search.run(self, from, to, excluded_nodes, excluded_imports))
     }
 
     /// Find the shortest import chains from `from` to `to`, as grimp's
@@ -59,7 +59,8 @@ impl GraphView<'_> {
         to: &NodeSet,
         excluded_nodes: &NodeSet,
     ) -> Vec<Vec<ModuleId>> {
-        let (direct, indirect) = ChainSearch::default().find_chains(self, from, to, excluded_nodes);
+        let (direct, indirect) =
+            ChainSearch::with(|search| search.find_chains(self, from, to, excluded_nodes));
         direct.into_iter().map(|(a, b)| vec![a, b]).chain(indirect).collect()
     }
 
@@ -97,8 +98,20 @@ impl GraphView<'_> {
     }
 }
 
+thread_local! {
+    /// The search of each thread, which every search on it reuses.
+    static SEARCH: RefCell<ChainSearch> = RefCell::default();
+}
+
 /// The state of a bidirectional search, kept between runs so that repeated
 /// searches reuse their allocations.
+///
+/// The way each node was reached is kept in tables indexed by node, as a
+/// search follows many imports, and hashing for each would cost more than
+/// the search itself. Only the entries of the nodes that a run reached are
+/// set, and the next run clears just those. The tables have an entry for
+/// every node, so searches share one per thread, through
+/// [`ChainSearch::with`], rather than allocate their own.
 #[derive(Debug, Default)]
 pub(crate) struct ChainSearch {
     /// The nodes reached forwards from `from`, in the order they were
@@ -116,21 +129,24 @@ pub(crate) struct ChainSearch {
     seen_backwards: NodeSet,
 
     /// The node each node in `forwards` was first reached from, which
-    /// imports it. Members of `from` have none.
-    importers: FxHashMap<ModuleId, ModuleId>,
+    /// imports it, by node. Members of `from` have none.
+    importers: IndexVec<ModuleId, Option<ModuleId>>,
 
     /// The node each node in `backwards` was first reached from, which it
-    /// imports. Members of `to` have none.
-    imported: FxHashMap<ModuleId, ModuleId>,
+    /// imports, by node. Members of `to` have none.
+    imported: IndexVec<ModuleId, Option<ModuleId>>,
 }
 
 impl ChainSearch {
+    /// Run `f` with this thread's search. Searches don't nest, so `f` must not
+    /// start another.
+    pub(crate) fn with<T>(f: impl FnOnce(&mut ChainSearch) -> T) -> T {
+        SEARCH.with_borrow_mut(f)
+    }
+
     /// The chains of [`GraphView::find_shortest_chains`], split into the
     /// direct imports and the indirect chains, which have at least one node
     /// between their ends.
-    ///
-    /// A caller that runs many searches can keep one `ChainSearch` to reuse
-    /// its buffers.
     pub(crate) fn find_chains(
         &mut self,
         view: &GraphView,
@@ -169,14 +185,20 @@ impl ChainSearch {
         if from.is_empty() || to.is_empty() {
             return None;
         }
+        // Every node whose way was set by the last run is in its lists.
+        for node in self.forwards.iter().chain(&self.backwards) {
+            self.importers[*node] = None;
+            self.imported[*node] = None;
+        }
+        let nodes = view.graph().node_count();
+        self.importers.resize(nodes, None);
+        self.imported.resize(nodes, None);
         self.forwards.clear();
         self.forwards.extend(from.iter());
         self.backwards.clear();
         self.backwards.extend(to.iter());
         self.seen_forwards.clone_from(from);
         self.seen_backwards.clone_from(to);
-        self.importers.clear();
-        self.imported.clear();
 
         let middle = self.meet(view, excluded_nodes, excluded_imports)?;
         Some(self.chain_through(middle))
@@ -207,11 +229,11 @@ impl ChainSearch {
                         continue;
                     }
                     if self.seen_backwards.contains(imported) {
-                        self.importers.insert(imported, importer);
+                        self.importers[imported] = Some(importer);
                         return Some(imported);
                     }
                     if !excluded_nodes.contains(imported) && self.seen_forwards.insert(imported) {
-                        self.importers.insert(imported, importer);
+                        self.importers[imported] = Some(importer);
                         self.forwards.push(imported);
                     }
                 }
@@ -229,11 +251,11 @@ impl ChainSearch {
                         continue;
                     }
                     if self.seen_forwards.contains(importer) {
-                        self.imported.insert(importer, imported);
+                        self.imported[importer] = Some(imported);
                         return Some(importer);
                     }
                     if !excluded_nodes.contains(importer) && self.seen_backwards.insert(importer) {
-                        self.imported.insert(importer, imported);
+                        self.imported[importer] = Some(imported);
                         self.backwards.push(importer);
                     }
                 }
@@ -248,11 +270,9 @@ impl ChainSearch {
     /// `from`, then the way on to `to`.
     fn chain_through(&self, middle: ModuleId) -> Vec<ModuleId> {
         let mut chain: Vec<_> =
-            iter::successors(Some(middle), |node| self.importers.get(node).copied()).collect();
+            iter::successors(Some(middle), |node| self.importers[*node]).collect();
         chain.reverse();
-        chain.extend(iter::successors(self.imported.get(&middle).copied(), |node| {
-            self.imported.get(node).copied()
-        }));
+        chain.extend(iter::successors(self.imported[middle], |node| self.imported[*node]));
         chain
     }
 }
@@ -305,6 +325,26 @@ mod tests {
         assert_eq!(shortest(&graph, &["a.ts"], &["d.ts"], &[]).unwrap(), ["a.ts", "x.ts", "d.ts"]);
         assert_eq!(shortest(&graph, &["b.ts"], &["d.ts"], &[]).unwrap(), ["b.ts", "c.ts", "d.ts"]);
         assert_eq!(shortest(&graph, &["c.ts"], &["d.ts"], &[]).unwrap(), ["c.ts", "d.ts"]);
+    }
+
+    #[test]
+    fn searches_on_one_thread_share_their_tables_across_graphs() {
+        let big =
+            graph_of(&[("a.ts", "b.ts"), ("b.ts", "c.ts"), ("c.ts", "d.ts"), ("d.ts", "e.ts")]);
+        let small = graph_of(&[("x.ts", "y.ts"), ("y.ts", "z.ts")]);
+        // The thread's search grows for the big graph, shrinks for the small
+        // one, and grows again, with nothing left over from the runs before.
+        for _ in 0..2 {
+            assert_eq!(
+                shortest(&big, &["a.ts"], &["e.ts"], &[]).unwrap(),
+                ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"]
+            );
+            assert_eq!(
+                shortest(&small, &["x.ts"], &["z.ts"], &[]).unwrap(),
+                ["x.ts", "y.ts", "z.ts"]
+            );
+            assert_eq!(shortest(&small, &["z.ts"], &["x.ts"], &[]), None);
+        }
     }
 
     #[test]

@@ -5,6 +5,7 @@ description = "An architecture linter for TypeScript and JavaScript codebases"
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
 publish = false
 default-run = "zenith"

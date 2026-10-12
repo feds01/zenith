@@ -54,7 +54,7 @@ it when responsibilities move. On `main` today:
   checks against (without its excluded kinds, ignored imports, suppressed
   statements and baselined imports), the six contract types, the
   violations they find, the suppressions that had no effect, the baseline
-  file of known violations, and their reports and summary entries.
+  file of known violations, and their reports, summary entries and JSON.
 - `zenith_diagnostics`: reports with labelled source excerpts, which each
   crate makes from its own errors and findings, rendered in full or a line
   each using `annotate-snippets`; the `SourceMap`, which reads a project's
@@ -72,10 +72,11 @@ it when responsibilities move. On `main` today:
   runs and times them, and the `Session` they share. Each stage is a thin
   adapter over the crate that does its work. Files it can't read or parse
   are recorded as `FileError`s, and imports it can't resolve as
-  `UnresolvedImport`s, with reports.
+  `UnresolvedImport`s, with reports and JSON.
 - `zenith_reporting`: the output of `zenith check`, without knowing what
   is checked: the reports that the domain crates make, then the summary of
-  every contract, in the `pretty` and `compact` formats.
+  every contract, in the `pretty`, `compact` and `github` formats, and the
+  JSON envelope around what they found, for `json`.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`, its
   classification, and `exports`-aware workspace resolution.
 - `zenith_utils`: file reading, path and specifier helpers, byte ranges, the

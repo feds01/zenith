@@ -52,6 +52,19 @@ pub struct SummaryEntry {
     pub duration: Duration,
 }
 
+/// A total of a check besides those of the outcomes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Count {
+    /// Its key in the JSON summary, e.g. `stale_baseline_entries`.
+    pub key: &'static str,
+
+    /// What is counted, in the singular, e.g. `stale baseline entry`.
+    pub noun: &'static str,
+
+    /// How many there are. The totals line leaves out a count of none.
+    pub count: usize,
+}
+
 /// The summary of a check, shown after its reports.
 #[derive(Debug, Clone, Default)]
 pub struct Summary {
@@ -64,9 +77,8 @@ pub struct Summary {
     /// How many imports were checked.
     pub imports: usize,
 
-    /// More totals, e.g. `2 stale baseline entries`, shown after those of
-    /// the outcomes.
-    pub notes: Vec<String>,
+    /// Totals besides those of the outcomes, e.g. of stale baseline entries.
+    pub counts: Vec<Count>,
 
     /// How long each step took, by name, or `None` to leave timings out,
     /// those of the entries too.
@@ -125,20 +137,18 @@ impl Summary {
             .collect()
     }
 
-    /// `<kept> kept, <broken> broken[, <n> warnings][ · <note>]… · <files>
+    /// `<kept> kept, <broken> broken[, <n> warnings][ · <count>]… · <files>
     /// files, <imports> imports`, followed by the timings if they are shown.
     pub(crate) fn totals(&self) -> String {
-        let kept = |entry: &&SummaryEntry| {
-            matches!(entry.outcome, Outcome::Kept | Outcome::KeptWith { .. })
-        };
-        let kept = self.entries.iter().filter(kept).count();
-        let mut line = format!("{kept} kept, {} broken", self.broken(ReportKind::Error));
+        let mut line = format!("{} kept, {} broken", self.kept(), self.broken(ReportKind::Error));
         let warnings = self.broken(ReportKind::Warning);
         if warnings > 0 {
             line += &format!(", {}", plural(warnings, "warning"));
         }
-        for note in &self.notes {
-            line += &format!(" · {note}");
+        for Count { noun, count, .. } in &self.counts {
+            if *count > 0 {
+                line += &format!(" · {}", plural(*count, noun));
+            }
         }
         let count = |count: usize, noun: &str| match count {
             1 => format!("1 {noun}"),
@@ -153,8 +163,16 @@ impl Summary {
         line
     }
 
+    /// How many contracts are kept, with something to fix or not.
+    pub(crate) fn kept(&self) -> usize {
+        let kept = |entry: &&SummaryEntry| {
+            matches!(entry.outcome, Outcome::Kept | Outcome::KeptWith { .. })
+        };
+        self.entries.iter().filter(kept).count()
+    }
+
     /// How many contracts are broken by findings of `kind`.
-    fn broken(&self, kind: ReportKind) -> usize {
+    pub(crate) fn broken(&self, kind: ReportKind) -> usize {
         let broken = |entry: &&SummaryEntry| match entry.outcome {
             Outcome::Broken { kind: of, .. } => of == kind,
             Outcome::Kept | Outcome::KeptWith { .. } => false,
@@ -180,7 +198,7 @@ mod tests {
 
     /// A summary of `entries`, of 1,234 files and 1 import.
     fn summary(entries: Vec<SummaryEntry>) -> Summary {
-        Summary { entries, files: 1_234, imports: 1, notes: Vec::new(), timings: None }
+        Summary { entries, files: 1_234, imports: 1, counts: Vec::new(), timings: None }
     }
 
     #[test]
@@ -212,7 +230,8 @@ mod tests {
             entry("a", "forbidden", Outcome::KeptWith { status, kind })
         };
         let mut warned = summary(vec![flagged(ReportKind::Warning)]);
-        warned.notes = vec!["1 stale baseline entry".to_string()];
+        let count = |count| Count { key: "stale", noun: "stale baseline entry", count };
+        warned.counts = vec![count(1)];
         assert_eq!(
             warned.totals(),
             "1 kept, 0 broken · 1 stale baseline entry · 1,234 files, 1 import"
@@ -220,6 +239,8 @@ mod tests {
         assert_eq!(warned.entry_lines(), ["! a  forbidden  kept, with a stale baseline"]);
         assert!(!warned.failed());
         assert!(summary(vec![flagged(ReportKind::Error)]).failed());
+        warned.counts = vec![count(0)];
+        assert_eq!(warned.totals(), "1 kept, 0 broken · 1,234 files, 1 import");
     }
 
     #[test]

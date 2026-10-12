@@ -179,8 +179,3 @@ exit: 2
 --- stderr
 error: there is no contract `nope`; the contracts are `web-layers`, `package-tiers`, `packages-acyclic`, `client-safety`, `ai-public-surface`, `strategies-independent`, `mastra-protected`, `api-domain-layers`, `legacy-freeze`, `sdk-standalone`
 
-$ zenith check --format json
-exit: 2
---- stderr
-error: `--format json` is not supported yet
-

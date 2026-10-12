@@ -93,7 +93,7 @@ impl UnusedSuppression<'_> {
 
     /// What is wrong with the suppression, naming its target line if its
     /// file's `source` can be read.
-    fn message(&self, source: Option<&Source>) -> String {
+    pub(crate) fn message(&self, source: Option<&Source>) -> String {
         match &self.reason {
             UnusedReason::NoContract => "unused suppression: it names no contract".to_string(),
             UnusedReason::UnknownContracts(ids) => {

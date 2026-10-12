@@ -1,0 +1,3 @@
+# A broken contract of each severity, then the unresolved imports.
+check --format github --contract web-layers --contract ai-public-surface
+check --format github --show-unresolved --contract sdk-standalone

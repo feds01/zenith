@@ -20,6 +20,7 @@
 //! the session as [`FileError`]s and [`UnresolvedImport`]s.
 
 mod error;
+mod json;
 mod pipeline;
 mod session;
 mod stages;
@@ -27,6 +28,7 @@ mod stages;
 mod tests;
 
 pub use error::{FileError, FileErrorKind, PipelineError, UnresolvedImport};
+pub use json::{FileProblemJson, UnresolvedJson};
 pub use pipeline::{Pipeline, Stage, StageKind};
 pub use session::{FileSuppressions, Session, SourceFile, Stats};
 pub use stages::{BuildGraph, Discover, Parse, Resolve};

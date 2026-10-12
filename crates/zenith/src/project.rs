@@ -6,7 +6,7 @@ use std::{env, path::Path};
 use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
 use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
-use zenith_diagnostics::{ReportKind, SourceMap, Span};
+use zenith_diagnostics::SourceMap;
 use zenith_pipeline::{FileError, FileErrorKind, Pipeline, Session, StageKind};
 use zenith_utils::{path::adjust_canonicalisation, printing::plural};
 
@@ -20,6 +20,7 @@ use crate::{Reported, cli::GlobalArgs, reporting, sources::SourceFiles};
 /// without a configuration file is rooted at the current directory, and uses
 /// the defaults.
 pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
+    // 1. Find the configuration file, if there is one.
     let cwd = env::current_dir().context("could not read the current directory")?;
     let config_path = match (&global.config, &global.root) {
         (Some(config), _) if !config.is_file() => {
@@ -30,6 +31,7 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
         (None, None) => Config::discover(&cwd),
     };
 
+    // 2. Find the project root.
     let root = match (&global.root, &config_path) {
         (Some(root), _) => root.as_path(),
         // A bare file name, e.g. `--config zenith.toml`, has an empty parent.
@@ -44,6 +46,7 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
     let root = adjust_canonicalisation(root);
     debug!("project root: {}", root.display());
 
+    // 3. Load the configuration, or use the defaults.
     let config = match &config_path {
         Some(path) => {
             debug!("configuration: {}", path.display());
@@ -64,9 +67,7 @@ pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<()> {
     Pipeline::standard().run_until(session, last)?;
 
     let mut sources = SourceFiles::new(&session.root);
-    for error in &session.file_errors {
-        warn_about_file(&mut sources, error);
-    }
+    report_file_errors(&mut sources, &session.file_errors);
     warn_about_unresolved(&mut sources, session);
 
     if last >= StageKind::Graph {
@@ -101,34 +102,22 @@ fn load(path: &Path, cwd: &Path) -> Result<Config> {
     }
 }
 
-/// Warn about a file that could not be read or parsed in full. A syntax
+/// Warn about the files that could not be read or parsed in full. A syntax
 /// error is shown in context.
-fn warn_about_file(sources: &mut SourceFiles, error: &FileError) {
-    let FileError { file, kind } = error;
-    let errors = match kind {
-        FileErrorKind::Read(error) => {
-            warn!("could not read `{file}`, so its imports are missing: {error}");
-            return;
-        }
-        FileErrorKind::Syntax(errors) => errors,
-    };
-    let (Some(first), Some(text)) = (errors.first(), sources.text(file)) else {
-        warn!("`{file}` has syntax errors, so some of its imports may be missing");
-        return;
-    };
-
+fn report_file_errors(sources: &mut SourceFiles, errors: &[FileError]) {
     let mut map = SourceMap::new();
-    let source = map.add(file.as_str(), text);
-    let mut report = first.value.report(Span::new(source, first.range));
-    report.kind = ReportKind::Warning;
-    report.add_note("some of the file's imports may be missing from the graph");
-    if errors.len() > 1 {
-        report.add_note(format!(
-            "this is the first of {} in the file",
-            plural(errors.len(), "syntax error")
-        ));
-    }
-    reporting::emit(&map, &[report]);
+    let reports: Vec<_> = errors
+        .iter()
+        .map(|error| {
+            // Only a syntax error is shown in context, so only its file is read.
+            let text = match error.kind {
+                FileErrorKind::Syntax(_) => sources.text(&error.file),
+                FileErrorKind::Read(_) => None,
+            };
+            error.report(text.map(|text| map.add(error.file.as_str(), text)))
+        })
+        .collect();
+    reporting::emit(&map, &reports);
 }
 
 /// Warn about the imports that could not be resolved, and list them with

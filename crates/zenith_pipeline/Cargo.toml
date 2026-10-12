@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 zenith_config = { workspace = true }
+zenith_diagnostics = { workspace = true }
 zenith_graph = { workspace = true }
 zenith_parse = { workspace = true }
 zenith_resolve = { workspace = true }

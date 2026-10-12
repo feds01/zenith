@@ -17,6 +17,10 @@
 //! ([`GraphView::find_shortest_chains`]), layered architectures
 //! ([`GraphView::find_illegal_dependencies_for_layers`]) and cycle breakers
 //! between units ([`UnitGraph::nominate_cycle_breakers`]).
+//!
+//! A [`ModuleOverview`] shows the shape of part of a project: a node, its
+//! children, and the dependencies between them, as a tree, a Graphviz digraph
+//! or JSON.
 
 mod builder;
 mod cycles;
@@ -25,6 +29,7 @@ mod graph;
 mod kinds;
 mod layers;
 mod node_set;
+mod overview;
 mod pathfinding;
 #[cfg(test)]
 mod testing;
@@ -37,5 +42,6 @@ pub use graph::{Graph, ImportDetail, ModuleId, Node, NodeKind};
 pub use kinds::{ImportKind, KindSet};
 pub use layers::{Architecture, LayerId, LayerRef, Level, LevelId, PackageDependency, Route};
 pub use node_set::NodeSet;
+pub use overview::{ChildDependency, ModuleOverview, OverviewChild, OverviewDot, OverviewTree};
 pub use unit::Unit;
 pub use view::{EdgeSet, GraphView};

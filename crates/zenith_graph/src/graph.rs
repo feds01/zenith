@@ -2,6 +2,7 @@
 //! builtins, and the imports between them.
 
 use index_vec::{IndexSlice, IndexVec};
+use serde::Serialize;
 use thin_vec::ThinVec;
 use zenith_utils::location::ByteRange;
 
@@ -27,7 +28,8 @@ impl ModuleId {
 }
 
 /// What a node in the graph represents.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum NodeKind {
     /// A directory inside the project. A directory stands for its whole
     /// subtree and never has imports of its own.

@@ -1,14 +1,18 @@
 //! The command-line interface definition.
 
 use std::{
+    env,
     ffi::{OsStr, OsString},
-    io, iter,
+    io::{self, IsTerminal},
+    iter,
     path::PathBuf,
 };
 
 use argfile::{Argument, PREFIX};
 use clap::{ArgAction, Parser, ValueEnum};
-use zenith_graph::ImportKind;
+use log::LevelFilter;
+use zenith_config::Selector;
+use zenith_graph::{ImportKind, KindSet};
 
 /// Expand `@path` argfiles in `args`. An `@` argument that doesn't name an
 /// existing file is kept as-is.
@@ -80,6 +84,18 @@ pub struct GlobalArgs {
     pub verbose: u8,
 }
 
+impl GlobalArgs {
+    /// The most verbose logs to show: warnings by default, info logs with
+    /// `-v`, and debug logs with `-vv`.
+    pub fn log_level(&self) -> LevelFilter {
+        match self.verbose {
+            0 => LevelFilter::Warn,
+            1 => LevelFilter::Info,
+            _ => LevelFilter::Debug,
+        }
+    }
+}
+
 /// When to use colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum ColourChoice {
@@ -89,6 +105,21 @@ pub enum ColourChoice {
     Always,
     /// Never colour.
     Never,
+}
+
+impl ColourChoice {
+    /// Whether to colour the output: by default, when `stdout` is a terminal
+    /// and `NO_COLOR` is unset or empty.
+    pub fn should_colour(self) -> bool {
+        match self {
+            ColourChoice::Always => true,
+            ColourChoice::Never => false,
+            ColourChoice::Auto => {
+                io::stdout().is_terminal()
+                    && env::var_os("NO_COLOR").is_none_or(|value| value.is_empty())
+            }
+        }
+    }
 }
 
 /// The `zenith` subcommands.
@@ -163,7 +194,8 @@ pub struct BaselineCommand {
 pub struct GraphCommand {
     /// The selector to show, e.g. `web/src` or `pkg:@acme/api`. Defaults to
     /// the whole project.
-    pub selector: Option<String>,
+    #[arg(value_parser = Selector::parse)]
+    pub selector: Option<Selector>,
 
     /// How many levels of the tree to show.
     #[arg(long, default_value_t = 2, value_name = "N")]
@@ -173,23 +205,25 @@ pub struct GraphCommand {
     #[arg(long, value_enum, default_value_t = GraphFormat::Tree)]
     pub format: GraphFormat,
 
-    /// Leave imports of this kind out of the dependencies.
-    #[arg(long = "exclude-kind", value_enum, value_name = "KIND")]
-    pub exclude_kinds: Vec<ImportKindArg>,
+    /// The imports to leave out of the dependencies.
+    #[command(flatten)]
+    pub kinds: KindFilter,
 }
 
 /// Arguments of `zenith why`.
 #[derive(Clone, Debug, clap::Args)]
 pub struct WhyCommand {
     /// The importing selector.
-    pub from: String,
+    #[arg(value_parser = Selector::parse)]
+    pub from: Selector,
 
     /// The imported selector.
-    pub to: String,
+    #[arg(value_parser = Selector::parse)]
+    pub to: Selector,
 
-    /// Leave imports of this kind out of the chains.
-    #[arg(long = "exclude-kind", value_enum, value_name = "KIND")]
-    pub exclude_kinds: Vec<ImportKindArg>,
+    /// The imports to leave out of the chains.
+    #[command(flatten)]
+    pub kinds: KindFilter,
 
     /// The maximum number of chains to show.
     #[arg(long, default_value_t = 10, value_name = "N")]
@@ -238,6 +272,21 @@ pub enum GraphFormat {
     Json,
 }
 
+/// The `--exclude-kind` option of the commands that follow imports.
+#[derive(Clone, Debug, Default, clap::Args)]
+pub struct KindFilter {
+    /// Leave out imports of this kind.
+    #[arg(long = "exclude-kind", value_enum, value_name = "KIND")]
+    pub exclude_kinds: Vec<ImportKindArg>,
+}
+
+impl KindFilter {
+    /// The import kinds to leave out.
+    pub fn excluded(&self) -> KindSet {
+        self.exclude_kinds.iter().map(|kind| ImportKind::from(*kind)).collect()
+    }
+}
+
 /// The import kinds that `--exclude-kind` accepts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum ImportKindArg {
@@ -272,7 +321,7 @@ mod tests {
 
     /// A unique scratch file in the system temporary directory.
     fn scratch_file(name: &str, contents: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("zenith-cli-{}-{name}", std::process::id()));
+        let path = env::temp_dir().join(format!("zenith-cli-{}-{name}", std::process::id()));
         fs::write(&path, contents).unwrap();
         path
     }
@@ -335,19 +384,39 @@ mod tests {
         assert_eq!(cli.global.verbose, 2);
         assert_eq!(cli.global.color, ColourChoice::Never);
         assert_eq!(cli.global.root, Some(PathBuf::from("acme")));
+        assert_eq!(cli.global.log_level(), LevelFilter::Debug);
         let Command::Why(why) = cli.command else { panic!("expected `why`") };
-        assert_eq!((why.from.as_str(), why.to.as_str()), ("@acme/ui", "pkg:@acme/api"));
+        assert_eq!(
+            (why.from.to_string(), why.to.to_string()),
+            ("@acme/ui".into(), "pkg:@acme/api".into())
+        );
     }
 
     #[test]
     fn fills_in_defaults() {
         let cli = parse("zenith graph");
         assert_eq!(cli.global.color, ColourChoice::Auto);
+        assert_eq!(cli.global.log_level(), LevelFilter::Warn);
         let Command::Graph(graph) = cli.command else { panic!("expected `graph`") };
         assert_eq!(graph.selector, None);
         assert_eq!(graph.depth, 2);
         assert_eq!(graph.format, GraphFormat::Tree);
-        assert!(graph.exclude_kinds.is_empty());
+        assert!(graph.kinds.excluded().is_empty());
+    }
+
+    #[test]
+    fn parses_selectors_and_excluded_kinds() {
+        let cli = parse("zenith graph web/src --exclude-kind type --exclude-kind require -v");
+        assert_eq!(cli.global.log_level(), LevelFilter::Info);
+        let Command::Graph(graph) = cli.command else { panic!("expected `graph`") };
+        assert_eq!(graph.selector, Some(Selector::parse("web/src").unwrap()));
+        assert_eq!(graph.kinds.excluded(), KindSet::TYPE | KindSet::REQUIRE);
+    }
+
+    #[test]
+    fn colours_only_when_asked_or_on_a_terminal() {
+        assert!(ColourChoice::Always.should_colour());
+        assert!(!ColourChoice::Never.should_colour());
     }
 
     #[test]
@@ -375,6 +444,8 @@ mod tests {
             ("zenith check --format xml", ErrorKind::InvalidValue),
             ("zenith why web/src", ErrorKind::MissingRequiredArgument),
             ("zenith graph --exclude-kind types", ErrorKind::InvalidValue),
+            ("zenith graph web/{src", ErrorKind::ValueValidation),
+            ("zenith why web/src ../lib", ErrorKind::ValueValidation),
         ] {
             let error = Cli::try_parse_from(line.split_whitespace()).unwrap_err();
             assert_eq!(error.kind(), kind, "{line}");

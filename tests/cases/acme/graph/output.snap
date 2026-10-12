@@ -171,5 +171,7 @@ error: `web/src/nope` does not match anything
 $ zenith graph "web/{src"
 exit: 2
 --- stderr
-error: invalid selector `web/{src`: unclosed `{`
+error: invalid value 'web/{src' for '[SELECTOR]': unclosed `{`
+
+For more information, try '--help'.
 

@@ -13,15 +13,15 @@ info: indexed 2 source files and 1 import
 $ zenith resolve src/ui/avatar.ts types/user
 exit: 0
 --- stdout
-internal    src/types/user.ts
+internal: src/types/user.ts
 
 $ zenith resolve src/ui/avatar.ts /logo.svg
 exit: 1
 --- stdout
-unresolved  Cannot find module '/logo.svg' (expected, by `ignore_unresolved`)
+unresolved: Cannot find module '/logo.svg' (expected, by `ignore_unresolved`)
 
 $ zenith resolve src/ui/avatar.ts ./missing
 exit: 1
 --- stdout
-unresolved  Cannot find module './missing'
+unresolved: Cannot find module './missing'
 

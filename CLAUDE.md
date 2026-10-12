@@ -37,10 +37,10 @@ The crates and what each one owns are listed in
 [SPEC §11.2](docs/SPEC.md#112-crates). That table is the single source; update
 it when responsibilities move. On `main` today:
 
-- `zenith`: the CLI (`cli.rs`, `commands/*`, `crash.rs`, and `version.rs`
-  with `build.rs` for git commit stamping), `project.rs`, which finds the
-  project and its configuration and runs the pipeline on it, and the UI
-  snapshot harness in `tests/ui.rs`.
+- `zenith`: the CLI (`cli.rs`, `commands/*`, `crash.rs`, `logger.rs`, and
+  `version.rs` with `build.rs` for git commit stamping), `project.rs`, which
+  finds the project and its configuration and runs the pipeline on it, and
+  the UI snapshot harness in `tests/ui.rs`.
 - `zenith_benchmark`: the divan benchmarks, and the deterministic synthetic
   monorepo that they run on.
 - `zenith_config`: the `zenith.toml` types and JSON Schema, config discovery,
@@ -48,25 +48,28 @@ it when responsibilities move. On `main` today:
   syntax of selectors, layers and ignored imports.
 - `zenith_contracts`: resolving selectors into units, the labelled sets of
   nodes that contracts reason about, from what the graph and the workspace
-  find.
+  find, and failing on path and `pkg:` selectors that match nothing.
 - `zenith_diagnostics`: the errors and warnings reported about zenith's
   input, collected per pass and rendered as reports with labelled source
   excerpts using `annotate-snippets`.
 - `zenith_graph`: the module tree and import graph model, import kinds, node
   sets, units, finding the nodes that a path glob or name pattern picks out,
-  graph views that leave out imports, and the grimp algorithms that run on
-  them: shortest import chains, layers and cycle breakers.
+  graph views that leave out imports (by pair or by kind), the grimp
+  algorithms that run on them: shortest import chains, layers and cycle
+  breakers, and module overviews for visualisations (`zenith graph`).
 - `zenith_parse`: oxc-based extraction of imports and their kinds,
   directives and suppression comments.
 - `zenith_pipeline`: the stages (discover, parse, resolve, graph) that turn
   a project into its import graph, registered in order on a `Pipeline` that
   runs and times them, and the `Session` they share. Each stage is a thin
-  adapter over the crate that does its work.
+  adapter over the crate that does its work. Files it can't read or parse
+  are recorded as `FileError`s, with reports.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`, its
   classification, and `exports`-aware workspace resolution.
 - `zenith_utils`: file reading, path and specifier helpers, byte ranges, the
-  glob dialect and name patterns, the line index, and terminal output:
-  highlighting, the logger, and printing text and trees.
+  glob dialect and name patterns, the line index, terminal output:
+  highlighting, the logger, and printing text and trees, and the global
+  thread pool.
 - `zenith_workspace`: the file walker and workspace package discovery.
 
 Key invariants:
@@ -85,6 +88,10 @@ Key invariants:
   conventions and utilities, with teamsearch as a fallback.
 - Every file starts with a `//!` module doc. Public items and struct fields
   get `///` docs.
+- Number the key steps of a command, or of another long function, with
+  comments: `// 1. Open the project, and build its graph.`, `// 2. …`.
+- Keep commands thin: logic that isn't about the command line belongs in the
+  core crates, with the command only gluing it together.
 - Use British spelling in prose (colour, normalise, behaviour).
 - Commits are conventional (`feat(graph): …`, `fix(resolve): …`). Branches are
   `feds01/<topic>`.

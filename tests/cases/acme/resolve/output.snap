@@ -1,42 +1,42 @@
 $ zenith resolve web/src/lib/format.ts @/domains/campaigns/types
 exit: 0
 --- stdout
-internal    web/src/domains/campaigns/types.ts
+internal: web/src/domains/campaigns/types.ts
 
 $ zenith resolve web/src/lib/format.ts @acme/ui/button
 exit: 0
 --- stdout
-internal    packages/ui/src/button.tsx
+internal: packages/ui/src/button.tsx
 
 $ zenith resolve web/src/lib/format.ts @acme/ui/src/internal
 exit: 1
 --- stdout
-unresolved  `./src/internal` is not exported by `@acme/ui`
+unresolved: `./src/internal` is not exported by `@acme/ui`
 
 $ zenith resolve services/mcp/src/index.ts ./tools.js
 exit: 0
 --- stdout
-internal    services/mcp/src/tools.ts
+internal: services/mcp/src/tools.ts
 
 $ zenith resolve web/src/lib/format.ts node:fs/promises
 exit: 0
 --- stdout
-builtin     node:fs
+builtin: node:fs
 
 $ zenith resolve web/src/lib/format.ts path
 exit: 0
 --- stdout
-builtin     node:path
+builtin: node:path
 
 $ zenith resolve web/src/lib/format.ts react
 exit: 0
 --- stdout
-external    npm:react (not installed, so named from the specifier)
+external: npm:react (not installed, so named from the specifier)
 
 $ zenith resolve web/src/lib/format.ts ./nope
 exit: 1
 --- stdout
-unresolved  Cannot find module './nope'
+unresolved: Cannot find module './nope'
 
 $ zenith resolve web/src/lib/nope.ts react
 exit: 2

@@ -13,6 +13,8 @@
 //! contain the inner ones. The graph and the workspace do the matching; this
 //! module puts the matches together.
 
+use std::fmt;
+
 use zenith_config::{OPTIONAL_EXTENSIONS, Selector, SelectorTarget};
 use zenith_graph::{Graph, NodeSet, Unit};
 use zenith_workspace::Workspace;
@@ -96,6 +98,20 @@ impl Selection {
         Self { units, matched }
     }
 
+    /// Resolve `selector` as [`Self::resolve`] does, failing if it matches
+    /// nothing but must match something (see [`Selector::must_match`]).
+    pub fn try_resolve(
+        selector: &Selector,
+        graph: &Graph,
+        workspace: &Workspace,
+    ) -> Result<Self, UnmatchedSelector> {
+        let selection = Self::resolve(selector, graph, workspace);
+        if !selection.matched && selector.must_match() {
+            return Err(UnmatchedSelector { selector: selector.to_string() });
+        }
+        Ok(selection)
+    }
+
     /// Every member of every unit.
     pub fn members(&self) -> NodeSet {
         let mut members = NodeSet::new();
@@ -105,6 +121,22 @@ impl Selection {
         members
     }
 }
+
+/// A path or `pkg:` selector that matches nothing, which is likely a typo or
+/// a rename.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnmatchedSelector {
+    /// The selector, as written.
+    pub selector: String,
+}
+
+impl fmt::Display for UnmatchedSelector {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "`{}` does not match anything", self.selector)
+    }
+}
+
+impl std::error::Error for UnmatchedSelector {}
 
 #[cfg(test)]
 mod tests {
@@ -418,5 +450,23 @@ mod tests {
             ]
         );
         assert!(Selection::default().members().is_empty());
+    }
+
+    #[test]
+    fn only_path_and_package_selectors_must_match() {
+        let project = project();
+        let try_resolve = |raw: &str| {
+            Selection::try_resolve(&selector(raw), &project.graph, &project.workspace)
+                .map(|selection| selection.units.len())
+                .map_err(|error| error.to_string())
+        };
+        assert_eq!(try_resolve("web/src/lib"), Ok(1));
+        assert_eq!(try_resolve("web/nope"), Err("`web/nope` does not match anything".into()));
+        assert_eq!(
+            try_resolve("pkg:@acme/nope"),
+            Err("`pkg:@acme/nope` does not match anything".into())
+        );
+        assert_eq!(try_resolve("npm:left-pad"), Ok(0));
+        assert_eq!(try_resolve("node:path"), Ok(0));
     }
 }

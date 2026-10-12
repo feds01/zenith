@@ -15,7 +15,7 @@ impl Graph {
     /// `src/types.ts` as well as the directory `src/types`. A matched node's
     /// descendants are left out, since it already stands for them.
     pub fn find_paths(&self, glob: &Glob, extensions: &[&str]) -> Vec<ModuleId> {
-        let matches = |id: ModuleId| node_matches(self.node(id), glob, extensions);
+        let matches = |id: ModuleId| self.node(id).matches_glob(glob, extensions);
         let prefix = glob.literal_prefix();
 
         // A literal glob names one path, which may be a file's without its
@@ -58,16 +58,21 @@ impl Graph {
     }
 }
 
-/// Whether `glob` matches an internal node: its path, or for a file, its path
-/// without one of `extensions`.
-fn node_matches(node: &Node, glob: &Glob, extensions: &[&str]) -> bool {
-    match node.kind() {
-        NodeKind::Directory => glob.is_match(node.name()),
-        NodeKind::File => {
-            glob.is_match(node.name())
-                || strip_extension(node.name(), extensions).is_some_and(|stem| glob.is_match(stem))
+impl Node {
+    /// Whether `glob` matches this node, as path selectors match: an internal
+    /// node by its path, and a file also by its path without one of
+    /// `extensions` (each without its `.`). External packages and builtins
+    /// have no path, so they never match.
+    pub fn matches_glob(&self, glob: &Glob, extensions: &[&str]) -> bool {
+        match self.kind() {
+            NodeKind::Directory => glob.is_match(self.name()),
+            NodeKind::File => {
+                glob.is_match(self.name())
+                    || strip_extension(self.name(), extensions)
+                        .is_some_and(|stem| glob.is_match(stem))
+            }
+            NodeKind::External | NodeKind::Builtin => false,
         }
-        NodeKind::External | NodeKind::Builtin => false,
     }
 }
 
@@ -127,6 +132,22 @@ mod tests {
         assert!(find(&graph, "web/README").is_empty());
         assert_eq!(find(&graph, "web/README.md"), ["web/README.md"]);
         assert!(find(&graph, "missing/types").is_empty());
+    }
+
+    #[test]
+    fn nodes_match_globs_by_path() {
+        let graph = graph();
+        let matches = |name: &str, glob: &str| {
+            graph.node(graph.id(name).unwrap()).matches_glob(&Glob::new(glob).unwrap(), EXTENSIONS)
+        };
+        assert!(matches("web/src", "web/*"));
+        assert!(matches("web/src/types.ts", "web/src/types.ts"));
+        assert!(matches("web/src/types.ts", "web/src/types"));
+        assert!(matches("web/src/env.d.ts", "web/src/env"));
+        assert!(!matches("web/src/types", "web/src/types.ts"));
+        assert!(!matches("web/README.md", "web/README"));
+        // Leaves have no path, even if their name looks like one.
+        assert!(!matches("npm:react", "npm:react"));
     }
 
     #[test]

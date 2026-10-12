@@ -37,10 +37,15 @@ impl Selection {
     /// packages that `pkg:` selectors match.
     pub fn resolve(selector: &Selector, graph: &Graph, workspace: &Workspace) -> Self {
         let mut units: Vec<Unit> = match selector.target() {
+            // `web/src/*`: one unit per outermost match, e.g. the directory
+            // `web/src/app` with its files, and the file `web/src/config.ts`.
+            // `web/src/types` matches `web/src/types.ts` too.
             SelectorTarget::Path(glob) => {
                 let found = graph.find_paths(glob, OPTIONAL_EXTENSIONS);
                 found.into_iter().map(|id| graph.unit(id)).collect()
             }
+            // `pkg:@acme/*`: one unit per matching workspace package, e.g. the
+            // directory `packages/ui` labelled `@acme/ui`.
             SelectorTarget::Package(pattern) => workspace
                 .find_packages(pattern)
                 .filter_map(|package| {
@@ -49,9 +54,13 @@ impl Selection {
                     Some(Unit { label: package.name.clone(), ..graph.unit(id) })
                 })
                 .collect(),
+            // `npm:@aws-sdk/*`: one unit per matching external package, e.g.
+            // `npm:@aws-sdk/client-s3`.
             SelectorTarget::External(pattern) => {
                 graph.find_leaves("npm", pattern).into_iter().map(|id| graph.unit(id)).collect()
             }
+            // `node:*` or `bun:sqlite`: one unit per matching builtin, e.g.
+            // `node:fs`.
             SelectorTarget::Builtin { scheme, pattern } => {
                 let found = graph.find_leaves(scheme.as_str(), pattern);
                 found.into_iter().map(|id| graph.unit(id)).collect()
@@ -59,6 +68,8 @@ impl Selection {
         };
         let matched = !units.is_empty();
 
+        // `{ path = "web/src/*", except = ["**/*.test.ts"] }`: the same units,
+        // without their test files.
         if !selector.except().is_empty() {
             let mut excluded = NodeSet::new();
             for except in selector.except() {
@@ -69,8 +80,10 @@ impl Selection {
             }
         }
 
+        // `{ path = "web/**", directive = "use client" }`: one unit per file
+        // with the directive, e.g. `web/src/app/page.tsx`. Units can overlap,
+        // e.g. nested packages, so each file is collected once.
         if let Some(directive) = selector.directive() {
-            // Units can overlap, e.g. nested packages, so collect each file once.
             let mut files = NodeSet::new();
             for unit in &units {
                 files.extend(unit.members.iter().filter(|id| {

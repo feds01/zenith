@@ -6,7 +6,10 @@ use zenith_config::{AlertLevel, ContractConfig, ContractKind, Severity};
 use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span};
 use zenith_graph::{Graph, ImportDetail, ImportKind};
 use zenith_reporting::{Outcome, SummaryEntry};
-use zenith_utils::{location::ByteRange, printing::plural};
+use zenith_utils::{
+    location::ByteRange,
+    printing::{plural, thousands},
+};
 
 use crate::{Chain, ContractReport, CycleBreaker, Link, Violation};
 
@@ -57,10 +60,17 @@ impl ContractReport<'_> {
         } else {
             Outcome::Broken { findings: self.finding_count(), kind: kind(self.config) }
         };
+        let left_out = [(self.ignored, "ignored"), (self.suppressed, "suppressed")];
+        let details = left_out
+            .into_iter()
+            .filter(|(count, _)| *count > 0)
+            .map(|(count, how)| format!("{} {how}", thousands(count)))
+            .collect();
         SummaryEntry {
             id: self.config.id.clone(),
             kind: self.config.kind.type_name(),
             outcome,
+            details,
             duration: self.duration,
         }
     }

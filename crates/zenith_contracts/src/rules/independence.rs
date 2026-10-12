@@ -2,9 +2,9 @@
 //! another.
 
 use zenith_config::IndependenceConfig;
-use zenith_graph::{Architecture, GraphView, KindSet, Level, Unit};
+use zenith_graph::{Architecture, GraphView, Level, Unit};
 
-use crate::{Chain, Violation, contract::UnitResolver};
+use crate::{Chain, Violation, contract::UnitResolver, view::Statements};
 
 /// A compiled `independence` contract.
 #[derive(Debug)]
@@ -38,7 +38,7 @@ impl Independence {
     /// The dependencies between the modules in `view`, one violation per
     /// ordered pair. A chain through a third module is reported as two
     /// dependencies, one on each side of it.
-    pub(crate) fn check(&self, view: &GraphView, excluded: KindSet) -> Vec<Violation> {
+    pub(crate) fn check(&self, view: &GraphView, statements: &Statements) -> Vec<Violation> {
         let dependencies = if self.allow_indirect {
             view.find_illegal_direct_dependencies_for_layers(&self.architecture)
         } else {
@@ -53,7 +53,7 @@ impl Independence {
                 chains: dependency
                     .routes
                     .iter()
-                    .map(|route| Chain::from_route(view, excluded, route))
+                    .map(|route| Chain::from_route(view, statements, route))
                     .collect(),
             })
             .collect()

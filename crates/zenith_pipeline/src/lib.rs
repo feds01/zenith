@@ -28,5 +28,5 @@ mod tests;
 
 pub use error::{FileError, FileErrorKind, PipelineError, UnresolvedImport};
 pub use pipeline::{Pipeline, Stage, StageKind};
-pub use session::{Session, SourceFile, Stats};
+pub use session::{FileSuppressions, Session, SourceFile, Stats};
 pub use stages::{BuildGraph, Discover, Parse, Resolve};

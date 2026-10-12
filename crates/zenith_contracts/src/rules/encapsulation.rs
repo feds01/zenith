@@ -2,10 +2,10 @@
 //! through their entry points.
 
 use zenith_config::{EncapsulationConfig, OPTIONAL_EXTENSIONS};
-use zenith_graph::{GraphView, KindSet, NodeKind, NodeSet, Unit};
+use zenith_graph::{GraphView, NodeKind, NodeSet, Unit};
 use zenith_utils::glob::{Glob, escape};
 
-use crate::{ContractErrorKind, Link, Violation, contract::UnitResolver};
+use crate::{ContractErrorKind, Link, Violation, contract::UnitResolver, view::Statements};
 
 /// A compiled `encapsulation` contract.
 #[derive(Debug)]
@@ -60,14 +60,14 @@ impl Encapsulation {
     /// The imports of each module's members that aren't entry points, by
     /// code that is neither in the module nor an allowed importer: one
     /// violation per module, in the order of the modules.
-    pub(crate) fn check(&self, view: &GraphView, excluded: KindSet) -> Vec<Violation> {
+    pub(crate) fn check(&self, view: &GraphView, statements: &Statements) -> Vec<Violation> {
         let mut violations = Vec::new();
         for (unit, entries) in &self.modules {
             let mut imports = Vec::new();
             for member in unit.members.iter().filter(|member| !entries.contains(*member)) {
                 for importer in view.importers_of(member) {
                     if !unit.members.contains(importer) && !self.allowed.contains(importer) {
-                        imports.push(Link::new(view, excluded, importer, member));
+                        imports.push(Link::new(view, statements, importer, member));
                     }
                 }
             }

@@ -3,7 +3,7 @@
 use std::time::Instant;
 
 use anyhow::{Result, bail};
-use zenith_contracts::Contract;
+use zenith_contracts::{Contract, Exemptions, UnusedSuppression};
 use zenith_pipeline::StageKind;
 use zenith_reporting::{Format, Output, Summary};
 
@@ -56,13 +56,17 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
         }
     };
 
-    // 4. Check them, in parallel.
+    // 4. Check them in parallel, without the imports that suppressions leave out,
+    //    and find the suppressions that had no effect.
     let start = Instant::now();
-    let checked = Contract::check_all(&contracts, &session.graph, &session.workspace);
+    let exemptions = Exemptions { suppressions: &session.suppressions };
+    let checked = Contract::check_all(&contracts, &session.graph, &session.workspace, &exemptions);
+    let unused = UnusedSuppression::find(&session.config, &exemptions, &checked);
     let check_time = start.elapsed();
 
-    // 5. Report what they found: in full, then the imports that couldn't be
-    //    resolved, or a finding a line, with every unresolved import if asked.
+    // 5. Report what they found, and the unused suppressions: in full, then the
+    //    imports that couldn't be resolved, or a finding a line, with every
+    //    unresolved import if asked.
     let graph = &session.graph;
     let mut reports = Vec::new();
     for report in &checked {
@@ -71,6 +75,7 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
             Format::Compact => report.findings(graph, &mut sources, config),
         });
     }
+    reports.extend(unused.iter().map(|unused| unused.report(&mut sources)));
     match format {
         Format::Pretty => {
             reports.extend(session.unresolved_report(&mut sources, args.show_unresolved));

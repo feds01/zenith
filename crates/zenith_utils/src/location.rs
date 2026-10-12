@@ -42,6 +42,11 @@ impl ByteRange {
     pub fn is_empty(self) -> bool {
         self.start == self.end
     }
+
+    /// Whether the byte at `offset` is in the range.
+    pub fn contains(self, offset: u32) -> bool {
+        self.start <= offset && offset < self.end
+    }
 }
 
 impl From<ByteRange> for Range<usize> {
@@ -147,6 +152,9 @@ mod tests {
         assert_eq!((range.start(), range.end(), range.len()), (4, 10, 6));
         assert!(!range.is_empty());
         assert!(ByteRange::new(3, 3).is_empty());
+        assert!(range.contains(4) && range.contains(9));
+        assert!(!range.contains(3) && !range.contains(10));
+        assert!(!ByteRange::new(3, 3).contains(3));
         assert_eq!(ByteRange::default(), ByteRange::new(0, 0));
 
         let source = "import x from './x'";

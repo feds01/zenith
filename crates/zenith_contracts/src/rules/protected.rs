@@ -2,9 +2,9 @@
 //! import the modules.
 
 use zenith_config::ProtectedConfig;
-use zenith_graph::{GraphView, KindSet, NodeSet, Unit};
+use zenith_graph::{GraphView, NodeSet, Unit};
 
-use crate::{Link, Violation, contract::UnitResolver};
+use crate::{Link, Violation, contract::UnitResolver, view::Statements};
 
 /// A compiled `protected` contract.
 #[derive(Debug)]
@@ -30,14 +30,14 @@ impl Protected {
     /// The direct imports of each protected unit by code that is neither an
     /// allowed importer nor a member of the unit, one violation per unit, in
     /// the order of the units. Indirect imports don't count.
-    pub(crate) fn check(&self, view: &GraphView, excluded: KindSet) -> Vec<Violation> {
+    pub(crate) fn check(&self, view: &GraphView, statements: &Statements) -> Vec<Violation> {
         let mut violations = Vec::new();
         for unit in &self.modules {
             let mut imports = Vec::new();
             for member in unit.members.iter() {
                 for importer in view.importers_of(member) {
                     if !self.allowed.contains(importer) && !unit.members.contains(importer) {
-                        imports.push(Link::new(view, excluded, importer, member));
+                        imports.push(Link::new(view, statements, importer, member));
                     }
                 }
             }

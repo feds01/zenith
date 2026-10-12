@@ -2,16 +2,16 @@
 //! the reverse.
 
 use zenith_config::{LayerMember, LayersConfig, OPTIONAL_EXTENSIONS, SelectorTarget};
-use zenith_graph::{
-    Architecture, GraphView, KindSet, LayerRef, Level, ModuleId, NodeKind, NodeSet,
-};
+use zenith_graph::{Architecture, GraphView, LayerRef, Level, ModuleId, NodeKind, NodeSet};
 use zenith_utils::{
     glob::{Glob, escape},
     location::ByteRange,
     path::strip_extension,
 };
 
-use crate::{Chain, ContractErrorKind, Selection, Violation, contract::UnitResolver};
+use crate::{
+    Chain, ContractErrorKind, Selection, Violation, contract::UnitResolver, view::Statements,
+};
 
 /// A compiled `layers` contract.
 #[derive(Debug)]
@@ -67,7 +67,7 @@ impl Layers {
 
     /// The illegal dependencies between the layers of each container, and
     /// the children that no layer declares, in the order of the containers.
-    pub(crate) fn check(&self, view: &GraphView, excluded: KindSet) -> Vec<Violation> {
+    pub(crate) fn check(&self, view: &GraphView, statements: &Statements) -> Vec<Violation> {
         let mut violations = Vec::new();
         for container in &self.containers {
             let dependencies = if self.allow_indirect {
@@ -82,7 +82,7 @@ impl Layers {
                     chains: dependency
                         .routes
                         .iter()
-                        .map(|route| Chain::from_route(view, excluded, route))
+                        .map(|route| Chain::from_route(view, statements, route))
                         .collect(),
                 });
             }

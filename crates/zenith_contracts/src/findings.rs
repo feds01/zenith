@@ -7,7 +7,9 @@
 
 use std::fmt;
 
-use zenith_graph::{GraphView, ImportDetail, KindSet, ModuleId, Route};
+use zenith_graph::{GraphView, ImportDetail, ModuleId, Route};
+
+use crate::view::Statements;
 
 /// A direct import between two nodes, with the statements that make it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,22 +21,22 @@ pub struct Link {
     pub imported: ModuleId,
 
     /// The statements that make the import, in source order, without those
-    /// of the kinds that the contract excludes.
+    /// of the kinds that the contract excludes, or suppressed for it.
     pub imports: Vec<ImportDetail>,
 }
 
 impl Link {
     /// The import from `importer` to `imported` in `view`, with its
-    /// statements that aren't of the `excluded` kinds.
+    /// statements that count.
     pub(crate) fn new(
         view: &GraphView,
-        excluded: KindSet,
+        statements: &Statements,
         importer: ModuleId,
         imported: ModuleId,
     ) -> Self {
         let details = view.graph().details(importer, imported).iter();
         let imports =
-            details.filter(|detail| !excluded.contains(detail.kind.into())).cloned().collect();
+            details.filter(|detail| statements.count(importer, detail)).cloned().collect();
         Self { importer, imported, imports }
     }
 }
@@ -64,28 +66,28 @@ pub struct Chain {
 
 impl Chain {
     /// The chain through the nodes of `path` in `view`, whose links keep only
-    /// the statements that aren't of the `excluded` kinds.
-    pub(crate) fn from_path(view: &GraphView, excluded: KindSet, path: &[ModuleId]) -> Self {
-        let links = path.windows(2).map(|pair| Link::new(view, excluded, pair[0], pair[1]));
+    /// the statements that count.
+    pub(crate) fn from_path(view: &GraphView, statements: &Statements, path: &[ModuleId]) -> Self {
+        let links = path.windows(2).map(|pair| Link::new(view, statements, pair[0], pair[1]));
         Self { links: links.collect(), extra_heads: Vec::new(), extra_tails: Vec::new() }
     }
 
     /// The chain of a route between two layers: through its first head, its
     /// middle and its first tail, with the other heads and tails as extra
     /// links.
-    pub(crate) fn from_route(view: &GraphView, excluded: KindSet, route: &Route) -> Self {
+    pub(crate) fn from_route(view: &GraphView, statements: &Statements, route: &Route) -> Self {
         let (heads, middle, tails) = (route.heads(), route.middle(), route.tails());
         let (Some(first), Some(last)) = (middle.first(), middle.last()) else {
             // A direct import has one head and one tail.
-            return Self::from_path(view, excluded, &[heads[0], tails[0]]);
+            return Self::from_path(view, statements, &[heads[0], tails[0]]);
         };
         let path: Vec<_> =
             [heads[0]].into_iter().chain(middle.iter().copied()).chain([tails[0]]).collect();
-        let link = |importer, imported| Link::new(view, excluded, importer, imported);
+        let link = |importer, imported| Link::new(view, statements, importer, imported);
         Self {
             extra_heads: heads[1..].iter().map(|head| link(*head, *first)).collect(),
             extra_tails: tails[1..].iter().map(|tail| link(*last, *tail)).collect(),
-            ..Self::from_path(view, excluded, &path)
+            ..Self::from_path(view, statements, &path)
         }
     }
 }

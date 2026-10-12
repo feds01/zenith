@@ -1,15 +1,20 @@
 //! Helpers for the crate's unit tests.
 
-use thin_vec::thin_vec;
+use thin_vec::{ThinVec, thin_vec};
 use zenith_config::Config;
 use zenith_graph::{Graph, GraphBuilder, ImportDetail, ImportKind, NodeHandle};
-use zenith_utils::location::ByteRange;
+use zenith_parse::Suppression;
+use zenith_pipeline::FileSuppressions;
+use zenith_utils::location::{ByteRange, Located};
 use zenith_workspace::Workspace;
 
-use crate::{Chain, Contract, ContractError, ContractReport, CycleScope, Link, Violation};
+use crate::{
+    Chain, Contract, ContractError, ContractReport, CycleScope, Exemptions, Link,
+    UnusedSuppression, Violation,
+};
 
-/// A project for testing contracts: a graph, no workspace packages, and a
-/// configuration.
+/// A project for testing contracts: a graph, no workspace packages, a
+/// configuration, and suppressions.
 pub(crate) struct Project {
     /// The module tree and import graph.
     pub graph: Graph,
@@ -19,6 +24,9 @@ pub(crate) struct Project {
 
     /// The configuration, with the contracts to test.
     pub config: Config,
+
+    /// The suppressions, sorted by file.
+    pub suppressions: Vec<FileSuppressions>,
 }
 
 /// Value imports, for [`Project::new`].
@@ -52,7 +60,30 @@ impl Project {
             builder.set_directives(client, thin_vec!["use client".to_string()]);
         }
         let config = Config::parse(toml).unwrap_or_else(|errors| panic!("{errors:?}"));
-        Self { graph: builder.finish(), workspace: Workspace::default(), config }
+        let workspace = Workspace::default();
+        Self { graph: builder.finish(), workspace, config, suppressions: Vec::new() }
+    }
+
+    /// Add a suppression in `file`, of the space-separated `contracts`, to
+    /// the imports on `line`, as [`Project::new`] numbers them.
+    pub(crate) fn suppress(mut self, file: &str, line: u32, contracts: &str) -> Self {
+        let contracts = contracts.split_whitespace().map(str::to_string).collect();
+        let suppression = Suppression { contracts, reason: None, target: line_range(line) };
+        let suppression = Located::new(ByteRange::new(0, 10), suppression);
+        match self.suppressions.iter_mut().find(|suppressions| suppressions.file == file) {
+            Some(suppressions) => suppressions.suppressions.push(suppression),
+            None => {
+                let suppressions: ThinVec<_> = thin_vec![suppression];
+                self.suppressions.push(FileSuppressions { file: file.to_string(), suppressions });
+                self.suppressions.sort_by(|a, b| a.file.cmp(&b.file));
+            }
+        }
+        self
+    }
+
+    /// What the project exempts from its contracts: its suppressions.
+    pub(crate) fn exemptions(&self) -> Exemptions<'_> {
+        Exemptions { suppressions: &self.suppressions }
     }
 
     /// Compile every contract.
@@ -64,7 +95,16 @@ impl Project {
     pub(crate) fn check(&self, id: &str) -> ContractReport<'_> {
         let config = self.config.contract(id).unwrap();
         let contract = Contract::compile(config, &self.graph, &self.workspace).unwrap();
-        contract.check(&self.graph, &self.workspace)
+        contract.check(&self.graph, &self.workspace, &self.exemptions())
+    }
+
+    /// The suppressions that had no effect on the contracts `ids`.
+    pub(crate) fn unused_suppressions(&self, ids: &[&str]) -> Vec<UnusedSuppression<'_>> {
+        let configs = ids.iter().map(|id| self.config.contract(id).unwrap());
+        let contracts = Contract::compile_all(configs, &self.graph, &self.workspace).unwrap();
+        let exemptions = self.exemptions();
+        let reports = Contract::check_all(&contracts, &self.graph, &self.workspace, &exemptions);
+        UnusedSuppression::find(&self.config, &exemptions, &reports)
     }
 
     /// The findings of the contract `id`, one line each: a chain as
@@ -125,4 +165,9 @@ impl Project {
     fn link(&self, link: &Link) -> String {
         format!("{} -> {}", self.graph.name(link.importer), self.graph.name(link.imported))
     }
+}
+
+/// The bytes of `line`, as [`Project::new`] numbers the lines of imports.
+fn line_range(line: u32) -> ByteRange {
+    ByteRange::new(line * 100, line * 100 + 100)
 }

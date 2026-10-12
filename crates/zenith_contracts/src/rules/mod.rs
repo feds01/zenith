@@ -8,9 +8,9 @@ mod layers;
 mod protected;
 
 use zenith_config::ContractKind;
-use zenith_graph::{GraphView, KindSet};
+use zenith_graph::GraphView;
 
-use crate::{Violation, contract::UnitResolver};
+use crate::{Violation, contract::UnitResolver, view::Statements};
 
 /// What a contract checks: one variant per contract type, with the units
 /// that its selectors resolved to.
@@ -59,16 +59,16 @@ impl Rule {
         }
     }
 
-    /// Check the rule against `view`. Links keep only the statements that
-    /// aren't of the `excluded` kinds.
-    pub(crate) fn check(&self, view: &GraphView, excluded: KindSet) -> Vec<Violation> {
+    /// Check the rule against `view`. Links keep only the `statements` that
+    /// count.
+    pub(crate) fn check(&self, view: &GraphView, statements: &Statements) -> Vec<Violation> {
         match self {
-            Self::Acyclic(rule) => rule.check(view, excluded),
-            Self::Encapsulation(rule) => rule.check(view, excluded),
-            Self::Forbidden(rule) => rule.check(view, excluded),
-            Self::Independence(rule) => rule.check(view, excluded),
-            Self::Layers(rule) => rule.check(view, excluded),
-            Self::Protected(rule) => rule.check(view, excluded),
+            Self::Acyclic(rule) => rule.check(view, statements),
+            Self::Encapsulation(rule) => rule.check(view, statements),
+            Self::Forbidden(rule) => rule.check(view, statements),
+            Self::Independence(rule) => rule.check(view, statements),
+            Self::Layers(rule) => rule.check(view, statements),
+            Self::Protected(rule) => rule.check(view, statements),
         }
     }
 }

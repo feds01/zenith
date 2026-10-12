@@ -3,9 +3,9 @@
 
 use rayon::prelude::*;
 use zenith_config::ForbiddenConfig;
-use zenith_graph::{GraphView, KindSet, NodeSet, Unit};
+use zenith_graph::{GraphView, NodeSet, Unit};
 
-use crate::{Chain, Violation, contract::UnitResolver};
+use crate::{Chain, Violation, contract::UnitResolver, view::Statements};
 
 /// A compiled `forbidden` contract.
 #[derive(Debug)]
@@ -32,7 +32,7 @@ impl Forbidden {
 
     /// The chains from each `from` unit to each `to` unit in `view`, one
     /// violation per pair of units, in the order of the units.
-    pub(crate) fn check(&self, view: &GraphView, excluded: KindSet) -> Vec<Violation> {
+    pub(crate) fn check(&self, view: &GraphView, statements: &Statements) -> Vec<Violation> {
         // 1. Find everything that reaches each `to` unit, so that a pair without a
         //    chain is ruled out without a search.
         let reachers: Vec<NodeSet> = if self.allow_indirect {
@@ -71,7 +71,7 @@ impl Forbidden {
                 // Ids are in name order, so this sorts the chains shortest first, then
                 // by the names of the nodes they go through.
                 paths.sort_by(|a, b| (a.len(), a).cmp(&(b.len(), b)));
-                let chains = paths.iter().map(|path| Chain::from_path(view, excluded, path));
+                let chains = paths.iter().map(|path| Chain::from_path(view, statements, path));
                 Some(Violation::Dependency {
                     importer: from.label.clone(),
                     imported: to.label.clone(),

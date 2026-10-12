@@ -1,0 +1,9 @@
+[contracts.a-not-b]
+type = "forbidden"
+from = ["src/a"]
+to = ["src/b"]
+
+[contracts.b-protected]
+type = "protected"
+modules = ["src/b"]
+allowed_importers = []

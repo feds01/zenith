@@ -4,7 +4,7 @@
 use divan::Bencher;
 use zenith_benchmark::TempRepo;
 use zenith_config::Config;
-use zenith_contracts::Contract;
+use zenith_contracts::{Contract, Exemptions};
 use zenith_pipeline::{Pipeline, Session, StageKind};
 
 // CodSpeed measures the allocations itself, in its memory mode.
@@ -50,7 +50,8 @@ fn bench_contract(bencher: Bencher, source_files: usize, id: &str) {
     #[cfg(not(codspeed))]
     let bencher = bencher.counter(divan::counter::ItemsCount::new(source_files));
 
-    bencher.bench(|| contract.check(&session.graph, &session.workspace));
+    let exemptions = Exemptions { suppressions: &session.suppressions };
+    bencher.bench(|| contract.check(&session.graph, &session.workspace, &exemptions));
 }
 
 /// A `forbidden` contract that every chain search rules out.

@@ -1,9 +1,9 @@
 //! The `acyclic` contract type: the modules must not form dependency cycles.
 
 use zenith_config::AcyclicConfig;
-use zenith_graph::{GraphView, KindSet, NodeKind, NodeSet, Unit, UnitGraph};
+use zenith_graph::{GraphView, NodeKind, NodeSet, Unit, UnitGraph};
 
-use crate::{CycleBreaker, CycleScope, Link, Violation, contract::UnitResolver};
+use crate::{CycleBreaker, CycleScope, Link, Violation, contract::UnitResolver, view::Statements};
 
 /// A compiled `acyclic` contract.
 #[derive(Debug)]
@@ -41,10 +41,10 @@ impl Acyclic {
     /// The cycles among the modules in `view`, then among the children of
     /// each directory module, and so on, down `depth` generations: one
     /// violation per set of units with cycles.
-    pub(crate) fn check(&self, view: &GraphView, excluded: KindSet) -> Vec<Violation> {
+    pub(crate) fn check(&self, view: &GraphView, statements: &Statements) -> Vec<Violation> {
         let mut violations = Vec::new();
         let scope = self.scope.clone();
-        self.check_units(view, excluded, scope, &self.modules, self.depth, &mut violations);
+        self.check_units(view, statements, scope, &self.modules, self.depth, &mut violations);
         violations
     }
 
@@ -53,7 +53,7 @@ impl Acyclic {
     fn check_units(
         &self,
         view: &GraphView,
-        excluded: KindSet,
+        statements: &Statements,
         scope: CycleScope,
         units: &[Unit],
         depth: u32,
@@ -76,7 +76,7 @@ impl Acyclic {
                     for target in
                         view.imports_of(member).filter(|target| imported.members.contains(*target))
                     {
-                        imports.push(Link::new(view, excluded, member, target));
+                        imports.push(Link::new(view, statements, member, target));
                     }
                 }
                 // The path back from the imported unit ends with the importer, which
@@ -128,7 +128,7 @@ impl Acyclic {
                 .filter(|child| !child.members.is_empty())
                 .collect();
             let scope = CycleScope::Children(unit.label.clone());
-            self.check_units(view, excluded, scope, &children, depth - 1, violations);
+            self.check_units(view, statements, scope, &children, depth - 1, violations);
         }
     }
 }

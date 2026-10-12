@@ -1,0 +1,2 @@
+# Chains, and a cycle.
+check --format json --contract client-safety --contract packages-acyclic

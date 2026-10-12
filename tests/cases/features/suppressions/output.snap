@@ -65,6 +65,19 @@ src/a/unknown.ts:1:1: warning: unused suppression: there is no contract `no-such
 src/a/unused.ts:1:1: warning: unused suppression: no import on line 2 for the contracts it names
 0 kept, 2 broken · 6 files, 4 imports
 
+$ zenith check --format github
+exit: 1
+--- stdout
+::error file=src/a/empty.ts,line=2,col=19,title=zenith(a-not-b)::`src/a` must not import `src/b`
+::error file=src/a/unknown.ts,line=2,col=19,title=zenith(a-not-b)::`src/a` must not import `src/b`
+::error file=src/a/empty.ts,line=2,col=19,title=zenith(b-protected)::`src/a/empty.ts` may not import the protected module `src/b`
+::error file=src/a/trailing.ts,line=1,col=19,title=zenith(b-protected)::`src/a/trailing.ts` may not import the protected module `src/b`
+::error file=src/a/unknown.ts,line=2,col=19,title=zenith(b-protected)::`src/a/unknown.ts` may not import the protected module `src/b`
+::warning file=src/a/empty.ts,line=1,col=1,title=zenith::unused suppression: it names no contract
+::warning file=src/a/unknown.ts,line=1,col=1,title=zenith::unused suppression: there is no contract `no-such-contract`
+::warning file=src/a/unused.ts,line=1,col=1,title=zenith::unused suppression: no import on line 2 for the contracts it names
+0 kept, 2 broken · 6 files, 4 imports
+
 $ zenith check --contract b-protected
 exit: 1
 --- stdout
@@ -100,4 +113,101 @@ Contracts
   ✗ b-protected  protected  broken (3 violations) · 1 suppressed
 
 0 kept, 1 broken · 6 files, 4 imports
+
+$ zenith check --format json --contract b-protected
+exit: 1
+--- stdout
+{
+  "version": 1,
+  "passed": false,
+  "summary": {
+    "kept": 0,
+    "broken": 1,
+    "warnings": 0,
+    "stale_baseline_entries": 0,
+    "files": 6,
+    "imports": 4
+  },
+  "contracts": [
+    {
+      "id": "b-protected",
+      "name": "b-protected",
+      "type": "protected",
+      "severity": "error",
+      "status": "broken",
+      "guidance": null,
+      "violations": [
+        {
+          "kind": "illegal_imports",
+          "module": "src/b",
+          "imports": [
+            {
+              "importer": "src/a/empty.ts",
+              "imported": "src/b/y.ts",
+              "imports": [
+                {
+                  "line": 2,
+                  "column": 19,
+                  "specifier": "../b/y",
+                  "kind": "value"
+                }
+              ]
+            },
+            {
+              "importer": "src/a/trailing.ts",
+              "imported": "src/b/y.ts",
+              "imports": [
+                {
+                  "line": 1,
+                  "column": 19,
+                  "specifier": "../b/y",
+                  "kind": "value"
+                }
+              ]
+            },
+            {
+              "importer": "src/a/unknown.ts",
+              "imported": "src/b/y.ts",
+              "imports": [
+                {
+                  "line": 2,
+                  "column": 19,
+                  "specifier": "../b/y",
+                  "kind": "value"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "unmatched_ignore_imports": [],
+      "stale_baseline_entries": [],
+      "ignored": 0,
+      "suppressed": 1,
+      "baselined": 0
+    }
+  ],
+  "unused_suppressions": [
+    {
+      "file": "src/a/empty.ts",
+      "line": 1,
+      "column": 1,
+      "contracts": [],
+      "reason": "no_contract",
+      "message": "unused suppression: it names no contract"
+    },
+    {
+      "file": "src/a/unknown.ts",
+      "line": 1,
+      "column": 1,
+      "contracts": [
+        "no-such-contract"
+      ],
+      "reason": "unknown_contracts",
+      "message": "unused suppression: there is no contract `no-such-contract`"
+    }
+  ],
+  "unresolved": [],
+  "file_errors": []
+}
 

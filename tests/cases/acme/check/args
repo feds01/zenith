@@ -3,4 +3,3 @@ check
 check --show-unresolved --contract package-tiers
 check --contract web-layers --contract sdk-standalone
 check --contract nope
-check --format json

@@ -5,7 +5,7 @@
 use zenith_config::{AlertLevel, BaselineConfig, ContractConfig, ContractKind, Severity};
 use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span};
 use zenith_graph::{Graph, ImportDetail, ImportKind};
-use zenith_reporting::{Outcome, Summary, SummaryEntry};
+use zenith_reporting::{Count, Outcome, Summary, SummaryEntry};
 use zenith_utils::{
     location::ByteRange,
     printing::{plural, thousands},
@@ -47,8 +47,9 @@ impl ContractReport<'_> {
 
     /// What checking the contract found, a report each, for showing a line
     /// each: one per chain, illegal import and cycle breaker, pointing at its
-    /// first import, one per `ignore_imports` entry that matches nothing and
-    /// breaks the contract, and one per stale `baseline` entry.
+    /// first import, with the contract's guidance, one per `ignore_imports`
+    /// entry that matches nothing, unless they are not to be reported, and
+    /// one per stale `baseline` entry.
     pub fn findings(
         &self,
         graph: &Graph,
@@ -64,12 +65,11 @@ impl ContractReport<'_> {
     /// have. The counts of files and imports, and the timings, are left out.
     pub fn summary(reports: &[Self], baseline: &BaselineConfig) -> Summary {
         let entries = reports.iter().map(|report| report.summary_entry(baseline)).collect();
-        let stale: usize = reports.iter().map(|report| report.stale_entries.len()).sum();
-        let notes = match stale {
-            0 => Vec::new(),
-            stale => vec![plural(stale, "stale baseline entry")],
+        let stale = Count {
+            noun: "stale baseline entry",
+            count: reports.iter().map(|report| report.stale_entries.len()).sum(),
         };
-        Summary { entries, notes, ..Summary::default() }
+        Summary { entries, counts: vec![stale], ..Summary::default() }
     }
 
     /// The contract's line of the summary, with the `baseline` configured.
@@ -275,13 +275,26 @@ impl ReportBuilder<'_> {
                 }
             }
         }
-        for entry in report.unmatched_ignore_errors() {
-            let title = format!("the ignored import `{entry}` matches no import");
-            let mut finding = Report::new(kind, title);
-            if let (Some(source), Some(range)) = (self.config, entry.range()) {
-                finding.add_span(Span::new(source, range));
+        if let Some(guidance) = &config.guidance {
+            for finding in &mut findings {
+                finding.add_help(guidance.trim());
             }
-            findings.push(finding);
+        }
+
+        let unmatched = match config.unmatched_ignore_imports {
+            AlertLevel::Error => Some(kind),
+            AlertLevel::Warn => Some(ReportKind::Warning),
+            AlertLevel::None => None,
+        };
+        if let Some(unmatched) = unmatched {
+            for entry in &report.unmatched_ignores {
+                let title = format!("the ignored import `{entry}` matches no import");
+                let mut finding = Report::new(unmatched, title);
+                if let (Some(source), Some(range)) = (self.config, entry.range()) {
+                    finding.add_span(Span::new(source, range));
+                }
+                findings.push(finding);
+            }
         }
         let stale = self.entry_spans(&config.id, &report.stale_entries);
         for (entry, span) in report.stale_entries.iter().zip(stale) {
@@ -486,7 +499,7 @@ impl ReportBuilder<'_> {
 
 /// The span to point at for `import` in the `text` of its file: its quoted
 /// specifier in the statement, or else the statement's first line.
-fn import_span(text: &str, import: &ImportDetail) -> ByteRange {
+pub(crate) fn import_span(text: &str, import: &ImportDetail) -> ByteRange {
     let start = (import.range.start() as usize).min(text.len());
     let end = (import.range.end() as usize).clamp(start, text.len());
     let statement = text.get(start..end).unwrap_or_default();
@@ -638,10 +651,9 @@ mod tests {
             let project = Project::new(&values(&[("a/x.ts", "b/y.ts")]), &[], &toml)
                 .baseline("f", &["a/x.ts -> b/y.ts", "a/gone.ts -> b/y.ts"]);
             let summary = ContractReport::summary(&[project.check("f")], &project.config.baseline);
-            (summary.failed(), summary.notes)
+            (summary.failed(), summary.counts[0].count)
         };
-        let notes = vec!["1 stale baseline entry".to_string()];
-        assert_eq!(summarise("error", "error"), (true, notes));
+        assert_eq!(summarise("error", "error"), (true, 1));
         assert!(!summarise("warn", "error").0);
         assert!(!summarise("error", "warn").0);
     }

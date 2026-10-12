@@ -17,6 +17,10 @@ pub enum Format {
     /// A line for every report, `path:line:col: level[contract]: message`,
     /// then the totals.
     Compact,
+
+    /// A GitHub Actions workflow command for every report, which shows it as
+    /// an annotation on its line of a pull request, then the totals.
+    Github,
 }
 
 /// The output of a check, shown in its [`Format`].
@@ -54,6 +58,12 @@ impl fmt::Display for Output<'_> {
                 }
                 write!(f, "{}", self.summary.totals())
             }
+            Format::Github => {
+                if !self.reports.is_empty() {
+                    writeln!(f, "{}", reporter.github())?;
+                }
+                write!(f, "{}", self.summary.totals())
+            }
         }
     }
 }
@@ -74,7 +84,7 @@ mod tests {
         let mut sources = SourceMap::new();
         let file = sources.add("web/a.ts", "import './b';\n");
         let mut report = Report::error("`web` must not import `api`").with_id("a");
-        report.add_span(Span::new(file, ByteRange::new(7, 12)));
+        report.add_span(Span::new(file, ByteRange::new(7, 12))).add_help("keep it: down");
         let outcome = Outcome::Broken { findings: 1, kind: ReportKind::Error };
         let entry = SummaryEntry {
             id: "a".into(),
@@ -87,7 +97,7 @@ mod tests {
             entries: vec![entry],
             files: 2,
             imports: 1,
-            notes: Vec::new(),
+            counts: Vec::new(),
             timings: None,
         };
         Output { sources: &sources, reports: &[report], summary: &summary, format }.to_string()
@@ -101,6 +111,8 @@ mod tests {
             "  |",
             "1 | import './b';",
             "  |        ^^^^^",
+            "  |",
+            "  = help: keep it: down",
             "",
             "Contracts",
             "  ✗ a  forbidden  broken (1 violation)",
@@ -117,5 +129,14 @@ mod tests {
             "0 kept, 1 broken · 2 files, 1 import",
         ];
         assert_eq!(render(Format::Compact), expected.join("\n"));
+    }
+
+    #[test]
+    fn github_shows_a_workflow_command_per_report() {
+        let expected = [
+            "::error file=web/a.ts,line=1,col=8,title=zenith(a)::`web` must not import `api`%0Akeep it: down",
+            "0 kept, 1 broken · 2 files, 1 import",
+        ];
+        assert_eq!(render(Format::Github), expected.join("\n"));
     }
 }

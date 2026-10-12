@@ -6,6 +6,43 @@ zenith.baseline.toml:5:5: warning[a-not-b]: stale baseline entry `src/a/gone.ts 
 zenith.baseline.toml:8:5: warning[b-not-a]: stale baseline entry `src/b/gone.ts -> src/a/x.ts`: its import no longer exists
 1 kept, 1 broken · 2 stale baseline entries · 2 files, 1 import
 
+$ zenith check --format json --contract b-not-a
+exit: 0
+--- stdout
+{
+  "version": 1,
+  "passed": true,
+  "summary": {
+    "kept": 1,
+    "broken": 0,
+    "warnings": 0,
+    "stale_baseline_entries": 1,
+    "files": 2,
+    "imports": 1
+  },
+  "contracts": [
+    {
+      "id": "b-not-a",
+      "name": "b-not-a",
+      "type": "forbidden",
+      "severity": "error",
+      "status": "kept",
+      "guidance": null,
+      "violations": [],
+      "unmatched_ignore_imports": [],
+      "stale_baseline_entries": [
+        "src/b/gone.ts -> src/a/x.ts"
+      ],
+      "ignored": 0,
+      "suppressed": 0,
+      "baselined": 0
+    }
+  ],
+  "unused_suppressions": [],
+  "unresolved": [],
+  "file_errors": []
+}
+
 $ zenith baseline --contract b-not-a
 exit: 0
 --- stdout

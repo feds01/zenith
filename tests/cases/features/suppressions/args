@@ -1,5 +1,7 @@
 # Suppressions name one contract or several, before an import or after it.
 check
 check --format compact
+check --format github
 # Only suppressions of the checked contracts can be unused.
 check --contract b-protected
+check --format json --contract b-protected

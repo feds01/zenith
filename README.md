@@ -48,6 +48,9 @@ just lint      # clippy (deny warnings) and the formatting check
 just run       # run the CLI from source, e.g. `just run version`
 ```
 
+The user guide is in [docs/book](docs/book/src/introduction.md), published to
+[GitHub Pages](https://feds01.github.io/zenith/).
+
 See [CLAUDE.md](CLAUDE.md) for the architecture and conventions.
 
 ## Releasing

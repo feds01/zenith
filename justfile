@@ -85,6 +85,10 @@ ci: test lint
 docs:
     cargo doc --workspace --no-deps --open
 
+# Serve the user guide in docs/book, rebuilt on every change; needs mdBook 0.4.40
+book:
+    mdbook serve docs/book --open
+
 # Remove build artifacts
 clean:
     cargo clean

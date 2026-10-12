@@ -13,3 +13,6 @@
 
 # Local corpus configs (may describe private codebases)
 /corpus/
+
+# The built user guide
+/docs/book/book/

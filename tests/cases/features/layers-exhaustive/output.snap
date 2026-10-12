@@ -6,7 +6,7 @@ error[domain-layers]: `domains/orders/utils.ts` is not declared as a layer of `d
   = help: the contract is exhaustive: declare it in `layers`, or add it to `exhaustive_ignores`
 
 Contracts
-  ✗ domain-layers  layers        broken (1 violation)
+  ✗ domain-layers  layers  broken (1 violation)
 
 0 kept, 1 broken · 8 files, 3 imports
 

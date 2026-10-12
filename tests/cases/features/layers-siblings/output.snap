@@ -8,8 +8,8 @@ error[independent-siblings]: `src/orders` must not import `src/billing`
   |                         ^^^^^^^^^^^^ imports `src/billing/index.ts`
 
 Contracts
-  ✗ independent-siblings  layers        broken (1 violation)
-  ✓ coupled-siblings      layers        kept
+  ✗ independent-siblings  layers  broken (1 violation)
+  ✓ coupled-siblings      layers  kept
 
 1 kept, 1 broken · 4 files, 5 imports
 

@@ -14,7 +14,7 @@ error[three-tiers]: `src/low` must not import `src/mid`
   |                     ^^^^^^^^^^ imports `src/mid/m.ts`
 
 Contracts
-  ✗ three-tiers  layers        broken (2 violations)
+  ✗ three-tiers  layers  broken (2 violations)
 
 0 kept, 1 broken · 3 files, 2 imports
 

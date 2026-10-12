@@ -119,16 +119,16 @@ warning: 1 import could not be resolved
   = help: use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
 
 Contracts
-  ✗ web-layers              layers        broken (3 violations)
-  ✗ package-tiers           layers        broken (1 violation)
-  ✗ packages-acyclic        acyclic       broken (1 violation)
-  ✗ client-safety           forbidden     broken (3 violations)
-  ! ai-public-surface       encapsulation broken (2 violations, warning only)
-  ✗ strategies-independent  independence  broken (1 violation)
-  ✗ mastra-protected        protected     broken (1 violation)
-  ✗ api-domain-layers       layers        broken (1 violation)
-  ✗ legacy-freeze           forbidden     broken (1 violation)
-  ✓ sdk-standalone          forbidden     kept
+  ✗ web-layers              layers         broken (3 violations)
+  ✗ package-tiers           layers         broken (1 violation)
+  ✗ packages-acyclic        acyclic        broken (1 violation)
+  ✗ client-safety           forbidden      broken (3 violations)
+  ! ai-public-surface       encapsulation  broken (2 violations, warning only)
+  ✗ strategies-independent  independence   broken (1 violation)
+  ✗ mastra-protected        protected      broken (1 violation)
+  ✗ api-domain-layers       layers         broken (1 violation)
+  ✗ legacy-freeze           forbidden      broken (1 violation)
+  ✓ sdk-standalone          forbidden      kept
 
 1 kept, 8 broken, 1 warning · 78 files, 127 imports
 
@@ -146,7 +146,7 @@ warning: 1 import could not be resolved
   = note:   sdk/src/client.ts:3:1  `./does-not-exist`  (Cannot find module './does-not-exist')
 
 Contracts
-  ✗ package-tiers  layers        broken (1 violation)
+  ✗ package-tiers  layers  broken (1 violation)
 
 0 kept, 1 broken · 78 files, 127 imports
 
@@ -179,8 +179,8 @@ warning: 1 import could not be resolved
   = help: use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
 
 Contracts
-  ✗ web-layers      layers        broken (3 violations)
-  ✓ sdk-standalone  forbidden     kept
+  ✗ web-layers      layers     broken (3 violations)
+  ✓ sdk-standalone  forbidden  kept
 
 1 kept, 1 broken · 78 files, 127 imports
 

@@ -10,7 +10,8 @@ use crate::{
 };
 
 /// Renders reports, reading their excerpts from a [`SourceMap`]. Each report
-/// is rendered on its own, and a blank line separates them.
+/// is rendered on its own, and a blank line separates them, unless they are
+/// rendered [short](Reporter::short), a line each.
 pub struct Reporter<'a> {
     /// The sources that the reports point into.
     sources: &'a SourceMap,
@@ -20,12 +21,16 @@ pub struct Reporter<'a> {
 
     /// How to render them: plain by default.
     renderer: Renderer,
+
+    /// Whether to render each report as a line, without its excerpts and
+    /// notes.
+    short: bool,
 }
 
 impl<'a> Reporter<'a> {
     /// A reporter that renders `reports` without colour.
     pub fn new(sources: &'a SourceMap, reports: &'a [Report]) -> Self {
-        Self { sources, reports, renderer: Renderer::plain() }
+        Self { sources, reports, renderer: Renderer::plain(), short: false }
     }
 
     /// Render with `renderer` instead, e.g. [`Renderer::styled`] for a
@@ -37,6 +42,13 @@ impl<'a> Reporter<'a> {
     /// Render in colour if `colour` is set, and plainly otherwise.
     pub fn with_colour(self, colour: bool) -> Self {
         self.with_renderer(if colour { Renderer::styled() } else { Renderer::plain() })
+    }
+
+    /// Render each report as a line, `path:line:col: level[id]: title`, where
+    /// its first excerpt starts, as `rustc --error-format=short` does. A
+    /// report without excerpts is `level[id]: title`.
+    pub fn short(self) -> Self {
+        Self { short: true, ..self }
     }
 
     /// The `annotate-snippets` group of a report.
@@ -77,11 +89,13 @@ impl<'a> Reporter<'a> {
 
 impl fmt::Display for Reporter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let renderer = self.renderer.clone().short_message(self.short);
+        let separator = if self.short { "\n" } else { "\n\n" };
         for (index, report) in self.reports.iter().enumerate() {
             if index > 0 {
-                f.write_str("\n\n")?;
+                f.write_str(separator)?;
             }
-            f.write_str(&self.renderer.render(&[self.group(report)]))?;
+            f.write_str(&renderer.render(&[self.group(report)]))?;
         }
         Ok(())
     }
@@ -161,6 +175,21 @@ mod tests {
             "  |            ^",
         ];
         assert_eq!(Reporter::new(&sources, &[report]).to_string(), expected.join("\n"));
+    }
+
+    #[test]
+    fn renders_short_reports_a_line_each() {
+        let mut sources = SourceMap::new();
+        let config = sources.add("zenith.toml", CONFIG);
+        let mut unknown_key = Report::error("unknown key `exclud`").with_id("a");
+        unknown_key
+            .add_labelled_span(Span::new(config, ByteRange::new(8, 14)), "here")
+            .add_help("did you mean `exclude`?");
+        let reports = [unknown_key, Report::warning("no contracts")];
+
+        let expected =
+            ["zenith.toml:2:1: error[a]: unknown key `exclud`: here", "warning: no contracts"];
+        assert_eq!(Reporter::new(&sources, &reports).short().to_string(), expected.join("\n"));
     }
 
     #[test]

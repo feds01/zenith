@@ -62,10 +62,10 @@ pub enum ContractErrorKind {
 
 impl ContractError {
     /// The report of the error, which points into `source`, the
-    /// configuration file.
-    pub fn report(&self, source: SourceId) -> Report {
+    /// configuration file, if it was read from one.
+    pub fn report(&self, source: Option<SourceId>) -> Report {
         let mut report = Report::error(self.kind.to_string());
-        if let Some(range) = self.range {
+        if let (Some(source), Some(range)) = (source, self.range) {
             report.add_span(Span::new(source, range));
         }
         report.add_note(format!("in contract `{}`", self.contract));
@@ -147,7 +147,7 @@ mod tests {
             "  = help: check it for a typo, or for a module that was renamed or removed",
         ];
         assert_eq!(
-            Reporter::new(&sources, &[error.report(source)]).to_string(),
+            Reporter::new(&sources, &[error.report(Some(source))]).to_string(),
             expected.join("\n")
         );
         assert_eq!(error.to_string(), "in contract `a`: `web/srcs` does not match anything");

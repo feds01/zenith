@@ -8,9 +8,9 @@ error[tools-not-shared]: `tools` must not import `shared`
   |                        ^^^^^^^^^^^^^^ imports `shared/util.ts`
 
 Contracts
-  ✓ core-not-app           forbidden     kept
-  ✓ app-has-no-npm-config  forbidden     kept
-  ✗ tools-not-shared       forbidden     broken (1 violation)
+  ✓ core-not-app           forbidden  kept
+  ✓ app-has-no-npm-config  forbidden  kept
+  ✗ tools-not-shared       forbidden  broken (1 violation)
 
 2 kept, 1 broken · 7 files, 5 imports
 

@@ -8,7 +8,7 @@ error[feature-surface]: `src/feature` may only be imported through its entry poi
   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `src/feature/internal/impl.ts`, which is internal
 
 Contracts
-  ✗ feature-surface  encapsulation broken (1 violation)
+  ✗ feature-surface  encapsulation  broken (1 violation)
 
 0 kept, 1 broken · 7 files, 6 imports
 

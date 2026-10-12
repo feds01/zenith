@@ -102,7 +102,7 @@ impl<T> Located<T> {
 ///
 /// Offsets are `u32`, like the spans of the JS/TS parser, so the text must be
 /// shorter than 4 GiB.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LineIndex {
     /// The byte offset at which each line starts, in ascending order. The
     /// first line always starts at 0.

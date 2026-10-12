@@ -24,8 +24,8 @@ error[direct-only]: `src/a` must not import `src/c`
   |                   ^^^^^^^^ imports `src/c/z.ts`
 
 Contracts
-  ✗ transitive   forbidden     broken (2 violations)
-  ✗ direct-only  forbidden     broken (1 violation)
+  ✗ transitive   forbidden  broken (2 violations)
+  ✗ direct-only  forbidden  broken (1 violation)
 
 0 kept, 2 broken · 4 files, 3 imports
 

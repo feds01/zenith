@@ -4,9 +4,9 @@ use std::fmt;
 
 use anyhow::{Result, bail};
 use zenith_contracts::Selection;
+use zenith_diagnostics::SourceMap;
 use zenith_graph::{Graph, GraphView, ImportKind, KindSet, ModuleId, NodeSet};
 use zenith_pipeline::StageKind;
-use zenith_reporting::Sources;
 use zenith_utils::{
     highlight::{Modifier, highlight},
     printing::plural,
@@ -48,7 +48,7 @@ pub fn why(global: &GlobalArgs, args: WhyCommand) -> Result<ExitStatus> {
     }
 
     // 4. Show the chains, up to the limit, with the lines of their imports.
-    let mut sources = Sources::new(&session.root);
+    let mut sources = SourceMap::with_root(&session.root);
     let total = chains.len();
     for (number, chain) in chains.iter().take(args.limit).enumerate() {
         println!("{}", highlight(Modifier::Bold, format!("chain {} of {total}:", number + 1)));
@@ -92,18 +92,24 @@ struct ImportLine {
 impl<'g> Chain<'g> {
     /// The chain through the nodes of `chain`, with the imports of each link
     /// that aren't of the `excluded` kinds, located in `sources`.
-    fn new(graph: &'g Graph, chain: &[ModuleId], excluded: KindSet, sources: &mut Sources) -> Self {
+    fn new(
+        graph: &'g Graph,
+        chain: &[ModuleId],
+        excluded: KindSet,
+        sources: &mut SourceMap,
+    ) -> Self {
         let links = chain
             .windows(2)
             .map(|link| {
                 let [importer, imported] = [link[0], link[1]];
                 let file = graph.name(importer);
+                let source = sources.file(file).map(|id| sources.get(id));
                 let imports = graph
                     .details(importer, imported)
                     .iter()
                     .filter(|detail| !excluded.contains(detail.kind.into()))
                     .map(|detail| ImportLine {
-                        line: sources.position(file, detail.range.start()).map(|(line, _)| line),
+                        line: source.map(|source| source.line(detail.range.start())),
                         kind: detail.kind,
                     })
                     .collect();

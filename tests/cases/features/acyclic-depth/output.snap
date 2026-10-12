@@ -20,7 +20,7 @@ error[no-cycles]: dependency cycle among the children of `src/a`
             src/a/two.ts -> src/a/one.ts (1 import)
 
 Contracts
-  ✗ no-cycles  acyclic       broken (2 violations)
+  ✗ no-cycles  acyclic  broken (2 violations)
 
 0 kept, 1 broken · 7 files, 9 imports
 

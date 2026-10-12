@@ -6,10 +6,8 @@ use std::{env, path::Path};
 use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
 use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
-use zenith_contracts::ContractError;
 use zenith_diagnostics::SourceMap;
 use zenith_pipeline::{FileError, FileErrorKind, Pipeline, Session, StageKind};
-use zenith_reporting::Sources;
 use zenith_utils::{path::adjust_canonicalisation, printing::plural};
 
 use crate::{Reported, cli::GlobalArgs, reporting};
@@ -52,7 +50,7 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
     let config = match &config_path {
         Some(path) => {
             debug!("configuration: {}", path.display());
-            load(path, &cwd)?
+            load(path, &root)?
         }
         None => {
             debug!("no `{CONFIG_FILE_NAME}` found; using the defaults");
@@ -68,7 +66,7 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
 pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<Pipeline> {
     let mut pipeline = Pipeline::standard();
     pipeline.run_until(session, last)?;
-    report_file_errors(&mut Sources::new(&session.root), &session.file_errors);
+    report_file_errors(&mut SourceMap::with_root(&session.root), &session.file_errors);
 
     if last >= StageKind::Graph {
         info!(
@@ -85,35 +83,14 @@ pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<Pipeli
     Ok(pipeline)
 }
 
-/// Show the errors of the contracts that could not be compiled, in the
-/// context of the configuration file.
-pub(crate) fn report_contract_errors(session: &Session, errors: &[ContractError]) {
-    let mut sources = SourceMap::new();
-    let source = session.config.file.as_ref().map(|file| {
-        let cwd = env::current_dir().unwrap_or_default();
-        let shown = file.path.strip_prefix(&cwd).unwrap_or(&file.path);
-        sources.add(shown.display().to_string(), file.contents.as_str())
-    });
-    let reports: Vec<_> = errors
-        .iter()
-        .map(|error| match source {
-            Some(source) => error.report(source),
-            // Without a file, there is no excerpt to show.
-            None => zenith_diagnostics::Report::error(error.to_string()),
-        })
-        .collect();
-    reporting::emit(&sources, &reports);
-}
-
 /// Load the configuration file at `path`. An invalid file is reported, with
-/// its path relative to `cwd` if it is inside it.
-fn load(path: &Path, cwd: &Path) -> Result<Config> {
+/// its path relative to the project `root` if it is inside it.
+fn load(path: &Path, root: &Path) -> Result<Config> {
     match Config::load(path) {
         Ok(config) => Ok(config),
         Err(LoadError::Invalid { path, contents, errors }) => {
-            let mut sources = SourceMap::new();
-            let shown = path.strip_prefix(cwd).unwrap_or(&path);
-            let source = sources.add(shown.display().to_string(), contents);
+            let mut sources = SourceMap::with_root(root);
+            let source = sources.add_file(&path, contents);
             let reports: Vec<_> = errors.iter().map(|error| error.report(source)).collect();
             reporting::emit(&sources, &reports);
             Err(Reported.into())
@@ -124,19 +101,19 @@ fn load(path: &Path, cwd: &Path) -> Result<Config> {
 
 /// Warn about the files that could not be read or parsed in full. A syntax
 /// error is shown in context.
-fn report_file_errors(sources: &mut Sources, errors: &[FileError]) {
+fn report_file_errors(sources: &mut SourceMap, errors: &[FileError]) {
     let reports: Vec<_> = errors
         .iter()
         .map(|error| {
             // Only a syntax error is shown in context, so only its file is read.
             let source = match error.kind {
-                FileErrorKind::Syntax(_) => sources.source(&error.file),
+                FileErrorKind::Syntax(_) => sources.file(&error.file),
                 FileErrorKind::Read(_) => None,
             };
             error.report(source)
         })
         .collect();
-    reporting::emit(sources.map(), &reports);
+    reporting::emit(sources, &reports);
 }
 
 /// Warn about the imports of `session` that could not be resolved, and list
@@ -146,15 +123,15 @@ pub(crate) fn warn_about_unresolved(session: &Session) {
     if count == 0 {
         return;
     }
-    let mut sources = Sources::new(&session.root);
+    let mut sources = SourceMap::with_root(&session.root);
     let listed = log_enabled!(log::Level::Info);
     if listed {
         for import in &session.unresolved {
-            let (line, column) =
-                sources.position(&import.file, import.import.range.start()).unwrap_or_default();
             info!(
-                "`{}` in {}:{line}:{column} could not be resolved: {}",
-                import.import.specifier, import.file, import.reason
+                "`{}` in {} could not be resolved: {}",
+                import.import.specifier,
+                import.location(&mut sources),
+                import.reason
             );
         }
     }

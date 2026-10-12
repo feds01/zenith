@@ -1,25 +1,24 @@
 //! `zenith check`.
 
-use std::{io, time::Instant};
+use std::time::Instant;
 
 use anyhow::{Result, bail};
 use zenith_contracts::Contract;
 use zenith_pipeline::StageKind;
-use zenith_reporting::{CheckResults, Sources};
-use zenith_utils::highlight::colour_enabled;
+use zenith_reporting::{Format, Output, Summary};
 
 use crate::{
     ExitStatus, Reported,
     cli::{CheckCommand, GlobalArgs, ReportFormat},
-    project,
+    project, reporting,
 };
 
 /// Check the architecture contracts, and exit with [`ExitStatus::Failure`]
 /// if a contract of `error` severity is broken.
 pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
-    let compact = match args.format {
-        ReportFormat::Pretty => false,
-        ReportFormat::Compact => true,
+    let format = match args.format {
+        ReportFormat::Pretty => Format::Pretty,
+        ReportFormat::Compact => Format::Compact,
         ReportFormat::Json => bail!("`--format json` is not supported yet"),
         ReportFormat::Github => bail!("`--format github` is not supported yet"),
     };
@@ -47,39 +46,55 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
 
     // 3. Compile them against the graph. Their errors are shown in the context of
     //    the configuration file.
+    let (mut sources, config) = session.sources();
     let contracts = match Contract::compile_all(selected, &session.graph, &session.workspace) {
         Ok(contracts) => contracts,
         Err(errors) => {
-            project::report_contract_errors(&session, &errors);
+            let reports: Vec<_> = errors.iter().map(|error| error.report(config)).collect();
+            reporting::emit(&sources, &reports);
             return Err(Reported.into());
         }
     };
 
     // 4. Check them, in parallel.
     let start = Instant::now();
-    let reports = Contract::check_all(&contracts, &session.graph, &session.workspace);
+    let checked = Contract::check_all(&contracts, &session.graph, &session.workspace);
     let check_time = start.elapsed();
 
-    // 5. Show what they found, and fail if a contract of `error` severity is
-    //    broken.
-    let timings: Vec<_> = pipeline
+    // 5. Report what they found: in full, then the imports that couldn't be
+    //    resolved, or a finding a line, with every unresolved import if asked.
+    let graph = &session.graph;
+    let mut reports = Vec::new();
+    for report in &checked {
+        reports.extend(match format {
+            Format::Pretty => report.reports(graph, &mut sources, config),
+            Format::Compact => report.findings(graph, &mut sources, config),
+        });
+    }
+    match format {
+        Format::Pretty => {
+            reports.extend(session.unresolved_report(&mut sources, args.show_unresolved));
+        }
+        Format::Compact if args.show_unresolved => {
+            reports.extend(session.unresolved.iter().map(|import| import.report(&mut sources)));
+        }
+        Format::Compact => {}
+    }
+
+    // 6. Show them with a summary of every contract, and fail if a contract of
+    //    `error` severity is broken.
+    let timings = pipeline
         .timings()
         .iter()
         .map(|(kind, time)| (kind.name(), *time))
         .chain([("check", check_time)])
         .collect();
-    let results = CheckResults {
-        session: &session,
-        reports: &reports,
-        show_unresolved: args.show_unresolved,
-        timings: args.show_timings.then_some(timings.as_slice()),
+    let summary = Summary {
+        entries: checked.iter().map(|report| report.summary_entry()).collect(),
+        files: session.files.len(),
+        imports: graph.detail_count(),
+        timings: args.show_timings.then_some(timings),
     };
-    let mut sources = Sources::new(&session.root);
-    let mut out = io::stdout().lock();
-    if compact {
-        results.write_compact(&mut sources, &mut out)?;
-    } else {
-        results.write_pretty(&mut sources, colour_enabled(), &mut out)?;
-    }
-    Ok(if results.failed() { ExitStatus::Failure } else { ExitStatus::Success })
+    println!("{}", Output { sources: &sources, reports: &reports, summary: &summary, format });
+    Ok(if summary.failed() { ExitStatus::Failure } else { ExitStatus::Success })
 }

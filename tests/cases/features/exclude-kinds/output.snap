@@ -47,10 +47,10 @@ error[requires-only]: `src/low` must not import `src/high`
   |                    ^^^^^^^^^^^ imports `src/high/h.ts`
 
 Contracts
-  ✗ default-kinds       forbidden     broken (3 violations)
-  ✗ all-kinds           forbidden     broken (7 violations)
-  ✓ static-values-only  forbidden     kept
-  ✗ requires-only       forbidden     broken (2 violations)
+  ✗ default-kinds       forbidden  broken (3 violations)
+  ✗ all-kinds           forbidden  broken (7 violations)
+  ✓ static-values-only  forbidden  kept
+  ✗ requires-only       forbidden  broken (2 violations)
 
 1 kept, 3 broken · 8 files, 7 imports
 

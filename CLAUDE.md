@@ -51,10 +51,13 @@ it when responsibilities move. On `main` today:
   find, and failing on path and `pkg:` selectors that match nothing;
   compiling contracts against a project, the view of the graph that each
   checks against (without its excluded kinds and ignored imports), the
-  six contract types, and the violations they find.
-- `zenith_diagnostics`: the errors and warnings reported about zenith's
-  input, collected per pass and rendered as reports with labelled source
-  excerpts using `annotate-snippets`.
+  six contract types, the violations they find, and their reports and
+  summary entries.
+- `zenith_diagnostics`: reports with labelled source excerpts, which each
+  crate makes from its own errors and findings, rendered in full or a line
+  each using `annotate-snippets`; the `SourceMap`, which reads a project's
+  files when reports first need them and finds where a span is; and errors
+  and warnings collected per pass.
 - `zenith_graph`: the module tree and import graph model, import kinds, node
   sets, units, finding the nodes that a path glob or name pattern picks out,
   graph views that leave out imports (by pair or by kind), the grimp
@@ -66,11 +69,11 @@ it when responsibilities move. On `main` today:
   a project into its import graph, registered in order on a `Pipeline` that
   runs and times them, and the `Session` they share. Each stage is a thin
   adapter over the crate that does its work. Files it can't read or parse
-  are recorded as `FileError`s, with reports.
-- `zenith_reporting`: the output of `zenith check`: a report with excerpts
-  for every violation, the summary of every contract, and the `pretty` and
-  `compact` formats; and `Sources`, the cache of source files that excerpts
-  and line numbers are read from.
+  are recorded as `FileError`s, and imports it can't resolve as
+  `UnresolvedImport`s, with reports.
+- `zenith_reporting`: the output of `zenith check`, without knowing what
+  is checked: the reports that the domain crates make, then the summary of
+  every contract, in the `pretty` and `compact` formats.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`, its
   classification, and `exports`-aware workspace resolution.
 - `zenith_utils`: file reading, path and specifier helpers, byte ranges, the

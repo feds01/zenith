@@ -8,8 +8,8 @@ warning[gradual]: `src/a` must not import `src/b`
   |                   ^^^^^^^^ imports `src/b/y.ts`
 
 Contracts
-  ! gradual  forbidden     broken (1 violation, warning only)
-  ✓ strict   forbidden     kept
+  ! gradual  forbidden  broken (1 violation, warning only)
+  ✓ strict   forbidden  kept
 
 1 kept, 0 broken, 1 warning · 2 files, 1 import
 

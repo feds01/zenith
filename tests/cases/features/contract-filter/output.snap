@@ -8,7 +8,7 @@ error[b-not-a]: `src/b` must not import `src/a`
   |                        ^^^^^^^^^^^^ imports `src/a/types.ts`
 
 Contracts
-  ✗ b-not-a  forbidden     broken (1 violation)
+  ✗ b-not-a  forbidden  broken (1 violation)
 
 0 kept, 1 broken · 3 files, 2 imports
 

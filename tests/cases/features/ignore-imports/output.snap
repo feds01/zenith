@@ -18,9 +18,9 @@ error[unmatched-errors]: the ignored import `src/b -> src/a` matches no import
    = help: remove it, or set `unmatched_ignore_imports` to `warn` or `none`
 
 Contracts
-  ✓ unmatched-warns   forbidden     kept
-  ✗ unmatched-errors  forbidden     broken (1 violation)
-  ✓ unmatched-silent  forbidden     kept
+  ✓ unmatched-warns   forbidden  kept
+  ✗ unmatched-errors  forbidden  broken (1 violation)
+  ✓ unmatched-silent  forbidden  kept
 
 2 kept, 1 broken · 2 files, 1 import
 

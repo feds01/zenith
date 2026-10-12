@@ -3,7 +3,8 @@
 use std::{fs, ops::Range, path::PathBuf};
 
 use tempfile::TempDir;
-use zenith_config::Config;
+use zenith_config::{Config, ConfigFile};
+use zenith_diagnostics::{ReportElement, Reporter};
 use zenith_graph::{Graph, ImportKind, ModuleId, NodeKind};
 use zenith_resolve::{ResolverError, UnresolvedReason};
 use zenith_utils::path::adjust_canonicalisation;
@@ -253,6 +254,44 @@ fn unresolved_imports_are_sorted_by_file_then_in_source_order() {
         .map(|import| format!("{} {}", import.file, import.import.specifier))
         .collect();
     assert_eq!(unresolved, ["a-c.ts ./x", "a/c.ts ./y", "b.ts ./b2", "b.ts ./b1"]);
+}
+
+#[test]
+fn unresolved_imports_are_reported_where_they_are() {
+    let project = Project::new(&[("app.ts", b"// app\n\nimport './missing';\n")]);
+    let session = project.build("").unwrap();
+    let (mut sources, _) = session.sources();
+    let import = &session.unresolved[0];
+    assert_eq!(import.location(&mut sources), "app.ts:3:1");
+    let report = import.report(&mut sources);
+    let reason = &import.reason;
+    assert_eq!(
+        Reporter::new(&sources, &[report]).short().to_string(),
+        format!("app.ts:3:1: warning: could not resolve `./missing`: {reason}")
+    );
+
+    let listed = session.unresolved_report(&mut sources, true).unwrap();
+    assert_eq!(listed.title, "1 import could not be resolved");
+    let [ReportElement::Note(note)] = listed.contents.as_slice() else { panic!("{listed:?}") };
+    assert_eq!(note.message, format!("  app.ts:3:1  `./missing`  ({reason})"));
+    assert!(
+        project
+            .build("[resolve]\nignore_unresolved = [\"./missing\"]\n")
+            .unwrap()
+            .unresolved_report(&mut sources, false)
+            .is_none()
+    );
+}
+
+#[test]
+fn the_configuration_file_is_shown_relative_to_the_root() {
+    let project = Project::new(&[]);
+    let mut session = project.session("");
+    assert_eq!(session.sources().1, None);
+    let file = ConfigFile { path: project.root.join("zenith.toml"), contents: String::new() };
+    session.config.file = Some(file);
+    let (sources, config) = session.sources();
+    assert_eq!(sources.get(config.unwrap()).path, "zenith.toml");
 }
 
 #[test]

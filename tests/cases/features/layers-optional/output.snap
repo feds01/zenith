@@ -8,7 +8,7 @@ error[domain-layers]: `domains/billing/types` must not import `domains/billing/a
   |                                   ^^^^^^^ imports `domains/billing/api.ts`
 
 Contracts
-  ✗ domain-layers  layers        broken (1 violation)
+  ✗ domain-layers  layers  broken (1 violation)
 
 0 kept, 1 broken · 5 files, 3 imports
 

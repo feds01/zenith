@@ -13,8 +13,8 @@ error[indirect]: `src/low` must not import `src/high`
             -> src/high/h.ts
 
 Contracts
-  ✗ indirect     layers        broken (1 violation)
-  ✓ direct-only  layers        kept
+  ✗ indirect     layers  broken (1 violation)
+  ✓ direct-only  layers  kept
 
 1 kept, 1 broken · 3 files, 2 imports
 

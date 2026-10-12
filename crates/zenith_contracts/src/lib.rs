@@ -11,11 +11,14 @@
 //! [`ContractError`]s that point at the selectors in the configuration file.
 //! [`Contract::check`] then checks it against its own view of the graph,
 //! without the imports that the contract excludes by kind or ignores, and
-//! returns a [`ContractReport`] of its [`Violation`]s.
+//! returns a [`ContractReport`] of its [`Violation`]s, which
+//! [`ContractReport::reports`] turns into reports with excerpts of the imports
+//! that break it.
 
 mod contract;
 mod error;
 mod findings;
+mod reports;
 mod rules;
 mod selection;
 #[cfg(test)]

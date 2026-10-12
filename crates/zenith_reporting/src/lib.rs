@@ -1,15 +1,12 @@
-//! Showing the results of checking contracts.
+//! The output of `zenith check`: the reports of what is wrong, then a summary
+//! of every contract, in the `pretty` or `compact` format.
 //!
-//! A [`ViolationReporter`] turns what checking a contract finds into
-//! [`Report`](zenith_diagnostics::Report)s, with excerpts of the imports
-//! that break it, read from the project's [`Sources`]. [`CheckResults`] writes
-//! the output of `zenith check`: those reports and a summary of every
-//! contract (`pretty`), or a line per finding (`compact`).
+//! The crate knows nothing of what is checked. The crates that check things
+//! turn what they find into [`Report`](zenith_diagnostics::Report)s and
+//! [`SummaryEntry`]s, and an [`Output`] shows them.
 
-mod check;
-mod sources;
-mod violations;
+mod output;
+mod summary;
 
-pub use check::CheckResults;
-pub use sources::Sources;
-pub use violations::ViolationReporter;
+pub use output::{Format, Output};
+pub use summary::{Outcome, Summary, SummaryEntry};

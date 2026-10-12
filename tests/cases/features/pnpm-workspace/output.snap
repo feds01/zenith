@@ -17,8 +17,8 @@ error[packages-acyclic]: dependency cycle in `pkg:*`
             @demo/utils -> @demo/ui (1 import)
 
 Contracts
-  ✗ package-tiers     layers        broken (1 violation)
-  ✗ packages-acyclic  acyclic       broken (1 violation)
+  ✗ package-tiers     layers   broken (1 violation)
+  ✗ packages-acyclic  acyclic  broken (1 violation)
 
 0 kept, 2 broken · 3 files, 4 imports
 

@@ -1988,6 +1988,7 @@ dependencies = [
  "zenith_config",
  "zenith_diagnostics",
  "zenith_graph",
+ "zenith_reporting",
  "zenith_utils",
  "zenith_workspace",
 ]
@@ -1997,6 +1998,7 @@ name = "zenith_diagnostics"
 version = "0.1.0"
 dependencies = [
  "annotate-snippets",
+ "tempfile",
  "zenith_utils",
 ]
 
@@ -2055,12 +2057,7 @@ dependencies = [
 name = "zenith_reporting"
 version = "0.1.0"
 dependencies = [
- "tempfile",
- "zenith_config",
- "zenith_contracts",
  "zenith_diagnostics",
- "zenith_graph",
- "zenith_pipeline",
  "zenith_utils",
 ]
 

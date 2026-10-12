@@ -1,7 +1,7 @@
 [package]
 name = "zenith_reporting"
 version = "0.1.0"
-description = "Renders the results of checking zenith's contracts"
+description = "Shows the output of zenith check, whatever is checked"
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -9,15 +9,8 @@ repository = { workspace = true }
 publish = false
 
 [dependencies]
-zenith_config = { workspace = true }
-zenith_contracts = { workspace = true }
 zenith_diagnostics = { workspace = true }
-zenith_graph = { workspace = true }
-zenith_pipeline = { workspace = true }
 zenith_utils = { workspace = true }
-
-[dev-dependencies]
-tempfile = { workspace = true }
 
 [lints]
 workspace = true

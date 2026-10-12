@@ -8,7 +8,7 @@ error[core-protected]: `src/core` may only be imported by its allowed importers
   |                   ^^^^^^^^^^^ imports `src/core/b.ts`
 
 Contracts
-  ✗ core-protected  protected     broken (1 violation)
+  ✗ core-protected  protected  broken (1 violation)
 
 0 kept, 1 broken · 5 files, 4 imports
 

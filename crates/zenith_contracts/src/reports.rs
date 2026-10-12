@@ -1,13 +1,14 @@
 //! The reports of what checking a contract finds: its violations, and its
-//! `ignore_imports` entries that match nothing.
+//! `ignore_imports` entries that match nothing, in full or a finding each,
+//! and its line of the summary.
 
-use zenith_config::{AlertLevel, ContractConfig, Severity};
-use zenith_contracts::{Chain, ContractReport, CycleBreaker, Link, Violation};
-use zenith_diagnostics::{Report, ReportKind, SourceId, Span};
+use zenith_config::{AlertLevel, ContractConfig, ContractKind, Severity};
+use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span};
 use zenith_graph::{Graph, ImportDetail, ImportKind};
+use zenith_reporting::{Outcome, SummaryEntry};
 use zenith_utils::{location::ByteRange, printing::plural};
 
-use crate::Sources;
+use crate::{Chain, ContractReport, CycleBreaker, Link, Violation};
 
 /// How many excerpts a report of chains or illegal imports shows.
 const MAX_EXCERPTS: usize = 3;
@@ -21,38 +22,78 @@ const MAX_IMPORTS: usize = 10;
 /// How many cycle breakers a report lists.
 const MAX_BREAKERS: usize = 5;
 
-/// Turns what checking contracts finds into reports, with excerpts of the
-/// imports that they are about.
-pub struct ViolationReporter<'a> {
+impl ContractReport<'_> {
+    /// The reports of what checking the contract found: one per violation,
+    /// with excerpts of its imports and the contract's guidance, then one per
+    /// `ignore_imports` entry that matches nothing, unless they are not to be
+    /// reported. The excerpts are read from `sources`, and the entries point
+    /// into `config`, the configuration file, if it is there.
+    pub fn reports(
+        &self,
+        graph: &Graph,
+        sources: &mut SourceMap,
+        config: Option<SourceId>,
+    ) -> Vec<Report> {
+        ReportBuilder { graph, sources, config }.reports(self)
+    }
+
+    /// What checking the contract found, a report each, for showing a line
+    /// each: one per chain, illegal import and cycle breaker, pointing at its
+    /// first import, and one per `ignore_imports` entry that matches nothing
+    /// and breaks the contract.
+    pub fn findings(
+        &self,
+        graph: &Graph,
+        sources: &mut SourceMap,
+        config: Option<SourceId>,
+    ) -> Vec<Report> {
+        ReportBuilder { graph, sources, config }.findings(self)
+    }
+
+    /// The contract's line of the summary.
+    pub fn summary_entry(&self) -> SummaryEntry {
+        let outcome = if self.is_kept() {
+            Outcome::Kept
+        } else {
+            Outcome::Broken { findings: self.finding_count(), kind: kind(self.config) }
+        };
+        SummaryEntry {
+            id: self.config.id.clone(),
+            kind: self.config.kind.type_name(),
+            outcome,
+            duration: self.duration,
+        }
+    }
+}
+
+/// Reports of what a contract violates are errors, or warnings if it is of
+/// `warn` severity.
+fn kind(config: &ContractConfig) -> ReportKind {
+    match config.severity {
+        Severity::Error => ReportKind::Error,
+        Severity::Warn => ReportKind::Warning,
+    }
+}
+
+/// Makes the reports of checked contracts, with excerpts of the imports that
+/// they are about.
+struct ReportBuilder<'a> {
     /// The graph the contracts were checked against.
     graph: &'a Graph,
 
     /// The project's source files, and the configuration file.
-    sources: &'a mut Sources,
+    sources: &'a mut SourceMap,
 
     /// The configuration file in `sources`, which `ignore_imports` entries
     /// point into, if the configuration was read from a file.
     config: Option<SourceId>,
 }
 
-impl<'a> ViolationReporter<'a> {
-    /// A reporter of the contracts checked against `graph`, reading excerpts
-    /// from `sources`. Entries of `ignore_imports` point into the `config`
-    /// file, if there is one.
-    pub fn new(graph: &'a Graph, sources: &'a mut Sources, config: Option<SourceId>) -> Self {
-        Self { graph, sources, config }
-    }
-
-    /// The reports of a checked contract: one per violation, then one per
-    /// `ignore_imports` entry that matches nothing, unless they are not to
-    /// be reported. A contract of `error` severity reports errors, and one of
-    /// `warn` severity warnings.
-    pub fn reports(&mut self, report: &ContractReport) -> Vec<Report> {
+impl ReportBuilder<'_> {
+    /// The reports of `report`, as [`ContractReport::reports`] makes them.
+    fn reports(&mut self, report: &ContractReport) -> Vec<Report> {
         let config = report.config;
-        let kind = match config.severity {
-            Severity::Error => ReportKind::Error,
-            Severity::Warn => ReportKind::Warning,
-        };
+        let kind = kind(config);
         let mut reports: Vec<_> = report
             .violations
             .iter()
@@ -86,6 +127,80 @@ impl<'a> ViolationReporter<'a> {
         reports
     }
 
+    /// The findings of `report`, as [`ContractReport::findings`] makes them.
+    fn findings(&mut self, report: &ContractReport) -> Vec<Report> {
+        let config = report.config;
+        let kind = kind(config);
+        let encapsulation = matches!(config.kind, ContractKind::Encapsulation(_));
+        let graph = self.graph;
+        let mut findings = Vec::new();
+        for violation in &report.violations {
+            match violation {
+                Violation::Dependency { importer, imported, chains } => {
+                    for chain in chains {
+                        let via = match chain.links.len() {
+                            1 => String::new(),
+                            _ => format!(" (via {})", chain_summary(graph, chain)),
+                        };
+                        let title = format!("`{importer}` must not import `{imported}`{via}");
+                        findings.push(self.finding(kind, title, chain.links.first()));
+                    }
+                }
+                Violation::IllegalImports { module, imports } => {
+                    for link in imports {
+                        let title = if encapsulation {
+                            let imported = graph.name(link.imported);
+                            format!(
+                                "`{imported}` is internal to `{module}`; import it through an entry point"
+                            )
+                        } else {
+                            let importer = graph.name(link.importer);
+                            format!("`{importer}` may not import the protected module `{module}`")
+                        };
+                        findings.push(self.finding(kind, title, Some(link)));
+                    }
+                }
+                Violation::Cycle { scope, breakers } => {
+                    for breaker in breakers {
+                        let mut cycle = breaker.cycle.clone();
+                        cycle.push(breaker.importer.clone());
+                        let title = format!(
+                            "dependency cycle {scope}: {}; remove `{}` -> `{}` to break it",
+                            cycle.join(" -> "),
+                            breaker.importer,
+                            breaker.imported
+                        );
+                        findings.push(self.finding(kind, title, breaker.imports.first()));
+                    }
+                }
+                Violation::UndeclaredModule { container, module } => {
+                    let module = graph.name(*module);
+                    let title = format!("`{module}` is not declared as a layer of `{container}`");
+                    findings.push(Report::new(kind, title));
+                }
+            }
+        }
+        for entry in report.unmatched_ignore_errors() {
+            let title = format!("the ignored import `{entry}` matches no import");
+            let mut finding = Report::new(kind, title);
+            if let (Some(source), Some(range)) = (self.config, entry.range()) {
+                finding.add_span(Span::new(source, range));
+            }
+            findings.push(finding);
+        }
+        findings.into_iter().map(|finding| finding.with_id(&config.id)).collect()
+    }
+
+    /// The report of a finding titled `title`, pointing at the first import of
+    /// `link` if there is one and its file can be read.
+    fn finding(&mut self, kind: ReportKind, title: String, link: Option<&Link>) -> Report {
+        let mut report = Report::new(kind, title);
+        if let Some(span) = link.and_then(|link| self.span(link)) {
+            report.add_span(span);
+        }
+        report
+    }
+
     /// The report of `violation`, of the contract `config`.
     fn violation(
         &mut self,
@@ -99,7 +214,7 @@ impl<'a> ViolationReporter<'a> {
                 self.chains(Report::new(kind, title), chains)
             }
             Violation::IllegalImports { module, imports } => {
-                let encapsulation = config.kind.type_name() == "encapsulation";
+                let encapsulation = matches!(config.kind, ContractKind::Encapsulation(_));
                 let title = if encapsulation {
                     format!("`{module}` may only be imported through its entry points")
                 } else {
@@ -200,15 +315,17 @@ impl<'a> ViolationReporter<'a> {
     /// Add an excerpt of the first import of `link`, labelled, to `report`,
     /// if its file can be read.
     fn excerpt(&mut self, report: &mut Report, link: &Link, label: String) {
-        let Some(import) = link.imports.first() else {
-            return;
-        };
-        let file = self.graph.name(link.importer);
-        let Some(source) = self.sources.source(file) else {
-            return;
-        };
-        let range = import_span(&self.sources.map().get(source).contents, import);
-        report.add_labelled_span(Span::new(source, range), label);
+        if let Some(span) = self.span(link) {
+            report.add_labelled_span(span, label);
+        }
+    }
+
+    /// The span of the first import of `link`, or `None` if it has none or
+    /// its file can't be read.
+    fn span(&mut self, link: &Link) -> Option<Span> {
+        let import = link.imports.first()?;
+        let source = self.sources.file(self.graph.name(link.importer))?;
+        Some(Span::new(source, import_span(&self.sources.get(source).contents, import)))
     }
 
     /// `chain` as lines of `file:line` hops, with its other heads and tails
@@ -240,13 +357,13 @@ impl<'a> ViolationReporter<'a> {
     /// Where the imports of `link` are, e.g. `:3` or `:3,7`, followed by their
     /// kind if they all are of one kind other than value imports, e.g. `:12
     /// (dynamic)`.
-    pub(crate) fn lines(&mut self, link: &Link) -> String {
-        let file = self.graph.name(link.importer);
+    fn lines(&mut self, link: &Link) -> String {
+        let source = self.sources.file(self.graph.name(link.importer));
         let lines: Vec<_> = link
             .imports
             .iter()
-            .map(|import| match self.sources.position(file, import.range.start()) {
-                Some((line, _)) => line.to_string(),
+            .map(|import| match source {
+                Some(source) => self.sources.get(source).line(import.range.start()).to_string(),
                 None => "?".to_string(),
             })
             .collect();
@@ -265,7 +382,7 @@ impl<'a> ViolationReporter<'a> {
 
 /// The span to point at for `import` in the `text` of its file: its quoted
 /// specifier in the statement, or else the statement's first line.
-pub(crate) fn import_span(text: &str, import: &ImportDetail) -> ByteRange {
+fn import_span(text: &str, import: &ImportDetail) -> ByteRange {
     let start = (import.range.start() as usize).min(text.len());
     let end = (import.range.end() as usize).clamp(start, text.len());
     let statement = text.get(start..end).unwrap_or_default();
@@ -280,14 +397,32 @@ pub(crate) fn import_span(text: &str, import: &ImportDetail) -> ByteRange {
     ByteRange::new(start as u32, line_end as u32)
 }
 
+/// The nodes of `chain`, as `a.ts -> b.ts -> npm:c`, without the middle of a
+/// chain longer than five nodes.
+fn chain_summary(graph: &Graph, chain: &Chain) -> String {
+    let mut nodes: Vec<_> = chain.links.iter().map(|link| graph.name(link.importer)).collect();
+    nodes.extend(chain.links.last().map(|link| graph.name(link.imported)));
+    if nodes.len() <= 5 {
+        return nodes.join(" -> ");
+    }
+    let more = nodes.len() - 4;
+    format!(
+        "{} -> {} -> ({more} more) -> {} -> {}",
+        nodes[0],
+        nodes[1],
+        nodes[nodes.len() - 2],
+        nodes[nodes.len() - 1]
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{fs, ops::Range};
+    use std::ops::Range;
 
-    use tempfile::TempDir;
-    use zenith_graph::GraphBuilder;
+    use zenith_graph::{GraphBuilder, ModuleId};
 
     use super::*;
+    use crate::testing::{Project, values};
 
     fn detail(text: &str, statement: &str, specifier: &str, kind: ImportKind) -> ImportDetail {
         let start = text.find(statement).unwrap() as u32;
@@ -318,26 +453,97 @@ mod tests {
 
     #[test]
     fn links_show_their_lines_and_a_shared_kind() {
-        let dir = TempDir::new().unwrap();
         let text = "import type { A } from './b';\nimport type { B } from './b';\nimport('./b');\n";
-        fs::write(dir.path().join("a.ts"), text).unwrap();
         let mut builder = GraphBuilder::new();
         let [a, b] = ["a.ts", "b.ts"].map(|file| builder.add_file(file).unwrap());
         builder.add_import(a, b, detail(text, "import type { A }", "./b", ImportKind::Type));
         let graph = builder.finish();
         let [a, b] = ["a.ts", "b.ts"].map(|file| graph.id(file).unwrap());
 
-        let mut sources = Sources::new(dir.path());
-        let mut reporter = ViolationReporter::new(&graph, &mut sources, None);
+        let mut sources = SourceMap::new();
+        sources.add("a.ts", text);
+        let mut builder = ReportBuilder { graph: &graph, sources: &mut sources, config: None };
         let types = [
             detail(text, "import type { A }", "./b", ImportKind::Type),
             detail(text, "import type { B }", "./b", ImportKind::Type),
         ];
         let link = Link { importer: a, imported: b, imports: types.to_vec() };
-        assert_eq!(reporter.lines(&link), ":1,2 (type)");
+        assert_eq!(builder.lines(&link), ":1,2 (type)");
 
         let mixed = [types[0].clone(), detail(text, "import('./b')", "./b", ImportKind::Dynamic)];
         let link = Link { importer: a, imported: b, imports: mixed.to_vec() };
-        assert_eq!(reporter.lines(&link), ":1,3");
+        assert_eq!(builder.lines(&link), ":1,3");
+    }
+
+    #[test]
+    fn long_chains_are_summarised_without_their_middle() {
+        let mut builder = GraphBuilder::new();
+        for n in 0..6 {
+            builder.add_file(&format!("{n}.ts")).unwrap();
+        }
+        let graph = builder.finish();
+        let ids: Vec<_> = (0..6).map(|n| graph.id(&format!("{n}.ts")).unwrap()).collect();
+        let chain = |nodes: &[ModuleId]| Chain {
+            links: nodes
+                .windows(2)
+                .map(|pair| Link { importer: pair[0], imported: pair[1], imports: Vec::new() })
+                .collect(),
+            extra_heads: Vec::new(),
+            extra_tails: Vec::new(),
+        };
+        assert_eq!(chain_summary(&graph, &chain(&ids[..3])), "0.ts -> 1.ts -> 2.ts");
+        assert_eq!(
+            chain_summary(&graph, &chain(&ids[..5])),
+            "0.ts -> 1.ts -> 2.ts -> 3.ts -> 4.ts"
+        );
+        assert_eq!(chain_summary(&graph, &chain(&ids)), "0.ts -> 1.ts -> (2 more) -> 4.ts -> 5.ts");
+    }
+
+    #[test]
+    fn summary_entries_are_broken_at_the_contract_severity() {
+        let contract = |id: &str, from: &str, to: &str, severity: &str| {
+            format!(
+                "[contracts.{id}]\ntype = \"forbidden\"\nfrom = [\"{from}\"]\nto = [\"{to}\"]\nseverity = \"{severity}\"\n"
+            )
+        };
+        let toml = [
+            contract("kept", "b", "a", "error"),
+            contract("warned", "a", "b", "warn"),
+            contract("broken", "a", "b", "error"),
+        ];
+        let project = Project::new(&values(&[("a/x.ts", "b/y.ts")]), &[], &toml.concat());
+        let outcome = |id: &str| project.check(id).summary_entry().outcome;
+        assert_eq!(outcome("kept"), Outcome::Kept);
+        assert_eq!(outcome("warned"), Outcome::Broken { findings: 1, kind: ReportKind::Warning });
+        assert_eq!(outcome("broken"), Outcome::Broken { findings: 1, kind: ReportKind::Error });
+    }
+
+    #[test]
+    fn findings_point_at_the_first_import_of_each_chain() {
+        let project = Project::new(
+            &values(&[("a/x.ts", "b/y.ts"), ("a/z.ts", "c/w.ts"), ("c/w.ts", "b/y.ts")]),
+            &[],
+            "[contracts.ab]\ntype = \"forbidden\"\nfrom = [\"a\"]\nto = [\"b\"]\n",
+        );
+        let report = project.check("ab");
+        let mut sources = SourceMap::new();
+        // The import is at byte 100, the start of the second line.
+        sources.add("a/x.ts", format!("{}\nimport x from './x';\n", " ".repeat(99)));
+        let findings = report.findings(&project.graph, &mut sources, None);
+        let rendered: Vec<_> = findings
+            .iter()
+            .map(|finding| {
+                zenith_diagnostics::Reporter::new(&sources, std::slice::from_ref(finding))
+                    .short()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            rendered,
+            [
+                "a/x.ts:2:1: error[ab]: `a` must not import `b`",
+                "error[ab]: `a` must not import `b` (via a/z.ts -> c/w.ts -> b/y.ts)",
+            ]
+        );
     }
 }

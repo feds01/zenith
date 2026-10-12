@@ -25,7 +25,7 @@ error[no-io]: `src` must not import `npm:lodash`
   |                 ^^^^^^^^^^^^ imports `npm:lodash`
 
 Contracts
-  ✗ no-io  forbidden     broken (4 violations)
+  ✗ no-io  forbidden  broken (4 violations)
 
 0 kept, 1 broken · 5 files, 6 imports
 

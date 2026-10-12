@@ -4,7 +4,7 @@
 use std::{fmt, io};
 
 use thin_vec::ThinVec;
-use zenith_diagnostics::{Report, ReportKind, SourceId, Span};
+use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span};
 use zenith_graph::{GraphError, ImportDetail};
 use zenith_parse::SyntaxError;
 use zenith_resolve::{ResolverError, UnresolvedReason};
@@ -109,6 +109,28 @@ pub struct UnresolvedImport {
 
     /// Why it could not be resolved.
     pub reason: UnresolvedReason,
+}
+
+impl UnresolvedImport {
+    /// The report of the import: a warning, pointing at the import in
+    /// `sources` if its file can be read.
+    pub fn report(&self, sources: &mut SourceMap) -> Report {
+        let title = format!("could not resolve `{}`: {}", self.import.specifier, self.reason);
+        let mut report = Report::warning(title);
+        if let Some(source) = sources.file(&self.file) {
+            report.add_span(Span::new(source, self.import.range));
+        }
+        report
+    }
+
+    /// Where the import is, `path:line:col`, or just its file if it can't be
+    /// read.
+    pub fn location(&self, sources: &mut SourceMap) -> String {
+        match sources.file(&self.file) {
+            Some(source) => sources.location(Span::new(source, self.import.range)).to_string(),
+            None => self.file.clone(),
+        }
+    }
 }
 
 #[cfg(test)]

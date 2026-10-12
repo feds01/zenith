@@ -12,6 +12,10 @@ publish = false
 bench = false
 
 [[bench]]
+name = "baseline"
+harness = false
+
+[[bench]]
 name = "check"
 harness = false
 

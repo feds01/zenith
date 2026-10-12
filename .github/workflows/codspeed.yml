@@ -54,8 +54,14 @@ jobs:
       - name: Build the benchmarks
         run: cargo codspeed build -m simulation -m memory -p zenith_benchmark
 
+      # The simulation counts the instructions of every thread, so work spread
+      # over a pool would also count its workers spinning, stealing and parking,
+      # which differs from run to run. On one thread, each benchmark counts the
+      # same instructions every time.
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v5
+        env:
+          RAYON_NUM_THREADS: 1
         with:
           mode: simulation,memory
           run: cargo codspeed run -p zenith_benchmark

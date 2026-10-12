@@ -730,7 +730,7 @@ imports and excluded modules, so this needs no new algorithms.
 | Crate | Responsibility |
 |---|---|
 | `zenith` | The binary: `cli.rs`, `commands/*`, `crash.rs`, `logger.rs`, `version.rs`, `build.rs` |
-| `zenith_config` | Config types (serde + schemars), discovery, TOML parsing, validation into typed contract definitions, including the syntax of selectors, layers and ignored imports, and the starter configuration of `zenith init` |
+| `zenith_config` | Config types (serde + schemars), discovery, TOML parsing, validation into typed contract definitions, including the syntax of selectors, layers and ignored imports |
 | `zenith_workspace` | File walker (adapted from the ruff-derived resolver in teamsearch and bracketlint), workspace package discovery |
 | `zenith_parse` | oxc-based extraction of imports, directives and suppression comments |
 | `zenith_resolve` | `oxc_resolver` setup and resolution classification, plus `exports`-aware workspace resolution |

@@ -13,6 +13,16 @@ use crate::{
     project,
 };
 
+/// Where the JSON Schema of the configuration file is published, which the
+/// starter points editors at.
+const SCHEMA_URL: &str = "https://raw.githubusercontent.com/feds01/zenith/main/zenith.schema.json";
+
+/// The contract of the starter when the workspace has two or more packages.
+const PACKAGES_ACYCLIC: &str = "[contracts.packages-acyclic]
+type = \"acyclic\"
+modules = [\"pkg:*\"]
+";
+
 /// Write a starter `zenith.toml` from the discovered packages.
 pub fn init(global: &GlobalArgs, args: InitCommand) -> Result<ExitStatus> {
     // 1. Find where to write the configuration: `--config`, or else `zenith.toml`
@@ -35,9 +45,13 @@ pub fn init(global: &GlobalArgs, args: InitCommand) -> Result<ExitStatus> {
     let mut session = Session::new(root, Config::default());
     project::run_until(&mut session, StageKind::Discover)?;
 
-    // 3. Write the starter configuration.
+    // 3. Write the starter configuration: the workspace packages, if there are two
+    //    or more, must not depend on each other in cycles.
     let packages = &session.workspace.packages;
-    let starter = Config::starter(packages.iter().map(|package| (&*package.name, &*package.dir)));
+    let mut starter = format!("#:schema {SCHEMA_URL}\n");
+    if packages.len() >= 2 {
+        starter += &format!("\n{PACKAGES_ACYCLIC}");
+    }
     fs::write(&path, starter).with_context(|| format!("could not write `{shown}`"))?;
     println!(
         "Wrote `{shown}` ({} and {} found).",

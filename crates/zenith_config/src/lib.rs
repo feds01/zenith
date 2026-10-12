@@ -10,8 +10,7 @@
 //! [`ConfigError::report`] shows it in context.
 //!
 //! [`json_schema`] describes the file for editors, generated from the same
-//! types that it is deserialised into, and [`Config::starter`] writes a first
-//! configuration file for a project.
+//! types that it is deserialised into.
 
 mod config;
 mod contracts;
@@ -19,7 +18,6 @@ mod error;
 mod parse;
 mod schema;
 mod selector;
-mod starter;
 
 pub use config::{
     AnalysisConfig, BaselineConfig, CONFIG_FILE_NAME, Config, ConfigFile, FilesConfig,
@@ -34,4 +32,3 @@ pub use error::{
 };
 pub use schema::json_schema;
 pub use selector::{BuiltinScheme, IgnoreImport, Selector, SelectorTarget};
-pub use starter::SCHEMA_URL;

@@ -96,6 +96,12 @@ impl Layers {
 }
 
 /// A member of a layer, resolved in a container or in the project root.
+///
+/// For example, with `containers = ["apps/*"]`, the member `ui/*` resolved in
+/// the container `apps/web` is labelled `apps/web/ui/*`. Its roots are the
+/// nodes it matches, such as the directory `apps/web/ui/forms` and the file
+/// `apps/web/ui/button.tsx`, and its members are `button.tsx` and every file
+/// in `forms`.
 struct ResolvedMember {
     /// How the member is shown: its selector, prefixed with the container.
     label: String,
@@ -128,7 +134,9 @@ impl Container {
             .map(|layer| {
                 let members = layer.members.iter();
                 members
-                    .map(|member| resolve_member(member, container_name, layer.range, units))
+                    .map(|member| {
+                        ResolvedMember::resolve(member, container_name, layer.range, units)
+                    })
                     .collect()
             })
             .collect();
@@ -196,64 +204,66 @@ impl Container {
     }
 }
 
-/// Resolve `member`, written at `range`, in the `container`, or in the project
-/// root if it's `None`. A member that matches nothing, unless it's optional or
-/// an `npm:` or builtin selector, is an error.
-fn resolve_member(
-    member: &LayerMember,
-    container: Option<&str>,
-    range: Option<ByteRange>,
-    units: &mut UnitResolver,
-) -> ResolvedMember {
-    let (label, found) = match container {
-        Some(container) => (
-            format!("{container}/{}", member.selector),
-            find_in_container(member, container, units),
-        ),
-        None => (member.selector.to_string(), find(member, units)),
-    };
-    if found.is_none() && !member.optional && member.selector.must_match() {
-        let selector = member.selector.to_string();
-        let kind = match container {
-            Some(container) => ContractErrorKind::MissingLayer {
-                member: selector,
-                container: container.to_string(),
-            },
-            None => ContractErrorKind::UnmatchedSelector { selector },
+impl ResolvedMember {
+    /// Resolve `member`, written at `range`, in the `container`, or in the
+    /// project root if it's `None`. A member that matches nothing, unless it's
+    /// optional or an `npm:` or builtin selector, is an error.
+    fn resolve(
+        member: &LayerMember,
+        container: Option<&str>,
+        range: Option<ByteRange>,
+        units: &mut UnitResolver,
+    ) -> Self {
+        let (label, found) = match container {
+            Some(container) => (
+                format!("{container}/{}", member.selector),
+                Self::find_in_container(member, container, units),
+            ),
+            None => (member.selector.to_string(), Self::find(member, units)),
         };
-        units.error(kind, range);
+        if found.is_none() && !member.optional && member.selector.must_match() {
+            let selector = member.selector.to_string();
+            let kind = match container {
+                Some(container) => ContractErrorKind::MissingLayer {
+                    member: selector,
+                    container: container.to_string(),
+                },
+                None => ContractErrorKind::UnmatchedSelector { selector },
+            };
+            units.error(kind, range);
+        }
+        let (roots, members) = found.unwrap_or_default();
+        Self { label, roots, members }
     }
-    let (roots, members) = found.unwrap_or_default();
-    ResolvedMember { label, roots, members }
-}
 
-/// The roots and members of the units that `member` matches in the project,
-/// or `None` if it matches nothing.
-fn find(member: &LayerMember, units: &UnitResolver) -> Option<(Vec<ModuleId>, NodeSet)> {
-    let selection = Selection::resolve(&member.selector, units.graph(), units.workspace());
-    let roots = selection.units.iter().map(|unit| unit.root).collect();
-    selection.matched.then(|| (roots, selection.members()))
-}
-
-/// The roots and members of the nodes that `member`, a path relative to the
-/// `container`, matches, or `None` if it matches nothing.
-fn find_in_container(
-    member: &LayerMember,
-    container: &str,
-    units: &UnitResolver,
-) -> Option<(Vec<ModuleId>, NodeSet)> {
-    // The configuration only allows paths in the layers of containers.
-    let SelectorTarget::Path(glob) = member.selector.target() else {
-        return None;
-    };
-    let glob = Glob::new(&format!("{}/{}", escape(container), glob.as_str())).ok()?;
-    let graph = units.graph();
-    let roots = graph.find_paths(&glob, OPTIONAL_EXTENSIONS);
-    let mut members = NodeSet::new();
-    for root in &roots {
-        members.union_with(&graph.members(*root));
+    /// The roots and members of the units that `member` matches in the
+    /// project, or `None` if it matches nothing.
+    fn find(member: &LayerMember, units: &UnitResolver) -> Option<(Vec<ModuleId>, NodeSet)> {
+        let selection = Selection::resolve(&member.selector, units.graph(), units.workspace());
+        let roots = selection.units.iter().map(|unit| unit.root).collect();
+        selection.matched.then(|| (roots, selection.members()))
     }
-    (!roots.is_empty()).then_some((roots, members))
+
+    /// The roots and members of the nodes that `member`, a path relative to
+    /// the `container`, matches, or `None` if it matches nothing.
+    fn find_in_container(
+        member: &LayerMember,
+        container: &str,
+        units: &UnitResolver,
+    ) -> Option<(Vec<ModuleId>, NodeSet)> {
+        // The configuration only allows paths in the layers of containers.
+        let SelectorTarget::Path(glob) = member.selector.target() else {
+            return None;
+        };
+        let glob = Glob::new(&format!("{}/{}", escape(container), glob.as_str())).ok()?;
+        let graph = units.graph();
+        let roots = graph.find_paths(&glob, OPTIONAL_EXTENSIONS);
+        let mut members = NodeSet::new();
+        for root in &roots {
+            members.union_with(&graph.members(*root));
+        }
+        (!roots.is_empty()).then_some((roots, members))
+    }
 }
 
 #[cfg(test)]

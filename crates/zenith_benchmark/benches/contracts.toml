@@ -1,0 +1,28 @@
+# Libraries are lower than apps and services, so this searches every pair
+# without finding a chain.
+[contracts.libraries-below-apps]
+type = "forbidden"
+from = ["packages/*"]
+to = ["apps/*", "services/*"]
+
+# Apps reach builtins through libraries, so this finds chains.
+[contracts.apps-without-builtins]
+type = "forbidden"
+from = ["apps/*"]
+to = ["node:*"]
+
+# Libraries import each other, so this finds illegal imports.
+[contracts.libraries-for-apps]
+type = "protected"
+modules = ["packages/*"]
+allowed_importers = ["apps/*", "services/*"]
+
+# Libraries import each other, so this finds dependencies between them.
+[contracts.independent-libraries]
+type = "independence"
+modules = ["packages/*"]
+
+# Apps and services are above libraries, and independent of each other.
+[contracts.tiers]
+type = "layers"
+layers = ["apps/* | services/*", "packages/*"]

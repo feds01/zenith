@@ -23,36 +23,7 @@ const SIZES: &[usize] = &[1_000, 10_000];
 
 /// The contracts that are benchmarked. Every repository has libraries in
 /// `packages/`, services in `services/` and apps in `apps/`.
-const CONTRACTS: &str = r#"
-# Libraries are lower than apps and services, so this searches every pair
-# without finding a chain.
-[contracts.libraries-below-apps]
-type = "forbidden"
-from = ["packages/*"]
-to = ["apps/*", "services/*"]
-
-# Apps reach builtins through libraries, so this finds chains.
-[contracts.apps-without-builtins]
-type = "forbidden"
-from = ["apps/*"]
-to = ["node:*"]
-
-# Libraries import each other, so this finds illegal imports.
-[contracts.libraries-for-apps]
-type = "protected"
-modules = ["packages/*"]
-allowed_importers = ["apps/*", "services/*"]
-
-# Libraries import each other, so this finds dependencies between them.
-[contracts.independent-libraries]
-type = "independence"
-modules = ["packages/*"]
-
-# Apps and services are above libraries, and independent of each other.
-[contracts.tiers]
-type = "layers"
-layers = ["apps/* | services/*", "packages/*"]
-"#;
+const CONTRACTS: &str = include_str!("contracts.toml");
 
 fn main() {
     let _remove_shared = TempRepo::remove_shared_on_drop();

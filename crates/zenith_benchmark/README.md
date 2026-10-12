@@ -13,6 +13,7 @@ just bench glob_is_match --sample-count 20
 ```
 
 Extra arguments go to divan, so `just bench --help` lists its options.
+The benchmarks allocate with mimalloc, as the `zenith` binary does.
 Allocations are counted with divan's `AllocProfiler`, which only sees the
 benchmark's own thread, so the allocations of the walk's worker threads
 don't show up in its counts, and nor do the parse and resolve workers'.

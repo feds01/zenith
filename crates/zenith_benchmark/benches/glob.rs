@@ -7,10 +7,16 @@ use divan::{Bencher, black_box};
 use zenith_benchmark::SyntheticRepo;
 use zenith_utils::glob::{Glob, NamePattern};
 
-// CodSpeed measures the allocations itself, in its memory mode.
+// The allocator of the `zenith` binary. CodSpeed measures the allocations
+// itself, in its memory mode.
 #[cfg(not(codspeed))]
 #[global_allocator]
-static ALLOC: divan::AllocProfiler = divan::AllocProfiler::system();
+static ALLOC: divan::AllocProfiler<mimalloc::MiMalloc> =
+    divan::AllocProfiler::new(mimalloc::MiMalloc);
+
+#[cfg(codspeed)]
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 /// The repository whose paths and package names the patterns are matched
 /// against. Matching doesn't read from disk, so it stays in memory.

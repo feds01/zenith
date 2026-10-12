@@ -9,6 +9,11 @@ use zenith::{
     run,
 };
 
+/// mimalloc, which allocates and frees the many small values that parsing and
+/// resolving make faster than the system allocator, on every platform.
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 pub fn main() -> ExitCode {
     // Arguments are passed on as they are, without expanding globs on
     // Windows: selectors are globs that zenith matches itself.

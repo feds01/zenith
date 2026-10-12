@@ -1,0 +1,5 @@
+#:schema https://raw.githubusercontent.com/feds01/zenith/main/zenith.schema.json
+
+[contracts.packages-acyclic]
+type = "acyclic"
+modules = ["pkg:*"]

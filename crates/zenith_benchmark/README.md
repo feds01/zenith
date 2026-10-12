@@ -19,7 +19,11 @@ don't show up in its counts, and nor do the parse and resolve workers'.
 
 In CI, the CodSpeed workflow runs them under CodSpeed's simulation and
 memory instruments, on every commit to `main` and on PRs that touch the
-benchmarked crates.
+benchmarked crates. It runs them on one thread, with `RAYON_NUM_THREADS=1`,
+which the walk follows too: the simulation counts every thread's
+instructions, so a pool's workers spinning and stealing would make the
+counts differ from run to run. CodSpeed's numbers are therefore the work
+done, not the time taken on many cores; run `just bench` for those.
 
 ## What is measured
 

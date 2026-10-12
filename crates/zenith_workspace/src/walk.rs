@@ -9,7 +9,7 @@ use std::{
 
 use ignore::{DirEntry, ParallelVisitor, ParallelVisitorBuilder, WalkBuilder, WalkState};
 use log::warn;
-use zenith_utils::{glob::Glob, path::relative_posix};
+use zenith_utils::{glob::Glob, path::relative_posix, pool::thread_count};
 
 /// Directories that are never scanned, wherever they appear.
 const ALWAYS_EXCLUDED_DIRS: &[&str] = &[
@@ -91,6 +91,7 @@ fn walk_with(root: &Path, settings: &WalkSettings, git_global: bool) -> WalkResu
         // Inside a repository, ignore files above the repository don't apply.
         // Outside one, `.gitignore` files still do.
         .require_git(in_git_repository(root))
+        .threads(thread_count())
         .build_parallel();
 
     let result = Mutex::new(WalkResult::default());

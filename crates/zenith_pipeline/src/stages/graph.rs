@@ -5,7 +5,9 @@ use std::mem;
 use zenith_graph::{GraphBuilder, NodeHandle};
 use zenith_resolve::Resolved;
 
-use crate::{FileSuppressions, PipelineError, Session, Stage, StageKind, UnresolvedImport};
+use crate::{
+    FileSuppressions, PipelineError, ResolvedImport, Session, Stage, StageKind, UnresolvedImport,
+};
 
 /// Builds the import graph from the parsed files and their resolved imports,
 /// which it takes out of the session. Imports that don't resolve are left out,
@@ -25,8 +27,15 @@ impl Stage for BuildGraph {
         // The builder sorts what it is given, so the order of the files
         // doesn't matter.
         let mut builder = GraphBuilder::new();
-        for ((file, parsed), resolved) in session.files.iter().zip(parsed).zip(resolved) {
-            let handle = builder.add_file(&file.name)?;
+        // Every source file is a node, which the imports that resolved to it find
+        // by its index.
+        let handles = session
+            .files
+            .iter()
+            .map(|file| builder.add_file(&file.name))
+            .collect::<Result<Vec<_>, _>>()?;
+        let files = session.files.iter().zip(&handles);
+        for (((file, &handle), parsed), resolved) in files.zip(parsed).zip(resolved) {
             builder.set_directives(handle, parsed.directives);
             stats.non_literal_imports += parsed.non_literal_imports.len();
             if !parsed.suppressions.is_empty() {
@@ -39,18 +48,21 @@ impl Stage for BuildGraph {
 
             for (import, resolved) in parsed.imports.into_iter().zip(resolved) {
                 let target: NodeHandle = match resolved {
-                    Resolved::Internal(target) => builder.add_file(&target)?.into(),
-                    Resolved::External { package, found } => {
+                    ResolvedImport::File(index) => handles[index as usize].into(),
+                    ResolvedImport::Other(Resolved::Internal(target)) => {
+                        builder.add_file(&target)?.into()
+                    }
+                    ResolvedImport::Other(Resolved::External { package, found }) => {
                         stats.missing_packages += usize::from(!found);
                         builder.add_external(&format!("npm:{package}"))?
                     }
-                    Resolved::Builtin(name) => builder.add_builtin(&name)?,
-                    Resolved::Unresolved(reason) => {
+                    ResolvedImport::Other(Resolved::Builtin(name)) => builder.add_builtin(&name)?,
+                    ResolvedImport::Other(Resolved::Unresolved(reason)) => {
                         let file = file.name.clone();
                         session.unresolved.push(UnresolvedImport { file, import, reason: *reason });
                         continue;
                     }
-                    Resolved::Ignored(_) => continue,
+                    ResolvedImport::Other(Resolved::Ignored(_)) => continue,
                 };
                 builder.add_import(handle, target, import);
             }

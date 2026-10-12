@@ -19,6 +19,7 @@ zenith_workspace = { workspace = true }
 
 log = { workspace = true }
 rayon = { workspace = true }
+rustc-hash = { workspace = true }
 serde = { workspace = true }
 thin-vec = { workspace = true }
 

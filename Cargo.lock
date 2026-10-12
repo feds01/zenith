@@ -2070,6 +2070,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "rayon",
+ "rustc-hash",
  "serde",
  "tempfile",
  "thin-vec",

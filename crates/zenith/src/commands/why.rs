@@ -6,6 +6,7 @@ use anyhow::{Result, bail};
 use zenith_contracts::Selection;
 use zenith_graph::{Graph, GraphView, ImportKind, KindSet, ModuleId, NodeSet};
 use zenith_pipeline::StageKind;
+use zenith_reporting::Sources;
 use zenith_utils::{
     highlight::{Modifier, highlight},
     printing::plural,
@@ -15,7 +16,6 @@ use crate::{
     ExitStatus,
     cli::{GlobalArgs, WhyCommand},
     project,
-    sources::SourceFiles,
 };
 
 /// Show the shortest import chains from one selector to another.
@@ -28,6 +28,7 @@ pub fn why(global: &GlobalArgs, args: WhyCommand) -> Result<ExitStatus> {
     // 1. Open the project, and build its graph.
     let mut session = project::open(global)?;
     project::run_until(&mut session, StageKind::Graph)?;
+    project::warn_about_unresolved(&session);
     let graph = &session.graph;
 
     // 2. Find the files on either end of the chains.
@@ -47,7 +48,7 @@ pub fn why(global: &GlobalArgs, args: WhyCommand) -> Result<ExitStatus> {
     }
 
     // 4. Show the chains, up to the limit, with the lines of their imports.
-    let mut sources = SourceFiles::new(&session.root);
+    let mut sources = Sources::new(&session.root);
     let total = chains.len();
     for (number, chain) in chains.iter().take(args.limit).enumerate() {
         println!("{}", highlight(Modifier::Bold, format!("chain {} of {total}:", number + 1)));
@@ -91,12 +92,7 @@ struct ImportLine {
 impl<'g> Chain<'g> {
     /// The chain through the nodes of `chain`, with the imports of each link
     /// that aren't of the `excluded` kinds, located in `sources`.
-    fn new(
-        graph: &'g Graph,
-        chain: &[ModuleId],
-        excluded: KindSet,
-        sources: &mut SourceFiles,
-    ) -> Self {
+    fn new(graph: &'g Graph, chain: &[ModuleId], excluded: KindSet, sources: &mut Sources) -> Self {
         let links = chain
             .windows(2)
             .map(|link| {

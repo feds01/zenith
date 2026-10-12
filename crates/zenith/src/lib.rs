@@ -6,7 +6,6 @@ mod crash;
 mod logger;
 mod project;
 mod reporting;
-mod sources;
 pub(crate) mod version;
 
 use std::{fmt, panic, process::ExitCode};

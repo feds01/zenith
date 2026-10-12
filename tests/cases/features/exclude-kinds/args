@@ -1,3 +1,4 @@
+check
 # Each file in `src/low` imports `src/high/h.ts` with another kind.
 why src/low src/high
 why src/low src/high --exclude-kind type

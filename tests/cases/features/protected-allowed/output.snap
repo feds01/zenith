@@ -1,0 +1,14 @@
+$ zenith check
+exit: 1
+--- stdout
+error[core-protected]: `src/core` may only be imported by its allowed importers
+ --> src/lib/outsider.ts:1:19
+  |
+1 | import { b } from "../core/b";
+  |                   ^^^^^^^^^^^ imports `src/core/b.ts`
+
+Contracts
+  ✗ core-protected  protected     broken (1 violation)
+
+0 kept, 1 broken · 5 files, 4 imports
+

@@ -67,6 +67,10 @@ it when responsibilities move. On `main` today:
   runs and times them, and the `Session` they share. Each stage is a thin
   adapter over the crate that does its work. Files it can't read or parse
   are recorded as `FileError`s, with reports.
+- `zenith_reporting`: the output of `zenith check`: a report with excerpts
+  for every violation, the summary of every contract, and the `pretty` and
+  `compact` formats; and `Sources`, the cache of source files that excerpts
+  and line numbers are read from.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`, its
   classification, and `exports`-aware workspace resolution.
 - `zenith_utils`: file reading, path and specifier helpers, byte ranges, the

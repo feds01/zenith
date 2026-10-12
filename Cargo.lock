@@ -1930,7 +1930,6 @@ dependencies = [
 name = "zenith"
 version = "0.1.0"
 dependencies = [
- "annotate-snippets",
  "anyhow",
  "argfile",
  "clap",
@@ -1943,6 +1942,7 @@ dependencies = [
  "zenith_diagnostics",
  "zenith_graph",
  "zenith_pipeline",
+ "zenith_reporting",
  "zenith_resolve",
  "zenith_utils",
 ]

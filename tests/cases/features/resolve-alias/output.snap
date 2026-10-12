@@ -1,3 +1,21 @@
+$ zenith check --show-unresolved
+exit: 1
+--- stdout
+error[ui-not-types]: `src/ui` must not import `src/types`
+ --> src/ui/avatar.ts:1:27
+  |
+1 | import { ANONYMOUS } from "types/user";
+  |                           ^^^^^^^^^^^^ imports `src/types/user.ts`
+
+warning: 1 import could not be resolved
+  |
+  = note:   src/ui/avatar.ts:3:1  `./missing`  (Cannot find module './missing')
+
+Contracts
+  ✗ ui-not-types  forbidden     broken (1 violation)
+
+0 kept, 1 broken · 2 files, 1 import
+
 $ zenith graph -v
 exit: 0
 --- stdout
@@ -6,9 +24,9 @@ exit: 0
   ├─types/ (1 file)
   └─ui/ (1 file)
 --- stderr
+info: indexed 2 source files and 1 import
 info: `./missing` in src/ui/avatar.ts:3:1 could not be resolved: Cannot find module './missing'
 warning: 1 import could not be resolved
-info: indexed 2 source files and 1 import
 
 $ zenith resolve src/ui/avatar.ts types/user
 exit: 0

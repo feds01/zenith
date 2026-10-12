@@ -6,11 +6,13 @@ use std::{env, path::Path};
 use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
 use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
+use zenith_contracts::ContractError;
 use zenith_diagnostics::SourceMap;
 use zenith_pipeline::{FileError, FileErrorKind, Pipeline, Session, StageKind};
+use zenith_reporting::Sources;
 use zenith_utils::{path::adjust_canonicalisation, printing::plural};
 
-use crate::{Reported, cli::GlobalArgs, reporting, sources::SourceFiles};
+use crate::{Reported, cli::GlobalArgs, reporting};
 
 /// Open a session for the project that the global options point at.
 ///
@@ -61,14 +63,12 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
 }
 
 /// Run the standard pipeline on `session`, up to and including the `last`
-/// stage, and warn about the files and imports that are missing from the
-/// graph.
-pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<()> {
-    Pipeline::standard().run_until(session, last)?;
-
-    let mut sources = SourceFiles::new(&session.root);
-    report_file_errors(&mut sources, &session.file_errors);
-    warn_about_unresolved(&mut sources, session);
+/// stage, and warn about the files that could not be read or parsed. Returns
+/// the pipeline, which knows how long each stage took.
+pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<Pipeline> {
+    let mut pipeline = Pipeline::standard();
+    pipeline.run_until(session, last)?;
+    report_file_errors(&mut Sources::new(&session.root), &session.file_errors);
 
     if last >= StageKind::Graph {
         info!(
@@ -82,7 +82,27 @@ pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<()> {
             count => info!("skipped {count} imports whose specifier is not a literal"),
         }
     }
-    Ok(())
+    Ok(pipeline)
+}
+
+/// Show the errors of the contracts that could not be compiled, in the
+/// context of the configuration file.
+pub(crate) fn report_contract_errors(session: &Session, errors: &[ContractError]) {
+    let mut sources = SourceMap::new();
+    let source = session.config.file.as_ref().map(|file| {
+        let cwd = env::current_dir().unwrap_or_default();
+        let shown = file.path.strip_prefix(&cwd).unwrap_or(&file.path);
+        sources.add(shown.display().to_string(), file.contents.as_str())
+    });
+    let reports: Vec<_> = errors
+        .iter()
+        .map(|error| match source {
+            Some(source) => error.report(source),
+            // Without a file, there is no excerpt to show.
+            None => zenith_diagnostics::Report::error(error.to_string()),
+        })
+        .collect();
+    reporting::emit(&sources, &reports);
 }
 
 /// Load the configuration file at `path`. An invalid file is reported, with
@@ -104,29 +124,29 @@ fn load(path: &Path, cwd: &Path) -> Result<Config> {
 
 /// Warn about the files that could not be read or parsed in full. A syntax
 /// error is shown in context.
-fn report_file_errors(sources: &mut SourceFiles, errors: &[FileError]) {
-    let mut map = SourceMap::new();
+fn report_file_errors(sources: &mut Sources, errors: &[FileError]) {
     let reports: Vec<_> = errors
         .iter()
         .map(|error| {
             // Only a syntax error is shown in context, so only its file is read.
-            let text = match error.kind {
-                FileErrorKind::Syntax(_) => sources.text(&error.file),
+            let source = match error.kind {
+                FileErrorKind::Syntax(_) => sources.source(&error.file),
                 FileErrorKind::Read(_) => None,
             };
-            error.report(text.map(|text| map.add(error.file.as_str(), text)))
+            error.report(source)
         })
         .collect();
-    reporting::emit(&map, &reports);
+    reporting::emit(sources.map(), &reports);
 }
 
-/// Warn about the imports that could not be resolved, and list them with
-/// `-v`.
-fn warn_about_unresolved(sources: &mut SourceFiles, session: &Session) {
+/// Warn about the imports of `session` that could not be resolved, and list
+/// them with `-v`.
+pub(crate) fn warn_about_unresolved(session: &Session) {
     let count = session.unresolved.len();
     if count == 0 {
         return;
     }
+    let mut sources = Sources::new(&session.root);
     let listed = log_enabled!(log::Level::Info);
     if listed {
         for import in &session.unresolved {

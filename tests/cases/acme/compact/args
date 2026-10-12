@@ -1,0 +1,2 @@
+check --format compact
+check --format compact --show-unresolved --contract legacy-freeze

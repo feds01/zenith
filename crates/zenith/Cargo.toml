@@ -19,10 +19,10 @@ zenith_contracts = { workspace = true }
 zenith_diagnostics = { workspace = true }
 zenith_graph = { workspace = true }
 zenith_pipeline = { workspace = true }
+zenith_reporting = { workspace = true }
 zenith_resolve = { workspace = true }
 zenith_utils = { workspace = true }
 
-annotate-snippets = { workspace = true }
 anyhow = { workspace = true }
 argfile = { workspace = true }
 clap = { workspace = true }

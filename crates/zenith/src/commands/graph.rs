@@ -17,6 +17,7 @@ pub fn graph(global: &GlobalArgs, args: GraphCommand) -> Result<ExitStatus> {
     // 1. Open the project, and build its graph.
     let mut session = project::open(global)?;
     project::run_until(&mut session, StageKind::Graph)?;
+    project::warn_about_unresolved(&session);
     let graph = &session.graph;
 
     // 2. Find the nodes to show: the roots of the selector's units, or the project

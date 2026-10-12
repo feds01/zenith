@@ -1,3 +1,4 @@
+check
 graph --depth 4
 resolve packages/app/src/main.ts @/lib/format
 resolve packages/core/src/index.ts @/lib/format

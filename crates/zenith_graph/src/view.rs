@@ -4,16 +4,23 @@ use std::fmt;
 
 use rustc_hash::FxHashSet;
 
-use crate::{Graph, KindSet, ModuleId};
+use crate::{Graph, KindSet, ModuleId, NodeSet};
 
 /// A set of imports, each an `(importer, imported)` pair of nodes.
 ///
 /// The set answers membership only. It cannot be iterated, so its hash order
 /// can never leak into output.
+///
+/// Searches ask it about every import they follow, and most importers have
+/// no import in the set, so it also keeps the importers in a bit set, which
+/// answers for them without hashing.
 #[derive(Clone, Default)]
 pub struct EdgeSet {
     /// The `(importer, imported)` pairs.
     edges: FxHashSet<(ModuleId, ModuleId)>,
+
+    /// The importers of the pairs.
+    importers: NodeSet,
 }
 
 impl EdgeSet {
@@ -25,12 +32,13 @@ impl EdgeSet {
     /// Add the import from `importer` to `imported`. Returns whether it was
     /// newly added.
     pub fn insert(&mut self, importer: ModuleId, imported: ModuleId) -> bool {
+        self.importers.insert(importer);
         self.edges.insert((importer, imported))
     }
 
     /// Whether the set contains the import from `importer` to `imported`.
     pub fn contains(&self, importer: ModuleId, imported: ModuleId) -> bool {
-        self.edges.contains(&(importer, imported))
+        self.importers.contains(importer) && self.edges.contains(&(importer, imported))
     }
 
     /// The imports of `graph` all of whose details are of the `kinds`. An
@@ -59,13 +67,17 @@ impl fmt::Debug for EdgeSet {
 
 impl FromIterator<(ModuleId, ModuleId)> for EdgeSet {
     fn from_iter<T: IntoIterator<Item = (ModuleId, ModuleId)>>(iter: T) -> Self {
-        Self { edges: iter.into_iter().collect() }
+        let mut set = Self::new();
+        set.extend(iter);
+        set
     }
 }
 
 impl Extend<(ModuleId, ModuleId)> for EdgeSet {
     fn extend<T: IntoIterator<Item = (ModuleId, ModuleId)>>(&mut self, iter: T) {
-        self.edges.extend(iter);
+        for (importer, imported) in iter {
+            self.insert(importer, imported);
+        }
     }
 }
 
@@ -204,5 +216,12 @@ mod tests {
         edges.extend([(c, a), (b, c)]);
         assert!(edges.contains(c, a) && edges.contains(b, c));
         assert_eq!(format!("{edges:?}"), "{(1, 2), (2, 3), (3, 1)}");
+
+        // An importer with other imports in the set, and one past the end of
+        // its bit set of importers.
+        assert!(!edges.contains(a, c));
+        assert!(!edges.contains(ModuleId::new(1_000), a));
+        let collected: EdgeSet = [(a, b)].into_iter().collect();
+        assert!(collected.contains(a, b) && !collected.contains(b, c));
     }
 }

@@ -42,7 +42,7 @@ pub struct Session {
     /// of their imports. Filled in by the
     /// [`Resolve`](crate::StageKind::Resolve) stage, and taken by the
     /// [`Graph`](crate::StageKind::Graph) stage.
-    pub resolved: Vec<Vec<Resolved>>,
+    pub resolved: Vec<Vec<ResolvedImport>>,
 
     /// The module tree and import graph. Built by the
     /// [`Graph`](crate::StageKind::Graph) stage; until then it holds only the
@@ -64,6 +64,19 @@ pub struct Session {
 
     /// Counts of what the stages found.
     pub stats: Stats,
+}
+
+/// What an import resolved to, as the session keeps it until the graph is
+/// built.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResolvedImport {
+    /// One of the session's source files, by its index in
+    /// [`Session::files`]. Most imports resolve to one, which this keeps
+    /// without a name of its own.
+    File(u32),
+
+    /// Anything else, as the resolver resolved it.
+    Other(Resolved),
 }
 
 /// A source file to scan.

@@ -29,7 +29,7 @@ Linux/macOS/Windows, and `cargo deny`.
 
 ## Architecture
 
-Pipeline: config → walk → parse + resolve (parallel) → graph → contracts (parallel) → render.
+Pipeline: config → discover → parse (parallel) → resolve (parallel) → graph → contracts (parallel) → render.
 
 The crates and what each one owns are listed in
 [SPEC §11.2](docs/SPEC.md#112-crates). That table is the single source; update
@@ -50,6 +50,10 @@ it when responsibilities move. On `main` today:
   on them: shortest import chains, layers and cycle breakers.
 - `zenith_parse`: oxc-based extraction of imports and their kinds,
   directives and suppression comments.
+- `zenith_pipeline`: the stages (discover, parse, resolve, graph) that turn
+  a project into its import graph, registered in order on a `Pipeline` that
+  runs and times them, and the `Session` they share. Each stage is a thin
+  adapter over the crate that does its work.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`, its
   classification, and `exports`-aware workspace resolution.
 - `zenith_utils`: file reading, path and specifier helpers, byte ranges, the

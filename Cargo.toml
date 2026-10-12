@@ -14,6 +14,7 @@ zenith_config = { path = "crates/zenith_config" }
 zenith_diagnostics = { path = "crates/zenith_diagnostics" }
 zenith_graph = { path = "crates/zenith_graph" }
 zenith_parse = { path = "crates/zenith_parse" }
+zenith_pipeline = { path = "crates/zenith_pipeline" }
 zenith_resolve = { path = "crates/zenith_resolve" }
 zenith_utils = { path = "crates/zenith_utils" }
 zenith_workspace = { path = "crates/zenith_workspace" }

@@ -697,14 +697,24 @@ with `--color`.
 ### 11.1 Pipeline
 
 ```
-load config ─► discover workspace packages ─► walk files (ignore, parallel)
-   ─► parse + extract imports (oxc_parser, rayon, per-thread allocator)
-   ─► resolve specifiers (one shared oxc_resolver, rayon)
-   ─► build Graph (single-threaded merge)
+load config ─► discover: walk files (ignore, parallel), workspace packages
+   ─► parse: extract imports (oxc_parser, rayon, a parser per worker)
+   ─► resolve: specifiers (one shared oxc_resolver, rayon)
+   ─► graph: build the Graph (single-threaded merge)
    ─► resolve selectors into units, per contract
    ─► check contracts (rayon; the graph is immutable)
    ─► apply baseline and suppressions ─► render ─► exit code
 ```
+
+**(settled)** The pipeline is a list of registered **stages**, modelled on
+the Hash compiler's pipeline. Each stage has a kind, in the order above
+(`discover`, `parse`, `resolve`, `graph`, then the contract stages), reads
+what the stages before it put in a shared **session**, and adds what it
+finds. The pipeline runs the stages in order, times each one (for
+`--show-timings`), and stops at the first error, or after the stage that a
+command needs: `zenith resolve` stops after `discover`, and `graph` and `why`
+after `graph`. Each stage is a thin adapter over the crate that does its
+work, so those crates stay independent libraries.
 
 Contracts never mutate or clone the graph, unlike import-linter, which
 deep-copies it per contract. Each contract builds a **view**: an
@@ -722,7 +732,7 @@ imports and excluded modules, so this needs no new algorithms.
 | `zenith_parse` | oxc-based extraction of imports, directives and suppression comments |
 | `zenith_resolve` | `oxc_resolver` setup and resolution classification, plus `exports`-aware workspace resolution |
 | `zenith_graph` | The module tree and import graph: interned tokens, hierarchy, edges with details, pathfinding, chains, layers, cycle breakers (a grimp port). No IO. |
-| `zenith_index` | Orchestrates walk, parse and resolve into a `Graph` |
+| `zenith_pipeline` | The session that holds a project and what each stage found, the stages as adapters over the crates that do the work, and the pipeline that runs them in order and times them |
 | `zenith_contracts` | Resolving selectors into units, per-contract views, the six contract types, the findings model, baseline, suppressions |
 | `zenith_reporting` | Renderers (`pretty`, `compact`, `json`, `github`) using `annotate-snippets` |
 | `zenith_diagnostics` | The errors and warnings about zenith's input, such as an invalid configuration file: typed errors collected per pass, and reports with labelled source excerpts and notes, rendered with `annotate-snippets` |
@@ -783,7 +793,7 @@ imports and excluded modules, so this needs no new algorithms.
   - **What is measured:**
     - parsing and import extraction, per file (bytes/s);
     - resolution;
-    - building the index (walk, parse, resolve, graph);
+    - running the pipeline up to the graph (discover, parse, resolve, graph);
     - each contract type on the synthetic graph;
     - a full `check`.
   - **CI:** a CodSpeed workflow measures every commit on `main` as the

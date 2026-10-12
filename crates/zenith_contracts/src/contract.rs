@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use rayon::prelude::*;
 use zenith_config::{AlertLevel, ContractConfig, IgnoreImport, Selector};
-use zenith_graph::{Graph, Unit};
+use zenith_graph::{Graph, ModuleId, Unit};
 use zenith_pipeline::FileSuppressions;
 use zenith_utils::location::ByteRange;
 use zenith_workspace::Workspace;
@@ -70,8 +70,20 @@ impl<'c> Contract<'c> {
         workspace: &Workspace,
         exempts: &Exemptions,
     ) -> ContractReport<'c> {
+        self.check_leaving_out(graph, workspace, exempts, &[])
+    }
+
+    /// [`Contract::check`], also without the `left_out` imports, which count
+    /// as baselined.
+    pub(crate) fn check_leaving_out(
+        &self,
+        graph: &Graph,
+        workspace: &Workspace,
+        exempts: &Exemptions,
+        left_out: &[(ModuleId, ModuleId)],
+    ) -> ContractReport<'c> {
         let start = Instant::now();
-        let mut view = ContractView::new(self.config, graph, workspace, exempts);
+        let mut view = ContractView::new(self.config, graph, workspace, exempts, left_out);
         let violations = self.rule.check(&view.view, &view.statements);
         view.used_suppressions.sort_unstable();
         view.used_suppressions.dedup();

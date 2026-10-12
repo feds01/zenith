@@ -38,6 +38,7 @@ done, not the time taken on many cores; run `just bench` for those.
 | `pipeline` | `pipeline`: running every stage up to the graph, with the default configuration | The same repositories |
 | `pipeline` | `parse`, `resolve`, `graph`: each of those stages on its own | The same repositories |
 | `contracts` | `forbidden_without_chains`, `forbidden_with_chains`, `protected`, `independence`, `layers`, `acyclic`, `encapsulation`: checking a contract, compiled beforehand | The same repositories |
+| `baseline` | `record`: finding the baseline entries that keep every contract of `contracts.toml`, starting from an empty baseline, as `zenith baseline` does | The same repositories |
 | `check` | `check`: running the pipeline up to the graph, then compiling and checking every contract of `contracts.toml`, as `zenith check` does before showing its results | The same repositories |
 | `check` | `contracts`: compiling and checking every contract, in parallel, on a graph built beforehand | The same repositories |
 

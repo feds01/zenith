@@ -511,7 +511,7 @@ ignore_unresolved = ["/*", "virtual:*"]            # name patterns (§3.1) of sp
 exclude_kinds = []         # default for every contract
 
 [baseline]
-path = "zenith.baseline.json"   # default
+path = "zenith.baseline.toml"   # default
 stale = "error"                 # "error" or "warn"
 
 [contracts.<id>]
@@ -580,17 +580,15 @@ Large codebases start out broken. The baseline records the existing
 violations, so a check fails only on **new** ones, and the debt can only shrink.
 
 - `zenith baseline` runs every contract (or the `--contract` ones) and writes
-  `zenith.baseline.json`. Entries are concrete **direct imports**, grouped by
-  contract and sorted, so diffs are reviewable:
-  ```json
-  {
-    "version": 1,
-    "contracts": {
-      "web-layers": [
-        "web/src/lib/orders.ts -> web/src/domains/orders/api/client.ts"
-      ]
-    }
-  }
+  `zenith.baseline.toml`. Entries are concrete **direct imports**, grouped by
+  contract and sorted, one per line, so diffs are reviewable:
+  ```toml
+  version = 1
+
+  [contracts]
+  web-layers = [
+      "web/src/lib/orders.ts -> web/src/domains/orders/api/client.ts",
+  ]
   ```
 - `zenith check` treats each contract's entries as extra `ignore_imports`.
   An entry whose import no longer exists is **stale** and fails the check

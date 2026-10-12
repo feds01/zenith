@@ -11,7 +11,7 @@ use zenith_utils::{
     printing::{plural, thousands},
 };
 
-use crate::{Chain, ContractReport, CycleBreaker, Link, Violation, baseline::entry_range};
+use crate::{Chain, ContractReport, CycleBreaker, Link, Violation, baseline::entry_ranges};
 
 /// How many excerpts a report of chains or illegal imports shows.
 const MAX_EXCERPTS: usize = 3;
@@ -190,8 +190,9 @@ impl ReportBuilder<'_> {
         let kind = self.baseline.stale_kind(config.severity);
         let mut stale = Report::new(kind, title).with_id(&config.id);
         let mut unlocated = Vec::new();
-        for entry in entries.iter().take(MAX_STALE) {
-            match self.entry_span(&config.id, entry) {
+        let shown = &entries[..entries.len().min(MAX_STALE)];
+        for (entry, span) in shown.iter().zip(self.entry_spans(&config.id, shown)) {
+            match span {
                 Some(span) => {
                     stale.add_labelled_span(span, "its import no longer exists");
                 }
@@ -211,12 +212,14 @@ impl ReportBuilder<'_> {
         Some(stale)
     }
 
-    /// Where `entry` of the contract `id` is in the baseline file, or `None`
-    /// if the file can't be read or the entry found in it.
-    fn entry_span(&mut self, id: &str, entry: &str) -> Option<Span> {
-        let source = self.sources.file(&self.baseline.path)?;
-        let range = entry_range(&self.sources.get(source).contents, id, entry)?;
-        Some(Span::new(source, range))
+    /// Where each of the `entries` of the contract `id` is in the baseline
+    /// file, or `None` if the file can't be read or the entry found in it.
+    fn entry_spans(&mut self, id: &str, entries: &[String]) -> Vec<Option<Span>> {
+        let Some(source) = self.sources.file(&self.baseline.path) else {
+            return vec![None; entries.len()];
+        };
+        let ranges = entry_ranges(&self.sources.get(source).contents, id, entries);
+        ranges.into_iter().map(|range| range.map(|range| Span::new(source, range))).collect()
     }
 
     /// The findings of `report`, as [`ContractReport::findings`] makes them.
@@ -280,10 +283,11 @@ impl ReportBuilder<'_> {
             }
             findings.push(finding);
         }
-        for entry in &report.stale_entries {
+        let stale = self.entry_spans(&config.id, &report.stale_entries);
+        for (entry, span) in report.stale_entries.iter().zip(stale) {
             let title = format!("stale baseline entry `{entry}`: its import no longer exists");
             let mut finding = Report::new(self.baseline.stale_kind(config.severity), title);
-            if let Some(span) = self.entry_span(&config.id, entry) {
+            if let Some(span) = span {
                 finding.add_span(span);
             }
             findings.push(finding);

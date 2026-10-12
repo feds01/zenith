@@ -1,15 +1,13 @@
 //! The baseline: the known violations of each contract, which `zenith check`
 //! leaves out, so that only new ones fail it.
 //!
-//! ```json
-//! {
-//!   "version": 1,
-//!   "contracts": {
-//!     "web-layers": [
-//!       "web/src/lib/orders.ts -> web/src/domains/orders/api/client.ts"
-//!     ]
-//!   }
-//! }
+//! ```toml
+//! version = 1
+//!
+//! [contracts]
+//! web-layers = [
+//!     "web/src/lib/orders.ts -> web/src/domains/orders/api/client.ts",
+//! ]
 //! ```
 //!
 //! Each entry is a direct import, `importer -> imported`, that is left out of
@@ -20,9 +18,11 @@
 use std::{collections::BTreeMap, fmt, fs, io, path::Path};
 
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
+use rustc_hash::FxHashMap;
+use serde::Deserialize;
+use toml::Spanned;
 use zenith_graph::{Graph, ModuleId};
-use zenith_utils::location::ByteRange;
+use zenith_utils::location::{ByteRange, LineIndex};
 use zenith_workspace::Workspace;
 
 use crate::{Contract, Exemptions};
@@ -34,7 +34,7 @@ pub const BASELINE_VERSION: u32 = 1;
 const MAX_ROUNDS: usize = 64;
 
 /// A baseline file: the entries of each contract that has any.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Baseline {
     /// The version of the file's format.
@@ -62,19 +62,27 @@ impl Baseline {
             }
         };
         let path = || path.display().to_string();
-        let baseline: Self = serde_json::from_str(&contents)
-            .map_err(|error| BaselineError::Invalid { path: path(), error })?;
+        let baseline: Self = toml::from_str(&contents).map_err(|error| BaselineError::Invalid {
+            path: path(),
+            message: describe(&error, &contents),
+        })?;
         if baseline.version != BASELINE_VERSION {
             return Err(BaselineError::Version { path: path(), version: baseline.version });
         }
         Ok(Some(baseline))
     }
 
-    /// Write the baseline to `path`, as indented JSON, so that changes to it
-    /// can be reviewed line by line.
+    /// Write the baseline to `path`, as TOML with an entry per line, so that
+    /// adding or removing one changes only its line.
     pub fn save(&self, path: &Path) -> Result<(), BaselineError> {
-        let mut contents = serde_json::to_string_pretty(self).expect("a baseline is valid JSON");
-        contents.push('\n');
+        let mut contents = format!("version = {}\n\n[contracts]\n", self.version);
+        for (id, entries) in &self.contracts {
+            contents += &format!("{} = [\n", key(id));
+            for entry in entries {
+                contents += &format!("    {},\n", toml::Value::String(entry.clone()));
+            }
+            contents += "]\n";
+        }
         fs::write(path, contents)
             .map_err(|error| BaselineError::Write { path: path.display().to_string(), error })
     }
@@ -195,15 +203,35 @@ fn entry(graph: &Graph, importer: ModuleId, imported: ModuleId) -> String {
     format!("{} -> {}", graph.name(importer), graph.name(imported))
 }
 
-/// Where `entry` of the contract `id` is in the `text` of a baseline file, as
-/// [`Baseline::save`] writes it: the entry's JSON string after the contract's
-/// key. `None` if it can't be found.
-pub(crate) fn entry_range(text: &str, id: &str, entry: &str) -> Option<ByteRange> {
-    let key = format!("{}:", serde_json::to_string(id).ok()?);
-    let after = text.find(&key)? + key.len();
-    let quoted = serde_json::to_string(entry).ok()?;
-    let start = after + text[after..].find(&quoted)?;
-    Some(ByteRange::from(start..start + quoted.len()))
+/// The contract `id` as a TOML key: bare, as valid ids are, or else quoted.
+fn key(id: &str) -> String {
+    let bare = !id.is_empty()
+        && id.chars().all(|char| char.is_ascii_alphanumeric() || char == '-' || char == '_');
+    match bare {
+        true => id.to_string(),
+        false => toml::Value::String(id.to_string()).to_string(),
+    }
+}
+
+/// Where the `entries` of the contract `id` are in the `text` of a baseline
+/// file: the string of each, or `None` for one that the file doesn't have, or
+/// for every one if it is not a baseline.
+pub(crate) fn entry_ranges(text: &str, id: &str, entries: &[String]) -> Vec<Option<ByteRange>> {
+    /// The entries of each contract in a baseline file, with where they are.
+    #[derive(Deserialize)]
+    struct Located {
+        /// The entries of each contract, by id.
+        contracts: BTreeMap<String, Vec<Spanned<String>>>,
+    }
+
+    let located = toml::from_str::<Located>(text).ok();
+    let ranges: FxHashMap<_, _> = located
+        .iter()
+        .filter_map(|file| file.contracts.get(id))
+        .flatten()
+        .map(|entry| (entry.get_ref().as_str(), ByteRange::from(entry.span())))
+        .collect();
+    entries.iter().map(|entry| ranges.get(entry.as_str()).copied()).collect()
 }
 
 /// The import of `entry` in `graph`, or `None` if it is stale: the import no
@@ -231,8 +259,8 @@ pub enum BaselineError {
         /// The path of the file.
         path: String,
 
-        /// What is wrong with it.
-        error: serde_json::Error,
+        /// What is wrong with it, and where.
+        message: String,
     },
 
     /// The file is a baseline of another version of the format.
@@ -260,7 +288,9 @@ impl fmt::Display for BaselineError {
             Self::Read { path, error } => {
                 write!(f, "could not read the baseline `{path}`: {error}")
             }
-            Self::Invalid { path, error } => write!(f, "the baseline `{path}` is invalid: {error}"),
+            Self::Invalid { path, message } => {
+                write!(f, "the baseline `{path}` is invalid: {message}")
+            }
             Self::Version { path, version } => write!(
                 f,
                 "the baseline `{path}` has version {version}, but zenith reads version {BASELINE_VERSION}"
@@ -270,6 +300,19 @@ impl fmt::Display for BaselineError {
             }
         }
     }
+}
+
+/// What `error` says is wrong with the baseline `text`, and at which line and
+/// column, if it knows.
+fn describe(error: &toml::de::Error, text: &str) -> String {
+    let message = error.message().trim_end();
+    let Some(span) = error.span() else {
+        return message.to_string();
+    };
+    let lines = LineIndex::new(text);
+    let line = lines.line(span.start as u32);
+    let column = span.start as u32 - lines.line_range(line).start() + 1;
+    format!("{message} at line {line} column {column}")
 }
 
 /// The message includes the cause, so the error has no `source`: reporters
@@ -287,18 +330,33 @@ mod tests {
     const FORBIDDEN: &str = "[contracts.f]\ntype = \"forbidden\"\nfrom = [\"a\"]\nto = [\"b\"]\n";
 
     #[test]
-    fn baselines_are_saved_as_indented_json_and_loaded_back() {
+    fn baselines_are_saved_an_entry_per_line_and_loaded_back() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("zenith.baseline.json");
+        let path = dir.path().join("zenith.baseline.toml");
         assert!(Baseline::load(&path).unwrap().is_none());
 
         let mut baseline = Baseline::default();
         baseline.set("f", vec!["b.ts -> c.ts".to_string(), "a.ts -> c.ts".to_string()]);
-        baseline.set("g", Vec::new());
+        baseline.set("g", vec!["a.ts -> b.ts".to_string()]);
+        baseline.set("h", Vec::new());
+        baseline.set("not.an.id", vec!["a.ts -> \"b\".ts".to_string()]);
         baseline.save(&path).unwrap();
         assert_eq!(
             fs::read_to_string(&path).unwrap(),
-            "{\n  \"version\": 1,\n  \"contracts\": {\n    \"f\": [\n      \"a.ts -> c.ts\",\n      \"b.ts -> c.ts\"\n    ]\n  }\n}\n"
+            r#"version = 1
+
+[contracts]
+f = [
+    "a.ts -> c.ts",
+    "b.ts -> c.ts",
+]
+g = [
+    "a.ts -> b.ts",
+]
+"not.an.id" = [
+    'a.ts -> "b".ts',
+]
+"#
         );
         assert_eq!(Baseline::load(&path).unwrap(), Some(baseline));
     }
@@ -306,30 +364,33 @@ mod tests {
     #[test]
     fn invalid_baselines_and_other_versions_are_errors() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("zenith.baseline.json");
+        let path = dir.path().join("zenith.baseline.toml");
         let error = |contents: &str| {
             fs::write(&path, contents).unwrap();
             let message = Baseline::load(&path).unwrap_err().to_string();
             message.replace(&path.display().to_string(), "$PATH")
         };
         assert_eq!(
-            error("{\"version\": 2, \"contracts\": {}}"),
+            error("version = 2\n[contracts]\n"),
             "the baseline `$PATH` has version 2, but zenith reads version 1"
         );
         assert_eq!(
-            error("{\"version\": 1, \"contracts\": {}, \"extra\": 1}"),
-            "the baseline `$PATH` is invalid: unknown field `extra`, expected `version` or `contracts` at line 1 column 39"
+            error("version = 1\nextra = 1\n[contracts]\n"),
+            "the baseline `$PATH` is invalid: unknown field `extra`, expected `version` or `contracts` at line 2 column 1"
         );
     }
 
     #[test]
-    fn entries_are_found_after_the_key_of_their_contract() {
-        let text =
-            "{\n  \"contracts\": {\n    \"a\": [\"x -> y\"],\n    \"b\": [\"x -> y\"]\n  }\n}\n";
-        let range = entry_range(text, "b", "x -> y").unwrap();
+    fn entries_are_found_in_their_contract() {
+        let text = "version = 1\n\n[contracts]\na = [\"x -> y\"]\nb = [\n    \"z -> y\",\n    \"x -> y\",\n]\n";
+        let entries = ["x -> y".to_string(), "w -> y".to_string()];
+        let ranges = entry_ranges(text, "b", &entries);
+        let range = ranges[0].unwrap();
         assert_eq!(&text[std::ops::Range::from(range)], "\"x -> y\"");
-        assert!(range.start() as usize > text.find("\"b\"").unwrap());
-        assert_eq!(entry_range(text, "c", "x -> y"), None);
+        assert!(range.start() as usize > text.find("b = ").unwrap());
+        assert_eq!(ranges[1], None);
+        assert_eq!(entry_ranges(text, "c", &entries), [None, None]);
+        assert_eq!(entry_ranges("not = [toml", "b", &entries), [None, None]);
     }
 
     #[test]

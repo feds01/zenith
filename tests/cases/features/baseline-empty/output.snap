@@ -1,7 +1,7 @@
 $ zenith baseline
 exit: 0
 --- stdout
-No violations remain; removed `zenith.baseline.json`.
+No violations remain; removed `zenith.baseline.toml`.
 
 $ zenith baseline
 exit: 0

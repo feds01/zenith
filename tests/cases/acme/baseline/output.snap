@@ -1,7 +1,7 @@
 $ zenith baseline
 exit: 0
 --- stdout
-Wrote 12 baseline entries for 9 contracts to `zenith.baseline.json` (was 0).
+Wrote 12 baseline entries for 9 contracts to `zenith.baseline.toml` (was 0).
 --- stderr
 warning: the baseline gained 12 entries; review them before committing
 
@@ -29,5 +29,5 @@ Contracts
 $ zenith baseline --prune
 exit: 0
 --- stdout
-Wrote 12 baseline entries for 9 contracts to `zenith.baseline.json` (was 12).
+Wrote 12 baseline entries for 9 contracts to `zenith.baseline.toml` (was 12).
 

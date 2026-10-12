@@ -189,7 +189,7 @@ pub struct BaselineConfig {
 }
 
 /// The default path of the baseline file.
-pub(crate) const DEFAULT_BASELINE_PATH: &str = "zenith.baseline.json";
+pub(crate) const DEFAULT_BASELINE_PATH: &str = "zenith.baseline.toml";
 
 impl BaselineConfig {
     /// How to report the stale entries of a contract of `severity`: as errors

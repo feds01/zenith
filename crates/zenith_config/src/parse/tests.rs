@@ -94,7 +94,7 @@ fn an_empty_file_has_the_defaults_of_no_file() {
         assert!(config.resolve.alias.is_empty());
         assert!(config.resolve.ignore_unresolved.is_empty());
         assert!(config.analysis.exclude_kinds.is_empty());
-        assert_eq!(config.baseline.path, "zenith.baseline.json");
+        assert_eq!(config.baseline.path, "zenith.baseline.toml");
         assert_eq!(config.baseline.stale, StaleLevel::Error);
         assert!(config.contracts.is_empty());
     }
@@ -121,7 +121,7 @@ ignore_unresolved = ["/*", "virtual:*"]
 exclude_kinds = ["type", "dynamic"]
 
 [baseline]
-path = "config/zenith.baseline.json"
+path = "config/zenith.baseline.toml"
 stale = "warn"
 "#,
     );
@@ -149,7 +149,7 @@ stale = "warn"
     );
 
     assert_eq!(config.analysis.exclude_kinds, KindSet::TYPE | KindSet::DYNAMIC);
-    assert_eq!(config.baseline.path, "config/zenith.baseline.json");
+    assert_eq!(config.baseline.path, "config/zenith.baseline.toml");
     assert_eq!(config.baseline.stale, StaleLevel::Warn);
 }
 

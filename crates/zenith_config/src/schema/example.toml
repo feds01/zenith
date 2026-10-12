@@ -18,7 +18,7 @@ ignore_unresolved = ["/*", "virtual:*"]
 exclude_kinds = []
 
 [baseline]
-path = "zenith.baseline.json"
+path = "zenith.baseline.toml"
 stale = "error"
 
 [contracts.client-safety]

@@ -1,0 +1,6 @@
+version = 1
+
+[contracts]
+a-not-b = [
+    "src/a/x.ts -> src/b/y.ts",
+]

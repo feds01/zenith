@@ -293,14 +293,10 @@ impl fmt::Display for LoadError {
     }
 }
 
-impl std::error::Error for LoadError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Read { error, .. } => Some(error),
-            Self::Invalid { .. } => None,
-        }
-    }
-}
+/// The message of a [`LoadError::Read`] already ends with its cause, so the
+/// error has no `source`: reporters that show the chain of causes would show
+/// it twice.
+impl std::error::Error for LoadError {}
 
 /// Why a selector is invalid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

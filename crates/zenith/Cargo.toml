@@ -15,12 +15,29 @@ path = "src/main.rs"
 
 [dependencies]
 zenith_config = { workspace = true }
+zenith_contracts = { workspace = true }
+zenith_diagnostics = { workspace = true }
+zenith_graph = { workspace = true }
+zenith_pipeline = { workspace = true }
+zenith_resolve = { workspace = true }
+zenith_utils = { workspace = true }
 
+annotate-snippets = { workspace = true }
 anyhow = { workspace = true }
 argfile = { workspace = true }
 clap = { workspace = true }
+log = { workspace = true }
 serde_json = { workspace = true }
-wild = { workspace = true }
+
+[dev-dependencies]
+libtest-mimic = { workspace = true }
+pretty_assertions = { workspace = true }
+
+# The UI snapshot tests run the binary on the projects in `tests/cases`.
+[[test]]
+name = "ui"
+path = "tests/ui.rs"
+harness = false
 
 # `publish = false` keeps the crate off crates.io; it must still be released
 # by cargo-dist.

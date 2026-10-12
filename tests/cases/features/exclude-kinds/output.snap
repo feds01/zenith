@@ -1,0 +1,71 @@
+$ zenith why src/low src/high
+exit: 0
+--- stdout
+chain 1 of 7:
+  src/low/all-type-specifiers.ts:1 (type)
+  -> src/high/h.ts
+
+chain 2 of 7:
+  src/low/common.cjs:1 (require)
+  -> src/high/h.ts
+
+chain 3 of 7:
+  src/low/dynamic.ts:1 (dynamic)
+  -> src/high/h.ts
+
+chain 4 of 7:
+  src/low/export-type-star.ts:1 (type)
+  -> src/high/h.ts
+
+chain 5 of 7:
+  src/low/import-equals.ts:1 (require)
+  -> src/high/h.ts
+
+chain 6 of 7:
+  src/low/import-type.ts:1 (type)
+  -> src/high/h.ts
+
+chain 7 of 7:
+  src/low/typeof-import.ts:1 (type)
+  -> src/high/h.ts
+
+
+$ zenith why src/low src/high --exclude-kind type
+exit: 0
+--- stdout
+chain 1 of 3:
+  src/low/common.cjs:1 (require)
+  -> src/high/h.ts
+
+chain 2 of 3:
+  src/low/dynamic.ts:1 (dynamic)
+  -> src/high/h.ts
+
+chain 3 of 3:
+  src/low/import-equals.ts:1 (require)
+  -> src/high/h.ts
+
+
+$ zenith why src/low src/high --exclude-kind type --exclude-kind dynamic --exclude-kind require
+exit: 0
+--- stdout
+`src/low` does not import `src/high`.
+
+$ zenith graph src --exclude-kind value --exclude-kind type
+exit: 0
+--- stdout
+src/ (8 files)
+├─high/ (1 file)
+│ └─h.ts
+└─low/ (7 files)
+  ├─all-type-specifiers.ts
+  ├─common.cjs
+  ├─dynamic.ts
+  ├─export-type-star.ts
+  ├─import-equals.ts
+  ├─import-type.ts
+  └─typeof-import.ts
+
+dependencies between the children of `src`:
+  src/low -> src/high (3 imports)
+

@@ -1,0 +1,9 @@
+# Packages come from pnpm-workspace.yaml; names differ from directories.
+[contracts.package-tiers]
+type = "layers"
+layers = ["pkg:web-app", "pkg:@demo/ui", "pkg:@demo/utils"]
+
+# `pkg:*` matches the three pnpm packages, but never the root package.
+[contracts.packages-acyclic]
+type = "acyclic"
+modules = ["pkg:*"]

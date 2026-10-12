@@ -3,8 +3,9 @@
 //! A contract is about the modules that its selectors pick. Each selector
 //! resolves, against the import graph and workspace packages of the project,
 //! into a [`Selection`] of [`Unit`](zenith_graph::Unit)s: labelled sets of
-//! the nodes that take part in imports.
+//! the nodes that take part in imports. A path or `pkg:` selector that
+//! matches nothing is an [`UnmatchedSelector`].
 
 mod selection;
 
-pub use selection::Selection;
+pub use selection::{Selection, UnmatchedSelector};

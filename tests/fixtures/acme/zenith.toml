@@ -1,0 +1,90 @@
+# Contracts for the acme fixture. Every expected violation, exemption and
+# unresolved import is listed in VIOLATIONS.md; keep the two in sync.
+
+[files]
+respect_gitignore = true   # the default; .worktrees/ must not be scanned
+
+# 1. Layering inside the Next.js app. `mastra` and `config.ts` are deliberately
+#    not layers (mastra is covered by mastra-protected).
+[contracts.web-layers]
+type = "layers"
+name = "web/src layering"
+containers = ["web/src"]
+layers = ["app", "domains", "components", "hooks", "lib"]
+guidance = "Lower layers must not import higher ones. Move the shared code down a layer."
+
+# 2. Workspace package tiers. Type-only imports are exempt.
+[contracts.package-tiers]
+type = "layers"
+name = "Workspace package tiers"
+layers = [
+  "pkg:web | pkg:sdk | apps/* | services/*",
+  "pkg:@acme/ai | pkg:@acme/ui",
+  "pkg:@acme/api",
+  "pkg:@acme/utils",
+]
+exclude_kinds = ["type"]
+
+# 3. No cycles between workspace packages.
+[contracts.packages-acyclic]
+type = "acyclic"
+name = "No cycles between workspace packages"
+modules = ["pkg:*"]
+exclude_kinds = ["type"]
+
+# 4. Client components (transitively) never reach server-only code.
+[contracts.client-safety]
+type = "forbidden"
+name = "Client components never reach server-only code"
+from = [{ path = "web/src/**", directive = "use client" }]
+to = ["npm:sharp", "npm:@mastra/*", "node:*", "npm:server-only"]
+guidance = "Keep server-only modules out of client bundles: import a narrower module, or move the call into a server action."
+
+# 5 and 11. @acme/ai is only imported through its root entry point.
+[contracts.ai-public-surface]
+type = "encapsulation"
+name = "@acme/ai is imported through its entry point"
+modules = ["pkg:@acme/ai"]
+entrypoints = ["index"]
+severity = "warn"
+
+# 6. Content strategies are independent; `shared` is the sanctioned exception.
+[contracts.strategies-independent]
+type = "independence"
+name = "Content strategies are independent"
+modules = ["packages/ai/src/domains/content/strategies/*"]
+ignore_imports = [
+  "packages/ai/src/domains/content/strategies/* -> packages/ai/src/domains/content/strategies/shared",
+]
+
+# 7. Only API routes may import the mastra agents.
+[contracts.mastra-protected]
+type = "protected"
+name = "Mastra agents are only imported by API routes"
+modules = ["web/src/mastra"]
+allowed_importers = ["web/src/app/api"]
+
+# 8. Layers inside each @acme/api domain. Type-only imports are exempt.
+[contracts.api-domain-layers]
+type = "layers"
+name = "@acme/api domain internals"
+containers = ["packages/api/src/domains/*"]
+layers = ["hooks", "api", "types"]
+exclude_kinds = ["type"]
+
+# 9. No @acme package may depend on the legacy editor (web is grandfathered).
+[contracts.legacy-freeze]
+type = "forbidden"
+name = "Nothing new depends on legacy-editor"
+from = ["pkg:@acme/*"]
+to = ["pkg:legacy-editor"]
+guidance = "legacy-editor is frozen. Use the new editor APIs instead."
+
+# A contract that is KEPT: sdk's only workspace import is `import type`.
+# Without exclude_kinds it would break, so it pins type-only handling.
+[contracts.sdk-standalone]
+type = "forbidden"
+name = "The public SDK does not depend on internal packages at runtime"
+from = ["pkg:sdk"]
+to = ["pkg:@acme/*"]
+exclude_kinds = ["type"]

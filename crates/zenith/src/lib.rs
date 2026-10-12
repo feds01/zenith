@@ -3,13 +3,18 @@
 pub mod cli;
 mod commands;
 mod crash;
+mod logger;
+mod project;
+mod reporting;
+mod sources;
 pub(crate) mod version;
 
-use std::{panic, process::ExitCode};
+use std::{fmt, panic, process::ExitCode};
 
 use anyhow::Result;
 use cli::Command;
 use crash::crash_handler;
+use zenith_utils::{highlight::set_colour_enabled, pool::setup_global_threads};
 
 /// How a command finished, which determines the process exit code.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -35,12 +40,29 @@ impl From<ExitStatus> for ExitCode {
     }
 }
 
+/// An error that has already been shown, e.g. as reports of an invalid
+/// configuration file, so all that is left is to exit with
+/// [`ExitStatus::Error`].
+#[derive(Debug)]
+pub(crate) struct Reported;
+
+impl fmt::Display for Reported {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("the errors have been reported")
+    }
+}
+
+impl std::error::Error for Reported {}
+
 /// Handler function which will delegate functionality to the appropriate
 /// command.
 pub fn run(cli::Cli { command, global }: cli::Cli) -> Result<ExitStatus> {
     panic::set_hook(Box::new(crash_handler));
+    logger::setup_logging(global.log_level());
+    set_colour_enabled(global.color.should_colour());
+    setup_global_threads();
 
-    match command {
+    let status = match command {
         Command::Check(args) => commands::check::check(&global, args),
         Command::Baseline(args) => commands::baseline::baseline(&global, args),
         Command::Graph(args) => commands::graph::graph(&global, args),
@@ -49,5 +71,9 @@ pub fn run(cli::Cli { command, global }: cli::Cli) -> Result<ExitStatus> {
         Command::Init(args) => commands::init::init(&global, args),
         Command::Schema => commands::schema::schema(),
         Command::Version => commands::version::version(),
+    };
+    match status {
+        Err(error) if error.is::<Reported>() => Ok(ExitStatus::Error),
+        status => status,
     }
 }

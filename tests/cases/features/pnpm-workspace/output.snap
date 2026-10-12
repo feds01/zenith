@@ -1,0 +1,27 @@
+$ zenith graph --depth 1
+exit: 0
+--- stdout
+. (3 files)
+├─apps/ (1 file)
+└─packages/ (2 files)
+
+dependencies between the children of `.`:
+  apps -> packages (2 imports)
+
+$ zenith graph "pkg:*" --depth 0
+exit: 0
+--- stdout
+apps/web/ (1 file)
+
+packages/ui/ (1 file)
+
+packages/utils/ (1 file)
+
+$ zenith why pkg:@demo/utils pkg:@demo/ui
+exit: 0
+--- stdout
+chain 1 of 1:
+  packages/utils/index.ts:1
+  -> packages/ui/index.ts
+
+

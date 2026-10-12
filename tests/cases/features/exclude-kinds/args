@@ -1,0 +1,5 @@
+# Each file in `src/low` imports `src/high/h.ts` with another kind.
+why src/low src/high
+why src/low src/high --exclude-kind type
+why src/low src/high --exclude-kind type --exclude-kind dynamic --exclude-kind require
+graph src --exclude-kind value --exclude-kind type

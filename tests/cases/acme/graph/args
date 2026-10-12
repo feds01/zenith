@@ -1,0 +1,14 @@
+# The whole project, then one directory, with the dependencies between children.
+graph --depth 1
+graph web/src --depth 1
+# `packages/utils` imports `packages/api` once for a type only.
+graph packages --depth 1
+graph packages --depth 1 --exclude-kind type
+# Next.js route groups need no escaping.
+graph "web/src/app/(dashboard)" --depth 3
+# A selector can match several modules, each shown on its own.
+graph "web/src/domains/*" --depth 0
+graph pkg:@acme/api --format json
+graph packages/ui --format dot
+graph web/src/nope
+graph "web/{src"

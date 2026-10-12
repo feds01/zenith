@@ -1,0 +1,13 @@
+{
+  "name": "@acme/ai",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "dependencies": {
+    "@acme/api": "workspace:*",
+    "@mastra/core": "^0.20.0",
+    "legacy-editor": "workspace:*",
+    "sharp": "^0.34.0",
+    "zod": "^4.1.0"
+  }
+}

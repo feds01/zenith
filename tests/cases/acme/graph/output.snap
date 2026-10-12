@@ -1,0 +1,177 @@
+$ zenith graph --depth 1
+exit: 0
+--- stdout
+. (84 files)
+├─apps/ (7 files)
+├─packages/ (35 files)
+├─sdk/ (2 files)
+├─services/ (3 files)
+└─web/ (37 files)
+
+dependencies between the children of `.`:
+  apps -> packages (4 imports)
+  sdk -> packages (1 import)
+  services -> packages (1 import)
+  web -> packages (12 imports)
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith graph web/src --depth 1
+exit: 0
+--- stdout
+web/src/ (36 files)
+├─app/ (7 files)
+├─components/ (5 files)
+├─config.ts
+├─domains/ (15 files)
+├─hooks/ (1 file)
+├─lib/ (5 files)
+└─mastra/ (2 files)
+
+dependencies between the children of `web/src`:
+  web/src/app -> web/src/components (1 import)
+  web/src/app -> web/src/config.ts (1 import)
+  web/src/app -> web/src/domains (5 imports)
+  web/src/app -> web/src/mastra (1 import)
+  web/src/components -> web/src/app (1 import)
+  web/src/components -> web/src/hooks (1 import)
+  web/src/components -> web/src/mastra (1 import)
+  web/src/domains -> web/src/lib (3 imports)
+  web/src/lib -> web/src/domains (2 imports)
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith graph packages --depth 1
+exit: 0
+--- stdout
+packages/ (35 files)
+├─ai/ (14 files)
+├─api/ (9 files)
+├─legacyEditor/ (2 files)
+├─ui/ (4 files)
+└─utils/ (6 files)
+
+dependencies between the children of `packages`:
+  packages/ai -> packages/api (1 import)
+  packages/ai -> packages/legacyEditor (1 import)
+  packages/api -> packages/utils (2 imports)
+  packages/ui -> packages/utils (1 import)
+  packages/utils -> packages/api (2 imports)
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith graph packages --depth 1 --exclude-kind type
+exit: 0
+--- stdout
+packages/ (35 files)
+├─ai/ (14 files)
+├─api/ (9 files)
+├─legacyEditor/ (2 files)
+├─ui/ (4 files)
+└─utils/ (6 files)
+
+dependencies between the children of `packages`:
+  packages/ai -> packages/api (1 import)
+  packages/ai -> packages/legacyEditor (1 import)
+  packages/api -> packages/utils (2 imports)
+  packages/ui -> packages/utils (1 import)
+  packages/utils -> packages/api (1 import)
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith graph "web/src/app/(dashboard)" --depth 3
+exit: 0
+--- stdout
+web/src/app/(dashboard)/ (4 files)
+├─campaigns/ (1 file)
+│ └─[id]/ (1 file)
+│   └─page.tsx
+├─editor/ (1 file)
+│ └─page.tsx
+├─layout.tsx
+└─tabs.ts
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith graph "web/src/domains/*" --depth 0
+exit: 0
+--- stdout
+web/src/domains/analytics/ (5 files)
+
+dependencies between the children of `web/src/domains/analytics`:
+  web/src/domains/analytics/api -> web/src/domains/analytics/types.ts (1 import)
+  web/src/domains/analytics/components -> web/src/domains/analytics/hooks (1 import)
+  web/src/domains/analytics/hooks -> web/src/domains/analytics/api (1 import)
+  web/src/domains/analytics/hooks -> web/src/domains/analytics/types.ts (1 import)
+
+web/src/domains/campaigns/ (8 files)
+
+dependencies between the children of `web/src/domains/campaigns`:
+  web/src/domains/campaigns/components -> web/src/domains/campaigns/api (1 import)
+  web/src/domains/campaigns/components -> web/src/domains/campaigns/hooks (1 import)
+  web/src/domains/campaigns/components -> web/src/domains/campaigns/types.ts (1 import)
+  web/src/domains/campaigns/hooks -> web/src/domains/campaigns/api (1 import)
+
+web/src/domains/editor/ (2 files)
+
+dependencies between the children of `web/src/domains/editor`:
+  web/src/domains/editor/components -> web/src/domains/editor/types.ts (1 import)
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith graph pkg:@acme/api --format json
+exit: 0
+--- stdout
+[
+  {
+    "module": "packages/api",
+    "children": [
+      {
+        "name": "packages/api/index.ts",
+        "kind": "file",
+        "files": 1
+      },
+      {
+        "name": "packages/api/src",
+        "kind": "directory",
+        "files": 8
+      }
+    ],
+    "dependencies": [
+      {
+        "from": "packages/api/index.ts",
+        "to": "packages/api/src",
+        "imports": 3
+      }
+    ]
+  }
+]
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith graph packages/ui --format dot
+exit: 0
+--- stdout
+digraph "packages/ui" {
+  rankdir=LR;
+  node [shape=box];
+  "packages/ui/index.ts" [label="index.ts"];
+  "packages/ui/src" [label="src/"];
+  "packages/ui/index.ts" -> "packages/ui/src" [label="2"];
+}
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith graph web/src/nope
+exit: 2
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+error: `web/src/nope` does not match anything
+
+$ zenith graph "web/{src"
+exit: 2
+--- stderr
+error: invalid value 'web/{src' for '[SELECTOR]': unclosed `{`
+
+For more information, try '--help'.
+

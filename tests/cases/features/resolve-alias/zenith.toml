@@ -1,0 +1,11 @@
+# `types/...` is a bundler-only alias (no tsconfig): without `[resolve] alias`
+# it would be the npm package `types`. `/logo.svg` is served from `public/`
+# and is expected not to resolve; `./missing` is a real mistake.
+[resolve]
+alias = { "types" = "src/types" }
+ignore_unresolved = ["/*"]
+
+[contracts.ui-not-types]
+type = "forbidden"
+from = ["src/ui"]
+to = ["src/types"]

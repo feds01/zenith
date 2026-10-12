@@ -1,0 +1,32 @@
+$ zenith graph
+exit: 0
+--- stdout
+. (4 files)
+└─src/ (4 files)
+  ├─a.ts
+  ├─binary.ts
+  ├─fatal.ts
+  └─recovered.ts
+--- stderr
+warning: could not read `src/binary.ts`: stream did not contain valid UTF-8
+  |
+  = note: its imports are missing from the graph
+
+warning: Unexpected token
+ --> src/fatal.ts:3:14
+  |
+3 | export const = a;
+  |              ^
+  |
+  = note: some of the file's imports may be missing from the graph
+
+warning: Missing initializer in const declaration
+ --> src/recovered.ts:3:7
+  |
+3 | const b;
+  |       ^
+  |
+  = note: some of the file's imports may be missing from the graph
+  = note: this is the first of 2 syntax errors in the file
+
+

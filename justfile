@@ -37,6 +37,14 @@ run *args:
 test *args:
     cargo test "$@"
 
+# Run only the UI snapshot tests in tests/cases, optionally filtered by name
+test-ui *filter:
+    cargo test -p zenith --test ui -- "$@"
+
+# Re-record the `output.snap` snapshots in tests/cases from the current output
+update-snapshots *filter:
+    REGENERATE_OUTPUT=1 cargo test -p zenith --test ui -- "$@"
+
 # Regenerate zenith.schema.json from the config types
 schema:
     cargo build -q -p zenith

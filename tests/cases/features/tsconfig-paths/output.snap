@@ -1,0 +1,48 @@
+$ zenith graph --depth 4
+exit: 0
+--- stdout
+. (7 files)
+├─packages/ (6 files)
+│ ├─app/ (3 files)
+│ │ └─src/ (3 files)
+│ │   ├─config.ts
+│ │   ├─lib/ (1 file)
+│ │   └─main.ts
+│ ├─core/ (2 files)
+│ │ └─src/ (2 files)
+│ │   ├─index.ts
+│ │   └─lib/ (1 file)
+│ └─tools/ (1 file)
+│   └─src/ (1 file)
+│     └─index.ts
+└─shared/ (1 file)
+  └─util.ts
+
+dependencies between the children of `.`:
+  packages -> shared (1 import)
+
+$ zenith resolve packages/app/src/main.ts @/lib/format
+exit: 0
+--- stdout
+internal: packages/app/src/lib/format.ts
+
+$ zenith resolve packages/core/src/index.ts @/lib/format
+exit: 0
+--- stdout
+internal: packages/core/src/lib/format.ts
+
+$ zenith resolve packages/app/src/main.ts config
+exit: 0
+--- stdout
+internal: packages/app/src/config.ts
+
+$ zenith resolve packages/app/src/main.ts react
+exit: 0
+--- stdout
+external: npm:react (not installed, so named from the specifier)
+
+$ zenith resolve packages/tools/src/index.ts ~shared/util
+exit: 0
+--- stdout
+internal: shared/util.ts
+

@@ -4,7 +4,7 @@ use std::fmt;
 
 use rustc_hash::FxHashSet;
 
-use crate::{Graph, ModuleId};
+use crate::{Graph, KindSet, ModuleId};
 
 /// A set of imports, each an `(importer, imported)` pair of nodes.
 ///
@@ -82,6 +82,22 @@ impl<'g> GraphView<'g> {
         Self { graph, excluded }
     }
 
+    /// A view of the graph without the imports all of whose details are of
+    /// the `excluded` kinds. An import with one detail of another kind stays.
+    pub fn without_kinds(graph: &'g Graph, excluded: KindSet) -> Self {
+        if excluded.is_empty() {
+            return Self::new(graph);
+        }
+        let imports = graph
+            .edges()
+            .filter(|(importer, imported)| {
+                let details = graph.details(*importer, *imported);
+                details.iter().all(|detail| excluded.contains(detail.kind.into()))
+            })
+            .collect();
+        Self::with_excluded(graph, imports)
+    }
+
     /// The underlying graph, for the queries that don't depend on imports,
     /// such as names and the module tree.
     pub fn graph(&self) -> &'g Graph {
@@ -112,7 +128,10 @@ impl<'g> GraphView<'g> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::{graph_of, id};
+    use crate::{
+        GraphBuilder, ImportKind,
+        testing::{detail, graph_of, id},
+    };
 
     #[test]
     fn an_unfiltered_view_has_every_import() {
@@ -143,6 +162,29 @@ mod tests {
         // The graph itself is untouched.
         assert_eq!(graph.imports_of(a), [b, c]);
         assert_eq!(graph.importers_of(c), [a, b]);
+    }
+
+    #[test]
+    fn a_view_without_kinds_keeps_imports_with_a_detail_of_another_kind() {
+        // `a` imports `b` for a type only, and `c` both for a type and a
+        // value.
+        let mut builder = GraphBuilder::new();
+        let [a, b, c] = ["a.ts", "b.ts", "c.ts"].map(|name| builder.add_file(name).unwrap());
+        builder.add_import(a, b, detail(1, ImportKind::Type));
+        builder.add_import(a, c, detail(2, ImportKind::Type));
+        builder.add_import(a, c, detail(3, ImportKind::Value));
+        let graph = builder.finish();
+        let [a, b, c] = ["a.ts", "b.ts", "c.ts"].map(|name| id(&graph, name));
+
+        let view = GraphView::without_kinds(&graph, ImportKind::Type.into());
+        assert_eq!(view.imports_of(a).collect::<Vec<_>>(), [c]);
+        let view = GraphView::without_kinds(
+            &graph,
+            [ImportKind::Type, ImportKind::Value].into_iter().collect(),
+        );
+        assert_eq!(view.imports_of(a).count(), 0);
+        let view = GraphView::without_kinds(&graph, KindSet::empty());
+        assert_eq!(view.imports_of(a).collect::<Vec<_>>(), [b, c]);
     }
 
     #[test]

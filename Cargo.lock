@@ -1956,6 +1956,7 @@ dependencies = [
  "heck",
  "tempfile",
  "zenith_config",
+ "zenith_contracts",
  "zenith_graph",
  "zenith_pipeline",
  "zenith_utils",
@@ -1982,9 +1983,12 @@ dependencies = [
 name = "zenith_contracts"
 version = "0.1.0"
 dependencies = [
+ "rayon",
  "thin-vec",
  "zenith_config",
+ "zenith_diagnostics",
  "zenith_graph",
+ "zenith_utils",
  "zenith_workspace",
 ]
 

@@ -26,3 +26,15 @@ modules = ["packages/*"]
 [contracts.tiers]
 type = "layers"
 layers = ["apps/* | services/*", "packages/*"]
+
+# The libraries, and the features inside them, as sets of units.
+[contracts.acyclic-libraries]
+type = "acyclic"
+modules = ["packages/*"]
+depth = 2
+
+# Each library is imported through its barrel, so this finds deep imports.
+[contracts.library-barrels]
+type = "encapsulation"
+modules = ["packages/*"]
+entrypoints = ["index", "src/index"]

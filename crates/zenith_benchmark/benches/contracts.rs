@@ -82,3 +82,16 @@ fn independence(bencher: Bencher, source_files: usize) {
 fn layers(bencher: Bencher, source_files: usize) {
     bench_contract(bencher, source_files, "tiers");
 }
+
+/// An `acyclic` contract on the libraries, and two generations of their
+/// children.
+#[divan::bench(args = SIZES, sample_count = 10)]
+fn acyclic(bencher: Bencher, source_files: usize) {
+    bench_contract(bencher, source_files, "acyclic-libraries");
+}
+
+/// An `encapsulation` contract that finds deep imports.
+#[divan::bench(args = SIZES, sample_count = 10)]
+fn encapsulation(bencher: Bencher, source_files: usize) {
+    bench_contract(bencher, source_files, "library-barrels");
+}

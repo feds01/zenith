@@ -3,7 +3,7 @@
 //! Zenith identifies every internal node by a POSIX path relative to the
 //! project root, on every platform.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, MAIN_SEPARATOR, Path, PathBuf, is_separator};
 
 use path_absolutize::Absolutize;
 
@@ -30,6 +30,30 @@ pub fn adjust_canonicalisation<P: AsRef<Path>>(path: P) -> PathBuf {
 /// inside `root`. A `..` component counts as outside, since it can lead out of
 /// `root`.
 pub fn relative_posix(root: &Path, path: &Path) -> Option<String> {
+    // Zenith names every file it finds and every import it resolves, so take
+    // the usual case, a normalised path inside the root, as text.
+    relative_text(root, path).or_else(|| relative_by_components(root, path))
+}
+
+/// [`relative_posix`] for a UTF-8 `path` that starts with the text of `root`
+/// and a separator, and has no empty, `.` or `..` segments after it. `None`
+/// for any other path, which [`relative_by_components`] decides on.
+fn relative_text(root: &Path, path: &Path) -> Option<String> {
+    let (root, path) = (root.to_str()?, path.to_str()?);
+    let rest = path.strip_prefix(root)?;
+    let rest = if root.ends_with(is_separator) { rest } else { rest.strip_prefix(is_separator)? };
+    if rest.split(is_separator).any(|segment| matches!(segment, "" | "." | "..")) {
+        return None;
+    }
+    Some(match MAIN_SEPARATOR {
+        '/' => rest.to_owned(),
+        _ => rest.replace(is_separator, "/"),
+    })
+}
+
+/// [`relative_posix`] for any path, comparing it with `root` component by
+/// component.
+fn relative_by_components(root: &Path, path: &Path) -> Option<String> {
     let mut out = String::new();
     for component in path.strip_prefix(root).ok()?.components() {
         let part = match component {
@@ -94,6 +118,39 @@ mod tests {
         assert_eq!(relative_posix(root, Path::new("/other/x.ts")), None);
         assert_eq!(relative_posix(root, Path::new("/repo/../etc/passwd")), None);
         assert_eq!(relative_posix(root, root).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn paths_are_made_relative_as_text_or_by_components_alike() {
+        let roots = ["/repo", "/repo/", "/"];
+        let paths = [
+            "/repo/web/a.ts",
+            "/repo",
+            "/repo/",
+            "/repository/a.ts",
+            "/repo//a.ts",
+            "/repo/./a.ts",
+            "/repo/a/./b.ts",
+            "/repo/a/../b.ts",
+            "/repo/a/",
+            "/other/a.ts",
+            "repo/a.ts",
+        ];
+        for root in roots {
+            for path in paths {
+                let (root, path) = (Path::new(root), Path::new(path));
+                let expected = relative_by_components(root, path);
+                assert_eq!(relative_posix(root, path), expected, "{root:?} {path:?}");
+                // The text form only answers when it agrees.
+                if let Some(text) = relative_text(root, path) {
+                    assert_eq!(Some(text), expected, "{root:?} {path:?}");
+                }
+            }
+        }
+        assert_eq!(
+            relative_text(Path::new("/repo"), Path::new("/repo/a/b.ts")).as_deref(),
+            Some("a/b.ts")
+        );
     }
 
     #[test]

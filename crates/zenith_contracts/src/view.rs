@@ -45,12 +45,14 @@ pub(crate) struct ContractView<'g, 'c> {
 impl<'g, 'c> ContractView<'g, 'c> {
     /// The view of `graph` for the contract `config`, whose `pkg:` selectors
     /// match the `workspace` packages, without what the project `exempts`
-    /// from it.
+    /// from it, and without the `left_out` imports, which count as
+    /// baselined: those found so far while recording a baseline.
     pub(crate) fn new(
         config: &'c ContractConfig,
         graph: &'g Graph,
         workspace: &Workspace,
         exempts: &Exemptions,
+        left_out: &[(ModuleId, ModuleId)],
     ) -> Self {
         let mut excluded = EdgeSet::only_of_kinds(graph, config.exclude_kinds);
         let mut statements =
@@ -122,6 +124,10 @@ impl<'g, 'c> ContractView<'g, 'c> {
                 }
                 None => stale_entries.push(entry.clone()),
             }
+        }
+        for (importer, imported) in left_out {
+            excluded.insert(*importer, *imported);
+            baselined += 1;
         }
 
         Self {

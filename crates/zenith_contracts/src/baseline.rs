@@ -21,7 +21,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use toml::Spanned;
-use zenith_graph::{Graph, ModuleId};
+use zenith_graph::{EdgeSet, Graph, ModuleId};
 use zenith_utils::location::{ByteRange, LineIndex};
 use zenith_workspace::Workspace;
 
@@ -173,26 +173,24 @@ impl Contract<'_> {
         workspace: &Workspace,
         exempts: &Exemptions,
     ) -> Vec<String> {
-        let mut baseline = Baseline::default();
-        let mut entries = Vec::new();
+        // The imports found so far are left out of the contract by their nodes, and
+        // only named once they are all found.
+        let exempts = Exemptions { baseline: None, ..*exempts };
+        let (mut found, mut imports) = (EdgeSet::new(), Vec::new());
         for _ in 0..MAX_ROUNDS {
-            let exempts = Exemptions { baseline: Some(&baseline), ..*exempts };
-            let report = self.check(graph, workspace, &exempts);
-            let mut found: Vec<_> = report
-                .violations
-                .iter()
-                .flat_map(|violation| violation.baseline_links())
-                .map(|link| entry(graph, link.importer, link.imported))
-                .filter(|entry| !entries.contains(entry))
-                .collect();
-            if found.is_empty() {
+            let report = self.check_leaving_out(graph, workspace, &exempts, &imports);
+            let before = imports.len();
+            for link in report.violations.iter().flat_map(|violation| violation.baseline_links()) {
+                if found.insert(link.importer, link.imported) {
+                    imports.push((link.importer, link.imported));
+                }
+            }
+            if imports.len() == before {
                 break;
             }
-            found.sort();
-            found.dedup();
-            entries.extend(found);
-            baseline.contracts.insert(self.config.id.clone(), entries.clone());
         }
+        let mut entries: Vec<_> =
+            imports.iter().map(|(importer, imported)| entry(graph, *importer, *imported)).collect();
         entries.sort();
         entries
     }

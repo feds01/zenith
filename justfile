@@ -33,6 +33,15 @@ build-release:
 run *args:
     cargo run -q -p zenith -- "$@"
 
+# Extra args replace the default command, `check --show-timings`.
+# Run a release build on a local checkout with a config from corpus/, e.g. `just corpus ~/code/app corpus/app.toml`
+corpus path config *args:
+    #!/usr/bin/env sh
+    set -eu
+    shift 2
+    [ $# -gt 0 ] || set -- check --show-timings
+    cargo run -q --release --locked -p zenith -- --root "{{path}}" --config "{{config}}" "$@"
+
 # Run all tests, extra args go to `cargo test`, e.g. `just test -p zenith`
 test *args:
     cargo test "$@"

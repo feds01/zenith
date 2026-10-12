@@ -404,9 +404,8 @@ impl Resolver {
 
     /// Classify the file that `specifier` resolved to.
     fn classify(&self, specifier: &str, path: &Path) -> Resolved {
-        if let Ok(inside) = path.strip_prefix(&self.root)
-            && !inside.components().any(|component| component.as_os_str() == "node_modules")
-            && let Some(relative) = relative_posix(&self.root, path)
+        if let Some(relative) = relative_posix(&self.root, path)
+            && !relative.split('/').any(|segment| segment == "node_modules")
         {
             return Resolved::Internal(relative);
         }

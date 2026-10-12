@@ -55,7 +55,7 @@ fn imports_of(graph: &Graph, name: &str) -> Vec<(String, String, ImportKind)> {
         .iter()
         .flat_map(|imported| {
             graph.details(file, *imported).iter().map(|detail| {
-                (graph.name(*imported).to_string(), detail.specifier.clone(), detail.kind)
+                (graph.name(*imported).to_string(), detail.specifier.to_string(), detail.kind)
             })
         })
         .collect()

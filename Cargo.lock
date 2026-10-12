@@ -2013,6 +2013,7 @@ name = "zenith_graph"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "compact_str",
  "fastrand",
  "fixedbitset",
  "index_vec",

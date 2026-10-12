@@ -531,7 +531,7 @@ mod tests {
     fn detail(text: &str, statement: &str, specifier: &str, kind: ImportKind) -> ImportDetail {
         let start = text.find(statement).unwrap() as u32;
         let range = ByteRange::new(start, start + statement.len() as u32);
-        ImportDetail { range, specifier: specifier.to_string(), kind }
+        ImportDetail { range, specifier: specifier.into(), kind }
     }
 
     #[test]
@@ -551,7 +551,7 @@ mod tests {
     fn imports_without_their_specifier_point_at_their_first_line() {
         let text = "import {\n  a,\n} from './a';\n";
         let mut import = detail(text, "import {\n  a,\n} from './a';", "./a", ImportKind::Value);
-        import.specifier = "./elsewhere".to_string();
+        import.specifier = "./elsewhere".into();
         assert_eq!(&text[Range::from(import_span(text, &import))], "import {");
     }
 

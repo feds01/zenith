@@ -1,7 +1,6 @@
 //! Showing reports about zenith's input, such as configuration errors and
 //! syntax errors, on `stderr`.
 
-use annotate_snippets::Renderer;
 use zenith_diagnostics::{Report, Reporter, SourceMap};
 use zenith_utils::highlight::colour_enabled;
 
@@ -11,6 +10,5 @@ pub(crate) fn emit(sources: &SourceMap, reports: &[Report]) {
     if reports.is_empty() {
         return;
     }
-    let renderer = if colour_enabled() { Renderer::styled() } else { Renderer::plain() };
-    eprintln!("{}\n", Reporter::new(sources, reports).with_renderer(renderer));
+    eprintln!("{}\n", Reporter::new(sources, reports).with_colour(colour_enabled()));
 }

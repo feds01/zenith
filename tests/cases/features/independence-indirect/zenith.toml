@@ -1,0 +1,7 @@
+# `src/a` reaches `src/b` only through `src/shared`, which is not a module:
+# an indirect violation. `src/c` imports `src/a` directly; its chain on to
+# `src/b` passes through the third module `src/a`, so it is reported as
+# `c -> a` and `a -> b`, never as `c -> b`.
+[contracts.modules-independent]
+type = "independence"
+modules = ["src/a", "src/b", "src/c"]

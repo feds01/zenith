@@ -1,0 +1,5 @@
+# `hooks` is optional: `domains/billing` has no hooks and is still checked.
+[contracts.domain-layers]
+type = "layers"
+containers = ["domains/*"]
+layers = ["(hooks)", "api", "types"]

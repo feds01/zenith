@@ -34,6 +34,11 @@ impl<'a> Reporter<'a> {
         Self { renderer, ..self }
     }
 
+    /// Render in colour if `colour` is set, and plainly otherwise.
+    pub fn with_colour(self, colour: bool) -> Self {
+        self.with_renderer(if colour { Renderer::styled() } else { Renderer::plain() })
+    }
+
     /// The `annotate-snippets` group of a report.
     fn group(&self, report: &'a Report) -> Group<'a> {
         let level = match report.kind {
@@ -52,7 +57,12 @@ impl<'a> Reporter<'a> {
                 }
             }
         });
-        level.primary_title(&report.title).elements(elements)
+        let title = level.primary_title(&report.title);
+        let title = match &report.id {
+            Some(id) => title.id(id),
+            None => title,
+        };
+        title.elements(elements)
     }
 
     /// The excerpt of a code block, with its span labelled.
@@ -121,6 +131,19 @@ mod tests {
             "  = note: contracts of an unknown type are skipped",
         ];
         assert_eq!(rendered, expected.join("\n"));
+    }
+
+    #[test]
+    fn renders_the_id_next_to_the_kind() {
+        let sources = SourceMap::new();
+        let mut report = Report::warning("`web` must not import `api`").with_id("web-layers");
+        report.add_help("move the shared code down a layer");
+        let expected = [
+            "warning[web-layers]: `web` must not import `api`",
+            "  |",
+            "  = help: move the shared code down a layer",
+        ];
+        assert_eq!(Reporter::new(&sources, &[report]).to_string(), expected.join("\n"));
     }
 
     #[test]

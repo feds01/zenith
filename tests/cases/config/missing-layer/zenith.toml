@@ -1,0 +1,5 @@
+# `hooks` is required, but `domains/billing` has none.
+[contracts.domain-layers]
+type = "layers"
+containers = ["domains/*"]
+layers = ["hooks", "api"]

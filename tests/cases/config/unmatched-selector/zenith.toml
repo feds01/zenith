@@ -1,0 +1,4 @@
+[contracts.a-not-c]
+type = "forbidden"
+from = ["src/a"]
+to = ["src/c"]

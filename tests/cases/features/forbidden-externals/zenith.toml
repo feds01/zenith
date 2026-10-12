@@ -1,0 +1,7 @@
+# External and builtin targets. `fs` and `node:fs/promises` both become
+# `node:fs`; `lodash/get` becomes `npm:lodash`. Nothing imports `left-pad`,
+# which is fine for an external selector.
+[contracts.no-io]
+type = "forbidden"
+from = ["src"]
+to = ["node:fs", "bun:sqlite", "npm:lodash", "npm:left-pad"]

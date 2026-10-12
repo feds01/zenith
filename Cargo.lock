@@ -1955,7 +1955,6 @@ dependencies = [
  "log",
  "mimalloc",
  "pretty_assertions",
- "serde",
  "serde_json",
  "zenith_config",
  "zenith_contracts",
@@ -2007,6 +2006,7 @@ dependencies = [
  "rayon",
  "rustc-hash",
  "serde",
+ "serde_json",
  "tempfile",
  "thin-vec",
  "toml",
@@ -2086,8 +2086,6 @@ dependencies = [
 name = "zenith_reporting"
 version = "0.1.0"
 dependencies = [
- "serde",
- "serde_json",
  "zenith_diagnostics",
  "zenith_utils",
 ]

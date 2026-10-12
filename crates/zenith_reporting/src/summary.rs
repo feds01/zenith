@@ -55,9 +55,6 @@ pub struct SummaryEntry {
 /// A total of a check besides those of the outcomes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Count {
-    /// Its key in the JSON summary, e.g. `stale_baseline_entries`.
-    pub key: &'static str,
-
     /// What is counted, in the singular, e.g. `stale baseline entry`.
     pub noun: &'static str,
 
@@ -164,7 +161,7 @@ impl Summary {
     }
 
     /// How many contracts are kept, with something to fix or not.
-    pub(crate) fn kept(&self) -> usize {
+    pub fn kept(&self) -> usize {
         let kept = |entry: &&SummaryEntry| {
             matches!(entry.outcome, Outcome::Kept | Outcome::KeptWith { .. })
         };
@@ -172,7 +169,7 @@ impl Summary {
     }
 
     /// How many contracts are broken by findings of `kind`.
-    pub(crate) fn broken(&self, kind: ReportKind) -> usize {
+    pub fn broken(&self, kind: ReportKind) -> usize {
         let broken = |entry: &&SummaryEntry| match entry.outcome {
             Outcome::Broken { kind: of, .. } => of == kind,
             Outcome::Kept | Outcome::KeptWith { .. } => false,
@@ -230,7 +227,7 @@ mod tests {
             entry("a", "forbidden", Outcome::KeptWith { status, kind })
         };
         let mut warned = summary(vec![flagged(ReportKind::Warning)]);
-        let count = |count| Count { key: "stale", noun: "stale baseline entry", count };
+        let count = |count| Count { noun: "stale baseline entry", count };
         warned.counts = vec![count(1)];
         assert_eq!(
             warned.totals(),

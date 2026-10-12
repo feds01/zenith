@@ -1,6 +1,7 @@
 //! The problems that the pipeline finds, as the JSON output of `zenith check`
 //! shows them: the imports that couldn't be resolved, and the errors in
-//! source files that couldn't be read or parsed in full.
+//! source files that couldn't be read or parsed in full. The output itself is
+//! made by the contracts.
 
 use serde::Serialize;
 use zenith_diagnostics::SourceMap;

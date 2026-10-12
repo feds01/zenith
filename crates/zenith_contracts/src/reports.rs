@@ -66,7 +66,6 @@ impl ContractReport<'_> {
     pub fn summary(reports: &[Self], baseline: &BaselineConfig) -> Summary {
         let entries = reports.iter().map(|report| report.summary_entry(baseline)).collect();
         let stale = Count {
-            key: "stale_baseline_entries",
             noun: "stale baseline entry",
             count: reports.iter().map(|report| report.stale_entries.len()).sum(),
         };

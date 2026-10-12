@@ -16,15 +16,16 @@
 //! [`Baseline`] records. It returns a [`ContractReport`] of its
 //! [`Violation`]s, which [`ContractReport::reports`] turns into reports with
 //! excerpts of the imports that break it. The suppressions that had no effect
-//! on any contract are each an [`UnusedSuppression`].
+//! on any contract are each an [`UnusedSuppression`]. [`CheckJson`] is all of
+//! it as the JSON output of `zenith check`.
 
 mod baseline;
 mod contract;
 mod error;
 mod findings;
-mod json;
 mod reports;
 mod rules;
+mod schema;
 mod selection;
 mod suppressions;
 #[cfg(test)]
@@ -35,6 +36,6 @@ pub use baseline::{BASELINE_VERSION, Baseline, BaselineError};
 pub use contract::{Contract, ContractReport, Exemptions};
 pub use error::{ContractError, ContractErrorKind};
 pub use findings::{Chain, CycleBreaker, CycleScope, Link, Violation};
-pub use json::{ContractJson, UnusedSuppressionJson};
+pub use schema::{CheckJson, JSON_VERSION};
 pub use selection::{Selection, UnmatchedSelector};
 pub use suppressions::{UnusedReason, UnusedSuppression};

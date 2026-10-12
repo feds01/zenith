@@ -1,20 +1,140 @@
-//! What checking contracts finds, as the JSON output of `zenith check` shows
-//! it: the checked contracts, and the suppressions that had no effect.
+//! The JSON output of `zenith check`, for tools to read: whether it passed,
+//! its summary, the checked contracts, the suppressions that had no effect,
+//! and the problems that the pipeline found.
+//!
+//! The output is versioned by [`JSON_VERSION`]. Fields may be added within a
+//! version, but none are removed or change meaning.
+
+use std::{fmt, time::Duration};
 
 use serde::Serialize;
 use zenith_config::{AlertLevel, Severity};
-use zenith_diagnostics::{Position, SourceMap};
+use zenith_diagnostics::{Position, ReportKind, SourceMap};
 use zenith_graph::{Graph, ImportKind};
-use zenith_reporting::milliseconds;
+use zenith_pipeline::{FileProblemJson, Session, UnresolvedJson};
+use zenith_reporting::Summary;
 
 use crate::{
     Chain, ContractReport, CycleBreaker, CycleScope, Link, UnusedReason, UnusedSuppression,
     Violation, reports::import_span,
 };
 
+/// The version of the JSON output's schema.
+pub const JSON_VERSION: u32 = 1;
+
+/// The output of `zenith check` as JSON, shown as indented JSON.
+#[derive(Debug, Serialize)]
+pub struct CheckJson<'a> {
+    /// The version of the schema, [`JSON_VERSION`].
+    version: u32,
+
+    /// Whether the check passed, which is when zenith exits with 0.
+    passed: bool,
+
+    /// What the summary line counts.
+    summary: SummaryJson,
+
+    /// The checked contracts, in the order of the configuration.
+    contracts: Vec<ContractJson<'a>>,
+
+    /// The suppressions that had no effect.
+    unused_suppressions: Vec<UnusedSuppressionJson<'a>>,
+
+    /// The imports that couldn't be resolved.
+    unresolved: Vec<UnresolvedJson<'a>>,
+
+    /// The errors in source files that couldn't be read or parsed in full.
+    file_errors: Vec<FileProblemJson<'a>>,
+
+    /// How long each step took, if timings are shown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timings: Option<Vec<Timing>>,
+}
+
+/// What the summary line counts.
+#[derive(Debug, Serialize)]
+struct SummaryJson {
+    /// The contracts that are kept.
+    kept: usize,
+
+    /// The contracts that are broken by errors.
+    broken: usize,
+
+    /// The contracts that are broken by warnings only.
+    warnings: usize,
+
+    /// The baseline entries whose import no longer exists.
+    stale_baseline_entries: usize,
+
+    /// The files that were checked.
+    files: usize,
+
+    /// The imports that were checked.
+    imports: usize,
+}
+
+/// How long a step took.
+#[derive(Debug, Serialize)]
+struct Timing {
+    /// The step, e.g. `parse`.
+    step: &'static str,
+
+    /// How long it took, in milliseconds.
+    milliseconds: f64,
+}
+
+impl<'a> CheckJson<'a> {
+    /// The output of checking the contracts of `session`: the `checked`
+    /// contracts and the `unused` suppressions, with their `summary`, and
+    /// where what they found is in `sources`. Timings are shown if the
+    /// summary has them.
+    pub fn new(
+        session: &'a Session,
+        checked: &'a [ContractReport],
+        unused: &'a [UnusedSuppression],
+        summary: &Summary,
+        sources: &mut SourceMap,
+    ) -> Self {
+        let timed = summary.timings.is_some();
+        let timings = summary.timings.as_ref().map(|timings| {
+            let timing = |&(step, time)| Timing { step, milliseconds: milliseconds(time) };
+            timings.iter().map(timing).collect()
+        });
+        CheckJson {
+            version: JSON_VERSION,
+            passed: !summary.failed(),
+            summary: SummaryJson {
+                kept: summary.kept(),
+                broken: summary.broken(ReportKind::Error),
+                warnings: summary.broken(ReportKind::Warning),
+                stale_baseline_entries: checked
+                    .iter()
+                    .map(|report| report.stale_entries.len())
+                    .sum(),
+                files: summary.files,
+                imports: summary.imports,
+            },
+            contracts: checked
+                .iter()
+                .map(|report| report.json(&session.graph, sources, timed))
+                .collect(),
+            unused_suppressions: unused.iter().map(|unused| unused.json(sources)).collect(),
+            unresolved: session.unresolved.iter().map(|import| import.json(sources)).collect(),
+            file_errors: session.file_errors.iter().flat_map(|error| error.json(sources)).collect(),
+            timings,
+        }
+    }
+}
+
+impl fmt::Display for CheckJson<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&serde_json::to_string_pretty(self).map_err(|_| fmt::Error)?)
+    }
+}
+
 /// A checked contract.
 #[derive(Debug, Serialize)]
-pub struct ContractJson<'a> {
+struct ContractJson<'a> {
     /// The id.
     id: &'a str,
 
@@ -160,7 +280,7 @@ struct Statement<'a> {
 
 /// A suppression that had no effect.
 #[derive(Debug, Serialize)]
-pub struct UnusedSuppressionJson<'a> {
+struct UnusedSuppressionJson<'a> {
     /// The file it is in.
     file: &'a str,
 
@@ -185,7 +305,7 @@ impl ContractReport<'_> {
     /// The contract and what checking it against `graph` found, as JSON,
     /// with where its imports are in `sources`, and how long checking it
     /// took if `timed`.
-    pub fn json<'r>(
+    fn json<'r>(
         &'r self,
         graph: &'r Graph,
         sources: &mut SourceMap,
@@ -220,7 +340,7 @@ impl ContractReport<'_> {
 
 impl UnusedSuppression<'_> {
     /// The suppression as JSON, with where it is in `sources`.
-    pub fn json(&self, sources: &mut SourceMap) -> UnusedSuppressionJson<'_> {
+    fn json(&self, sources: &mut SourceMap) -> UnusedSuppressionJson<'_> {
         let source = sources.file(self.file).map(|id| sources.get(id));
         let position = source.map(|source| source.position(self.suppression.range.start()));
         let (line, column) = split(position);
@@ -306,6 +426,11 @@ fn link_json<'r>(graph: &'r Graph, sources: &mut SourceMap, link: &'r Link) -> L
         })
         .collect();
     LinkJson { importer, imported: graph.name(link.imported), imports }
+}
+
+/// `time` in milliseconds, as the JSON output shows durations.
+fn milliseconds(time: Duration) -> f64 {
+    time.as_secs_f64() * 1000.0
 }
 
 /// The line and column of `position`, if there is one.

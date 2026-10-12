@@ -54,12 +54,14 @@ it when responsibilities move. On `main` today:
   checks against (without its excluded kinds, ignored imports, suppressed
   statements and baselined imports), the six contract types, the
   violations they find, the suppressions that had no effect, the baseline
-  file of known violations, and their reports, summary entries and JSON.
+  file of known violations, their reports and summary entries, and the JSON
+  output of `zenith check`, with the pipeline's problems in it.
 - `zenith_diagnostics`: reports with labelled source excerpts, which each
   crate makes from its own errors and findings, rendered in full or a line
-  each using `annotate-snippets`; the `SourceMap`, which reads a project's
-  files when reports first need them and finds where a span is; and errors
-  and warnings collected per pass.
+  each using `annotate-snippets`, or as GitHub Actions workflow commands;
+  the `SourceMap`, which reads a project's files when reports first need
+  them and finds where a span is; and errors and warnings collected per
+  pass.
 - `zenith_graph`: the module tree and import graph model, import kinds, node
   sets, units, finding the nodes that a path glob or name pattern picks out,
   graph views that leave out imports (by pair or by kind), the grimp
@@ -75,8 +77,7 @@ it when responsibilities move. On `main` today:
   `UnresolvedImport`s, with reports and JSON.
 - `zenith_reporting`: the output of `zenith check`, without knowing what
   is checked: the reports that the domain crates make, then the summary of
-  every contract, in the `pretty`, `compact` and `github` formats, and the
-  JSON envelope around what they found, for `json`.
+  every contract, in the `pretty`, `compact` and `github` formats.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`, its
   classification, and `exports`-aware workspace resolution.
 - `zenith_utils`: file reading, path and specifier helpers, byte ranges, the

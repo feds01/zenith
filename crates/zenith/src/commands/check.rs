@@ -4,13 +4,11 @@ use std::time::Instant;
 
 use anyhow::Result;
 use log::info;
-use serde::Serialize;
 use zenith_contracts::{
-    Baseline, Contract, ContractJson, ContractReport, Exemptions, UnusedSuppression,
-    UnusedSuppressionJson,
+    Baseline, CheckJson, Contract, ContractReport, Exemptions, UnusedSuppression,
 };
-use zenith_pipeline::{FileProblemJson, StageKind, UnresolvedJson};
-use zenith_reporting::{Format, Json, Output, Summary};
+use zenith_pipeline::StageKind;
+use zenith_reporting::{Format, Output, Summary};
 
 use crate::{
     ExitStatus,
@@ -74,27 +72,7 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     };
     match format {
         None => {
-            let found = Found {
-                contracts: checked
-                    .iter()
-                    .map(|report| report.json(graph, &mut sources, args.show_timings))
-                    .collect(),
-                unused_suppressions: unused
-                    .iter()
-                    .map(|unused| unused.json(&mut sources))
-                    .collect(),
-                unresolved: session
-                    .unresolved
-                    .iter()
-                    .map(|import| import.json(&mut sources))
-                    .collect(),
-                file_errors: session
-                    .file_errors
-                    .iter()
-                    .flat_map(|error| error.json(&mut sources))
-                    .collect(),
-            };
-            println!("{}", Json { summary: &summary, found: &found });
+            println!("{}", CheckJson::new(&session, &checked, &unused, &summary, &mut sources));
         }
         Some(format) => {
             let mut reports = Vec::new();
@@ -122,20 +100,4 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     // 7. Fail if a contract of `error` severity is broken, or has stale baseline
     //    entries that are errors.
     Ok(if summary.failed() { ExitStatus::Failure } else { ExitStatus::Success })
-}
-
-/// What `zenith check` found, as its JSON output lists it after the summary.
-#[derive(Serialize)]
-struct Found<'a> {
-    /// The checked contracts, in the order of the configuration.
-    contracts: Vec<ContractJson<'a>>,
-
-    /// The suppressions that had no effect.
-    unused_suppressions: Vec<UnusedSuppressionJson<'a>>,
-
-    /// The imports that couldn't be resolved.
-    unresolved: Vec<UnresolvedJson<'a>>,
-
-    /// The errors in source files that couldn't be read or parsed in full.
-    file_errors: Vec<FileProblemJson<'a>>,
 }

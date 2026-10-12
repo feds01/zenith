@@ -12,8 +12,5 @@ publish = false
 zenith_diagnostics = { workspace = true }
 zenith_utils = { workspace = true }
 
-serde = { workspace = true }
-serde_json = { workspace = true }
-
 [lints]
 workspace = true

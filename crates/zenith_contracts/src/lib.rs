@@ -12,11 +12,13 @@
 //! [`Contract::check`] then checks it against its own view of the graph,
 //! without the imports that the contract excludes by kind or ignores, and
 //! those that the project's [`Exemptions`] leave out of it: the statements
-//! that `zenith-ignore` comments suppress. It returns a [`ContractReport`] of
-//! its [`Violation`]s, which [`ContractReport::reports`] turns into reports
-//! with excerpts of the imports that break it. The suppressions that had no
-//! effect on any contract are each an [`UnusedSuppression`].
+//! that `zenith-ignore` comments suppress, and the known violations that its
+//! [`Baseline`] records. It returns a [`ContractReport`] of its
+//! [`Violation`]s, which [`ContractReport::reports`] turns into reports with
+//! excerpts of the imports that break it. The suppressions that had no effect
+//! on any contract are each an [`UnusedSuppression`].
 
+mod baseline;
 mod contract;
 mod error;
 mod findings;
@@ -28,6 +30,7 @@ mod suppressions;
 mod testing;
 mod view;
 
+pub use baseline::{BASELINE_VERSION, Baseline, BaselineError};
 pub use contract::{Contract, ContractReport, Exemptions};
 pub use error::{ContractError, ContractErrorKind};
 pub use findings::{Chain, CycleBreaker, CycleScope, Link, Violation};

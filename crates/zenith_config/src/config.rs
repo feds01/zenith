@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use zenith_diagnostics::ReportKind;
 use zenith_graph::KindSet;
 use zenith_utils::{
     fs::{find_in_ancestors, read_text},
@@ -17,7 +18,7 @@ use zenith_utils::{
 };
 
 use crate::{
-    contracts::ContractConfig,
+    contracts::{ContractConfig, Severity},
     error::{ConfigError, LoadError},
     parse,
 };
@@ -188,7 +189,19 @@ pub struct BaselineConfig {
 }
 
 /// The default path of the baseline file.
-pub(crate) const DEFAULT_BASELINE_PATH: &str = "zenith.baseline.json";
+pub(crate) const DEFAULT_BASELINE_PATH: &str = "zenith.baseline.toml";
+
+impl BaselineConfig {
+    /// How to report the stale entries of a contract of `severity`: as errors
+    /// if it is of `error` severity and stale entries are errors, and as
+    /// warnings otherwise.
+    pub fn stale_kind(&self, severity: Severity) -> ReportKind {
+        match (severity, self.stale) {
+            (Severity::Error, StaleLevel::Error) => ReportKind::Error,
+            _ => ReportKind::Warning,
+        }
+    }
+}
 
 impl Default for BaselineConfig {
     fn default() -> Self {

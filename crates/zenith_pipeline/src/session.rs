@@ -202,6 +202,12 @@ impl Session {
         settings
     }
 
+    /// The path of the baseline file, which the configuration gives relative
+    /// to the root.
+    pub fn baseline_path(&self) -> PathBuf {
+        self.root.join(&self.config.baseline.path)
+    }
+
     /// A resolver configured by [`Session::resolver_settings`]. Run the
     /// [`Discover`](crate::StageKind::Discover) stage first, so that workspace
     /// packages resolve without `node_modules`.
@@ -250,6 +256,7 @@ mod tests {
         assert_eq!(settings.extensions, defaults.extensions);
         assert!(settings.aliases.is_empty() && settings.ignore_unresolved.is_empty());
         assert!(settings.workspace_packages.is_empty());
+        assert_eq!(session.baseline_path(), Path::new("/repo/zenith.baseline.toml"));
     }
 
     #[test]
@@ -268,8 +275,12 @@ mod tests {
             extensions = [".ts", ".js"]
             alias = { "types" = "web/src/types", "~" = "web" }
             ignore_unresolved = ["virtual:*"]
+
+            [baseline]
+            path = "lint/baseline.toml"
             "#,
         );
+        assert_eq!(session.baseline_path(), Path::new("/repo/lint/baseline.toml"));
         let globs = |globs: &[zenith_utils::glob::Glob]| -> Vec<String> {
             globs.iter().map(|glob| glob.as_str().to_string()).collect()
         };

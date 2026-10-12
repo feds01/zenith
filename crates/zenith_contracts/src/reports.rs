@@ -2,16 +2,16 @@
 //! `ignore_imports` entries that match nothing, in full or a finding each,
 //! and its line of the summary.
 
-use zenith_config::{AlertLevel, ContractConfig, ContractKind, Severity};
+use zenith_config::{AlertLevel, BaselineConfig, ContractConfig, ContractKind, Severity};
 use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span};
 use zenith_graph::{Graph, ImportDetail, ImportKind};
-use zenith_reporting::{Outcome, SummaryEntry};
+use zenith_reporting::{Outcome, Summary, SummaryEntry};
 use zenith_utils::{
     location::ByteRange,
     printing::{plural, thousands},
 };
 
-use crate::{Chain, ContractReport, CycleBreaker, Link, Violation};
+use crate::{Chain, ContractReport, CycleBreaker, Link, Violation, baseline::entry_ranges};
 
 /// How many excerpts a report of chains or illegal imports shows.
 const MAX_EXCERPTS: usize = 3;
@@ -25,42 +25,68 @@ const MAX_IMPORTS: usize = 10;
 /// How many cycle breakers a report lists.
 const MAX_BREAKERS: usize = 5;
 
+/// How many stale baseline entries a report points at.
+const MAX_STALE: usize = 10;
+
 impl ContractReport<'_> {
     /// The reports of what checking the contract found: one per violation,
-    /// with excerpts of its imports and the contract's guidance, then one per
+    /// with excerpts of its imports and the contract's guidance, one per
     /// `ignore_imports` entry that matches nothing, unless they are not to be
-    /// reported. The excerpts are read from `sources`, and the entries point
-    /// into `config`, the configuration file, if it is there.
+    /// reported, and one of its stale `baseline` entries. The excerpts are
+    /// read from `sources`, and the entries point into `config`, the
+    /// configuration file, if it is there, and the baseline file.
     pub fn reports(
         &self,
         graph: &Graph,
         sources: &mut SourceMap,
         config: Option<SourceId>,
+        baseline: &BaselineConfig,
     ) -> Vec<Report> {
-        ReportBuilder { graph, sources, config }.reports(self)
+        ReportBuilder { graph, sources, config, baseline }.reports(self)
     }
 
     /// What checking the contract found, a report each, for showing a line
     /// each: one per chain, illegal import and cycle breaker, pointing at its
-    /// first import, and one per `ignore_imports` entry that matches nothing
-    /// and breaks the contract.
+    /// first import, one per `ignore_imports` entry that matches nothing and
+    /// breaks the contract, and one per stale `baseline` entry.
     pub fn findings(
         &self,
         graph: &Graph,
         sources: &mut SourceMap,
         config: Option<SourceId>,
+        baseline: &BaselineConfig,
     ) -> Vec<Report> {
-        ReportBuilder { graph, sources, config }.findings(self)
+        ReportBuilder { graph, sources, config, baseline }.findings(self)
     }
 
-    /// The contract's line of the summary.
-    pub fn summary_entry(&self) -> SummaryEntry {
-        let outcome = if self.is_kept() {
+    /// The summary of the checked contracts `reports`, with the `baseline`
+    /// configured: a line for each, and how many stale baseline entries they
+    /// have. The counts of files and imports, and the timings, are left out.
+    pub fn summary(reports: &[Self], baseline: &BaselineConfig) -> Summary {
+        let entries = reports.iter().map(|report| report.summary_entry(baseline)).collect();
+        let stale: usize = reports.iter().map(|report| report.stale_entries.len()).sum();
+        let notes = match stale {
+            0 => Vec::new(),
+            stale => vec![plural(stale, "stale baseline entry")],
+        };
+        Summary { entries, notes, ..Summary::default() }
+    }
+
+    /// The contract's line of the summary, with the `baseline` configured.
+    pub fn summary_entry(&self, baseline: &BaselineConfig) -> SummaryEntry {
+        let outcome = if !self.is_kept() {
+            Outcome::Broken { findings: self.finding_count(), kind: kind(self.config) }
+        } else if self.stale_entries.is_empty() {
             Outcome::Kept
         } else {
-            Outcome::Broken { findings: self.finding_count(), kind: kind(self.config) }
+            let status = "kept, with a stale baseline".to_string();
+            Outcome::KeptWith { status, kind: baseline.stale_kind(self.config.severity) }
         };
-        let left_out = [(self.ignored, "ignored"), (self.suppressed, "suppressed")];
+        let left_out = [
+            (self.baselined, "baselined"),
+            (self.ignored, "ignored"),
+            (self.suppressed, "suppressed"),
+        ];
         let details = left_out
             .into_iter()
             .filter(|(count, _)| *count > 0)
@@ -97,6 +123,10 @@ struct ReportBuilder<'a> {
     /// The configuration file in `sources`, which `ignore_imports` entries
     /// point into, if the configuration was read from a file.
     config: Option<SourceId>,
+
+    /// How the baseline is configured: where its file is, and whether stale
+    /// entries are errors.
+    baseline: &'a BaselineConfig,
 }
 
 impl ReportBuilder<'_> {
@@ -116,6 +146,16 @@ impl ReportBuilder<'_> {
             })
             .collect();
 
+        reports.extend(self.unmatched_ignores(kind, report));
+        reports.extend(self.stale(report));
+        reports
+    }
+
+    /// The reports of the `ignore_imports` entries of `report` that match
+    /// nothing, of `kind` if they break it, unless they are not to be
+    /// reported.
+    fn unmatched_ignores(&self, kind: ReportKind, report: &ContractReport) -> Vec<Report> {
+        let config = report.config;
         let (kind, help) = match config.unmatched_ignore_imports {
             AlertLevel::Error => {
                 (kind, "remove it, or set `unmatched_ignore_imports` to `warn` or `none`")
@@ -123,8 +163,9 @@ impl ReportBuilder<'_> {
             AlertLevel::Warn => {
                 (ReportKind::Warning, "remove it, or set `unmatched_ignore_imports` to `none`")
             }
-            AlertLevel::None => return reports,
+            AlertLevel::None => return Vec::new(),
         };
+        let mut reports = Vec::new();
         for entry in &report.unmatched_ignores {
             let title = format!("the ignored import `{entry}` matches no import");
             let mut report = Report::new(kind, title).with_id(&config.id);
@@ -135,6 +176,50 @@ impl ReportBuilder<'_> {
             reports.push(report);
         }
         reports
+    }
+
+    /// The report of the stale baseline entries of `report`, pointing at them
+    /// in the baseline file, or `None` if it has none.
+    fn stale(&mut self, report: &ContractReport) -> Option<Report> {
+        let entries = &report.stale_entries;
+        if entries.is_empty() {
+            return None;
+        }
+        let config = report.config;
+        let title = plural(entries.len(), "stale baseline entry");
+        let kind = self.baseline.stale_kind(config.severity);
+        let mut stale = Report::new(kind, title).with_id(&config.id);
+        let mut unlocated = Vec::new();
+        let shown = &entries[..entries.len().min(MAX_STALE)];
+        for (entry, span) in shown.iter().zip(self.entry_spans(&config.id, shown)) {
+            match span {
+                Some(span) => {
+                    stale.add_labelled_span(span, "its import no longer exists");
+                }
+                None => unlocated.push(format!("  {entry}")),
+            }
+        }
+        if !unlocated.is_empty() {
+            stale.add_note(format!("these imports no longer exist:\n{}", unlocated.join("\n")));
+        }
+        if entries.len() > MAX_STALE {
+            stale.add_note(format!("and {}", plural(entries.len() - MAX_STALE, "more entry")));
+        }
+        stale.add_help(match entries.len() {
+            1 => "run `zenith baseline --prune` to remove it",
+            _ => "run `zenith baseline --prune` to remove them",
+        });
+        Some(stale)
+    }
+
+    /// Where each of the `entries` of the contract `id` is in the baseline
+    /// file, or `None` if the file can't be read or the entry found in it.
+    fn entry_spans(&mut self, id: &str, entries: &[String]) -> Vec<Option<Span>> {
+        let Some(source) = self.sources.file(&self.baseline.path) else {
+            return vec![None; entries.len()];
+        };
+        let ranges = entry_ranges(&self.sources.get(source).contents, id, entries);
+        ranges.into_iter().map(|range| range.map(|range| Span::new(source, range))).collect()
     }
 
     /// The findings of `report`, as [`ContractReport::findings`] makes them.
@@ -195,6 +280,15 @@ impl ReportBuilder<'_> {
             let mut finding = Report::new(kind, title);
             if let (Some(source), Some(range)) = (self.config, entry.range()) {
                 finding.add_span(Span::new(source, range));
+            }
+            findings.push(finding);
+        }
+        let stale = self.entry_spans(&config.id, &report.stale_entries);
+        for (entry, span) in report.stale_entries.iter().zip(stale) {
+            let title = format!("stale baseline entry `{entry}`: its import no longer exists");
+            let mut finding = Report::new(self.baseline.stale_kind(config.severity), title);
+            if let Some(span) = span {
+                finding.add_span(span);
             }
             findings.push(finding);
         }
@@ -472,7 +566,13 @@ mod tests {
 
         let mut sources = SourceMap::new();
         sources.add("a.ts", text);
-        let mut builder = ReportBuilder { graph: &graph, sources: &mut sources, config: None };
+        let baseline = BaselineConfig::default();
+        let mut builder = ReportBuilder {
+            graph: &graph,
+            sources: &mut sources,
+            config: None,
+            baseline: &baseline,
+        };
         let types = [
             detail(text, "import type { A }", "./b", ImportKind::Type),
             detail(text, "import type { B }", "./b", ImportKind::Type),
@@ -522,10 +622,28 @@ mod tests {
             contract("broken", "a", "b", "error"),
         ];
         let project = Project::new(&values(&[("a/x.ts", "b/y.ts")]), &[], &toml.concat());
-        let outcome = |id: &str| project.check(id).summary_entry().outcome;
+        let baseline = BaselineConfig::default();
+        let outcome = |id: &str| project.check(id).summary_entry(&baseline).outcome;
         assert_eq!(outcome("kept"), Outcome::Kept);
         assert_eq!(outcome("warned"), Outcome::Broken { findings: 1, kind: ReportKind::Warning });
         assert_eq!(outcome("broken"), Outcome::Broken { findings: 1, kind: ReportKind::Error });
+    }
+
+    #[test]
+    fn stale_baseline_entries_fail_the_check_if_they_are_errors() {
+        let summarise = |stale: &str, severity: &str| {
+            let toml = format!(
+                "[baseline]\nstale = \"{stale}\"\n\n[contracts.f]\ntype = \"forbidden\"\nfrom = [\"a\"]\nto = [\"b\"]\nseverity = \"{severity}\"\n"
+            );
+            let project = Project::new(&values(&[("a/x.ts", "b/y.ts")]), &[], &toml)
+                .baseline("f", &["a/x.ts -> b/y.ts", "a/gone.ts -> b/y.ts"]);
+            let summary = ContractReport::summary(&[project.check("f")], &project.config.baseline);
+            (summary.failed(), summary.notes)
+        };
+        let notes = vec!["1 stale baseline entry".to_string()];
+        assert_eq!(summarise("error", "error"), (true, notes));
+        assert!(!summarise("warn", "error").0);
+        assert!(!summarise("error", "warn").0);
     }
 
     #[test]
@@ -539,7 +657,8 @@ mod tests {
         let mut sources = SourceMap::new();
         // The import is at byte 100, the start of the second line.
         sources.add("a/x.ts", format!("{}\nimport x from './x';\n", " ".repeat(99)));
-        let findings = report.findings(&project.graph, &mut sources, None);
+        let baseline = BaselineConfig::default();
+        let findings = report.findings(&project.graph, &mut sources, None, &baseline);
         let rendered: Vec<_> = findings
             .iter()
             .map(|finding| {

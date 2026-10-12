@@ -1,0 +1,7 @@
+# With `stale = "warn"`, stale entries are warnings.
+check --format compact
+# Recording one contract keeps the entries of the others.
+baseline --contract b-not-a
+# Recording every contract forgets those that no longer exist.
+baseline
+check

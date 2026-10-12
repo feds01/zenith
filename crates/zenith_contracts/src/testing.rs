@@ -9,12 +9,12 @@ use zenith_utils::location::{ByteRange, Located};
 use zenith_workspace::Workspace;
 
 use crate::{
-    Chain, Contract, ContractError, ContractReport, CycleScope, Exemptions, Link,
+    Baseline, Chain, Contract, ContractError, ContractReport, CycleScope, Exemptions, Link,
     UnusedSuppression, Violation,
 };
 
 /// A project for testing contracts: a graph, no workspace packages, a
-/// configuration, and suppressions.
+/// configuration, suppressions and a baseline.
 pub(crate) struct Project {
     /// The module tree and import graph.
     pub graph: Graph,
@@ -27,6 +27,9 @@ pub(crate) struct Project {
 
     /// The suppressions, sorted by file.
     pub suppressions: Vec<FileSuppressions>,
+
+    /// The baseline.
+    pub baseline: Baseline,
 }
 
 /// Value imports, for [`Project::new`].
@@ -61,7 +64,8 @@ impl Project {
         }
         let config = Config::parse(toml).unwrap_or_else(|errors| panic!("{errors:?}"));
         let workspace = Workspace::default();
-        Self { graph: builder.finish(), workspace, config, suppressions: Vec::new() }
+        let (suppressions, baseline) = (Vec::new(), Baseline::default());
+        Self { graph: builder.finish(), workspace, config, suppressions, baseline }
     }
 
     /// Add a suppression in `file`, of the space-separated `contracts`, to
@@ -81,9 +85,24 @@ impl Project {
         self
     }
 
-    /// What the project exempts from its contracts: its suppressions.
+    /// Set the baseline entries of the contract `id`.
+    pub(crate) fn baseline(mut self, id: &str, entries: &[&str]) -> Self {
+        let entries = entries.iter().map(|entry| entry.to_string()).collect();
+        self.baseline.contracts.insert(id.to_string(), entries);
+        self
+    }
+
+    /// What the project exempts from its contracts: its suppressions and
+    /// baseline.
     pub(crate) fn exemptions(&self) -> Exemptions<'_> {
-        Exemptions { suppressions: &self.suppressions }
+        Exemptions { suppressions: &self.suppressions, baseline: Some(&self.baseline) }
+    }
+
+    /// The baseline entries that keep the contract `id`.
+    pub(crate) fn baseline_entries(&self, id: &str) -> Vec<String> {
+        let config = self.config.contract(id).unwrap();
+        let contract = Contract::compile(config, &self.graph, &self.workspace).unwrap();
+        contract.baseline_entries(&self.graph, &self.workspace, &self.exemptions())
     }
 
     /// Compile every contract.

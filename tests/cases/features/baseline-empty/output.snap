@@ -1,0 +1,18 @@
+$ zenith baseline
+exit: 0
+--- stdout
+No violations remain; removed `zenith.baseline.toml`.
+
+$ zenith baseline
+exit: 0
+--- stdout
+No violations to record.
+
+$ zenith check
+exit: 0
+--- stdout
+Contracts
+  ✓ a-not-b  forbidden  kept
+
+1 kept, 0 broken · 3 files, 1 import
+

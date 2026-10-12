@@ -1,0 +1,12 @@
+version = 1
+
+[contracts]
+a-not-b = [
+    "src/a/gone.ts -> src/b/y.ts",
+]
+b-not-a = [
+    "src/b/gone.ts -> src/a/x.ts",
+]
+removed = [
+    "src/a/x.ts -> src/b/y.ts",
+]

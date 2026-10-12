@@ -50,7 +50,7 @@ fn bench_contract(bencher: Bencher, source_files: usize, id: &str) {
     #[cfg(not(codspeed))]
     let bencher = bencher.counter(divan::counter::ItemsCount::new(source_files));
 
-    let exemptions = Exemptions { suppressions: &session.suppressions };
+    let exemptions = Exemptions { suppressions: &session.suppressions, baseline: None };
     bencher.bench(|| contract.check(&session.graph, &session.workspace, &exemptions));
 }
 

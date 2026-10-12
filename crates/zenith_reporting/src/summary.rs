@@ -9,10 +9,19 @@ use zenith_utils::{
 };
 
 /// Whether a contract is kept or broken.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     /// Nothing breaks it.
     Kept,
+
+    /// Nothing breaks it, but something about it needs fixing.
+    KeptWith {
+        /// What to show, e.g. `kept, with a stale baseline`.
+        status: String,
+
+        /// Whether it is an error, or only a warning.
+        kind: ReportKind,
+    },
 
     /// Findings break it.
     Broken {
@@ -55,15 +64,23 @@ pub struct Summary {
     /// How many imports were checked.
     pub imports: usize,
 
+    /// More totals, e.g. `2 stale baseline entries`, shown after those of
+    /// the outcomes.
+    pub notes: Vec<String>,
+
     /// How long each step took, by name, or `None` to leave timings out,
     /// those of the entries too.
     pub timings: Option<Vec<(&'static str, Duration)>>,
 }
 
 impl Summary {
-    /// Whether the check fails: a contract is broken by errors.
+    /// Whether the check fails: a contract is broken by errors, or kept with
+    /// something to fix that is an error.
     pub fn failed(&self) -> bool {
-        self.broken(ReportKind::Error) > 0
+        let flagged = |entry: &SummaryEntry| {
+            matches!(entry.outcome, Outcome::KeptWith { kind: ReportKind::Error, .. })
+        };
+        self.broken(ReportKind::Error) > 0 || self.entries.iter().any(flagged)
     }
 
     /// A line for every entry, with its ids and types aligned.
@@ -74,14 +91,20 @@ impl Summary {
         self.entries
             .iter()
             .map(|entry| {
-                let (mark, status) = match entry.outcome {
+                let (mark, status) = match &entry.outcome {
                     Outcome::Kept => (highlight(Colour::Green, "✓"), "kept".to_string()),
+                    Outcome::KeptWith { status, kind: ReportKind::Error } => {
+                        (highlight(Colour::Red, "✗"), status.clone())
+                    }
+                    Outcome::KeptWith { status, kind: ReportKind::Warning } => {
+                        (highlight(Colour::Yellow, "!"), status.clone())
+                    }
                     Outcome::Broken { findings, kind: ReportKind::Error } => {
-                        let findings = plural(findings, "violation");
+                        let findings = plural(*findings, "violation");
                         (highlight(Colour::Red, "✗"), format!("broken ({findings})"))
                     }
                     Outcome::Broken { findings, kind: ReportKind::Warning } => {
-                        let findings = plural(findings, "violation");
+                        let findings = plural(*findings, "violation");
                         (
                             highlight(Colour::Yellow, "!"),
                             format!("broken ({findings}, warning only)"),
@@ -102,14 +125,20 @@ impl Summary {
             .collect()
     }
 
-    /// `<kept> kept, <broken> broken[, <n> warnings] · <files> files,
-    /// <imports> imports`, followed by the timings if they are shown.
+    /// `<kept> kept, <broken> broken[, <n> warnings][ · <note>]… · <files>
+    /// files, <imports> imports`, followed by the timings if they are shown.
     pub(crate) fn totals(&self) -> String {
-        let kept = self.entries.iter().filter(|entry| entry.outcome == Outcome::Kept).count();
+        let kept = |entry: &&SummaryEntry| {
+            matches!(entry.outcome, Outcome::Kept | Outcome::KeptWith { .. })
+        };
+        let kept = self.entries.iter().filter(kept).count();
         let mut line = format!("{kept} kept, {} broken", self.broken(ReportKind::Error));
         let warnings = self.broken(ReportKind::Warning);
         if warnings > 0 {
             line += &format!(", {}", plural(warnings, "warning"));
+        }
+        for note in &self.notes {
+            line += &format!(" · {note}");
         }
         let count = |count: usize, noun: &str| match count {
             1 => format!("1 {noun}"),
@@ -128,7 +157,7 @@ impl Summary {
     fn broken(&self, kind: ReportKind) -> usize {
         let broken = |entry: &&SummaryEntry| match entry.outcome {
             Outcome::Broken { kind: of, .. } => of == kind,
-            Outcome::Kept => false,
+            Outcome::Kept | Outcome::KeptWith { .. } => false,
         };
         self.entries.iter().filter(broken).count()
     }
@@ -151,7 +180,7 @@ mod tests {
 
     /// A summary of `entries`, of 1,234 files and 1 import.
     fn summary(entries: Vec<SummaryEntry>) -> Summary {
-        Summary { entries, files: 1_234, imports: 1, timings: None }
+        Summary { entries, files: 1_234, imports: 1, notes: Vec::new(), timings: None }
     }
 
     #[test]
@@ -174,6 +203,23 @@ mod tests {
         let errors = summary(vec![kept, warned, broken]);
         assert_eq!(errors.totals(), "1 kept, 1 broken, 1 warning · 1,234 files, 1 import");
         assert!(errors.failed());
+    }
+
+    #[test]
+    fn contracts_kept_with_errors_fail_the_check() {
+        let flagged = |kind| {
+            let status = "kept, with a stale baseline".to_string();
+            entry("a", "forbidden", Outcome::KeptWith { status, kind })
+        };
+        let mut warned = summary(vec![flagged(ReportKind::Warning)]);
+        warned.notes = vec!["1 stale baseline entry".to_string()];
+        assert_eq!(
+            warned.totals(),
+            "1 kept, 0 broken · 1 stale baseline entry · 1,234 files, 1 import"
+        );
+        assert_eq!(warned.entry_lines(), ["! a  forbidden  kept, with a stale baseline"]);
+        assert!(!warned.failed());
+        assert!(summary(vec![flagged(ReportKind::Error)]).failed());
     }
 
     #[test]

@@ -10,7 +10,8 @@ use zenith_utils::location::ByteRange;
 use zenith_workspace::Workspace;
 
 use crate::{
-    ContractError, ContractErrorKind, Selection, Violation, rules::Rule, view::ContractView,
+    Baseline, ContractError, ContractErrorKind, Selection, Violation, rules::Rule,
+    view::ContractView,
 };
 
 /// A contract of the configuration, compiled against a project: its
@@ -80,6 +81,8 @@ impl<'c> Contract<'c> {
             unmatched_ignores: view.unmatched,
             ignored: view.ignored,
             suppressed: view.suppressed,
+            baselined: view.baselined,
+            stale_entries: view.stale_entries,
             used_suppressions: view.used_suppressions,
             duration: start.elapsed(),
         }
@@ -105,6 +108,10 @@ pub struct Exemptions<'a> {
     /// file. Each leaves the import statements that start on its target line
     /// out of the contracts it names.
     pub suppressions: &'a [FileSuppressions],
+
+    /// The baseline, whose entries for each contract are left out of it, or
+    /// `None` to ignore it.
+    pub baseline: Option<&'a Baseline>,
 }
 
 /// The result of checking a contract.
@@ -126,6 +133,13 @@ pub struct ContractReport<'c> {
 
     /// The number of import statements that suppressions left out.
     pub suppressed: usize,
+
+    /// The number of imports that the baseline left out.
+    pub baselined: usize,
+
+    /// The baseline entries of the contract whose import no longer exists, in
+    /// the order of the baseline.
+    pub stale_entries: Vec<String>,
 
     /// The suppressions that left out a statement, sorted, as the index of
     /// their file in the exempted suppressions and their index in it.

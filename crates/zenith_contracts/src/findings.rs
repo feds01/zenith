@@ -152,6 +152,24 @@ impl Violation {
             Self::UndeclaredModule { .. } => 1,
         }
     }
+
+    /// The direct imports that a baseline records to leave the violation
+    /// out: the first links of its chains, made by the importing unit's own
+    /// code, the illegal imports, or the imports of the cycle breakers. An
+    /// undeclared module has none, as it is not about imports.
+    pub(crate) fn baseline_links(&self) -> Vec<&Link> {
+        match self {
+            Self::Dependency { chains, .. } => chains
+                .iter()
+                .flat_map(|chain| chain.links.first().into_iter().chain(&chain.extra_heads))
+                .collect(),
+            Self::IllegalImports { imports, .. } => imports.iter().collect(),
+            Self::Cycle { breakers, .. } => {
+                breakers.iter().flat_map(|breaker| &breaker.imports).collect()
+            }
+            Self::UndeclaredModule { .. } => Vec::new(),
+        }
+    }
 }
 
 /// A dependency of one unit on another whose removal, with the other

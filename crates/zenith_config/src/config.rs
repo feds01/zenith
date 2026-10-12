@@ -42,6 +42,21 @@ pub struct Config {
 
     /// The contracts, in the order of the file.
     pub contracts: Vec<ContractConfig>,
+
+    /// The file the configuration was loaded from, so that errors found once
+    /// it is used, such as a selector that matches nothing, can be shown in
+    /// context. `None` for the defaults, or a configuration parsed from text.
+    pub file: Option<ConfigFile>,
+}
+
+/// A configuration file, as it was read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigFile {
+    /// The path it was read from.
+    pub path: PathBuf,
+
+    /// Its contents.
+    pub contents: String,
 }
 
 impl Config {
@@ -51,15 +66,18 @@ impl Config {
         find_in_ancestors(start, CONFIG_FILE_NAME)
     }
 
-    /// Read a configuration file and parse it with [`Config::parse`].
+    /// Read a configuration file and parse it with [`Config::parse`]. The
+    /// configuration keeps the file, in [`Config::file`].
     pub fn load(path: &Path) -> Result<Self, LoadError> {
         let contents =
             read_text(path).map_err(|error| LoadError::Read { path: path.to_path_buf(), error })?;
-        Self::parse(&contents).map_err(|errors| LoadError::Invalid {
-            path: path.to_path_buf(),
-            contents,
-            errors,
-        })
+        match Self::parse(&contents) {
+            Ok(config) => {
+                let file = ConfigFile { path: path.to_path_buf(), contents };
+                Ok(Self { file: Some(file), ..config })
+            }
+            Err(errors) => Err(LoadError::Invalid { path: path.to_path_buf(), contents, errors }),
+        }
     }
 
     /// Parse and validate the contents of a configuration file. On failure,
@@ -212,6 +230,17 @@ mod tests {
         fs::create_dir_all(root.join("web/src")).unwrap();
         fs::write(root.join(CONFIG_FILE_NAME), "").unwrap();
         assert_eq!(Config::discover(&root.join("web/src")), Some(root.join(CONFIG_FILE_NAME)));
+    }
+
+    #[test]
+    fn a_loaded_config_keeps_its_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(CONFIG_FILE_NAME);
+        let contents = "[baseline]\nstale = \"warn\"\n";
+        fs::write(&path, contents).unwrap();
+        let file = Config::load(&path).unwrap().file.unwrap();
+        assert_eq!(file, ConfigFile { path, contents: contents.to_string() });
+        assert!(Config::parse(contents).unwrap().file.is_none());
     }
 
     #[test]

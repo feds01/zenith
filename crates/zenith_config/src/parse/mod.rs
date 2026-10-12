@@ -99,7 +99,7 @@ impl Parser {
             None => Vec::new(),
         };
 
-        Some(Config { files, resolve, analysis, baseline, contracts })
+        Some(Config { files, resolve, analysis, baseline, contracts, file: None })
     }
 
     /// Compile globs or name patterns, leaving out the invalid ones.

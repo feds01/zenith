@@ -22,6 +22,7 @@ just lint     # clippy -D warnings + rustfmt --check
 just fmt      # format
 just run      # run the CLI from source
 just bench    # benchmarks; extra args go to divan, e.g. `just bench walk`
+just corpus <path> <config>  # a release build on a local checkout, with a config in corpus/
 ```
 
 The toolchain is pinned nightly (`rust-toolchain.toml`). This is needed for the

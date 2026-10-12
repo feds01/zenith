@@ -1,6 +1,8 @@
 //! The contract types: what each one checks, with its units resolved.
 
 mod forbidden;
+mod independence;
+mod layers;
 mod protected;
 
 use zenith_config::ContractKind;
@@ -15,6 +17,12 @@ pub(crate) enum Rule {
     /// The `from` units must not import the `to` units.
     Forbidden(forbidden::Forbidden),
 
+    /// The modules must not depend on one another.
+    Independence(independence::Independence),
+
+    /// Higher layers may import lower layers, never the reverse.
+    Layers(layers::Layers),
+
     /// Only the allowed importers may directly import the modules.
     Protected(protected::Protected),
 }
@@ -27,13 +35,16 @@ impl Rule {
             ContractKind::Forbidden(config) => {
                 Some(Self::Forbidden(forbidden::Forbidden::compile(config, units)))
             }
+            ContractKind::Independence(config) => {
+                Some(Self::Independence(independence::Independence::compile(config, units)))
+            }
+            ContractKind::Layers(config) => {
+                Some(Self::Layers(layers::Layers::compile(config, units)))
+            }
             ContractKind::Protected(config) => {
                 Some(Self::Protected(protected::Protected::compile(config, units)))
             }
-            ContractKind::Independence(_)
-            | ContractKind::Layers(_)
-            | ContractKind::Acyclic(_)
-            | ContractKind::Encapsulation(_) => {
+            ContractKind::Acyclic(_) | ContractKind::Encapsulation(_) => {
                 units.error(ContractErrorKind::Unsupported { kind: kind.type_name() }, None);
                 None
             }
@@ -45,6 +56,8 @@ impl Rule {
     pub(crate) fn check(&self, view: &GraphView, excluded: KindSet) -> Vec<Violation> {
         match self {
             Self::Forbidden(rule) => rule.check(view, excluded),
+            Self::Independence(rule) => rule.check(view, excluded),
+            Self::Layers(rule) => rule.check(view, excluded),
             Self::Protected(rule) => rule.check(view, excluded),
         }
     }

@@ -42,6 +42,16 @@ to = ["node:*"]
 type = "protected"
 modules = ["packages/*"]
 allowed_importers = ["apps/*", "services/*"]
+
+# Libraries import each other, so this finds dependencies between them.
+[contracts.independent-libraries]
+type = "independence"
+modules = ["packages/*"]
+
+# Apps and services are above libraries, and independent of each other.
+[contracts.tiers]
+type = "layers"
+layers = ["apps/* | services/*", "packages/*"]
 "#;
 
 fn main() {
@@ -88,4 +98,16 @@ fn forbidden_with_chains(bencher: Bencher, source_files: usize) {
 #[divan::bench(args = SIZES, sample_count = 10)]
 fn protected(bencher: Bencher, source_files: usize) {
     bench_contract(bencher, source_files, "libraries-for-apps");
+}
+
+/// An `independence` contract that finds dependencies.
+#[divan::bench(args = SIZES, sample_count = 10)]
+fn independence(bencher: Bencher, source_files: usize) {
+    bench_contract(bencher, source_files, "independent-libraries");
+}
+
+/// A `layers` contract of two levels, the upper one independent.
+#[divan::bench(args = SIZES, sample_count = 10)]
+fn layers(bencher: Bencher, source_files: usize) {
+    bench_contract(bencher, source_files, "tiers");
 }

@@ -52,16 +52,11 @@ pub enum ContractErrorKind {
         container: String,
     },
 
-    /// A container of a `layers` contract is not a directory.
-    ContainerNotADirectory {
-        /// The label of the container.
-        container: String,
-    },
-
-    /// The contract type isn't supported yet.
-    Unsupported {
-        /// The contract type, as written in `type`.
-        kind: &'static str,
+    /// A module that must be a directory is not one: a container of a
+    /// `layers` contract, or a module of an `encapsulation` contract.
+    NotADirectory {
+        /// The label of the module.
+        module: String,
     },
 }
 
@@ -92,7 +87,7 @@ impl ContractErrorKind {
                 Some("a module can only be in one of them; narrow one with `except`")
             }
             Self::MissingLayer { .. } => Some("wrap the layer in parentheses to make it optional"),
-            Self::ContainerNotADirectory { .. } | Self::Unsupported { .. } => None,
+            Self::NotADirectory { .. } => None,
         }
     }
 }
@@ -109,10 +104,7 @@ impl fmt::Display for ContractErrorKind {
             Self::MissingLayer { member, container } => {
                 write!(f, "`{container}` has no layer `{member}`")
             }
-            Self::ContainerNotADirectory { container } => {
-                write!(f, "the container `{container}` is not a directory")
-            }
-            Self::Unsupported { kind } => write!(f, "`{kind}` contracts are not supported yet"),
+            Self::NotADirectory { module } => write!(f, "`{module}` is not a directory"),
         }
     }
 }

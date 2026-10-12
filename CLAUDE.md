@@ -51,8 +51,7 @@ it when responsibilities move. On `main` today:
   find, and failing on path and `pkg:` selectors that match nothing;
   compiling contracts against a project, the view of the graph that each
   checks against (without its excluded kinds and ignored imports), the
-  contract types (`forbidden`, `protected`, `independence`, `layers`), and the
-  violations they find.
+  six contract types, and the violations they find.
 - `zenith_diagnostics`: the errors and warnings reported about zenith's
   input, collected per pass and rendered as reports with labelled source
   excerpts using `annotate-snippets`.

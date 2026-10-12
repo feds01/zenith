@@ -3,7 +3,10 @@
 //! Zenith identifies every internal node by a POSIX path relative to the
 //! project root, on every platform.
 
-use std::path::{Component, MAIN_SEPARATOR, Path, PathBuf, is_separator};
+use std::{
+    cmp::Ordering,
+    path::{Component, MAIN_SEPARATOR, Path, PathBuf, is_separator},
+};
 
 use path_absolutize::Absolutize;
 
@@ -67,6 +70,27 @@ fn relative_by_components(root: &Path, path: &Path) -> Option<String> {
         out.push_str(&part);
     }
     Some(out)
+}
+
+/// Order two normalised paths as [`Path`]'s own order does, component by
+/// component, but without splitting them into components: it compares their
+/// bytes, with separators below every other byte, so a component that ends
+/// first sorts first.
+///
+/// Paths with empty or `.` components, or a trailing separator, which
+/// [`Path`]'s order ignores, may be ordered differently.
+pub fn compare_paths(a: &Path, b: &Path) -> Ordering {
+    let key = |byte: u8| if is_separator(char::from(byte)) { 0 } else { byte };
+    let (a, b) = (a.as_os_str().as_encoded_bytes(), b.as_os_str().as_encoded_bytes());
+    // Paths of one project share a long prefix, so skip what they share eight
+    // bytes at a time, then compare the rest byte by byte.
+    let shared = a.len().min(b.len());
+    let mut start = 0;
+    while start + 8 <= shared && a[start..start + 8] == b[start..start + 8] {
+        start += 8;
+    }
+    let (a, b) = (&a[start..], &b[start..]);
+    a.iter().map(|byte| key(*byte)).cmp(b.iter().map(|byte| key(*byte)))
 }
 
 /// Whether `path` is a normalised POSIX path relative to a root, such as
@@ -151,6 +175,32 @@ mod tests {
             relative_text(Path::new("/repo"), Path::new("/repo/a/b.ts")).as_deref(),
             Some("a/b.ts")
         );
+    }
+
+    #[test]
+    fn paths_are_compared_in_the_order_of_their_components() {
+        let paths = [
+            "/repo",
+            "/repo/a",
+            "/repo/a/b.ts",
+            "/repo/a-b.ts",
+            "/repo/a.ts",
+            "/repo/a0/b.ts",
+            "/repo/ab/c.ts",
+            "/repo/B/c.ts",
+            "/repo/a/b/c.ts",
+            "/repo/a/b-c.ts",
+            "/repo/(group)/[id].tsx",
+            "/repo/é/a.ts",
+            "/other",
+            "/",
+        ];
+        for a in paths {
+            for b in paths {
+                let (a, b) = (Path::new(a), Path::new(b));
+                assert_eq!(compare_paths(a, b), a.cmp(b), "{a:?} {b:?}");
+            }
+        }
     }
 
     #[test]

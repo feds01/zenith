@@ -2052,6 +2052,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "zenith_reporting"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "zenith_config",
+ "zenith_contracts",
+ "zenith_diagnostics",
+ "zenith_graph",
+ "zenith_pipeline",
+ "zenith_utils",
+]
+
+[[package]]
 name = "zenith_resolve"
 version = "0.1.0"
 dependencies = [

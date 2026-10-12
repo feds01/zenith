@@ -69,8 +69,9 @@ impl Project {
 
     /// The findings of the contract `id`, one line each: a chain as
     /// `<importer unit> -> <imported unit>: a.ts -> b.ts -> npm:c`, an
-    /// illegal import as `<unit>: a.ts -> b.ts`, and an undeclared module as
-    /// ``<container>: `<module>` is not a layer``.
+    /// illegal import as `<unit>: a.ts -> b.ts`, a cycle breaker as `<scope>:
+    /// break <importer> -> <imported> (<imports>) in <cycle>`, and an
+    /// undeclared module as ``<container>: `<module>` is not a layer``.
     pub(crate) fn findings(&self, id: &str) -> Vec<String> {
         let report = self.check(id);
         report.violations.iter().flat_map(|violation| self.describe(violation)).collect()
@@ -86,6 +87,20 @@ impl Project {
             Violation::IllegalImports { module, imports } => {
                 imports.iter().map(|link| format!("{module}: {}", self.link(link))).collect()
             }
+            Violation::Cycle { scope, breakers } => breakers
+                .iter()
+                .map(|breaker| {
+                    let imports: Vec<_> =
+                        breaker.imports.iter().map(|link| self.link(link)).collect();
+                    format!(
+                        "{scope}: break {} -> {} ({}) in {}",
+                        breaker.importer,
+                        breaker.imported,
+                        imports.join(", "),
+                        breaker.cycle.join(" -> ")
+                    )
+                })
+                .collect(),
             Violation::UndeclaredModule { container, module } => {
                 vec![format!("{container}: `{}` is not a layer", self.graph.name(*module))]
             }

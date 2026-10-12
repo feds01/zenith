@@ -24,5 +24,5 @@ mod view;
 
 pub use contract::{Contract, ContractReport};
 pub use error::{ContractError, ContractErrorKind};
-pub use findings::{Chain, Link, Violation};
+pub use findings::{Chain, CycleBreaker, Link, Violation};
 pub use selection::{Selection, UnmatchedSelector};

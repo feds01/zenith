@@ -115,6 +115,18 @@ pub enum Violation {
         imports: Vec<Link>,
     },
 
+    /// The units of `scope` depend on each other in cycles, which removing
+    /// the `breakers` would break.
+    Cycle {
+        /// The units that form cycles: the selectors of the contract, or the
+        /// children of one of their units.
+        scope: String,
+
+        /// The dependencies to remove, in the order of their importing unit,
+        /// then of the imported unit. There is at least one.
+        breakers: Vec<CycleBreaker>,
+    },
+
     /// A child of a container of an exhaustive `layers` contract is not
     /// declared as a layer.
     UndeclaredModule {
@@ -127,13 +139,34 @@ pub enum Violation {
 }
 
 impl Violation {
-    /// The number of findings in the violation: its chains, its imports, or
-    /// the one undeclared module.
+    /// The number of findings in the violation: its chains, its imports, its
+    /// cycle breakers, or the one undeclared module.
     pub fn finding_count(&self) -> usize {
         match self {
             Self::Dependency { chains, .. } => chains.len(),
             Self::IllegalImports { imports, .. } => imports.len(),
+            Self::Cycle { breakers, .. } => breakers.len(),
             Self::UndeclaredModule { .. } => 1,
         }
     }
+}
+
+/// A dependency of one unit on another whose removal, with the other
+/// breakers of its cycle, would make the units acyclic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CycleBreaker {
+    /// The label of the importing unit.
+    pub importer: String,
+
+    /// The label of the imported unit.
+    pub imported: String,
+
+    /// The direct imports that make the dependency, in the order of their
+    /// importer, then of the imported node. There is at least one.
+    pub imports: Vec<Link>,
+
+    /// A cycle through the dependency, as the labels of its units: the
+    /// importer, the imported unit, and the units back to the importer, which
+    /// is not repeated.
+    pub cycle: Vec<String>,
 }

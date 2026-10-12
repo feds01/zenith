@@ -36,10 +36,7 @@ impl<'c> Contract<'c> {
     ) -> Result<Self, Vec<ContractError>> {
         let mut units = UnitResolver { contract: &config.id, graph, workspace, errors: Vec::new() };
         let rule = Rule::compile(&config.kind, &mut units);
-        match rule {
-            Some(rule) if units.errors.is_empty() => Ok(Self { config, rule }),
-            _ => Err(units.errors),
-        }
+        if units.errors.is_empty() { Ok(Self { config, rule }) } else { Err(units.errors) }
     }
 
     /// Compile every contract in `configs`, as [`Contract::compile`] does.
@@ -216,10 +213,7 @@ impl<'a> UnitResolver<'a> {
 mod tests {
     use zenith_config::{AlertLevel, Severity};
 
-    use crate::{
-        ContractErrorKind,
-        testing::{Project, values},
-    };
+    use crate::testing::{Project, values};
 
     #[test]
     fn every_unmatched_selector_is_an_error_at_its_place_in_the_file() {
@@ -255,18 +249,6 @@ allowed_importers = [\"web/aap\"]
                 ("p", "`web/aap` does not match anything".to_string(), "\"web/aap\""),
             ]
         );
-    }
-
-    #[test]
-    fn contract_types_that_are_not_supported_yet_are_errors() {
-        let project = Project::new(
-            &values(&[("a/x.ts", "b/y.ts")]),
-            &[],
-            "[contracts.c]\ntype = \"acyclic\"\nmodules = [\"a\", \"b\"]\n",
-        );
-        let errors = project.compile().unwrap_err();
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].kind, ContractErrorKind::Unsupported { kind: "acyclic" });
     }
 
     #[test]

@@ -56,7 +56,7 @@ impl Layers {
                 if graph.node(unit.root).kind() == NodeKind::Directory {
                     containers.push(Container::compile(config, Some(unit.root), units));
                 } else {
-                    let kind = ContractErrorKind::ContainerNotADirectory { container: unit.label };
+                    let kind = ContractErrorKind::NotADirectory { module: unit.label };
                     units.error(kind, range);
                 }
             }
@@ -422,7 +422,7 @@ mod tests {
         let errors = project.compile().unwrap_err();
         assert_eq!(
             errors[0].kind,
-            ContractErrorKind::ContainerNotADirectory { container: "src/a.ts".to_string() }
+            ContractErrorKind::NotADirectory { module: "src/a.ts".to_string() }
         );
     }
 

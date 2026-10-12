@@ -263,6 +263,18 @@ impl Graph {
         self.nodes.indices()
     }
 
+    /// The ids of the nodes whose name starts with `prefix`, in ascending
+    /// order. Ids are in name order, so these are a contiguous range.
+    pub(crate) fn ids_with_prefix<'a>(
+        &'a self,
+        prefix: &'a str,
+    ) -> impl Iterator<Item = ModuleId> + 'a {
+        let start = self.nodes.raw.partition_point(|node| node.name() < prefix);
+        (start..self.node_count())
+            .map(ModuleId::new)
+            .take_while(move |id| self.name(*id).starts_with(prefix))
+    }
+
     /// The children of a node. Only directories have children.
     pub fn children(&self, id: ModuleId) -> &[ModuleId] {
         self.children.get(id)

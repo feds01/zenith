@@ -731,7 +731,7 @@ imports and excluded modules, so this needs no new algorithms.
 | `zenith_workspace` | File walker (adapted from the ruff-derived resolver in teamsearch and bracketlint), workspace package discovery |
 | `zenith_parse` | oxc-based extraction of imports, directives and suppression comments |
 | `zenith_resolve` | `oxc_resolver` setup and resolution classification, plus `exports`-aware workspace resolution |
-| `zenith_graph` | The module tree and import graph: interned tokens, hierarchy, edges with details, pathfinding, chains, layers, cycle breakers (a grimp port). No IO. |
+| `zenith_graph` | The module tree and import graph: interned tokens, hierarchy, edges with details, units, finding nodes by path glob or name pattern, pathfinding, chains, layers, cycle breakers (a grimp port). No IO. |
 | `zenith_pipeline` | The session that holds a project and what each stage found, the stages as adapters over the crates that do the work, and the pipeline that runs them in order and times them |
 | `zenith_contracts` | Resolving selectors into units, per-contract views, the six contract types, the findings model, baseline, suppressions |
 | `zenith_reporting` | Renderers (`pretty`, `compact`, `json`, `github`) using `annotate-snippets` |

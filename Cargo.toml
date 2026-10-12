@@ -11,6 +11,7 @@ repository = "https://github.com/feds01/zenith"
 
 [workspace.dependencies]
 zenith_config = { path = "crates/zenith_config" }
+zenith_contracts = { path = "crates/zenith_contracts" }
 zenith_diagnostics = { path = "crates/zenith_diagnostics" }
 zenith_graph = { path = "crates/zenith_graph" }
 zenith_parse = { path = "crates/zenith_parse" }

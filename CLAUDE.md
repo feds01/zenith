@@ -42,12 +42,16 @@ it when responsibilities move. On `main` today:
 - `zenith_config`: the `zenith.toml` types and JSON Schema, config discovery,
   parsing, and validation into typed contract definitions, including the
   syntax of selectors, layers and ignored imports.
+- `zenith_contracts`: resolving selectors into units, the labelled sets of
+  nodes that contracts reason about, from what the graph and the workspace
+  find.
 - `zenith_diagnostics`: the errors and warnings reported about zenith's
   input, collected per pass and rendered as reports with labelled source
   excerpts using `annotate-snippets`.
 - `zenith_graph`: the module tree and import graph model, import kinds, node
-  sets, graph views that leave out imports, and the grimp algorithms that run
-  on them: shortest import chains, layers and cycle breakers.
+  sets, units, finding the nodes that a path glob or name pattern picks out,
+  graph views that leave out imports, and the grimp algorithms that run on
+  them: shortest import chains, layers and cycle breakers.
 - `zenith_parse`: oxc-based extraction of imports and their kinds,
   directives and suppression comments.
 - `zenith_pipeline`: the stages (discover, parse, resolve, graph) that turn

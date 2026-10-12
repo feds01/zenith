@@ -11,7 +11,7 @@ use serde_json::Value;
 use yaml_rust2::{Yaml, YamlLoader};
 use zenith_utils::{
     fs::{ReadJsonError, read_json, read_text},
-    glob::Glob,
+    glob::{Glob, NamePattern},
     path::relative_posix,
 };
 
@@ -44,6 +44,21 @@ impl Workspace {
     /// Look up a package by name, including the root package.
     pub fn package(&self, name: &str) -> Option<&WorkspacePackage> {
         self.packages.iter().chain(&self.root_package).find(|package| package.name == name)
+    }
+
+    /// The packages whose name matches `pattern`, in order of their
+    /// directories, as `pkg:` selectors pick them. The root package contains
+    /// every other, so only its exact name matches it, e.g. `pkg:*` never
+    /// does, and it comes last.
+    pub fn find_packages<'w, 'p>(
+        &'w self,
+        pattern: &'p NamePattern,
+    ) -> impl Iterator<Item = &'w WorkspacePackage> + use<'w, 'p> {
+        let root = self
+            .root_package
+            .as_ref()
+            .filter(|root| pattern.is_literal() && pattern.is_match(&root.name));
+        self.packages.iter().filter(|package| pattern.is_match(&package.name)).chain(root)
     }
 }
 
@@ -218,6 +233,28 @@ mod tests {
 
     fn found(workspace: &Workspace) -> Vec<(&str, &str)> {
         workspace.packages.iter().map(|p| (p.name.as_str(), p.dir.as_str())).collect()
+    }
+
+    #[test]
+    fn finds_packages_by_name_but_the_root_only_by_its_exact_name() {
+        let package = |name: &str, dir: &str| WorkspacePackage {
+            name: name.to_string(),
+            dir: dir.to_string(),
+            path: PathBuf::from("/repo").join(dir),
+        };
+        let workspace = Workspace {
+            packages: vec![package("@acme/api", "packages/api"), package("web", "web")],
+            root_package: Some(package("acme", "")),
+        };
+        let find = |pattern: &str| -> Vec<&str> {
+            let pattern = NamePattern::new(pattern).unwrap();
+            workspace.find_packages(&pattern).map(|package| package.name.as_str()).collect()
+        };
+        assert_eq!(find("*"), ["@acme/api", "web"]);
+        assert_eq!(find("@acme/*"), ["@acme/api"]);
+        assert_eq!(find("acme"), ["acme"]);
+        assert!(find("acm?").is_empty());
+        assert!(find("missing").is_empty());
     }
 
     #[test]

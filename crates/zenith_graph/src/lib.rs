@@ -20,6 +20,7 @@
 
 mod builder;
 mod cycles;
+mod find;
 mod graph;
 mod kinds;
 mod layers;
@@ -27,6 +28,7 @@ mod node_set;
 mod pathfinding;
 #[cfg(test)]
 mod testing;
+mod unit;
 mod view;
 
 pub use builder::{FileHandle, GraphBuilder, GraphError, NodeHandle};
@@ -35,4 +37,5 @@ pub use graph::{Graph, ImportDetail, ModuleId, Node, NodeKind};
 pub use kinds::{ImportKind, KindSet};
 pub use layers::{Architecture, LayerId, LayerRef, Level, LevelId, PackageDependency, Route};
 pub use node_set::NodeSet;
+pub use unit::Unit;
 pub use view::{EdgeSet, GraphView};

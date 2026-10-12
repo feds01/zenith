@@ -9,7 +9,11 @@ use std::{
 
 use ignore::{DirEntry, ParallelVisitor, ParallelVisitorBuilder, WalkBuilder, WalkState};
 use log::warn;
-use zenith_utils::{glob::Glob, path::relative_posix, pool::thread_count};
+use zenith_utils::{
+    glob::Glob,
+    path::{compare_paths, relative_posix},
+    pool::thread_count,
+};
 
 /// Directories that are never scanned, wherever they appear.
 const ALWAYS_EXCLUDED_DIRS: &[&str] = &[
@@ -98,8 +102,10 @@ fn walk_with(root: &Path, settings: &WalkSettings, git_global: bool) -> WalkResu
     walker.visit(&mut VisitorBuilder { root, settings, result: &result });
 
     let mut result = result.into_inner().unwrap_or_else(PoisonError::into_inner);
-    result.source_files.sort();
-    result.package_jsons.sort();
+    // Each path is found once, and comparing them by components would cost more
+    // than the rest of the walk's own work.
+    result.source_files.sort_unstable_by(|a, b| compare_paths(a, b));
+    result.package_jsons.sort_unstable_by(|a, b| compare_paths(a, b));
     result
 }
 

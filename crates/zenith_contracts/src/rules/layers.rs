@@ -374,6 +374,24 @@ mod tests {
     }
 
     #[test]
+    fn chains_do_not_pass_through_boundaries() {
+        let project = Project::with_directives(
+            &values(&[
+                ("low/a.ts", "lib/actions.ts"),
+                ("lib/actions.ts", "high/b.ts"),
+                ("low/c.ts", "lib/util.ts"),
+                ("lib/util.ts", "high/b.ts"),
+            ]),
+            &[("lib/actions.ts", "use server")],
+            &contract(
+                "layers = [\"high\", \"low\"]\n\
+                 boundaries = [{ path = \"lib\", directive = \"use server\" }]",
+            ),
+        );
+        assert_eq!(project.findings("l"), ["low -> high: low/c.ts -> lib/util.ts -> high/b.ts"]);
+    }
+
+    #[test]
     fn containers_are_checked_on_their_own() {
         let project = Project::new(
             &values(&[

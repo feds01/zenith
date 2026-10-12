@@ -2,7 +2,7 @@
 
 use rustc_hash::FxHashSet;
 use zenith_config::{ContractConfig, IgnoreImport};
-use zenith_graph::{EdgeSet, Graph, GraphView, ImportDetail, KindSet, ModuleId};
+use zenith_graph::{EdgeSet, Graph, GraphView, ImportDetail, KindSet, ModuleId, NodeSet};
 use zenith_pipeline::FileSuppressions;
 use zenith_workspace::Workspace;
 
@@ -13,7 +13,7 @@ use crate::{Exemptions, Selection, baseline};
 pub(crate) struct ContractView<'g, 'c> {
     /// The graph without the imports whose every statement is of an excluded
     /// kind or suppressed, and without the imports that `ignore_imports`
-    /// matches.
+    /// matches, with the boundaries that chains don't pass through.
     pub view: GraphView<'g>,
 
     /// The statements of the imports in the view that count.
@@ -46,13 +46,15 @@ impl<'g, 'c> ContractView<'g, 'c> {
     /// The view of `graph` for the contract `config`, whose `pkg:` selectors
     /// match the `workspace` packages, without what the project `exempts`
     /// from it, and without the `left_out` imports, which count as
-    /// baselined: those found so far while recording a baseline.
+    /// baselined: those found so far while recording a baseline. Chains
+    /// don't pass through the members of its `boundaries`.
     pub(crate) fn new(
         config: &'c ContractConfig,
         graph: &'g Graph,
         workspace: &Workspace,
         exempts: &Exemptions,
         left_out: &[(ModuleId, ModuleId)],
+        boundaries: &NodeSet,
     ) -> Self {
         let mut excluded = EdgeSet::only_of_kinds(graph, config.exclude_kinds);
         let mut statements =
@@ -131,7 +133,7 @@ impl<'g, 'c> ContractView<'g, 'c> {
         }
 
         Self {
-            view: GraphView::with_excluded(graph, excluded),
+            view: GraphView::with_excluded(graph, excluded).with_boundaries(boundaries.clone()),
             statements,
             unmatched,
             ignored,

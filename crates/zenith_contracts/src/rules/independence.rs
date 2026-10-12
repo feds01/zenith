@@ -117,6 +117,29 @@ mod tests {
     }
 
     #[test]
+    fn chains_do_not_pass_through_boundaries() {
+        let toml = "[contracts.i]
+type = \"independence\"
+modules = [\"src/*\"]
+boundaries = [\"lib/actions.ts\"]
+";
+        let project = Project::new(
+            &values(&[
+                ("src/a/x.ts", "lib/actions.ts"),
+                ("lib/actions.ts", "src/b/y.ts"),
+                ("src/a/x.ts", "lib/util.ts"),
+                ("lib/util.ts", "src/c/z.ts"),
+            ]),
+            &[],
+            toml,
+        );
+        assert_eq!(
+            project.findings("i"),
+            ["src/a -> src/c: src/a/x.ts -> lib/util.ts -> src/c/z.ts"]
+        );
+    }
+
+    #[test]
     fn imports_into_a_shared_module_can_be_ignored() {
         let toml = "[contracts.i]
 type = \"independence\"

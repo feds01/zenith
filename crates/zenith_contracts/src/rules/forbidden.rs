@@ -86,7 +86,10 @@ impl Forbidden {
 mod tests {
     use zenith_graph::ImportKind;
 
-    use crate::testing::{Project, values};
+    use crate::{
+        ContractErrorKind,
+        testing::{Project, values},
+    };
 
     /// A `forbidden` contract `f` with the given options.
     fn contract(options: &str) -> String {
@@ -182,6 +185,65 @@ mod tests {
             project.findings("f"),
             ["web/page.tsx -> npm:sharp: web/page.tsx -> web/lib.ts -> npm:sharp"]
         );
+    }
+
+    #[test]
+    fn chains_do_not_pass_through_boundaries() {
+        let project = Project::with_directives(
+            &values(&[
+                // A server action, which the client imports by reference.
+                ("web/upload.tsx", "web/actions.ts"),
+                ("web/actions.ts", "node:fs"),
+                ("web/actions.ts", "web/lib.ts"),
+                ("web/lib.ts", "npm:sharp"),
+                // The same module, imported directly.
+                ("web/preview.tsx", "web/lib.ts"),
+            ]),
+            &[
+                ("web/upload.tsx", "use client"),
+                ("web/preview.tsx", "use client"),
+                ("web/actions.ts", "use server"),
+            ],
+            &contract(
+                "from = [{ path = \"web\", directive = \"use client\" }]\n\
+                 to = [\"npm:sharp\", \"node:*\", \"web/actions.ts\"]\n\
+                 boundaries = [{ path = \"web\", directive = \"use server\" }]",
+            ),
+        );
+        // A chain may still end at a boundary.
+        assert_eq!(
+            project.findings("f"),
+            [
+                "web/preview.tsx -> npm:sharp: web/preview.tsx -> web/lib.ts -> npm:sharp",
+                "web/upload.tsx -> web/actions.ts: web/upload.tsx -> web/actions.ts",
+            ]
+        );
+    }
+
+    #[test]
+    fn chains_may_start_at_a_boundary() {
+        let project = Project::new(
+            &values(&[("web/actions.ts", "lib/files.ts"), ("lib/files.ts", "node:fs")]),
+            &[],
+            &contract("from = [\"web\"]\nto = [\"node:*\"]\nboundaries = [\"web/actions.ts\"]"),
+        );
+        assert_eq!(
+            project.findings("f"),
+            ["web -> node:fs: web/actions.ts -> lib/files.ts -> node:fs"]
+        );
+    }
+
+    #[test]
+    fn a_boundary_that_matches_nothing_is_an_error() {
+        let project = Project::new(
+            &values(&[("web/a.ts", "node:fs")]),
+            &[],
+            &contract("from = [\"web\"]\nto = [\"node:*\"]\nboundaries = [\"web/nope\"]"),
+        );
+        let errors = project.compile().unwrap_err();
+        let kinds: Vec<_> = errors.iter().map(|error| &error.kind).collect();
+        let expected = ContractErrorKind::UnmatchedSelector { selector: "web/nope".to_string() };
+        assert_eq!(kinds, [&expected]);
     }
 
     #[test]

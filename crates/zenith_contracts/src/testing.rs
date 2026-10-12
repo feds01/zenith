@@ -44,6 +44,17 @@ impl Project {
     /// and anything else is a file. The `clients` files start with
     /// `"use client"`.
     pub(crate) fn new(imports: &[(&str, &str, ImportKind)], clients: &[&str], toml: &str) -> Self {
+        let directives: Vec<_> = clients.iter().map(|client| (*client, "use client")).collect();
+        Self::with_directives(imports, &directives, toml)
+    }
+
+    /// A project as [`Project::new`] makes it, where each `(file, directive)`
+    /// file starts with that directive.
+    pub(crate) fn with_directives(
+        imports: &[(&str, &str, ImportKind)],
+        directives: &[(&str, &str)],
+        toml: &str,
+    ) -> Self {
         let mut builder = GraphBuilder::new();
         for (line, (importer, imported, kind)) in (1..).zip(imports) {
             let importer = builder.add_file(importer).unwrap();
@@ -59,9 +70,9 @@ impl Project {
                 ImportDetail { range, specifier: format!("./import-{line}").into(), kind: *kind };
             builder.add_import(importer, imported, detail);
         }
-        for client in clients {
-            let client = builder.add_file(client).unwrap();
-            builder.set_directives(client, thin_vec!["use client".to_string()]);
+        for (file, directive) in directives {
+            let file = builder.add_file(file).unwrap();
+            builder.set_directives(file, thin_vec![(*directive).to_string()]);
         }
         let config = Config::parse(toml).unwrap_or_else(|errors| panic!("{errors:?}"));
         let workspace = Workspace::default();

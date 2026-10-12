@@ -156,6 +156,10 @@ pub enum ConfigErrorKind {
     /// A `layers` contract is `exhaustive` without `containers`, which are
     /// what it would be exhaustive about.
     ExhaustiveWithoutContainers,
+
+    /// A contract has `boundaries` and `allow_indirect_imports`, with which
+    /// only direct imports count, and they pass through nothing.
+    BoundariesWithoutChains,
 }
 
 impl ConfigErrorKind {
@@ -186,6 +190,11 @@ impl ConfigErrorKind {
             Self::InvalidLayer { layer, error } => format!("invalid layer `{layer}`: {error}"),
             Self::NoLayers => "`layers` must list at least one layer".to_string(),
             Self::ExhaustiveWithoutContainers => "`exhaustive` requires `containers`".to_string(),
+            Self::BoundariesWithoutChains => {
+                "`boundaries` has no effect with `allow_indirect_imports = true`, since direct \
+                 imports pass through nothing"
+                    .to_string()
+            }
         }
     }
 

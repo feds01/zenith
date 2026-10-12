@@ -217,6 +217,7 @@ fn parses_an_independence_contract() {
 type = "independence"
 modules = ["web/src/features/*"]
 ignore_imports = ["web/src/features/* -> web/src/features/shared"]
+boundaries = ["web/src/server", { path = "web/src/**", directive = "use server" }]
 "#,
     );
     let ContractKind::Independence(independence) = &config.contracts[0].kind else {
@@ -224,6 +225,8 @@ ignore_imports = ["web/src/features/* -> web/src/features/shared"]
     };
     assert_eq!(selectors(&independence.modules), ["web/src/features/*"]);
     assert!(!independence.allow_indirect_imports);
+    assert_eq!(selectors(&independence.boundaries), ["web/src/server", "web/src/**"]);
+    assert_eq!(independence.boundaries[1].directive(), Some("use server"));
 }
 
 #[test]
@@ -369,6 +372,7 @@ layers = ["a"]
     }
     let ContractKind::Forbidden(forbidden) = &config.contracts[0].kind else { panic!() };
     assert!(!forbidden.allow_indirect_imports);
+    assert!(forbidden.boundaries.is_empty());
     let ContractKind::Encapsulation(encapsulation) = &config.contracts[1].kind else { panic!() };
     assert_eq!(encapsulation.entrypoints, [Glob::new("index").unwrap()]);
     assert!(encapsulation.allowed_importers.is_empty());
@@ -380,6 +384,7 @@ layers = ["a"]
     assert!(!layers.exhaustive);
     assert!(layers.exhaustive_ignores.is_empty());
     assert!(!layers.allow_indirect_imports);
+    assert!(layers.boundaries.is_empty());
 }
 
 #[test]
@@ -490,8 +495,8 @@ fn unknown_keys_of_contracts_are_errors() {
         (
             "type = \"forbidden\"\nfrom = []\nto = []\nmodules = []",
             "5:1: in contract `c`: unknown key `modules`, expected one of `from`, `to`, \
-             `allow_indirect_imports`, `name`, `severity`, `exclude_kinds`, `ignore_imports`, \
-             `unmatched_ignore_imports`, `guidance` [modules]",
+             `allow_indirect_imports`, `boundaries`, `name`, `severity`, `exclude_kinds`, \
+             `ignore_imports`, `unmatched_ignore_imports`, `guidance` [modules]",
         ),
     ] {
         let contents = format!("[contracts.c]\n{contract}\n");
@@ -703,6 +708,26 @@ fn invalid_layers_are_errors() {
         ),
     ] {
         let contents = format!("[contracts.c]\ntype = \"layers\"\n{contract}\n");
+        assert_eq!(only_error(&contents), expected, "{contents}");
+    }
+}
+
+#[test]
+fn boundaries_without_chains_are_an_error() {
+    for (kind, options) in [
+        ("forbidden", "from = []\nto = []"),
+        ("independence", "modules = []"),
+        ("layers", "layers = [\"a\"]"),
+    ] {
+        let contents = format!(
+            "[contracts.c]\ntype = \"{kind}\"\n{options}\nallow_indirect_imports = true\n\
+             boundaries = [\"a\"]\n"
+        );
+        let line = contents.lines().count();
+        let expected = format!(
+            "{line}:14: in contract `c`: `boundaries` has no effect with \
+             `allow_indirect_imports = true`, since direct imports pass through nothing [[\"a\"]]"
+        );
         assert_eq!(only_error(&contents), expected, "{contents}");
     }
 }

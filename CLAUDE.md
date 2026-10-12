@@ -64,9 +64,10 @@ it when responsibilities move. On `main` today:
   pass.
 - `zenith_graph`: the module tree and import graph model, import kinds, node
   sets, units, finding the nodes that a path glob or name pattern picks out,
-  graph views that leave out imports (by pair or by kind), the grimp
-  algorithms that run on them: shortest import chains, layers and cycle
-  breakers, and module overviews for visualisations (`zenith graph`).
+  graph views that leave out imports (by pair or by kind) and have
+  boundaries that chains don't pass through, the grimp algorithms that run
+  on them: shortest import chains, layers and cycle breakers, and module
+  overviews for visualisations (`zenith graph`).
 - `zenith_parse`: oxc-based extraction of imports and their kinds,
   directives and suppression comments.
 - `zenith_pipeline`: the stages (discover, parse, resolve, graph) that turn

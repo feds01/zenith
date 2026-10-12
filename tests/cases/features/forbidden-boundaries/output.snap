@@ -1,0 +1,102 @@
+$ zenith check
+exit: 1
+--- stdout
+error[client-safety]: `src/components/preview.tsx` must not import `npm:sharp`
+ --> src/components/preview.tsx:3:27
+  |
+3 | import { thumbnail } from "../lib/images";
+  |                           ^^^^^^^^^^^^^^^ starts a chain of 2 imports
+  |
+  = note: import chain:
+            src/components/preview.tsx:3
+            -> src/lib/images.ts:1
+            -> npm:sharp
+
+error[client-safety-without-boundaries]: `src/components/preview.tsx` must not import `npm:sharp`
+ --> src/components/preview.tsx:3:27
+  |
+3 | import { thumbnail } from "../lib/images";
+  |                           ^^^^^^^^^^^^^^^ starts a chain of 2 imports
+  |
+  = note: import chain:
+            src/components/preview.tsx:3
+            -> src/lib/images.ts:1
+            -> npm:sharp
+
+error[client-safety-without-boundaries]: `src/components/save-button.tsx` must not import `npm:sharp`
+ --> src/components/save-button.tsx:3:24
+  |
+3 | import { upload } from "../lib/actions";
+  |                        ^^^^^^^^^^^^^^^^ starts a chain of 4 imports
+  |
+  = note: import chain:
+            src/components/save-button.tsx:3
+            -> src/lib/actions.ts:1
+            -> src/actions/upload.ts:5
+            -> src/lib/images.ts:1
+            -> npm:sharp
+
+error[client-safety-without-boundaries]: `src/components/save-button.tsx` must not import `npm:server-only`
+ --> src/components/save-button.tsx:3:24
+  |
+3 | import { upload } from "../lib/actions";
+  |                        ^^^^^^^^^^^^^^^^ starts a chain of 3 imports
+  |
+  = note: import chain:
+            src/components/save-button.tsx:3
+            -> src/lib/actions.ts:1
+            -> src/actions/upload.ts:3
+            -> npm:server-only
+
+error[client-safety-without-boundaries]: `src/components/save-button.tsx` must not import `node:fs`
+ --> src/components/save-button.tsx:3:24
+  |
+3 | import { upload } from "../lib/actions";
+  |                        ^^^^^^^^^^^^^^^^ starts a chain of 3 imports
+  |
+  = note: import chain:
+            src/components/save-button.tsx:3
+            -> src/lib/actions.ts:1
+            -> src/actions/upload.ts:4
+            -> node:fs
+
+error[client-safety-without-boundaries]: `src/components/upload-form.tsx` must not import `npm:sharp`
+ --> src/components/upload-form.tsx:3:24
+  |
+3 | import { upload } from "../actions/upload";
+  |                        ^^^^^^^^^^^^^^^^^^^ starts a chain of 3 imports
+  |
+  = note: import chain:
+            src/components/upload-form.tsx:3
+            -> src/actions/upload.ts:5
+            -> src/lib/images.ts:1
+            -> npm:sharp
+
+error[client-safety-without-boundaries]: `src/components/upload-form.tsx` must not import `npm:server-only`
+ --> src/components/upload-form.tsx:3:24
+  |
+3 | import { upload } from "../actions/upload";
+  |                        ^^^^^^^^^^^^^^^^^^^ starts a chain of 2 imports
+  |
+  = note: import chain:
+            src/components/upload-form.tsx:3
+            -> src/actions/upload.ts:3
+            -> npm:server-only
+
+error[client-safety-without-boundaries]: `src/components/upload-form.tsx` must not import `node:fs`
+ --> src/components/upload-form.tsx:3:24
+  |
+3 | import { upload } from "../actions/upload";
+  |                        ^^^^^^^^^^^^^^^^^^^ starts a chain of 2 imports
+  |
+  = note: import chain:
+            src/components/upload-form.tsx:3
+            -> src/actions/upload.ts:4
+            -> node:fs
+
+Contracts
+  ✗ client-safety                     forbidden  broken (1 violation)
+  ✗ client-safety-without-boundaries  forbidden  broken (7 violations)
+
+0 kept, 2 broken · 7 files, 9 imports
+

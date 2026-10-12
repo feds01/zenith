@@ -143,8 +143,10 @@ import { useState } from "react";
 Directives mark how a file runs. In React Server Components (Next.js and other
 frameworks), `"use client"` makes a file the entry point of a client bundle, so
 everything it imports, directly or not, ships to the browser. `"use server"`
-marks server functions that client code may call. `"use strict"` is the
-classic, older example.
+marks a file whose exports are server functions, which client code may import
+and call: the client gets a reference that calls the server, not the
+functions' code ([§2.7](#27-boundaries)). `"use strict"` is the classic, older
+example.
 
 Zenith records the directives of every scanned file. **There is no fixed list**:
 every string in the prologue is recorded as written, so framework-specific ones
@@ -152,6 +154,51 @@ every string in the prologue is recorded as written, so framework-specific ones
 ([§3.3](#33-table-form)) matches one exactly. Directives let a contract target
 a boundary that the directory layout doesn't show, such as "no `"use client"`
 file may reach `node:*`" ([§4.2](#42-forbidden)).
+
+### 2.7 Boundaries
+
+A chain of imports stands for code that is loaded together, but some files
+break the chain. Client code may import a server function from a
+`"use server"` file, and the bundler replaces the import with a reference
+that calls the server. Neither the function's code nor anything it imports
+ships to the browser. So a `"use client"` file that imports a `"use server"`
+file, which imports `node:fs`, does not bring `node:fs` into the client
+bundle, although the graph has a chain from one to the other.
+
+A **boundary** is a file that chains may start or end at, but not pass
+through. The contracts that follow chains, `forbidden`, `independence` and
+`layers`, take a `boundaries` list of selectors, usually by directive:
+
+```toml
+boundaries = [{ path = "web/src/**", directive = "use server" }]
+```
+
+- A chain may **end** at a boundary. A client file that imports a server file
+  still imports it, and breaks a contract whose `to` holds that file.
+- A chain may **start** at a boundary. A server file in a `from` unit is
+  checked like any other member, since its own imports do run.
+- A chain may **not pass through** a boundary. `client.tsx` → `actions.ts` →
+  `node:fs`, with `actions.ts` a boundary, is not a chain from `client.tsx` to
+  `node:fs`.
+
+This is how `layers` already keeps a chain between two layers from passing
+through a third ([§4.4](#44-layers)). Selectors follow the usual rules: a path
+or `pkg:` selector that matches nothing is an error ([§3.4](#34-unmatched-selectors)).
+Externals and builtins import nothing, so they never sit inside a chain.
+
+**(settled)**
+
+- Boundaries are declared per contract, rather than built into `"use client"`
+  selectors. Zenith has no fixed list of directives, other frameworks mark
+  the same line in other ways (a `*.server.ts` naming convention, say), and a
+  contract about server code, such as layers, may want the chains through
+  server functions.
+- A direct import passes through nothing, so `boundaries` with
+  `allow_indirect_imports = true` would have no effect. It is a configuration
+  error.
+- Only a file's directive prologue counts. React also allows `"use server"`
+  at the top of an async function body, but client code can only import
+  server functions from a file that starts with it.
 
 ---
 
@@ -262,6 +309,7 @@ The `from` units must not import the `to` units.
 | `from` | required | selectors |
 | `to` | required | selectors; externals and builtins allowed |
 | `allow_indirect_imports` | `false` | if `true`, only direct imports count |
+| `boundaries` | `[]` | selectors of files that chains may start or end at, but not pass through ([§2.7](#27-boundaries)) |
 
 By default the check is **transitive**: zenith finds every import chain from a
 member of a `from` unit to a member of a `to` unit. The chain search is grimp's:
@@ -274,6 +322,7 @@ type = "forbidden"
 name = "Client components never reach server-only code"
 from = [{ path = "web/src/**", directive = "use client" }]
 to = ["npm:sharp", "node:*", "npm:server-only"]
+boundaries = [{ path = "web/src/**", directive = "use server" }]
 guidance = "Keep server-only modules out of client bundles."
 ```
 
@@ -283,6 +332,9 @@ client file is its own unit ([§2.6](#26-directives)), so a violation names the
 client file and shows the whole chain, e.g. `web/src/components/upload.tsx` →
 `web/src/lib/images.ts` → `npm:sharp`. Server components and route handlers
 under `web/src` are unaffected, because they have no `"use client"` directive.
+Chains stop at `"use server"` files ([§2.7](#27-boundaries)): a client file may
+call a server action in `web/src/actions/upload.ts`, which writes the upload
+with `node:fs`, because only a reference to the action ships to the browser.
 
 ### 4.3 `independence`
 
@@ -294,6 +346,7 @@ two separate violations rather than once (grimp's single independent layer).
 |---|---|
 | `modules` | required |
 | `allow_indirect_imports` | `false` |
+| `boundaries` | `[]` |
 
 ```toml
 [contracts.features-independent]
@@ -322,6 +375,7 @@ Higher layers may import lower layers, never the reverse. This is grimp's
 | `exhaustive` | `false` | every child of every container must be declared as a layer (needs `containers`) |
 | `exhaustive_ignores` | `[]` | child names exempt from the exhaustiveness check: name patterns matched against the base name with or without its JS/TS extension (`index` matches `index.ts`) |
 | `allow_indirect_imports` | `false` | check only direct imports |
+| `boundaries` | `[]` | selectors of files that chains may start or end at, but not pass through ([§2.7](#27-boundaries)) |
 
 Each `layers` entry is a string:
 
@@ -722,8 +776,9 @@ the graph, checks them in parallel, and renders what they find.
 Contracts never mutate or clone the graph, unlike import-linter, which
 deep-copies it per contract. Each contract builds a **view**: an
 excluded-imports set made from its `ignore_imports`, baseline entries,
-suppressions and kind filters. grimp's pathfinding already accepts excluded
-imports and excluded modules, so this needs no new algorithms.
+suppressions and kind filters, and the set of its boundaries, which chains
+may not pass through. grimp's pathfinding already accepts excluded imports
+and excluded modules, so this needs no new algorithms.
 
 ### 11.2 Crates
 
@@ -734,7 +789,7 @@ imports and excluded modules, so this needs no new algorithms.
 | `zenith_workspace` | File walker (adapted from the ruff-derived resolver in teamsearch and bracketlint), workspace package discovery |
 | `zenith_parse` | oxc-based extraction of imports, directives and suppression comments |
 | `zenith_resolve` | `oxc_resolver` setup and resolution classification, plus `exports`-aware workspace resolution |
-| `zenith_graph` | The module tree and import graph: interned tokens, hierarchy, edges with details, units, finding nodes by path glob or name pattern, views that leave out imports (by pair or by kind), pathfinding, chains, layers, cycle breakers (a grimp port), and module overviews (a node's children and the dependencies between them, as a tree, Graphviz or JSON). No IO. |
+| `zenith_graph` | The module tree and import graph: interned tokens, hierarchy, edges with details, units, finding nodes by path glob or name pattern, views that leave out imports (by pair or by kind) and have boundaries that chains don't pass through, pathfinding, chains, layers, cycle breakers (a grimp port), and module overviews (a node's children and the dependencies between them, as a tree, Graphviz or JSON). No IO. |
 | `zenith_pipeline` | The session that holds a project and what each stage found, the stages as adapters over the crates that do the work, the pipeline that runs them in order and times them, and reports and JSON of the files it could not read or parse and the imports it could not resolve |
 | `zenith_contracts` | Resolving selectors into units, per-contract views, the six contract types, the findings model and its reports (with excerpts of the imports that break a contract) and summary entries, baseline, suppressions, and the versioned JSON output of `zenith check` (`json`), with the pipeline's problems in it |
 | `zenith_reporting` | The output of `zenith check`, without knowing what is checked: the reports that the domain crates make, then the summary of every contract, in the `pretty`, `compact` and `github` formats |
@@ -774,7 +829,8 @@ imports and excluded modules, so this needs no new algorithms.
   modelled on the reference test-bed. It has:
   - bun workspaces, with package names that differ from their directories;
   - `@/*` and catch-all `*` tsconfig paths;
-  - deep `@acme/x/src/...` imports, namespace barrels, `"use client"` files;
+  - deep `@acme/x/src/...` imports, namespace barrels, `"use client"` files,
+    and a `"use server"` file that one of them imports;
   - type-only imports, Next.js route groups and `[param]` directories;
   - `.js`→`.ts` imports and asset imports.
 - **Corpus run**: `just corpus <path> <config>` runs a release build against a
@@ -827,7 +883,7 @@ imports and excluded modules, so this needs no new algorithms.
 | **M3** ✅ | `acyclic` and `encapsulation` |
 | **M4** | Baseline, suppressions, `json` and `github` output, `severity`, `init` |
 | **M5** | Docs site, JSON schema publishing, and more distribution channels (an npm package, Homebrew) |
-| later | A `"use server"` boundary rule; `vi.mock` specifiers as optional edges; an incremental cache; barrel-precise (symbol-level) edges through pure re-export files; a `package.json` declared-dependency check; an outgoing allowlist contract; an LSP |
+| later | `vi.mock` specifiers as optional edges; an incremental cache; barrel-precise (symbol-level) edges through pure re-export files; a `package.json` declared-dependency check; an outgoing allowlist contract; an LSP |
 
 ---
 

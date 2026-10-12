@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use rayon::prelude::*;
 use zenith_config::{AlertLevel, ContractConfig, IgnoreImport, Selector};
-use zenith_graph::{Graph, ModuleId, Unit};
+use zenith_graph::{Graph, ModuleId, NodeSet, Unit};
 use zenith_pipeline::FileSuppressions;
 use zenith_utils::location::ByteRange;
 use zenith_workspace::Workspace;
@@ -23,6 +23,10 @@ pub struct Contract<'c> {
 
     /// What the contract checks, with its units.
     rule: Rule,
+
+    /// The members of its boundaries, which chains may start or end at, but
+    /// not pass through.
+    boundaries: NodeSet,
 }
 
 impl<'c> Contract<'c> {
@@ -38,7 +42,12 @@ impl<'c> Contract<'c> {
     ) -> Result<Self, Vec<ContractError>> {
         let mut units = UnitResolver { contract: &config.id, graph, workspace, errors: Vec::new() };
         let rule = Rule::compile(&config.kind, &mut units);
-        if units.errors.is_empty() { Ok(Self { config, rule }) } else { Err(units.errors) }
+        let boundaries = units.members(config.kind.boundaries());
+        if units.errors.is_empty() {
+            Ok(Self { config, rule, boundaries })
+        } else {
+            Err(units.errors)
+        }
     }
 
     /// Compile every contract in `configs`, as [`Contract::compile`] does.
@@ -63,7 +72,7 @@ impl<'c> Contract<'c> {
     /// Check the contract against `graph`, without the imports that the
     /// contract leaves out: the statements of its excluded kinds, those that
     /// the project `exempts` from it, and the imports its `ignore_imports`
-    /// match.
+    /// match. Chains don't pass through its boundaries.
     pub fn check(
         &self,
         graph: &Graph,
@@ -83,7 +92,8 @@ impl<'c> Contract<'c> {
         left_out: &[(ModuleId, ModuleId)],
     ) -> ContractReport<'c> {
         let start = Instant::now();
-        let mut view = ContractView::new(self.config, graph, workspace, exempts, left_out);
+        let mut view =
+            ContractView::new(self.config, graph, workspace, exempts, left_out, &self.boundaries);
         let violations = self.rule.check(&view.view, &view.statements);
         view.used_suppressions.sort_unstable();
         view.used_suppressions.dedup();
@@ -217,6 +227,16 @@ impl<'a> UnitResolver<'a> {
     /// an error.
     pub(crate) fn units(&mut self, selectors: &[Selector]) -> Vec<Unit> {
         self.located_units(selectors).into_iter().map(|(unit, _)| unit).collect()
+    }
+
+    /// The members of every unit of `selectors`, as [`Self::units`] finds
+    /// them.
+    pub(crate) fn members(&mut self, selectors: &[Selector]) -> NodeSet {
+        let mut members = NodeSet::new();
+        for unit in self.units(selectors) {
+            members.union_with(&unit.members);
+        }
+        members
     }
 
     /// The units of `selectors`, as [`Self::units`] finds them, each with the

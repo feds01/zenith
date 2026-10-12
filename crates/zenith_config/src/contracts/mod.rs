@@ -19,7 +19,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use zenith_graph::KindSet;
 
-use crate::selector::IgnoreImport;
+use crate::selector::{IgnoreImport, Selector};
 
 /// The contract types, as written in `type`.
 pub(crate) const CONTRACT_TYPES: [&str; 6] =
@@ -87,6 +87,17 @@ impl ContractKind {
             Self::Protected(_) => "protected",
             Self::Acyclic(_) => "acyclic",
             Self::Encapsulation(_) => "encapsulation",
+        }
+    }
+
+    /// The modules that chains of imports may start or end at, but not pass
+    /// through. Only the contract types that follow chains have them.
+    pub fn boundaries(&self) -> &[Selector] {
+        match self {
+            Self::Forbidden(config) => &config.boundaries,
+            Self::Independence(config) => &config.boundaries,
+            Self::Layers(config) => &config.boundaries,
+            Self::Protected(_) | Self::Acyclic(_) | Self::Encapsulation(_) => &[],
         }
     }
 }

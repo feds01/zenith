@@ -103,6 +103,14 @@ pub enum UnresolvedReason {
     UnsupportedScheme(String),
 }
 
+impl UnresolvedReason {
+    /// Whether the importing file's `tsconfig.json` couldn't be loaded, so the
+    /// `paths` that the specifier may have needed were missing.
+    pub fn is_tsconfig_error(&self) -> bool {
+        matches!(self, Self::Failed(failure) if failure.is_tsconfig_error())
+    }
+}
+
 impl fmt::Display for UnresolvedReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

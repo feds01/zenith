@@ -49,6 +49,11 @@ Imports of workspace packages resolve to their source, through their
 that doesn't resolve still names its package, such as `npm:react`, so
 `npm:` contracts work in CI without installing dependencies.
 
+A `tsconfig.json` that extends one from a package, even a workspace package,
+can only be loaded once the package is installed. Until then, its files
+resolve without it, so their path aliases don't resolve, and `zenith check`
+says so.
+
 Imports that can't be resolved are left out of the graph, and `zenith check`
 warns about them: `--show-unresolved` lists them, and
 `[resolve] ignore_unresolved` silences the expected ones. To see how one

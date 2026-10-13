@@ -35,8 +35,8 @@ impl Graph {
         let names = Names { exports };
         let mut imports = Vec::with_capacity(self.detail_count());
         for (importer, imported) in self.edges() {
+            let barrel = exports.get(&imported).is_some_and(|exports| exports.barrel);
             for detail in self.details(importer, imported) {
-                let barrel = exports.get(&imported).is_some_and(|exports| exports.barrel);
                 let ImportedNames::Names(taken) = &detail.names else {
                     imports.push((importer, imported, detail.clone()));
                     continue;
@@ -45,20 +45,29 @@ impl Graph {
                     imports.push((importer, imported, detail.clone()));
                     continue;
                 }
+
+                // Where each name goes: to the modules that define it, or to the
+                // barrel if it can't be followed. A barrel may re-export the
+                // importer's own names.
+                let mut targets = Vec::new();
                 for name in taken {
-                    let mut seen = FxHashSet::default();
-                    match names.definitions(imported, &name.name, name.type_only, &mut seen) {
-                        Some(definitions) => {
-                            for (definition, type_only) in definitions {
-                                // A barrel may re-export the importer's own names.
-                                if definition != importer {
-                                    let detail = with_kind(detail, type_only);
-                                    imports.push((importer, definition, detail));
-                                }
-                            }
-                        }
-                        None => imports.push((importer, imported, detail.clone())),
+                    match names.definitions(imported, &name.name, name.type_only) {
+                        Some(definitions) => targets.extend(definitions),
+                        None => targets.push((imported, name.type_only)),
                     }
+                }
+                targets.retain(|(target, _)| *target != importer);
+
+                // One detail per module that the statement imports, a type import
+                // only if every name that goes there is a type.
+                targets.sort_unstable();
+                targets.dedup_by_key(|(target, _)| *target);
+                for (target, type_only) in targets {
+                    let detail = match target == imported {
+                        true => detail.clone(),
+                        false => with_kind(detail, type_only),
+                    };
+                    imports.push((importer, target, detail));
                 }
             }
         }
@@ -75,6 +84,11 @@ fn with_kind(detail: &ImportDetail, type_only: bool) -> ImportDetail {
     detail
 }
 
+/// The `(barrel, name)` pairs met while following one name: `None` while the
+/// pair is being followed, then the modules that define the name as the
+/// barrel exports it, each with whether only its type gets there.
+type Followed = FxHashMap<(ModuleId, CompactString), Option<Vec<(ModuleId, bool)>>>;
+
 /// Follows names through the exports of modules.
 struct Names<'e> {
     /// What each module exports.
@@ -84,52 +98,78 @@ struct Names<'e> {
 impl Names<'_> {
     /// The modules that define `name` as `module` exports it, each with
     /// whether only its type gets there, or `None` if they can't be told.
-    /// `type_only` is whether only its type is wanted. `seen` holds the
-    /// `(barrel, name)` pairs followed so far, which a cycle of re-exports
-    /// comes back to.
+    /// `type_only` is whether only its type is wanted.
     fn definitions(
         &self,
         module: ModuleId,
         name: &str,
         type_only: bool,
-        seen: &mut FxHashSet<(ModuleId, CompactString)>,
+    ) -> Option<Vec<(ModuleId, bool)>> {
+        let definitions = self.follow(module, name, &mut Followed::default())?;
+        let definitions = definitions
+            .into_iter()
+            .map(|(definition, type_only_there)| (definition, type_only || type_only_there));
+        let definitions: Vec<_> = definitions.collect();
+        (!definitions.is_empty()).then_some(definitions)
+    }
+
+    /// The modules that define `name` as `module` exports it, each with
+    /// whether only its type gets there, none if it doesn't export it, or
+    /// `None` if that can't be told.
+    fn follow(
+        &self,
+        module: ModuleId,
+        name: &str,
+        followed: &mut Followed,
     ) -> Option<Vec<(ModuleId, bool)>> {
         // 1. A module of code defines what it exports.
         let Some(exports) = self.exports.get(&module).filter(|exports| exports.barrel) else {
-            return Some(vec![(module, type_only)]);
+            return Some(vec![(module, false)]);
         };
-        if !seen.insert((module, name.into())) {
-            return None;
-        }
 
-        // 2. A name the barrel re-exports by name comes from its source: the whole
+        // 2. A pair met before has the definitions found then, as when two barrels
+        //    re-export a third. One that is still being followed, which a cycle of
+        //    re-exports comes back to, adds none: those on the rest of the cycle are
+        //    found where it started.
+        let key = (module, CompactString::from(name));
+        match followed.get(&key) {
+            Some(Some(definitions)) => return Some(definitions.clone()),
+            Some(None) => return Some(Vec::new()),
+            None => {}
+        }
+        followed.insert(key.clone(), None);
+
+        // 3. A name the barrel re-exports by name comes from its source: the whole
         //    source, for `export * as name`.
-        if let Some(reexport) = exports.reexports.iter().find(|reexport| reexport.name == name) {
-            let type_only = type_only || reexport.type_only;
-            return match &reexport.imported {
-                Some(imported) => self.definitions(reexport.source, imported, type_only, seen),
-                None => Some(vec![(reexport.source, type_only)]),
-            };
-        }
-
-        // 3. Any other name, but `default`, may come through `export *` from the
-        //    modules that export it. If one of them may, but can't be told to, the name
-        //    can't be followed.
-        if name == "default" {
-            return None;
-        }
-        let mut definitions = Vec::new();
-        for (star, star_type_only) in &exports.stars {
-            match self.exports_name(*star, name, &mut FxHashSet::default()) {
-                Some(true) => {
-                    let type_only = type_only || *star_type_only;
-                    definitions.extend(self.definitions(*star, name, type_only, seen)?);
+        let definitions = match exports.reexports.iter().find(|reexport| reexport.name == name) {
+            Some(reexport) => match &reexport.imported {
+                Some(imported) => {
+                    let definitions = self.follow(reexport.source, imported, followed)?;
+                    with_type_only(definitions, reexport.type_only)
                 }
-                Some(false) => {}
-                None => return None,
+                None => vec![(reexport.source, reexport.type_only)],
+            },
+
+            // 4. Any other name, but `default`, may come through `export *` from the modules that
+            //    export it. If one of them may, but can't be told to, the name can't be followed.
+            None if name == "default" => return None,
+            None => {
+                let mut definitions = Vec::new();
+                for (star, star_type_only) in &exports.stars {
+                    match self.exports_name(*star, name, &mut FxHashSet::default()) {
+                        Some(true) => {
+                            let found = self.follow(*star, name, followed)?;
+                            definitions.extend(with_type_only(found, *star_type_only));
+                        }
+                        Some(false) => {}
+                        None => return None,
+                    }
+                }
+                definitions
             }
-        }
-        (!definitions.is_empty()).then_some(definitions)
+        };
+        followed.insert(key, Some(definitions.clone()));
+        Some(definitions)
     }
 
     /// Whether `module` exports `name`, or `None` if that can't be told, as
@@ -170,6 +210,14 @@ impl Names<'_> {
         }
         exported
     }
+}
+
+/// `definitions`, with only their types getting there if `type_only`.
+fn with_type_only(definitions: Vec<(ModuleId, bool)>, type_only: bool) -> Vec<(ModuleId, bool)> {
+    let definitions = definitions.into_iter();
+    definitions
+        .map(|(definition, type_only_there)| (definition, type_only || type_only_there))
+        .collect()
 }
 
 #[cfg(test)]
@@ -445,5 +493,109 @@ mod tests {
             imports(&through).into_iter().filter(|import| import.starts_with("app.ts")).collect();
         // `x` is nowhere, so its import stays on the barrel.
         assert_eq!(app, ["app.ts -> a/index.ts", "app.ts -> y.ts"]);
+    }
+
+    /// The imports of `importer` in `graph`, as [`imports`] has them.
+    fn imports_of(graph: &Graph, importer: &str) -> Vec<String> {
+        let prefix = format!("{importer} -> ");
+        imports(graph).into_iter().filter(|import| import.starts_with(&prefix)).collect()
+    }
+
+    #[test]
+    fn names_are_followed_through_barrels_that_share_a_barrel() {
+        let (graph, exports) = project(
+            &[
+                import("app.ts", "ui/index.ts", &["t"]),
+                import("ui/index.ts", "buttons/index.ts", &["*"]),
+                import("ui/index.ts", "forms/index.ts", &["*"]),
+                import("buttons/index.ts", "tokens/index.ts", &["*"]),
+                import("forms/index.ts", "tokens/index.ts", &["*"]),
+                import("tokens/index.ts", "tokens/t.ts", &["t"]),
+            ],
+            &[
+                ("ui/index.ts", barrel(&[], &["buttons/index.ts", "forms/index.ts"])),
+                ("buttons/index.ts", barrel(&[], &["tokens/index.ts"])),
+                ("forms/index.ts", barrel(&[], &["tokens/index.ts"])),
+                ("tokens/index.ts", barrel(&[("t", "tokens/t.ts", Some("t"))], &[])),
+                ("tokens/t.ts", module(&["t"])),
+            ],
+        );
+        let through = graph.through_reexports(&exports);
+        assert_eq!(imports_of(&through, "app.ts"), ["app.ts -> tokens/t.ts"]);
+        assert_eq!(
+            through
+                .details(through.id("app.ts").unwrap(), through.id("tokens/t.ts").unwrap())
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn names_are_followed_out_of_cycles_of_export_star() {
+        let (graph, exports) = project(
+            &[
+                import("app.ts", "a/index.ts", &["z"]),
+                import("main.ts", "b/index.ts", &["z"]),
+                import("a/index.ts", "b/index.ts", &["*"]),
+                import("a/index.ts", "c.ts", &["*"]),
+                import("b/index.ts", "a/index.ts", &["*"]),
+            ],
+            &[
+                ("a/index.ts", barrel(&[], &["b/index.ts", "c.ts"])),
+                ("b/index.ts", barrel(&[], &["a/index.ts"])),
+                ("c.ts", module(&["z"])),
+            ],
+        );
+        let through = graph.through_reexports(&exports);
+        assert_eq!(imports_of(&through, "app.ts"), ["app.ts -> c.ts"]);
+        assert_eq!(imports_of(&through, "main.ts"), ["main.ts -> c.ts"]);
+    }
+
+    #[test]
+    fn imports_of_the_importers_own_names_go_nowhere() {
+        let (graph, exports) = project(
+            &[
+                import("a.ts", "index.ts", &["a", "b"]),
+                import("index.ts", "a.ts", &["a"]),
+                import("index.ts", "b.ts", &["b"]),
+            ],
+            &[
+                ("index.ts", barrel(&[("a", "a.ts", Some("a")), ("b", "b.ts", Some("b"))], &[])),
+                ("a.ts", module(&["a"])),
+                ("b.ts", module(&["b"])),
+            ],
+        );
+        let through = graph.through_reexports(&exports);
+        assert_eq!(imports_of(&through, "a.ts"), ["a.ts -> b.ts"]);
+    }
+
+    #[test]
+    fn a_statement_imports_each_module_once() {
+        // `A` and `B` both come from `m.ts`, `B` as a type; `x` is nowhere; `T`
+        // comes through `export type *`.
+        let mut index = barrel(&[("A", "m.ts", Some("A"))], &[]);
+        index.reexports.push(ReExport {
+            name: "B".into(),
+            source: "m.ts",
+            imported: Some("B".into()),
+            type_only: true,
+        });
+        index.stars.push(("types.ts", true));
+        let (graph, exports) = project(
+            &[
+                import("app.ts", "index.ts", &["A", "B", "x", "T"]),
+                import("index.ts", "m.ts", &["A", "B"]),
+                import("index.ts", "types.ts", &["*"]),
+            ],
+            &[("index.ts", index), ("m.ts", module(&["A", "B"])), ("types.ts", module(&["T"]))],
+        );
+        let through = graph.through_reexports(&exports);
+        assert_eq!(
+            imports_of(&through, "app.ts"),
+            ["app.ts -> index.ts", "app.ts -> m.ts", "app.ts -> types.ts (type)"]
+        );
+        let (app, m) = (through.id("app.ts").unwrap(), through.id("m.ts").unwrap());
+        let kinds: Vec<_> = through.details(app, m).iter().map(|detail| detail.kind).collect();
+        assert_eq!(kinds, [ImportKind::Value]);
     }
 }

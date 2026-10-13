@@ -231,7 +231,10 @@ impl Graph {
 
     /// This graph's module tree, with `imports` instead of its own: each an
     /// `(importer, imported, detail)` between its nodes, in any order.
-    pub fn with_imports(&self, mut imports: Vec<(ModuleId, ModuleId, ImportDetail)>) -> Self {
+    pub(crate) fn with_imports(
+        &self,
+        mut imports: Vec<(ModuleId, ModuleId, ImportDetail)>,
+    ) -> Self {
         imports.sort_unstable();
         imports.dedup();
         let ImportParts { imports, importers, detail_offsets, details } =

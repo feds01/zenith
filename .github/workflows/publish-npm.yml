@@ -1,0 +1,44 @@
+# Publish the npm package of a release, @feds01/zenith, with npm's trusted
+# publishing: npm trusts the release workflow of this repository, so no token
+# is kept. The release workflow that dist generates calls it with the
+# release's plan.
+name: Publish the npm package
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  publish-npm-package:
+    runs-on: ubuntu-22.04
+    # The OIDC token that npm exchanges for one that publishes the package.
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PLAN: ${{ inputs.plan }}
+    steps:
+      # This repository, for its justfile.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: zenith
+      # The release's artifacts, the npm package among them.
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: artifacts-*
+          path: npm/
+          merge-multiple: true
+      # Trusted publishing needs Node 22.14 and npm 11.5.1, or later, which
+      # Node 24 comes with. Without a `registry-url`, setup-node writes no
+      # .npmrc that expects a token.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      # Pinned, as each step here could publish the package.
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      - name: Publish the package
+        run: just --justfile zenith/justfile publish-npm npm

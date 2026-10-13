@@ -3,11 +3,12 @@
 //! A [`Parser`] parses source text with [oxc](https://oxc.rs), then walks the
 //! syntax tree for every form that imports a module, classifying each by its
 //! [`ImportKind`]. Alongside the imports, the [`ParsedFile`] holds the file's
-//! directive prologue (e.g. `"use client"`), what it exports and whether it
-//! is a barrel of re-exports, its `zenith-ignore` suppression
+//! directive prologue (e.g. `"use client"`), its `zenith-ignore` suppression
 //! comments, the dynamic imports and `require` calls whose specifier is not a
 //! literal, and any syntax errors. Everything is [`Located`] by its byte
-//! range in the file.
+//! range in the file. A parser that records names also finds the names that
+//! each import takes, what the file exports, and whether it is a barrel of
+//! re-exports.
 
 mod error;
 mod exports;
@@ -32,7 +33,8 @@ pub struct ParsedFile {
     pub imports: Vec<ImportDetail>,
 
     /// What the file exports, with the source of each re-export as the index
-    /// of its import in [`imports`](Self::imports).
+    /// of its import in [`imports`](Self::imports). Nothing, unless the
+    /// parser records names (see [`Parser::with_names`]).
     pub exports: Exports<u32>,
 
     /// The dynamic imports and `require` calls whose specifier is not a

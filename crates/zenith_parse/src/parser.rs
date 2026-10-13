@@ -8,6 +8,7 @@ use oxc_ast_visit::Visit;
 use oxc_parser::ParseOptions;
 use oxc_span::SourceType;
 use thin_vec::ThinVec;
+use zenith_graph::Exports;
 use zenith_utils::fs::read_text;
 
 use crate::{ParsedFile, Suppression, SyntaxError, exports, visitor::ImportVisitor};
@@ -46,12 +47,27 @@ use crate::{ParsedFile, Suppression, SyntaxError, exports, visitor::ImportVisito
 pub struct Parser {
     /// The arena that each file's syntax tree is allocated in.
     allocator: Allocator,
+
+    /// Whether to record the names that imports take and what each file
+    /// exports.
+    names: bool,
 }
 
 impl Parser {
     /// A parser with an empty arena.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// This parser, recording the names that imports take and what each file
+    /// exports if `names` is set. Only following imports through barrels needs
+    /// them, and they cost memory for every import, so without them every
+    /// import takes [`ImportedNames::All`] and every file exports nothing.
+    ///
+    /// [`ImportedNames::All`]: zenith_graph::ImportedNames::All
+    pub fn with_names(mut self, names: bool) -> Self {
+        self.names = names;
+        self
     }
 
     /// Read the source file at `path` and parse it with
@@ -112,7 +128,7 @@ impl Parser {
         }
 
         // 3. Walk the syntax tree for the imports.
-        let mut visitor = ImportVisitor::default();
+        let mut visitor = ImportVisitor::new(self.names);
         visitor.visit_program(&parsed.program);
         let (imports, non_literal_imports) = visitor.finish();
 
@@ -126,7 +142,10 @@ impl Parser {
         let suppressions = Suppression::collect(source, &parsed.program.comments);
 
         // 5. Read what the file exports from its top-level statements.
-        let exports = exports::collect(&parsed.program, &imports);
+        let exports = match self.names {
+            true => exports::collect(&parsed.program, &imports),
+            false => Exports::default(),
+        };
 
         ParsedFile { imports, exports, non_literal_imports, directives, suppressions, errors }
     }

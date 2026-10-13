@@ -19,9 +19,18 @@ pub(crate) struct ImportVisitor {
 
     /// The kinds of the imports with non-literal specifiers found so far.
     non_literal_imports: ThinVec<Located<ImportKind>>,
+
+    /// Whether to record the names that imports take, rather than take them
+    /// all.
+    names: bool,
 }
 
 impl ImportVisitor {
+    /// A visitor that records the names that imports take if `names` is set.
+    pub(crate) fn new(names: bool) -> Self {
+        Self { names, ..Self::default() }
+    }
+
     /// The imports and the imports with non-literal specifiers, each in
     /// source order.
     pub(crate) fn finish(mut self) -> (Vec<ImportDetail>, ThinVec<Located<ImportKind>>) {
@@ -30,6 +39,14 @@ impl ImportVisitor {
         self.imports.sort_by_key(|import| import.range);
         self.non_literal_imports.sort();
         (self.imports, self.non_literal_imports)
+    }
+
+    /// What an import statement takes: its `names`, if they are recorded.
+    fn names(&self, names: impl FnOnce() -> ImportedNames) -> ImportedNames {
+        match self.names {
+            true => names(),
+            false => ImportedNames::All,
+        }
     }
 
     /// Record an import of `specifier` made by the code at `span`, which
@@ -83,7 +100,7 @@ impl<'a> Visit<'a> for ImportVisitor {
                     })
             });
         // A namespace import takes everything, and so does a side-effect import.
-        let names = match &it.specifiers {
+        let names = self.names(|| match &it.specifiers {
             Some(specifiers) => specifiers
                 .iter()
                 .map(|specifier| match specifier {
@@ -101,7 +118,7 @@ impl<'a> Visit<'a> for ImportVisitor {
                 .collect::<Option<_>>()
                 .map_or(ImportedNames::All, ImportedNames::of),
             None => ImportedNames::All,
-        };
+        });
         self.import(it.source.value.as_str(), ImportKind::of_static(type_only), it.span, names);
     }
 
@@ -110,15 +127,13 @@ impl<'a> Visit<'a> for ImportVisitor {
             || (!it.specifiers.is_empty()
                 && it.specifiers.iter().all(|specifier| specifier.export_kind.is_type()));
         // It takes what it re-exports: `a` from `export { a as b } from "./m"`.
-        let names = it
-            .specifiers
-            .iter()
-            .map(|specifier| {
+        let names = self.names(|| {
+            let names = it.specifiers.iter().map(|specifier| {
                 let type_only = it.export_kind.is_type() || specifier.export_kind.is_type();
                 ImportedName::new(specifier.local.name().as_str(), type_only)
-            })
-            .collect();
-        let names = ImportedNames::of(names);
+            });
+            ImportedNames::of(names.collect())
+        });
         self.import(it.source.value.as_str(), ImportKind::of_static(type_only), it.span, names);
     }
 
@@ -237,7 +252,7 @@ mod tests {
         /// The names that the one import in `source` takes, with `:type` after
         /// those whose type only it takes, or `None` for all of them.
         fn names(source: &str) -> Option<Vec<String>> {
-            let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
+            let parsed = Parser::new().with_names(true).parse_source(Path::new("x.ts"), source);
             assert!(parsed.errors.is_empty(), "{source:?}: {:?}", parsed.errors);
             match &parsed.imports[0].names {
                 ImportedNames::All => None,

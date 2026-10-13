@@ -189,13 +189,13 @@ fn declared_names(declaration: &Declaration, names: &mut thin_vec::ThinVec<Impor
 mod tests {
     use std::path::Path;
 
-    use zenith_graph::{Exports, ImportedName, ReExport};
+    use zenith_graph::{Exports, ImportedName, ImportedNames, ReExport};
 
     use crate::Parser;
 
     /// The exports of `source`, parsed as a TypeScript file.
     fn exports(source: &str) -> Exports<u32> {
-        let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
+        let parsed = Parser::new().with_names(true).parse_source(Path::new("x.ts"), source);
         assert!(parsed.errors.is_empty(), "{source:?}: {:?}", parsed.errors);
         parsed.exports
     }
@@ -203,6 +203,14 @@ mod tests {
     /// A re-export of `imported` from the import at `source`, as `name`.
     fn reexport(name: &str, source: u32, imported: Option<&str>, type_only: bool) -> ReExport<u32> {
         ReExport { name: name.into(), source, imported: imported.map(Into::into), type_only }
+    }
+
+    #[test]
+    fn names_are_recorded_only_when_asked_for() {
+        let source = "import { a } from './a';\nexport { a };\nexport const b = 1;\n";
+        let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
+        assert_eq!(parsed.imports[0].names, ImportedNames::All);
+        assert_eq!(parsed.exports, Exports::default());
     }
 
     #[test]

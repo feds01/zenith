@@ -128,7 +128,8 @@ pub struct ImportDetail {
     /// How the import is made.
     pub kind: ImportKind,
 
-    /// What it takes from the imported module.
+    /// What it takes from the imported module: `All` unless the names were
+    /// recorded.
     pub names: ImportedNames,
 }
 

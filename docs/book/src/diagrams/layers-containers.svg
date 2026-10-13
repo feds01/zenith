@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 232" role="img" aria-label="A layers contract with containers: each domain is checked on its own, and imports between domains are outside the contract">
+<defs>
+<marker id="lc-a" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+<marker id="lc-bad" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head bad" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+<marker id="lc-ok" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head ok" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<rect class="unit" x="0" y="0" width="320" height="232" rx="12"/>
+<text x="12" y="22" class="unit-label mono">packages/api/src/domains/billing</text>
+<rect class="band" x="16" y="38" width="288" height="40" rx="8"/>
+<rect class="band" x="16" y="102" width="288" height="40" rx="8"/>
+<rect class="band" x="16" y="166" width="288" height="40" rx="8"/>
+<rect class="unit" x="400" y="0" width="320" height="232" rx="12"/>
+<text x="412" y="22" class="unit-label mono">packages/api/src/domains/users</text>
+<rect class="band" x="416" y="38" width="288" height="40" rx="8"/>
+<rect class="band" x="416" y="102" width="288" height="40" rx="8"/>
+<rect class="band" x="416" y="166" width="288" height="40" rx="8"/>
+<path class="edge ok" d="M160,71 L160,105.5" marker-end="url(#lc-ok)"/>
+<path class="edge ok" d="M160,135 L160,169.5" marker-end="url(#lc-ok)"/>
+<path class="edge ok" d="M560,71 L560,105.5" marker-end="url(#lc-ok)"/>
+<path class="edge ok" d="M560,135 L560,169.5" marker-end="url(#lc-ok)"/>
+<path class="edge bad" d="M132,186 C62,186 58.5,58 128.5,58" marker-end="url(#lc-bad)"/>
+<path class="edge dashed" d="M181,122 C354.8,122 354.8,186 528.5,186" marker-end="url(#lc-a)"/>
+<g class="node dir"><rect x="132" y="45" width="56" height="26" rx="6"/><text x="160" y="58">hooks</text></g>
+<g class="node dir"><rect x="139" y="109" width="42" height="26" rx="6"/><text x="160" y="122">api</text></g>
+<g class="node dir"><rect x="132" y="173" width="56" height="26" rx="6"/><text x="160" y="186">types</text></g>
+<g class="node dir"><rect x="532" y="45" width="56" height="26" rx="6"/><text x="560" y="58">hooks</text></g>
+<g class="node dir"><rect x="539" y="109" width="42" height="26" rx="6"/><text x="560" y="122">api</text></g>
+<g class="node dir"><rect x="532" y="173" width="56" height="26" rx="6"/><text x="560" y="186">types</text></g>
+<g class="badge ok" transform="translate(160,88.2)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<g class="badge ok" transform="translate(160,152.2)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<g class="badge ok" transform="translate(560,88.2)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<g class="badge ok" transform="translate(560,152.2)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<g class="badge bad" transform="translate(77.8,122)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+<text x="360" y="120" class="small muted middle">not checked</text>
+</svg>

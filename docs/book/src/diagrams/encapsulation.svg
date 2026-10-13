@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 292" role="img" aria-label="An encapsulation contract: code outside @acme/ui may import its entry points, but not Button.tsx directly">
+<defs>
+<marker id="en-ok" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head ok" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+<marker id="en-warn" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head warn" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<rect class="unit solid" x="272" y="10" width="448" height="272" rx="12"/>
+<path class="edge ok" d="M339,89 L339,139.5" marker-end="url(#en-ok)"/>
+<path class="edge ok" d="M339,169 L339,219.5" marker-end="url(#en-ok)"/>
+<path class="edge ok" d="M182,156 C250.7,156 227.8,76 296.5,76" marker-end="url(#en-ok)"/>
+<path class="edge ok" d="M182,156 C250.7,156 227.8,156 296.5,156" marker-end="url(#en-ok)"/>
+<path class="edge warn" d="M182,156 C250.7,156 227.8,236 296.5,236" marker-end="url(#en-warn)"/>
+<g class="node file"><rect x="300" y="63" width="78" height="26" rx="6"/><text x="339" y="76">index.ts</text></g>
+<g class="node file"><rect x="300" y="143" width="236" height="26" rx="6"/><text x="418" y="156">src/components/button/index.ts</text></g>
+<g class="node file faded"><rect x="300" y="223" width="250" height="26" rx="6"/><text x="425" y="236">src/components/button/Button.tsx</text></g>
+<g class="tag ok"><rect x="390" y="67" width="83" height="18" rx="9"/><text x="431.5" y="76">entry point</text></g>
+<g class="tag ok"><rect x="548" y="147" width="83" height="18" rx="9"/><text x="589.5" y="156">entry point</text></g>
+<g class="tag plain"><rect x="562" y="227" width="64" height="18" rx="9"/><text x="594" y="236">internal</text></g>
+<g class="node file"><rect x="18" y="143" width="164" height="26" rx="6"/><text x="100" y="156">web/src/app/page.tsx</text></g>
+<text x="290" y="33" class="unit-label mono">@acme/ui</text>
+<text x="354" y="33" class="small muted mono">packages/ui</text>
+<g class="badge ok" transform="translate(339,114.2)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<g class="badge ok" transform="translate(339,194.2)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<g class="badge ok" transform="translate(239.2,116)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<g class="badge ok" transform="translate(239.2,156)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<g class="badge warn" transform="translate(239.2,196)"><circle r="8"/><path d="M0,-3.8 L0,0.6 M0,3.6 L0,3.7"/></g>
+<text x="206" y="238" class="small t-warn middle">a deep import</text>
+</svg>

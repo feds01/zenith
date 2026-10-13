@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 304" role="img" aria-label="An independence contract: features may not import each other, directly or indirectly, while imports into shared are ignored">
+<defs>
+<marker id="in-bad" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head bad" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+<marker id="in-ok" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head ok" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<rect class="unit" x="10" y="26" width="220" height="124" rx="12"/>
+<text x="22" y="45" class="unit-label mono">web/src/features/checkout</text>
+<rect class="unit" x="490" y="26" width="220" height="124" rx="12"/>
+<text x="502" y="45" class="unit-label mono">web/src/features/catalog</text>
+<rect class="unit" x="250" y="198" width="220" height="100" rx="12"/>
+<text x="262" y="217" class="unit-label mono">web/src/features/shared</text>
+<path class="edge bad" d="M106,82 L506.5,82" marker-end="url(#in-bad)"/>
+<path class="edge bad" d="M106,122 L278,122" marker-end="url(#in-bad)"/>
+<path class="edge bad" d="M438.5,122 L506.5,122" marker-end="url(#in-bad)"/>
+<path class="edge ok" d="M67,135 C67,195.5 188.8,256 310.5,256" marker-end="url(#in-ok)"/>
+<path class="edge ok" d="M549,135 C549,195.5 479.2,256 409.5,256" marker-end="url(#in-ok)"/>
+<g class="node file"><rect x="28" y="69" width="78" height="26" rx="6"/><text x="67" y="82">page.tsx</text></g>
+<g class="node file"><rect x="28" y="109" width="78" height="26" rx="6"/><text x="67" y="122">form.tsx</text></g>
+<g class="node file"><rect x="510" y="69" width="63" height="26" rx="6"/><text x="541.5" y="82">api.ts</text></g>
+<g class="node file"><rect x="510" y="109" width="78" height="26" rx="6"/><text x="549" y="122">list.tsx</text></g>
+<g class="node file"><rect x="314" y="243" width="92" height="26" rx="6"/><text x="360" y="256">button.tsx</text></g>
+<g class="node file"><rect x="281.5" y="109" width="157" height="26" rx="6"/><text x="360" y="122">web/src/lib/cart.ts</text></g>
+<text x="360" y="152" class="small muted middle">not a unit</text>
+<g class="badge bad" transform="translate(306.2,82)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+<text x="306.2" y="68" class="small t-bad middle">direct</text>
+<text x="192" y="112" class="small t-bad middle">indirect</text>
+<g class="badge bad" transform="translate(472.5,122)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+<g class="badge ok" transform="translate(143.1,218.2)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<g class="badge ok" transform="translate(505.4,218.2)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<text x="360" y="288" class="small t-ok middle">imports into it are ignored</text>
+</svg>

@@ -1,0 +1,12 @@
+[book]
+title = "zenith"
+description = "An architecture linter for TypeScript and JavaScript monorepos"
+authors = ["Alexander Fedotov"]
+language = "en"
+src = "src"
+
+[output.html]
+# Colours the diagrams, which pages inline from src/diagrams, by theme.
+additional-css = ["theme/diagrams.css"]
+git-repository-url = "https://github.com/feds01/zenith"
+edit-url-template = "https://github.com/feds01/zenith/edit/main/docs/book/{path}"

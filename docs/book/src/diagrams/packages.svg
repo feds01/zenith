@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 200" role="img" aria-label="Workspace packages: found from package.json workspaces, each with a name and a directory, picked by pkg: selectors">
+<defs>
+<marker id="packages-flow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head flow" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<rect class="card" x="0" y="0" width="220" height="200" rx="10"/>
+<path class="edge" d="M582,99 H592 V173 H582"/>
+<path class="edge" d="M351,64 L466,64"/>
+<path class="edge" d="M369,112 L455.5,112"/>
+<path class="edge" d="M376,160 L448,160"/>
+<path class="edge flow" d="M220,100 L268.5,100" marker-end="url(#packages-flow)"/>
+<g class="node file"><rect x="309" y="51" width="42" height="26" rx="6"/><text x="330" y="64">web</text></g>
+<g class="node dir"><rect x="466" y="51" width="78" height="26" rx="6"/><text x="505" y="64">apps/web</text></g>
+<g class="node file"><rect x="291" y="99" width="78" height="26" rx="6"/><text x="330" y="112">@acme/ui</text></g>
+<g class="node dir"><rect x="455.5" y="99" width="99" height="26" rx="6"/><text x="505" y="112">packages/ui</text></g>
+<g class="node file"><rect x="284" y="147" width="92" height="26" rx="6"/><text x="330" y="160">@acme/core</text></g>
+<g class="node dir"><rect x="448" y="147" width="114" height="26" rx="6"/><text x="505" y="160">packages/core</text></g>
+<g class="tag"><rect x="604" y="127" width="83" height="18" rx="9"/><text x="645.5" y="136">pkg:@acme/*</text></g>
+<text x="16" y="27" class="title mono">package.json</text>
+<text x="16" y="56" class="mono small muted">{</text>
+<text x="29.2" y="75" class="mono small muted">&quot;workspaces&quot;: [</text>
+<text x="42.4" y="94" class="mono small muted">&quot;apps/*&quot;,</text>
+<text x="42.4" y="113" class="mono small muted">&quot;packages/*&quot;</text>
+<text x="29.2" y="132" class="mono small muted">]</text>
+<text x="16" y="151" class="mono small muted">}</text>
+<text x="16" y="184" class="small muted">or pnpm-workspace.yaml</text>
+<text x="330" y="28" class="small muted middle">name</text>
+<text x="505" y="28" class="small muted middle">directory</text>
+</svg>

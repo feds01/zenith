@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 196" role="img" aria-label="A closed layer: the layers above it must go through it, so app importing db is a violation">
+<defs>
+<marker id="lk-bad" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head bad" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+<marker id="lk-ok" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head ok" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<rect class="band" x="120" y="10" width="480" height="44" rx="8"/>
+<rect class="band closed" x="120" y="74" width="480" height="44" rx="8"/>
+<rect class="band" x="120" y="138" width="480" height="44" rx="8"/>
+<path class="edge ok" d="M260,45 L260,79.5" marker-end="url(#lk-ok)"/>
+<path class="edge ok" d="M260,109 L260,143.5" marker-end="url(#lk-ok)"/>
+<path class="edge bad" d="M281,32 C401,32 400.5,160 280.5,160" marker-end="url(#lk-bad)"/>
+<g class="node dir"><rect x="239" y="19" width="42" height="26" rx="6"/><text x="260" y="32">app</text></g>
+<g class="node dir"><rect x="225" y="83" width="70" height="26" rx="6"/><text x="260" y="96">service</text></g>
+<g class="node dir"><rect x="243" y="147" width="34" height="26" rx="6"/><text x="260" y="160">db</text></g>
+<g class="icon" transform="translate(142,96)"><rect x="-5" y="-1.5" width="10" height="8" rx="1.5"/><path d="M-3,-1.5 V-4 A3,3 0 0 1 3,-4 V-1.5"/></g>
+<text x="156" y="100" class="small t-unit">closed</text>
+<g class="badge ok" transform="translate(260,62.2)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<g class="badge ok" transform="translate(260,126.2)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<g class="badge bad" transform="translate(370.8,96)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+<text x="384.8" y="100" class="small t-bad">must go through service</text>
+</svg>

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 284" role="img" aria-label="Files with a &quot;use client&quot; directive start client bundles; a directive selector makes each of them a unit">
+<defs>
+<marker id="directives-a" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<rect class="card" x="0" y="16" width="150" height="220" rx="10"/>
+<text x="14" y="37" class="small muted">server</text>
+<rect class="card" x="175" y="16" width="545" height="220" rx="10"/>
+<text x="189" y="37" class="small muted">client bundle: everything here ships to the browser</text>
+<rect class="unit" x="204" y="50" width="192" height="70" rx="12"/>
+<rect class="unit" x="204" y="140" width="192" height="70" rx="12"/>
+<path class="edge" d="M128,136 C169.5,136 169.5,96 211,96" marker-end="url(#directives-a)"/>
+<path class="edge" d="M128,136 C171.2,136 171.2,186 214.5,186" marker-end="url(#directives-a)"/>
+<path class="edge" d="M385.5,96 L439.5,96" marker-end="url(#directives-a)"/>
+<path class="edge" d="M557,96 L604,96" marker-end="url(#directives-a)"/>
+<path class="edge" d="M382,186 L443.5,186" marker-end="url(#directives-a)"/>
+<g class="node file"><rect x="22" y="123" width="106" height="26" rx="6"/><text x="75" y="136">app/page.tsx</text></g>
+<g class="tag"><rect x="255" y="58" width="90" height="18" rx="9"/><text x="300" y="67">&quot;use client&quot;</text></g>
+<g class="node file"><rect x="214.5" y="83" width="171" height="26" rx="6"/><text x="300" y="96">components/upload.tsx</text></g>
+<g class="tag"><rect x="255" y="148" width="90" height="18" rx="9"/><text x="300" y="157">&quot;use client&quot;</text></g>
+<g class="node file"><rect x="218" y="173" width="164" height="26" rx="6"/><text x="300" y="186">components/chart.tsx</text></g>
+<g class="node file"><rect x="443" y="83" width="114" height="26" rx="6"/><text x="500" y="96">lib/images.ts</text></g>
+<g class="node npm"><rect x="607.5" y="83" width="85" height="26" rx="6"/><text x="650" y="96">npm:sharp</text></g>
+<g class="node npm"><rect x="447" y="173" width="106" height="26" rx="6"/><text x="500" y="186">npm:recharts</text></g>
+<text x="75" y="166" class="small muted middle">no directive</text>
+<rect class="unit" x="128" y="256" width="22" height="14" rx="4"/>
+<text x="158" y="267" class="small muted">a unit of <tspan class="mono t-unit">{ path = &quot;web/src/**&quot;, directive = &quot;use client&quot; }</tspan></text>
+</svg>

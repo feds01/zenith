@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 290" role="img" aria-label="A selector picks units: each matched directory is a unit with its whole subtree, and a matched package is a unit of one">
+<defs>
+<marker id="units-flow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head flow" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<rect class="unit" x="230" y="20" width="490" height="50" rx="12"/>
+<rect class="unit" x="230" y="82" width="490" height="50" rx="12"/>
+<rect class="unit" x="230" y="144" width="490" height="50" rx="12"/>
+<line class="divider" x1="0" y1="207" x2="720" y2="207"/>
+<rect class="unit" x="230" y="220" width="130" height="50" rx="12"/>
+<path class="edge flow" d="M159,95 C192.8,95 192.8,45 226.5,45" marker-end="url(#units-flow)"/>
+<path class="edge flow" d="M159,95 C192.8,95 192.8,107 226.5,107" marker-end="url(#units-flow)"/>
+<path class="edge flow" d="M159,95 C192.8,95 192.8,169 226.5,169" marker-end="url(#units-flow)"/>
+<path class="edge flow" d="M128,245 L226.5,245" marker-end="url(#units-flow)"/>
+<g class="tag"><rect x="21" y="83" width="138" height="24" rx="12"/><text x="90" y="95" style="font-size:11.5px">web/src/features/*</text></g>
+<g class="node dir"><rect x="244" y="32" width="200" height="26" rx="6"/><text x="344" y="45">web/src/features/checkout</text></g>
+<g class="node file"><rect x="460" y="34" width="71" height="22" rx="6"/><text x="495.5" y="45" style="font-size:11px">page.tsx</text></g>
+<g class="node file"><rect x="539" y="34" width="71" height="22" rx="6"/><text x="574.5" y="45" style="font-size:11px">form.tsx</text></g>
+<g class="node dir"><rect x="244" y="94" width="193" height="26" rx="6"/><text x="340.5" y="107">web/src/features/catalog</text></g>
+<g class="node file"><rect x="453" y="96" width="58" height="22" rx="6"/><text x="482" y="107" style="font-size:11px">api.ts</text></g>
+<g class="node file"><rect x="519" y="96" width="71" height="22" rx="6"/><text x="554.5" y="107" style="font-size:11px">list.tsx</text></g>
+<g class="node dir"><rect x="244" y="156" width="186" height="26" rx="6"/><text x="337" y="169">web/src/features/shared</text></g>
+<g class="node file"><rect x="446" y="158" width="84" height="22" rx="6"/><text x="488" y="169" style="font-size:11px">button.tsx</text></g>
+<g class="node dir"><rect x="538" y="158" width="58" height="22" rx="6"/><text x="567" y="169" style="font-size:11px">hooks/</text></g>
+<g class="tag"><rect x="52" y="233" width="76" height="24" rx="12"/><text x="90" y="245" style="font-size:11.5px">npm:sharp</text></g>
+<g class="node npm"><rect x="244" y="232" width="85" height="26" rx="6"/><text x="286.5" y="245">npm:sharp</text></g>
+<text x="708" y="50" class="unit-label end">unit</text>
+<text x="708" y="112" class="unit-label end">unit</text>
+<text x="708" y="174" class="unit-label end">unit</text>
+<text x="376" y="249" class="unit-label">a unit of one</text>
+</svg>

@@ -114,7 +114,14 @@ impl UnitGraph {
     /// sources, which nothing left imports; last the sinks, which import
     /// nothing left; and in between the rest, picking the unit with the
     /// highest weighted out-degree minus in-degree each time. Every
-    /// dependency that points backwards in that order is a breaker.
+    /// dependency that points backwards in that order, between two units of
+    /// the same strongly connected component, is a breaker.
+    ///
+    /// Each cycle lies within one component, and has a dependency that
+    /// points backwards, so every cycle gets a breaker. A dependency between
+    /// components is on no cycle, although it may point backwards when the
+    /// order interleaves the components, so unlike grimp, zenith never
+    /// nominates one.
     ///
     /// Ties go to the unit that comes first, so pass the units in
     /// alphabetical order of their labels to break ties alphabetically, as
@@ -155,11 +162,73 @@ impl UnitGraph {
         for (index, unit) in front.into_iter().chain(back.into_iter().rev()).enumerate() {
             position[unit] = index;
         }
+        let component = self.components();
         self.dependencies
             .iter()
-            .filter(|dependency| position[dependency.imported] < position[dependency.importer])
+            .filter(|dependency| {
+                position[dependency.imported] < position[dependency.importer]
+                    && component[dependency.imported] == component[dependency.importer]
+            })
             .copied()
             .collect()
+    }
+
+    /// The strongly connected component of each unit, numbered from 0. Two
+    /// units are in the same component when each depends on the other,
+    /// directly or not, so a dependency is on a cycle exactly when both of
+    /// its units are in the same component.
+    fn components(&self) -> IndexVec<UnitId, usize> {
+        // 1. Finish the units with a depth-first search along their dependencies, in
+        //    the order the search leaves them.
+        let mut visited: IndexVec<UnitId, bool> = index_vec![false; self.unit_count];
+        let mut finished = Vec::with_capacity(self.unit_count);
+        let mut stack: Vec<(UnitId, usize)> = Vec::new();
+        for start in self.units() {
+            if visited[start] {
+                continue;
+            }
+            visited[start] = true;
+            stack.push((start, 0));
+            // Each entry is a unit and the index of its next dependency to follow.
+            while let Some(top) = stack.last_mut() {
+                let (unit, next) = *top;
+                top.1 += 1;
+                match self.dependencies_of(unit).get(next) {
+                    Some(dependency) if !visited[dependency.imported] => {
+                        visited[dependency.imported] = true;
+                        stack.push((dependency.imported, 0));
+                    }
+                    Some(_) => {}
+                    None => {
+                        finished.push(unit);
+                        stack.pop();
+                    }
+                }
+            }
+        }
+
+        // 2. Last finished first, each unit not yet in a component starts one, with the
+        //    units that depend on it and aren't in one yet (Kosaraju).
+        let mut component: IndexVec<UnitId, Option<usize>> = index_vec![None; self.unit_count];
+        let mut count = 0;
+        let mut members = Vec::new();
+        for root in finished.into_iter().rev() {
+            if component[root].is_some() {
+                continue;
+            }
+            component[root] = Some(count);
+            members.push(root);
+            while let Some(unit) = members.pop() {
+                for dependency in self.dependencies_on(unit) {
+                    if component[dependency.importer].is_none() {
+                        component[dependency.importer] = Some(count);
+                        members.push(dependency.importer);
+                    }
+                }
+            }
+            count += 1;
+        }
+        component.into_iter().map(|component| component.expect("every unit is finished")).collect()
     }
 
     /// The shortest path of dependencies from unit `from` to unit `to`, e.g.
@@ -312,6 +381,8 @@ impl<'u> Peeling<'u> {
 
 #[cfg(test)]
 mod tests {
+    use rustc_hash::FxHashSet;
+
     use super::*;
     use crate::{
         Graph, GraphBuilder, ImportKind,
@@ -494,6 +565,48 @@ mod tests {
         let kept = units.dependencies.iter().filter(|dependency| !breakers.contains(dependency));
         let acyclic = UnitGraph::new(units.unit_count, kept.copied().collect());
         assert!(acyclic.nominate_cycle_breakers().is_empty());
+    }
+
+    #[test]
+    fn every_breaker_is_on_a_cycle() {
+        // Two cycles, `b <-> c` and `d <-> e`, and `d -> a -> b` between them.
+        // `a` and `d` tie, so `a` goes first and `d -> a` points backwards,
+        // although it is on no cycle.
+        let graph = graph_of(&[
+            ("a.ts", "b.ts"),
+            ("a.ts", "c.ts"),
+            ("b.ts", "c.ts"),
+            ("c.ts", "b.ts"),
+            ("d.ts", "a.ts"),
+            ("d.ts", "e.ts"),
+            ("e.ts", "d.ts"),
+        ]);
+        let units = units_of(&graph, &["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"]);
+        let breakers = units.nominate_cycle_breakers();
+        assert_eq!(pairs(&breakers), [(2, 1), (4, 3)]);
+        for breaker in breakers {
+            assert!(units.find_path(breaker.imported, breaker.importer).is_some());
+        }
+    }
+
+    #[test]
+    fn components_group_the_units_that_depend_on_each_other() {
+        let graph = graph_of(&[
+            ("a.ts", "b.ts"),
+            ("b.ts", "a.ts"),
+            ("b.ts", "c.ts"),
+            ("c.ts", "d.ts"),
+            ("d.ts", "e.ts"),
+            ("e.ts", "c.ts"),
+            ("f.ts", "a.ts"),
+        ]);
+        let units = units_of(&graph, &["a.ts", "b.ts", "c.ts", "d.ts", "e.ts", "f.ts"]);
+        let component = units.components();
+        assert_eq!(component[UnitId::new(0)], component[UnitId::new(1)]);
+        assert_eq!(component[UnitId::new(2)], component[UnitId::new(3)]);
+        assert_eq!(component[UnitId::new(2)], component[UnitId::new(4)]);
+        let distinct: FxHashSet<_> = component.iter().collect();
+        assert_eq!(distinct.len(), 3);
     }
 
     #[test]

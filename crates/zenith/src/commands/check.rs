@@ -48,7 +48,8 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     let start = Instant::now();
     let exemptions =
         Exemptions { suppressions: &session.suppressions, baseline: baseline.as_ref() };
-    let checked = Contract::check_all(&contracts, &session.graph, &session.workspace, &exemptions);
+    let graphs = session.graphs();
+    let checked = Contract::check_all(&contracts, graphs, &session.workspace, &exemptions);
     let unused = UnusedSuppression::find(&session.config, &exemptions, &checked);
     let check_time = start.elapsed();
 
@@ -85,9 +86,11 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
             let mut reports = Vec::new();
             for report in &checked {
                 reports.extend(match format {
-                    Format::Pretty => report.reports(graph, &mut sources, config, baseline),
+                    Format::Pretty => {
+                        report.reports(graphs.of(report.config), &mut sources, config, baseline)
+                    }
                     Format::Compact | Format::Github => {
-                        report.findings(graph, &mut sources, config, baseline)
+                        report.findings(graphs.of(report.config), &mut sources, config, baseline)
                     }
                 });
             }

@@ -1,0 +1,3 @@
+# Through the barrel, both client files reach `node:fs`. Seen through it, only
+# the namespace import, which takes the whole barrel, still does.
+check

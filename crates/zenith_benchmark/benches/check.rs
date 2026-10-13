@@ -50,7 +50,8 @@ fn check_contracts(session: &Session) {
         Contract::compile_all(&session.config.contracts, &session.graph, &session.workspace)
             .unwrap();
     let exemptions = Exemptions { suppressions: &session.suppressions, baseline: None };
-    let reports = Contract::check_all(&contracts, &session.graph, &session.workspace, &exemptions);
+    let reports =
+        Contract::check_all(&contracts, session.graphs(), &session.workspace, &exemptions);
     divan::black_box(reports);
 }
 

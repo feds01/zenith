@@ -18,7 +18,7 @@ use zenith_utils::{
 };
 
 use crate::{
-    contracts::{ContractConfig, Severity},
+    contracts::{Barrels, ContractConfig, Severity},
     error::{ConfigError, LoadError},
     parse,
 };
@@ -176,6 +176,9 @@ pub enum Tsconfig {
 pub struct AnalysisConfig {
     /// The import kinds that contracts ignore, unless they set their own.
     pub exclude_kinds: KindSet,
+
+    /// How contracts see imports through barrels, unless they say.
+    pub barrels: Barrels,
 }
 
 /// The baseline of known violations.

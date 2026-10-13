@@ -1,0 +1,45 @@
+$ zenith check
+exit: 1
+--- stdout
+error[client-safety-opaque]: `src/client/button.tsx` must not import `node:fs`
+ --> src/client/button.tsx:3:36
+  |
+3 | import { format, type Theme } from "../lib";
+  |                                    ^^^^^^^^ starts a chain of 3 imports
+  |
+  = note: import chain:
+            src/client/button.tsx:3
+            -> src/lib/index.ts:3
+            -> src/lib/server.ts:1
+            -> node:fs
+
+error[client-safety-opaque]: `src/client/report.tsx` must not import `node:fs`
+ --> src/client/report.tsx:3:22
+  |
+3 | import * as lib from "../lib";
+  |                      ^^^^^^^^ starts a chain of 3 imports
+  |
+  = note: import chain:
+            src/client/report.tsx:3
+            -> src/lib/index.ts:3
+            -> src/lib/server.ts:1
+            -> node:fs
+
+error[client-safety]: `src/client/report.tsx` must not import `node:fs`
+ --> src/client/report.tsx:3:22
+  |
+3 | import * as lib from "../lib";
+  |                      ^^^^^^^^ starts a chain of 3 imports
+  |
+  = note: import chain:
+            src/client/report.tsx:3
+            -> src/lib/index.ts:3
+            -> src/lib/server.ts:1
+            -> node:fs
+
+Contracts
+  ✗ client-safety-opaque  forbidden  broken (2 violations)
+  ✗ client-safety         forbidden  broken (1 violation)
+
+0 kept, 2 broken · 6 files, 6 imports
+

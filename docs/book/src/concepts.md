@@ -60,6 +60,35 @@ and counted; `-v` lists them. Contracts can leave out imports by kind with
 [`exclude_kinds`](contracts/overview.md#common-options): type-only imports
 are erased at runtime, so they are often excluded.
 
+## Barrels
+
+A **barrel** is a file that only re-exports other modules, such as an
+`index.ts` of `export * from "./a"` and `export { b } from "./b"` lines, with
+no code of its own. Through a barrel, the import graph has a chain to every
+module it re-exports, so `import { format } from "./lib"` reaches whatever
+else `lib/index.ts` re-exports, even server code. Bundlers that know the
+barrel has no side effects leave the unused modules out.
+
+A contract with [`barrels = "transparent"`](contracts/overview.md#common-options)
+sees an import of names from a barrel as imports of the modules that define
+them, following re-exports and `export *` through barrels of barrels. An
+import that takes the whole barrel, such as `import * as lib from "./lib"`,
+still imports all of it, and so does an import of a name that can't be
+followed, such as one that may come from an external package through
+`export *`. Importing only a name's type is a `type` import.
+
+```toml
+[contracts.client-safety]
+type = "forbidden"
+from = [{ path = "web/src", directive = "use client" }]
+to = ["node:*", "npm:sharp"]
+barrels = "transparent"
+exclude_kinds = ["type"]
+```
+
+`encapsulation` contracts always see barrels as they are, since importing a
+module through its entry point, which is often a barrel, is what they allow.
+
 ## Units
 
 Contracts reason about **units**: labelled sets of nodes, which

@@ -49,7 +49,10 @@ impl Parser {
         let Some(table) = self.parse_table::<AnalysisTable>(value) else {
             return AnalysisConfig::default();
         };
-        AnalysisConfig { exclude_kinds: table.exclude_kinds.into_iter().collect() }
+        AnalysisConfig {
+            exclude_kinds: table.exclude_kinds.into_iter().collect(),
+            barrels: table.barrels,
+        }
     }
 
     /// Parse `[baseline]`.

@@ -1,0 +1,17 @@
+[analysis]
+barrels = "transparent"
+
+[contracts.a]
+type = "forbidden"
+from = ["web"]
+to = ["node:*"]
+
+[contracts.b]
+type = "forbidden"
+from = ["web"]
+to = ["node:*"]
+barrels = "opaque"
+
+[contracts.c]
+type = "encapsulation"
+modules = ["packages/*"]

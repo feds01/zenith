@@ -15,7 +15,7 @@ use super::{Parser, TomlValue};
 use crate::{
     config::AnalysisConfig,
     contracts::{
-        AcyclicConfig, CONTRACT_TYPES, ContractConfig, ContractKind, EncapsulationConfig,
+        AcyclicConfig, Barrels, CONTRACT_TYPES, ContractConfig, ContractKind, EncapsulationConfig,
         ForbiddenConfig, IndependenceConfig, LayersConfig, ProtectedConfig,
     },
     error::{ConfigErrorKind, suggest},
@@ -117,6 +117,7 @@ impl Parser {
             .exclude_kinds
             .map_or(analysis.exclude_kinds, |kinds| kinds.iter().copied().collect());
         let ignore_imports = self.parse_ignore_imports(shared.ignore_imports);
+        let mut barrels = shared.barrels.map_or(analysis.barrels, |barrels| barrels.value);
 
         let kind = match table {
             ContractTable::Forbidden(table) => ContractKind::Forbidden(ForbiddenConfig {
@@ -141,6 +142,12 @@ impl Parser {
                 skip: self.parse_selectors(&table.skip),
             }),
             ContractTable::Encapsulation(table) => {
+                // Importing through an entry point, which is often a barrel, is what
+                // it allows, so it never sees through them.
+                if let Some(Located { value: Barrels::Transparent, range }) = shared.barrels {
+                    self.add_error(ConfigErrorKind::TransparentEncapsulation, Some(*range));
+                }
+                barrels = Barrels::Opaque;
                 ContractKind::Encapsulation(EncapsulationConfig {
                     modules: self.parse_selectors(&table.modules),
                     entrypoints: self.parse_patterns(&table.entrypoints, Glob::new),
@@ -154,6 +161,7 @@ impl Parser {
             id,
             severity: shared.severity,
             exclude_kinds,
+            barrels,
             ignore_imports,
             unmatched_ignore_imports: shared.unmatched_ignore_imports,
             guidance: shared.guidance.map(String::from),

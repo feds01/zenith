@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use rayon::prelude::*;
 use zenith_config::{AlertLevel, ContractConfig, IgnoreImport, Selector};
 use zenith_graph::{Graph, ModuleId, NodeSet, Unit};
-use zenith_pipeline::FileSuppressions;
+use zenith_pipeline::{FileSuppressions, Graphs};
 use zenith_utils::location::ByteRange;
 use zenith_workspace::Workspace;
 
@@ -110,15 +110,19 @@ impl<'c> Contract<'c> {
         }
     }
 
-    /// Check `contracts` in parallel, as [`Contract::check`] does. The
-    /// reports are in the order of the contracts.
+    /// Check `contracts` in parallel, as [`Contract::check`] does, each
+    /// against the graph of `graphs` that it sees. The reports are in the
+    /// order of the contracts.
     pub fn check_all(
         contracts: &[Self],
-        graph: &Graph,
+        graphs: Graphs,
         workspace: &Workspace,
         exempts: &Exemptions,
     ) -> Vec<ContractReport<'c>> {
-        contracts.par_iter().map(|contract| contract.check(graph, workspace, exempts)).collect()
+        contracts
+            .par_iter()
+            .map(|contract| contract.check(graphs.of(contract.config), workspace, exempts))
+            .collect()
     }
 }
 
@@ -464,8 +468,12 @@ exclude_kinds = []
         let project = Project::new(&values(&[("x/a.ts", "y/b.ts")]), &[], &toml);
         let contracts = project.compile().unwrap();
         let exemptions = project.exemptions();
-        let reports =
-            crate::Contract::check_all(&contracts, &project.graph, &project.workspace, &exemptions);
+        let reports = crate::Contract::check_all(
+            &contracts,
+            (&project.graph).into(),
+            &project.workspace,
+            &exemptions,
+        );
         let ids: Vec<_> = reports.iter().map(|report| report.config.id.as_str()).collect();
         assert_eq!(ids, ["c", "a", "b"]);
         assert!(reports.iter().all(|report| !report.is_kept() && report.finding_count() == 1));

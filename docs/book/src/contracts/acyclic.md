@@ -28,8 +28,8 @@ otherwise close a second cycle.
 
 When there are cycles, zenith nominates the **cycle breakers**: the fewest
 dependencies whose removal would make the units acyclic, found with grimp's
-weighted heuristic, ties broken by name. Each breaker is shown with its number
-of imports and a cycle through it.
+weighted heuristic, ties broken by name. Each breaker is on a cycle, and is
+shown with its number of imports and a cycle through it.
 
 ## Options
 

@@ -495,6 +495,11 @@ uses grimp's weighted Eades–Lin–Smyth heuristic with alphabetical tie-breaks
 so output is deterministic. The output names each breaker with its import
 count and one example cycle through it.
 
+Every breaker is on a cycle. The heuristic orders all the units at once, so a
+dependency between two separate groups of cycles can point backwards in that
+order; grimp nominates it too, but zenith only nominates dependencies between
+units of the same strongly connected component.
+
 ```toml
 [contracts.packages-acyclic]
 type = "acyclic"

@@ -80,10 +80,10 @@ impl Acyclic {
                     }
                 }
                 // The path back from the imported unit ends with the importer, which
-                // starts the cycle.
+                // starts the cycle. Every breaker is on a cycle, so there is one.
                 let back = unit_graph
                     .find_path(dependency.imported, dependency.importer)
-                    .unwrap_or_default();
+                    .expect("a cycle breaker is on a cycle");
                 let mut cycle = vec![importer.label.clone()];
                 cycle.extend(
                     back.iter()

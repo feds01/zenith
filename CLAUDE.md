@@ -64,13 +64,15 @@ responsibilities move:
   the `SourceMap`, which reads a project's files when reports first need
   them and finds where a span is; and errors and warnings collected per
   pass.
-- `zenith_graph`: the module tree and import graph model, import kinds, node
-  sets, units, finding the nodes that a path glob or name pattern picks out,
-  graph views that leave out imports (by pair or by kind) and have
-  boundaries that chains don't pass through, the grimp algorithms that run
-  on them: shortest import chains, layers and cycle breakers, and module
-  overviews for visualisations (`zenith graph`).
-- `zenith_parse`: oxc-based extraction of imports and their kinds,
+- `zenith_graph`: the module tree and import graph model, import kinds, the
+  names that imports take and modules export, node sets, units, finding the
+  nodes that a path glob or name pattern picks out, graph views that leave out
+  imports (by pair or by kind) and have boundaries that chains don't pass
+  through, the grimp algorithms that run on them: shortest import chains,
+  layers and cycle breakers, and module overviews for visualisations (`zenith
+  graph`).
+- `zenith_parse`: oxc-based extraction of imports, their kinds and the
+  names they take, what each file exports and whether it is a barrel,
   directives and suppression comments.
 - `zenith_pipeline`: the stages (discover, parse, resolve, graph) that turn
   a project into its import graph, registered in order on a `Pipeline` that

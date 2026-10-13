@@ -24,6 +24,7 @@
 
 mod builder;
 mod cycles;
+mod exports;
 mod find;
 mod graph;
 mod kinds;
@@ -38,6 +39,7 @@ mod view;
 
 pub use builder::{FileHandle, GraphBuilder, GraphError, NodeHandle};
 pub use cycles::{UnitDependency, UnitGraph, UnitId};
+pub use exports::{Exports, ImportedName, ImportedNames, ReExport};
 pub use graph::{Graph, ImportDetail, ModuleId, Node, NodeKind};
 pub use kinds::{ImportKind, KindSet};
 pub use layers::{Architecture, LayerId, LayerRef, Level, LevelId, PackageDependency, Route};

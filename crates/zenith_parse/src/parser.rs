@@ -8,9 +8,12 @@ use oxc_ast_visit::Visit;
 use oxc_parser::ParseOptions;
 use oxc_span::SourceType;
 use thin_vec::ThinVec;
+use zenith_graph::Exports;
 use zenith_utils::fs::read_text;
 
-use crate::{ParsedFile, Suppression, SyntaxError, visitor::ImportVisitor};
+use crate::{
+    ParsedFile, Suppression, SyntaxError, exports::ProgramHelpers, visitor::ImportVisitor,
+};
 
 /// Parses JavaScript and TypeScript files with [oxc](https://oxc.rs) into
 /// [`ParsedFile`]s.
@@ -46,12 +49,27 @@ use crate::{ParsedFile, Suppression, SyntaxError, visitor::ImportVisitor};
 pub struct Parser {
     /// The arena that each file's syntax tree is allocated in.
     allocator: Allocator,
+
+    /// Whether to record the names that imports take and what each file
+    /// exports.
+    names: bool,
 }
 
 impl Parser {
     /// A parser with an empty arena.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// This parser, recording the names that imports take and what each file
+    /// exports if `names` is set. Only following imports through barrels needs
+    /// them, and they cost memory for every import, so without them every
+    /// import takes [`ImportedNames::All`] and every file exports nothing.
+    ///
+    /// [`ImportedNames::All`]: zenith_graph::ImportedNames::All
+    pub fn with_names(mut self, names: bool) -> Self {
+        self.names = names;
+        self
     }
 
     /// Read the source file at `path` and parse it with
@@ -112,7 +130,7 @@ impl Parser {
         }
 
         // 3. Walk the syntax tree for the imports.
-        let mut visitor = ImportVisitor::default();
+        let mut visitor = ImportVisitor::new(self.names);
         visitor.visit_program(&parsed.program);
         let (imports, non_literal_imports) = visitor.finish();
 
@@ -125,7 +143,13 @@ impl Parser {
             .collect();
         let suppressions = Suppression::collect(source, &parsed.program.comments);
 
-        ParsedFile { imports, non_literal_imports, directives, suppressions, errors }
+        // 5. Read what the file exports from its top-level statements.
+        let exports = match self.names {
+            true => parsed.program.exports(&imports),
+            false => Exports::default(),
+        };
+
+        ParsedFile { imports, exports, non_literal_imports, directives, suppressions, errors }
     }
 }
 

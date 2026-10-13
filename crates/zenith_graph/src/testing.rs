@@ -3,7 +3,9 @@
 use fastrand::Rng;
 use zenith_utils::location::ByteRange;
 
-use crate::{Graph, GraphBuilder, ImportDetail, ImportKind, ModuleId, NodeHandle, NodeSet};
+use crate::{
+    Graph, GraphBuilder, ImportDetail, ImportKind, ImportedNames, ModuleId, NodeHandle, NodeSet,
+};
 
 /// Build a graph from `(importer, imported)` pairs. Importers are files. An
 /// imported name starting with `npm:` is an external package, one starting
@@ -32,6 +34,7 @@ pub(crate) fn detail(line: u32, kind: ImportKind) -> ImportDetail {
         range: ByteRange::new(line * 100, line * 100 + 10),
         specifier: format!("./module-{line}").into(),
         kind,
+        names: ImportedNames::All,
     }
 }
 

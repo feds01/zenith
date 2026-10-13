@@ -7,7 +7,7 @@ use serde::Serialize;
 use thin_vec::ThinVec;
 use zenith_utils::location::ByteRange;
 
-use crate::{ImportKind, NodeSet};
+use crate::{ImportKind, ImportedNames, NodeSet};
 
 index_vec::define_index_type! {
     /// An opaque handle to a node in a [`Graph`].
@@ -127,6 +127,10 @@ pub struct ImportDetail {
 
     /// How the import is made.
     pub kind: ImportKind,
+
+    /// What it takes from the imported module: `All` unless the names were
+    /// recorded.
+    pub names: ImportedNames,
 }
 
 /// The module tree and import graph of a project.

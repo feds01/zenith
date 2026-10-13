@@ -2052,11 +2052,13 @@ dependencies = [
 name = "zenith_parse"
 version = "0.1.0"
 dependencies = [
+ "compact_str",
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",
  "oxc_parser",
  "oxc_span",
+ "rustc-hash",
  "tempfile",
  "thin-vec",
  "zenith_config",

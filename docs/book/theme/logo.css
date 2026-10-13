@@ -1,0 +1,46 @@
+/*
+ * The logo: docs/logo/zenith.svg, which the introduction inlines with
+ * `{{#include}}` inside a `<div class="logo">`, coloured by the book's theme
+ * rather than by the reader's system colour scheme.
+ */
+
+/* The light themes. */
+.light,
+.rust {
+    --logo-zenith: #a8741a;
+}
+
+/* The dark themes. */
+.coal,
+.navy,
+.ayu {
+    --logo-zenith: #e3bd6d;
+}
+
+.logo {
+    display: flex;
+    justify-content: center;
+    margin: 1.5em 0 0.5em;
+}
+
+.logo svg {
+    width: 128px;
+    height: 128px;
+}
+
+/* The ink takes the text colour; brass marks the zenith. */
+.logo .ink {
+    fill: var(--fg);
+}
+
+.logo .ink-line {
+    stroke: var(--fg);
+}
+
+.logo .zenith {
+    fill: var(--logo-zenith);
+}
+
+.logo .zenith-line {
+    stroke: var(--logo-zenith);
+}

@@ -5,8 +5,13 @@ authors = ["Alexander Fedotov"]
 language = "en"
 src = "src"
 
+[build]
+# The introduction inlines the logo from docs/logo.
+extra-watch-dirs = ["../logo"]
+
 [output.html]
-# Colours the diagrams, which pages inline from src/diagrams, by theme.
-additional-css = ["theme/diagrams.css"]
+# Colours the diagrams, which pages inline from src/diagrams, and the logo
+# at the top of the introduction, by theme.
+additional-css = ["theme/diagrams.css", "theme/logo.css"]
 git-repository-url = "https://github.com/feds01/zenith"
 edit-url-template = "https://github.com/feds01/zenith/edit/main/docs/book/{path}"

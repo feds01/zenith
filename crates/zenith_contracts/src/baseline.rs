@@ -27,7 +27,10 @@ use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use toml::Spanned;
 use zenith_graph::{EdgeSet, Graph, ModuleId};
-use zenith_utils::location::{ByteRange, LineIndex};
+use zenith_utils::{
+    location::{ByteRange, LineIndex},
+    text::comment_out_conflict_markers,
+};
 use zenith_workspace::Workspace;
 
 use crate::{Contract, Exemptions};
@@ -72,7 +75,7 @@ impl Baseline {
             }
         };
         let path = || path.display().to_string();
-        let text = without_conflict_markers(&contents);
+        let text = comment_out_conflict_markers(&contents, '#');
         let mut baseline: Self = toml::from_str(&text).map_err(|error| BaselineError::Invalid {
             path: path(),
             message: describe(&error, &text),
@@ -241,7 +244,7 @@ pub(crate) fn entry_ranges(text: &str, id: &str, entries: &[String]) -> Vec<Opti
         contracts: BTreeMap<String, Vec<Spanned<String>>>,
     }
 
-    let located = toml::from_str::<Located>(&without_conflict_markers(text)).ok();
+    let located = toml::from_str::<Located>(&comment_out_conflict_markers(text, '#')).ok();
     let ranges: FxHashMap<_, _> = located
         .iter()
         .filter_map(|file| file.contracts.get(id))
@@ -249,36 +252,6 @@ pub(crate) fn entry_ranges(text: &str, id: &str, entries: &[String]) -> Vec<Opti
         .map(|entry| (entry.get_ref().as_str(), ByteRange::from(entry.span())))
         .collect();
     entries.iter().map(|entry| ranges.get(entry.as_str()).copied()).collect()
-}
-
-/// The `text` of a baseline file with each of git's merge conflict markers
-/// turned into a comment of the same length, so that the entries of both
-/// sides are read, at the same places in the file. Borrowed if there are
-/// none.
-fn without_conflict_markers(text: &str) -> Cow<'_, str> {
-    /// Whether `line` is one of git's markers: seven `<`, `|`, `=` or `>`,
-    /// then the end of the line, or a space and a label.
-    fn is_marker(line: &str) -> bool {
-        ["<<<<<<<", "|||||||", "=======", ">>>>>>>"].iter().any(|marker| {
-            line.strip_prefix(marker)
-                .is_some_and(|rest| rest.is_empty() || rest.starts_with([' ', '\r']))
-        })
-    }
-
-    if !text.lines().any(is_marker) {
-        return Cow::Borrowed(text);
-    }
-    let mut cleaned = String::with_capacity(text.len());
-    for line in text.split_inclusive('\n') {
-        match is_marker(line.trim_end_matches('\n')) {
-            true => {
-                cleaned.push('#');
-                cleaned.push_str(&line[1..]);
-            }
-            false => cleaned.push_str(line),
-        }
-    }
-    Cow::Owned(cleaned)
 }
 
 /// The import of `entry` in `graph`, or `None` if it is stale: the import no
@@ -460,15 +433,6 @@ g = [
         // Saving it writes it without the markers.
         baseline.save(&path).unwrap();
         assert!(!Baseline::load(&path).unwrap().unwrap().conflicted);
-    }
-
-    #[test]
-    fn only_whole_marker_lines_are_conflict_markers() {
-        assert!(matches!(without_conflict_markers("a\n=======\nb\n"), Cow::Owned(_)));
-        assert!(matches!(without_conflict_markers(">>>>>>> theirs\r\n"), Cow::Owned(_)));
-        assert!(matches!(without_conflict_markers("========\n"), Cow::Borrowed(_)));
-        assert!(matches!(without_conflict_markers("  <<<<<<< HEAD\n"), Cow::Borrowed(_)));
-        assert_eq!(without_conflict_markers("<<<<<<< HEAD\nx\n"), "#<<<<<< HEAD\nx\n");
     }
 
     #[test]

@@ -81,6 +81,7 @@ impl Parser {
         let resolve = tables.remove("resolve");
         let analysis = tables.remove("analysis");
         let baseline = tables.remove("baseline");
+        let cache = tables.remove("cache");
         let contracts = tables.remove("contracts");
         if let Err(error) = ConfigFile::deserialize(Deserializer::from(document)) {
             self.add_toml_error(&error);
@@ -92,6 +93,7 @@ impl Parser {
         let resolve = self.parse_resolve(resolve);
         let analysis = self.parse_analysis(analysis);
         let baseline = self.parse_baseline(baseline);
+        let cache = self.parse_cache(cache);
 
         // 4. Parse the contracts, which default to the options in `[analysis]`.
         let contracts = match contracts {
@@ -99,7 +101,7 @@ impl Parser {
             None => Vec::new(),
         };
 
-        Some(Config { files, resolve, analysis, baseline, contracts, file: None })
+        Some(Config { files, resolve, analysis, baseline, cache, contracts, file: None })
     }
 
     /// Compile globs or name patterns, leaving out the invalid ones.

@@ -18,6 +18,10 @@
       "$ref": "#/$defs/BaselineTable",
       "description": "The baseline of known violations, which `zenith check` ignores so that\nonly new violations fail it."
     },
+    "cache": {
+      "$ref": "#/$defs/CacheTable",
+      "description": "The cache of what zenith found in each file on earlier runs, which\nlets it skip reading and parsing the files that haven't changed since."
+    },
     "contracts": {
       "type": "object",
       "additionalProperties": {
@@ -196,6 +200,23 @@
         }
       ],
       "description": "How to report baseline entries whose import no longer exists."
+    },
+    "CacheTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether to use the cache. `--no-cache` turns it off for one run.",
+          "default": true
+        },
+        "dir": {
+          "type": "string",
+          "description": "The directory to keep the cache in. Zenith creates it, with a\n`.gitignore` that ignores everything in it.",
+          "default": "node_modules/.cache/zenith"
+        }
+      },
+      "description": "The cache of what zenith found in each file on earlier runs."
     },
     "ContractTable": {
       "oneOf": [

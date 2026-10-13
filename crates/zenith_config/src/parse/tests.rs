@@ -82,7 +82,8 @@ fn every_contract_type_is_parsed() {
 
 #[test]
 fn an_empty_file_has_the_defaults_of_no_file() {
-    let parsed = ["", "[files]\n[resolve]\n[analysis]\n[baseline]\n[contracts]\n"].map(valid);
+    let parsed =
+        ["", "[files]\n[resolve]\n[analysis]\n[baseline]\n[cache]\n[contracts]\n"].map(valid);
     for config in [Config::default()].iter().chain(&parsed) {
         assert_eq!(config.files.include, None);
         assert!(config.files.exclude.is_empty());
@@ -96,6 +97,8 @@ fn an_empty_file_has_the_defaults_of_no_file() {
         assert!(config.analysis.exclude_kinds.is_empty());
         assert_eq!(config.baseline.path, "zenith.baseline.toml");
         assert_eq!(config.baseline.stale, StaleLevel::Error);
+        assert!(config.cache.enabled);
+        assert_eq!(config.cache.dir, "node_modules/.cache/zenith");
         assert!(config.contracts.is_empty());
     }
 }
@@ -123,6 +126,10 @@ exclude_kinds = ["type", "dynamic"]
 [baseline]
 path = "config/zenith.baseline.toml"
 stale = "warn"
+
+[cache]
+enabled = false
+dir = ".cache/zenith"
 "#,
     );
 
@@ -151,6 +158,8 @@ stale = "warn"
     assert_eq!(config.analysis.exclude_kinds, KindSet::TYPE | KindSet::DYNAMIC);
     assert_eq!(config.baseline.path, "config/zenith.baseline.toml");
     assert_eq!(config.baseline.stale, StaleLevel::Warn);
+    assert!(!config.cache.enabled);
+    assert_eq!(config.cache.dir, ".cache/zenith");
 }
 
 #[test]
@@ -441,6 +450,10 @@ fn unknown_keys_are_errors_everywhere() {
             "2:1: unknown key `exclude_kind`; did you mean `exclude_kinds`? [exclude_kind]",
         ),
         ("[baseline]\npth = \"a\"\n", "2:1: unknown key `pth`; did you mean `path`? [pth]"),
+        (
+            "[cache]\nenable = false\n",
+            "2:1: unknown key `enable`; did you mean `enabled`? [enable]",
+        ),
         (
             "[resolve]\nzzz = 1\n",
             "2:1: unknown key `zzz`, expected one of `tsconfig`, `conditions`, `main_fields`, \

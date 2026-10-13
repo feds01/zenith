@@ -1,5 +1,5 @@
-//! Parsing the global tables: `[files]`, `[resolve]`, `[analysis]` and
-//! `[baseline]`.
+//! Parsing the global tables: `[files]`, `[resolve]`, `[analysis]`,
+//! `[baseline]` and `[cache]`.
 
 use serde::Deserialize;
 use toml::de::ValueDeserializer;
@@ -7,8 +7,8 @@ use zenith_utils::glob::{Glob, NamePattern};
 
 use super::{Parser, TomlValue};
 use crate::{
-    config::{AnalysisConfig, BaselineConfig, FilesConfig, ResolveConfig, Tsconfig},
-    schema::{AnalysisTable, BaselineTable, FilesTable, ResolveTable},
+    config::{AnalysisConfig, BaselineConfig, CacheConfig, FilesConfig, ResolveConfig, Tsconfig},
+    schema::{AnalysisTable, BaselineTable, CacheTable, FilesTable, ResolveTable},
 };
 
 impl Parser {
@@ -61,6 +61,14 @@ impl Parser {
             return BaselineConfig::default();
         };
         BaselineConfig { path: table.path, stale: table.stale }
+    }
+
+    /// Parse `[cache]`.
+    pub(super) fn parse_cache(&mut self, value: Option<TomlValue<'_>>) -> CacheConfig {
+        let Some(table) = self.parse_table::<CacheTable>(value) else {
+            return CacheConfig::default();
+        };
+        CacheConfig { enabled: table.enabled, dir: table.dir }
     }
 
     /// Deserialise a global table, or its defaults when it isn't written.

@@ -20,7 +20,7 @@ mod schema;
 mod selector;
 
 pub use config::{
-    AnalysisConfig, BaselineConfig, CONFIG_FILE_NAME, Config, ConfigFile, FilesConfig,
+    AnalysisConfig, BaselineConfig, CONFIG_FILE_NAME, CacheConfig, Config, ConfigFile, FilesConfig,
     OPTIONAL_EXTENSIONS, ResolveConfig, SOURCE_EXTENSIONS, StaleLevel, Tsconfig,
 };
 pub use contracts::{

@@ -64,12 +64,21 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
 /// Run the standard pipeline on `session`, up to and including the `last`
 /// stage, and warn about the files that could not be read or parsed. Returns
 /// the pipeline, which knows how long each stage took.
+///
+/// A graph without source files is an error: the root is most likely wrong,
+/// and every path selector would fail to match.
 pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<Pipeline> {
     let mut pipeline = Pipeline::standard();
     pipeline.run_until(session, last)?;
     report_file_errors(&mut SourceMap::with_root(&session.root), &session.file_errors);
 
     if last >= StageKind::Graph {
+        if session.files.is_empty() {
+            bail!(
+                "found no source files in the project root `{}`; use `--root` to point at the project",
+                session.root.display()
+            );
+        }
         info!(
             "indexed {} and {}",
             plural(session.files.len(), "source file"),

@@ -718,7 +718,10 @@ reads `<kept> kept, <broken> broken[, <n> warnings][ · <n> stale baseline entri
 where warnings are broken contracts with `severity = "warn"`.
 
 `--root` points zenith at a project whose config lives elsewhere (used for
-corpus runs). `-v` shows info logs, `-vv` debug logs (all on stderr).
+corpus runs). `-v` shows info logs, `-vv` debug logs (all on stderr). A
+command that builds the graph fails (exit 2) when the root has no source files,
+which most likely means it is the wrong directory, rather than reporting every
+path selector as unmatched.
 
 The CLI mirrors teamsearch and bracketlint: clap derive, argfile expansion, a
 crash handler, and version info from `build.rs`. **(settled)** An `@path`

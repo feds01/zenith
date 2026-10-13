@@ -1,0 +1,3 @@
+[contracts.web-layers]
+type = "layers"
+layers = ["web/src/app", "web/src/lib"]

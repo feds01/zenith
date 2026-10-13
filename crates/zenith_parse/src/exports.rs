@@ -66,8 +66,9 @@ pub(crate) fn collect(program: &Program, imports: &[ImportDetail]) -> Exports<u3
     for statement in &program.body {
         match statement {
             Statement::ImportDeclaration(import) => {
-                // A side-effect import runs the module it imports.
-                if import.specifiers.is_none() || index_of(import.span).is_none() {
+                // A side-effect import, or one of no names, runs the module it imports.
+                let side_effect = import.specifiers.as_ref().is_none_or(|s| s.is_empty());
+                if side_effect || index_of(import.span).is_none() {
                     exports.barrel = false;
                 }
             }
@@ -117,7 +118,10 @@ pub(crate) fn collect(program: &Program, imports: &[ImportDetail]) -> Exports<u3
                         }
                         // A binding of the file's own code, which is declared elsewhere in
                         // it, so the file is not a barrel.
-                        None => exports.names.push(ImportedName { name, type_only }),
+                        None => {
+                            exports.barrel = false;
+                            exports.names.push(ImportedName { name, type_only });
+                        }
                     }
                 }
             }
@@ -253,6 +257,8 @@ mod tests {
             "export * from './a';\nexport const b = 1;\n",
             "export * from './a';\nconsole.log('loaded');\n",
             "export * from './a';\nimport './polyfill';\n",
+            "export * from './a';\nimport {} from './polyfill';\n",
+            "export * from './a';\nexport { A };\n",
             "export * from './a';\nexport default function f() {}\n",
             "export * from './a';\ninterface A {}\n",
             // Nothing re-exported, so nothing to follow.

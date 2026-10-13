@@ -15,9 +15,10 @@ pub enum ImportedNames {
     #[default]
     All,
 
-    /// Only these exports, e.g. `["a", "default"]` for
-    /// `import b, { a } from "./m"`. Never empty: an import of no names
-    /// (`import {} from "./m"`) runs the module, so it takes `All`.
+    /// Only these exports, e.g. `["default", "a"]` for
+    /// `import b, { a } from "./m"`, in source order. Never empty: an import of
+    /// no names (`import {} from "./m"`) runs the module, so it takes
+    /// `All`.
     Names(ThinVec<ImportedName>),
 }
 

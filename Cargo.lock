@@ -2120,6 +2120,7 @@ version = "0.1.0"
 dependencies = [
  "ignore",
  "log",
+ "rustc-hash",
  "serde_json",
  "tempfile",
  "yaml-rust2",

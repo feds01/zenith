@@ -1,13 +1,13 @@
 # Zenith: guide for contributors and agents
 
 Zenith is an architecture linter for TypeScript/JavaScript monorepos, written
-in Rust. **[docs/SPEC.md](docs/SPEC.md) is the source of truth for behaviour.**
-When implementation and spec disagree, fix one of them in the same change.
+in Rust. The user guide in [docs/book](docs/book/src/SUMMARY.md) describes its
+behaviour: when a change alters what users see, update the guide in the same
+change.
 
 ## How the work lands
 
-`main` is built up one reviewed PR at a time, in the order of the spec's
-architecture (§11) and roadmap (§13). A complete prototype of milestones M0–M4
+`main` is built up one reviewed PR at a time. A complete prototype of milestones M0–M4
 lives on the `feds01/full-implementation` branch. Each PR ports one piece of
 it, with its tests, and may refine it in review. Keep every PR building, tested
 and lint-clean on its own.
@@ -37,9 +37,8 @@ Linux/macOS/Windows, and `cargo deny`.
 
 Pipeline: config → discover → parse (parallel) → resolve (parallel) → graph → contracts (parallel) → render.
 
-The crates and what each one owns are listed in
-[SPEC §11.2](docs/SPEC.md#112-crates). That table is the single source; update
-it when responsibilities move. On `main` today:
+The crates and what each one owns, on `main` today. Update the list when
+responsibilities move:
 
 - `zenith`: the CLI (`cli.rs`, `commands/*`, `crash.rs`, `logger.rs`, and
   `version.rs` with `build.rs` for git commit stamping), `project.rs`, which
@@ -88,7 +87,8 @@ it when responsibilities move. On `main` today:
   glob dialect and name patterns, the line index, terminal output:
   highlighting, the logger, and printing text and trees, and the global
   thread pool.
-- `zenith_workspace`: the file walker and workspace package discovery.
+- `zenith_workspace`: the file walker, narrowing it to the files that git
+  tracks, and workspace package discovery.
 
 Key invariants:
 
@@ -97,8 +97,8 @@ Key invariants:
 - **The graph is never mutated.** Each contract checks against its own view.
 - **Output must be deterministic.** Sort before rendering.
 - **All log output goes to stderr**; reports go to stdout.
-- **Exit codes** are in [SPEC §9](docs/SPEC.md#9-cli): 0 kept, 1 broken, 2
-  configuration, usage or internal error.
+- **Exit codes** are in [the guide](docs/book/src/cli.md#exit-codes): 0 kept,
+  1 broken, 2 configuration, usage or internal error.
 
 ## Conventions
 

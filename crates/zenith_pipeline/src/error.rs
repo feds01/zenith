@@ -9,6 +9,7 @@ use zenith_graph::{GraphError, ImportDetail};
 use zenith_parse::SyntaxError;
 use zenith_resolve::{ResolverError, UnresolvedReason};
 use zenith_utils::{location::Located, printing::plural};
+use zenith_workspace::GitError;
 
 /// Why a stage failed, which stops the pipeline.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +19,9 @@ pub enum PipelineError {
 
     /// A file could not be added to the graph.
     Graph(GraphError),
+
+    /// The files that git tracks could not be listed, to scan only those.
+    Git(GitError),
 }
 
 impl fmt::Display for PipelineError {
@@ -25,6 +29,7 @@ impl fmt::Display for PipelineError {
         match self {
             Self::Resolver(error) => write!(f, "{error}"),
             Self::Graph(error) => write!(f, "{error}"),
+            Self::Git(error) => write!(f, "{error}"),
         }
     }
 }
@@ -42,6 +47,12 @@ impl From<ResolverError> for PipelineError {
 impl From<GraphError> for PipelineError {
     fn from(error: GraphError) -> Self {
         Self::Graph(error)
+    }
+}
+
+impl From<GitError> for PipelineError {
+    fn from(error: GitError) -> Self {
+        Self::Git(error)
     }
 }
 

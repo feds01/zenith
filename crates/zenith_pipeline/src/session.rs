@@ -25,6 +25,10 @@ pub struct Session {
     /// The project's configuration.
     pub config: Config,
 
+    /// Whether to scan only the files that git tracks, leaving out untracked
+    /// ones, as in a pre-commit hook.
+    pub tracked_only: bool,
+
     /// The source files to scan, sorted by path. Found by the
     /// [`Discover`](crate::StageKind::Discover) stage.
     pub files: Vec<SourceFile>,
@@ -123,6 +127,7 @@ impl Session {
         Self {
             root,
             config,
+            tracked_only: false,
             files: Vec::new(),
             workspace: Workspace::default(),
             parsed: Vec::new(),

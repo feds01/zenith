@@ -19,7 +19,7 @@ use crate::{Reported, cli::GlobalArgs, reporting};
 /// the nearest `zenith.toml` in or above the current directory. The root is
 /// `--root`, or else the directory of the configuration file. A project
 /// without a configuration file is rooted at the current directory, and uses
-/// the defaults.
+/// the defaults. With `--tracked`, only the files that git tracks are scanned.
 pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
     // 1. Find the configuration file, if there is one.
     let cwd = env::current_dir().context("could not read the current directory")?;
@@ -58,7 +58,9 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
             Config::default()
         }
     };
-    Ok(Session::new(root, config))
+    let mut session = Session::new(root, config);
+    session.tracked_only = global.tracked;
+    Ok(session)
 }
 
 /// Run the standard pipeline on `session`, up to and including the `last`

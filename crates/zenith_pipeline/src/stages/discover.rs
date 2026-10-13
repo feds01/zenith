@@ -1,12 +1,13 @@
 //! The [`Discover`] stage.
 
 use zenith_utils::path::relative_posix;
-use zenith_workspace::{discover_packages, walk};
+use zenith_workspace::{TrackedFiles, discover_packages, walk};
 
 use crate::{PipelineError, Session, SourceFile, Stage, StageKind};
 
 /// Finds the source files with `zenith_workspace`'s walker, and the workspace
-/// packages among the `package.json` files it finds.
+/// packages among the `package.json` files it finds. With
+/// [`Session::tracked_only`], only the files that git tracks count.
 pub struct Discover;
 
 impl Stage for Discover {
@@ -16,7 +17,10 @@ impl Stage for Discover {
 
     fn run(&self, session: &mut Session) -> Result<(), PipelineError> {
         let root = &session.root;
-        let found = walk(root, &session.walk_settings());
+        let mut found = walk(root, &session.walk_settings());
+        if session.tracked_only {
+            found.retain_tracked(&TrackedFiles::find(root)?);
+        }
         let workspace = discover_packages(root, &found.package_jsons);
         // The walk only finds files inside the root.
         let files = found

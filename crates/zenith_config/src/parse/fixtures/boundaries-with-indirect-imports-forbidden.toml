@@ -1,0 +1,6 @@
+[contracts.c]
+type = "forbidden"
+from = []
+to = []
+allow_indirect_imports = true
+boundaries = ["a"]

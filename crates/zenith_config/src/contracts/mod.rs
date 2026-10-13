@@ -94,9 +94,9 @@ impl ContractKind {
     /// through. Only the contract types that follow chains have them.
     pub fn boundaries(&self) -> &[Selector] {
         match self {
-            Self::Forbidden(config) => &config.boundaries,
-            Self::Independence(config) => &config.boundaries,
-            Self::Layers(config) => &config.boundaries,
+            Self::Forbidden(ForbiddenConfig { boundaries, .. })
+            | Self::Independence(IndependenceConfig { boundaries, .. })
+            | Self::Layers(LayersConfig { boundaries, .. }) => boundaries,
             Self::Protected(_) | Self::Acyclic(_) | Self::Encapsulation(_) => &[],
         }
     }

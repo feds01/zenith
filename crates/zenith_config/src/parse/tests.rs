@@ -714,21 +714,17 @@ fn invalid_layers_are_errors() {
 
 #[test]
 fn boundaries_without_chains_are_an_error() {
-    for (kind, options) in [
-        ("forbidden", "from = []\nto = []"),
-        ("independence", "modules = []"),
-        ("layers", "layers = [\"a\"]"),
+    for contents in [
+        include_str!("fixtures/boundaries-with-indirect-imports-forbidden.toml"),
+        include_str!("fixtures/boundaries-with-indirect-imports-independence.toml"),
+        include_str!("fixtures/boundaries-with-indirect-imports-layers.toml"),
     ] {
-        let contents = format!(
-            "[contracts.c]\ntype = \"{kind}\"\n{options}\nallow_indirect_imports = true\n\
-             boundaries = [\"a\"]\n"
-        );
         let line = contents.lines().count();
         let expected = format!(
             "{line}:14: in contract `c`: `boundaries` has no effect with \
              `allow_indirect_imports = true`, since direct imports pass through nothing [[\"a\"]]"
         );
-        assert_eq!(only_error(&contents), expected, "{contents}");
+        assert_eq!(only_error(contents), expected, "{contents}");
     }
 }
 

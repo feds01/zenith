@@ -204,11 +204,7 @@ mod tests {
                 ("web/preview.tsx", "use client"),
                 ("web/actions.ts", "use server"),
             ],
-            &contract(
-                "from = [{ path = \"web\", directive = \"use client\" }]\n\
-                 to = [\"npm:sharp\", \"node:*\", \"web/actions.ts\"]\n\
-                 boundaries = [{ path = \"web\", directive = \"use server\" }]",
-            ),
+            include_str!("fixtures/forbidden-boundaries.toml"),
         );
         // A chain may still end at a boundary.
         assert_eq!(
@@ -225,7 +221,7 @@ mod tests {
         let project = Project::new(
             &values(&[("web/actions.ts", "lib/files.ts"), ("lib/files.ts", "node:fs")]),
             &[],
-            &contract("from = [\"web\"]\nto = [\"node:*\"]\nboundaries = [\"web/actions.ts\"]"),
+            include_str!("fixtures/forbidden-boundary-start.toml"),
         );
         assert_eq!(
             project.findings("f"),
@@ -238,7 +234,7 @@ mod tests {
         let project = Project::new(
             &values(&[("web/a.ts", "node:fs")]),
             &[],
-            &contract("from = [\"web\"]\nto = [\"node:*\"]\nboundaries = [\"web/nope\"]"),
+            include_str!("fixtures/forbidden-unmatched-boundary.toml"),
         );
         let errors = project.compile().unwrap_err();
         let kinds: Vec<_> = errors.iter().map(|error| &error.kind).collect();

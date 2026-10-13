@@ -1,0 +1,5 @@
+[contracts.f]
+type = "forbidden"
+from = [{ path = "web", directive = "use client" }]
+to = ["npm:sharp", "node:*", "web/actions.ts"]
+boundaries = [{ path = "web", directive = "use server" }]

@@ -118,11 +118,6 @@ mod tests {
 
     #[test]
     fn chains_do_not_pass_through_boundaries() {
-        let toml = "[contracts.i]
-type = \"independence\"
-modules = [\"src/*\"]
-boundaries = [\"lib/actions.ts\"]
-";
         let project = Project::new(
             &values(&[
                 ("src/a/x.ts", "lib/actions.ts"),
@@ -131,7 +126,7 @@ boundaries = [\"lib/actions.ts\"]
                 ("lib/util.ts", "src/c/z.ts"),
             ]),
             &[],
-            toml,
+            include_str!("fixtures/independence-boundaries.toml"),
         );
         assert_eq!(
             project.findings("i"),

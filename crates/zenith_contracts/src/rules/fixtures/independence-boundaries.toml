@@ -1,0 +1,4 @@
+[contracts.i]
+type = "independence"
+modules = ["src/*"]
+boundaries = ["lib/actions.ts"]

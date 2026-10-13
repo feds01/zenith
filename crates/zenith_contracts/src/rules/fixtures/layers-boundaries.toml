@@ -1,0 +1,4 @@
+[contracts.l]
+type = "layers"
+layers = ["high", "low"]
+boundaries = [{ path = "lib", directive = "use server" }]

@@ -383,10 +383,7 @@ mod tests {
                 ("lib/util.ts", "high/b.ts"),
             ]),
             &[("lib/actions.ts", "use server")],
-            &contract(
-                "layers = [\"high\", \"low\"]\n\
-                 boundaries = [{ path = \"lib\", directive = \"use server\" }]",
-            ),
+            include_str!("fixtures/layers-boundaries.toml"),
         );
         assert_eq!(project.findings("l"), ["low -> high: low/c.ts -> lib/util.ts -> high/b.ts"]);
     }

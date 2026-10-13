@@ -5,6 +5,7 @@ exit: 1
 ::error file=web/src/lib/format.ts,line=1,col=40,title=zenith(web-layers)::`web/src/lib` must not import `web/src/domains`%0ALower layers must not import higher ones. Move the shared code down a layer.
 ::warning file=services/mcp/src/tools.ts,line=1,col=31,title=zenith(ai-public-surface)::`packages/ai/src/tools/index.ts` is internal to `@acme/ai`; import it through an entry point
 ::warning file=web/src/domains/campaigns/hooks/use-campaign-brief.ts,line=1,col=29,title=zenith(ai-public-surface)::`packages/ai/src/domains/campaigns/brief.ts` is internal to `@acme/ai`; import it through an entry point
+::warning title=zenith::1 import could not be resolved%0Ause `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
 0 kept, 1 broken, 1 warning · 78 files, 127 imports
 
 $ zenith check --format github --show-unresolved --contract sdk-standalone

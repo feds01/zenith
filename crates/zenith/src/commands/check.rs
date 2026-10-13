@@ -85,10 +85,12 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
                 });
             }
             reports.extend(unused.iter().map(|unused| unused.report(&mut sources)));
-            if format == Format::Pretty {
-                reports.extend(session.unresolved_report(&mut sources, args.show_unresolved));
-            } else if args.show_unresolved {
+            // Every format warns about the imports that couldn't be resolved, which
+            // `--show-unresolved` lists: in the warning in full, or a line each.
+            if format != Format::Pretty && args.show_unresolved {
                 reports.extend(session.unresolved.iter().map(|import| import.report(&mut sources)));
+            } else {
+                reports.extend(session.unresolved_report(&mut sources, args.show_unresolved));
             }
             println!(
                 "{}",

@@ -22,10 +22,11 @@ impl Stage for Parse {
     }
 
     fn run(&self, session: &mut Session) -> Result<(), PipelineError> {
+        let root = &session.root;
         let results: Vec<io::Result<ParsedFile>> = session
             .files
             .par_iter()
-            .map_init(Parser::new, |parser, file| parser.parse_file(&file.path))
+            .map_init(Parser::new, |parser, file| parser.parse_file(&file.path(root)))
             .collect();
 
         let mut parsed = Vec::with_capacity(results.len());

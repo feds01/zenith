@@ -1,6 +1,6 @@
 //! The session: one project, and everything the stages have found in it.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use thin_vec::ThinVec;
 use zenith_config::{Config, SOURCE_EXTENSIONS, Tsconfig};
@@ -8,7 +8,7 @@ use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_parse::{ParsedFile, Suppression};
 use zenith_resolve::{Resolved, Resolver, ResolverError, ResolverSettings, TsconfigMode};
-use zenith_utils::{location::Located, printing::plural};
+use zenith_utils::{location::Located, path::absolute_path, printing::plural};
 use zenith_workspace::{WalkSettings, Workspace};
 
 use crate::{FileError, UnresolvedImport};
@@ -82,11 +82,16 @@ pub enum ResolvedImport {
 /// A source file to scan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceFile {
-    /// Its absolute path.
-    pub path: PathBuf,
-
     /// Its POSIX path relative to the root, which is its name in the graph.
     pub name: String,
+}
+
+impl SourceFile {
+    /// Its absolute path, in the project at `root`. Files keep only their
+    /// name, since a project has many, and few stages need their path.
+    pub fn path(&self, root: &Path) -> PathBuf {
+        absolute_path(root, &self.name)
+    }
 }
 
 /// The `zenith-ignore` comments of a source file.

@@ -17,6 +17,7 @@ impl Stage for Resolve {
 
     fn run(&self, session: &mut Session) -> Result<(), PipelineError> {
         let resolver = session.resolver()?;
+        let root = &session.root;
         // Most imports resolve to a source file, which is kept by its index, so that
         // their names don't pile up until the graph is built.
         let indices: FxHashMap<&str, u32> =
@@ -27,8 +28,9 @@ impl Stage for Resolve {
             .zip(&session.parsed)
             .map(|(file, parsed)| {
                 let imports = parsed.imports.iter();
+                let path = file.path(root);
                 imports
-                    .map(|import| match resolver.resolve(&file.path, &import.specifier) {
+                    .map(|import| match resolver.resolve(&path, &import.specifier) {
                         Resolved::Internal(name) => match indices.get(name.as_str()) {
                             Some(index) => ResolvedImport::File(*index),
                             None => ResolvedImport::Other(Resolved::Internal(name)),

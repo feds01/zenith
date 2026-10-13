@@ -185,6 +185,7 @@ release:
     git push origin "$tag"
 
 # Commit the Homebrew formula of each release in $PLAN, dist's plan, to the tap checked out at `tap`, and push it (run by the release workflow)
+[no-cd]
 publish-formula tap:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -211,3 +212,27 @@ publish-formula tap:
     done <<<"$releases"
 
     git push
+
+# Publish the npm package of each release in $PLAN, dist's plan, from the artifacts in `dir`, skipping versions already on npm (run by the release workflow)
+[no-cd]
+publish-npm dir:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # An absolute path: npm reads a relative one, like `npm/<package>`, as a
+    # GitHub repository.
+    dir="$(cd "{{dir}}" && pwd)"
+
+    packages="$(jq --raw-output '.releases[].artifacts[] | select(endswith("-npm-package.tar.gz"))' <<<"$PLAN")"
+    while IFS= read -r package; do
+        [ -n "$package" ] || continue
+        # What it publishes, e.g. `@feds01/zenith@0.1.0`.
+        spec="$(tar -xzOf "$dir/$package" package/package.json | jq --raw-output '.name + "@" + .version')"
+
+        # A version published by hand, or by an earlier run, is skipped, so
+        # that the job can be re-run.
+        if [ -n "$(npm view "$spec" version 2>/dev/null)" ]; then
+            echo "$spec is already on npm"
+            continue
+        fi
+        npm publish --access public "$dir/$package"
+    done <<<"$packages"

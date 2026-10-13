@@ -13,9 +13,10 @@ installers = ["shell", "powershell", "npm", "homebrew"]
 npm-scope = "@feds01"
 # The Homebrew tap that the formula is published to: `brew install feds01/tap/zenith`
 tap = "feds01/homebrew-tap"
-# Publish the npm package and the Homebrew formula with each release. The
-# formula is published by our own job, which runs `just publish-formula`.
-publish-jobs = ["./publish-homebrew", "npm"]
+# Publish the npm package and the Homebrew formula with each release, by our
+# own jobs, which run `just publish-npm` and `just publish-formula`. The npm
+# package is published with npm's trusted publishing, without a token.
+publish-jobs = ["./publish-homebrew", "./publish-npm"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-apple-darwin", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
 # Path that installers should place binaries in
@@ -26,6 +27,13 @@ hosting = "github"
 install-updater = false
 # Only run the release workflow for release tags, never on PRs
 pr-run-mode = "skip"
+
+# The permissions of our publish jobs. npm's trusted publishing needs an OIDC
+# token, and npm trusts any job in the release workflow that has one, so only
+# the npm job gets one.
+[dist.github-custom-job-permissions]
+"publish-homebrew" = { contents = "read" }
+"publish-npm" = { contents = "read", id-token = "write" }
 
 # The versions of the GitHub actions that the release workflow uses
 [dist.github-action-commits]

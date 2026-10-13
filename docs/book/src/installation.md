@@ -22,6 +22,9 @@ to have `zenith` everywhere.
 brew install feds01/tap/zenith
 ```
 
+Use the full name: `brew install zenith` installs a different tool of the same
+name, from Homebrew's core formulae.
+
 ## Shell installer
 
 On macOS and Linux:

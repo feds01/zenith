@@ -33,6 +33,6 @@ jobs:
           pattern: artifacts-*
           path: tap/Formula/
           merge-multiple: true
-      - uses: extractions/setup-just@v4
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - name: Commit and push the formula
         run: just --justfile zenith/justfile publish-formula tap

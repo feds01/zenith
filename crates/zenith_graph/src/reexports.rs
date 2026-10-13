@@ -1,19 +1,19 @@
 //! The import graph through re-exports: an import of names from a module
-//! that only re-exports other modules, a barrel in JavaScript, becomes
-//! imports of the modules that define those names.
+//! that only re-exports other modules, a pass-through module, becomes imports
+//! of the modules that define those names.
 //!
-//! Bundlers that know a barrel has no side effects leave out the modules it
-//! re-exports that nothing uses, so `import { a } from "./index"` only loads
-//! the module that defines `a`. Through the barrel, the import graph has a
-//! chain to every module the barrel re-exports, so contracts about what code
-//! reaches what, such as "client code must not reach server code", report
-//! violations that the bundle doesn't have. The graph through re-exports has
-//! the same modules, and imports to where each name is defined instead.
+//! Bundlers that know a pass-through module has no side effects leave out the
+//! modules it re-exports that nothing uses, so `import { a } from "./index"`
+//! only loads the module that defines `a`. Through the pass-through module, the
+//! import graph has a chain to every module it re-exports, so contracts about
+//! what code reaches what, such as "client code must not reach server code",
+//! report violations that the bundle doesn't have. The graph through re-exports
+//! has the same modules, and imports to where each name is defined instead.
 
 use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{Exports, Graph, ImportDetail, ImportKind, ImportedNames, ModuleId};
+use crate::{Exports, Graph, ImportedNames, ModuleId};
 
 /// What each module exports, by module, with the source of each re-export
 /// as the node it resolved to. A module without an entry is taken to be code
@@ -21,34 +21,35 @@ use crate::{Exports, Graph, ImportDetail, ImportKind, ImportedNames, ModuleId};
 pub type ModuleExports = FxHashMap<ModuleId, Exports<ModuleId>>;
 
 impl Graph {
-    /// This graph, with each import of names from a barrel replaced by
-    /// imports of the modules that define them, following re-exports and
-    /// `export *` through barrels of barrels. A name is defined by the first
-    /// module on its way that isn't a barrel.
+    /// This graph, with each import of names from a pass-through module
+    /// replaced by imports of the modules that define them, following
+    /// re-exports and `export *` through nested pass-through modules. A name is
+    /// defined by the first module on its way that isn't a pass-through
+    /// module.
     ///
-    /// An import of a barrel that takes the whole module, such as a namespace
-    /// import, stays, and so does an import of a name that can't be followed:
-    /// one the barrel doesn't export, or that may come from an external
-    /// package through `export *`. An import of only a name's type becomes a
-    /// type import.
+    /// An import of a pass-through module that takes the whole module, such as
+    /// a namespace import, stays, and so does an import of a name that
+    /// can't be followed: one the pass-through module doesn't export, or
+    /// that may come from an external package through `export *`. An import
+    /// of only a name's type becomes a type import.
     pub fn through_reexports(&self, exports: &ModuleExports) -> Graph {
         let names = Names { exports };
         let mut imports = Vec::with_capacity(self.detail_count());
         for (importer, imported) in self.edges() {
-            let barrel = exports.get(&imported).is_some_and(|exports| exports.barrel);
+            let pass_through = exports.get(&imported).is_some_and(|exports| exports.pass_through);
             for detail in self.details(importer, imported) {
                 let ImportedNames::Names(taken) = &detail.names else {
                     imports.push((importer, imported, detail.clone()));
                     continue;
                 };
-                if !barrel {
+                if !pass_through {
                     imports.push((importer, imported, detail.clone()));
                     continue;
                 }
 
                 // Where each name goes: to the modules that define it, or to the
-                // barrel if it can't be followed. A barrel may re-export the
-                // importer's own names.
+                // pass-through module if it can't be followed. A pass-through module may
+                // re-export the importer's own names.
                 let mut targets = Vec::new();
                 for name in taken {
                     match names.definitions(imported, &name.name, name.type_only) {
@@ -65,7 +66,7 @@ impl Graph {
                 for (target, type_only) in targets {
                     let detail = match target == imported {
                         true => detail.clone(),
-                        false => with_kind(detail, type_only),
+                        false => detail.with_type_only(type_only),
                     };
                     imports.push((importer, target, detail));
                 }
@@ -75,18 +76,10 @@ impl Graph {
     }
 }
 
-/// `detail`, as a type import if `type_only`.
-fn with_kind(detail: &ImportDetail, type_only: bool) -> ImportDetail {
-    let mut detail = detail.clone();
-    if type_only {
-        detail.kind = ImportKind::Type;
-    }
-    detail
-}
-
-/// The `(barrel, name)` pairs met while following one name: `None` while the
-/// pair is being followed, then the modules that define the name as the
-/// barrel exports it, each with whether only its type gets there.
+/// The `(pass-through module, name)` pairs met while following one name: `None`
+/// while the pair is being followed, then the modules that define the name as
+/// the pass-through module exports it, each with whether only its type gets
+/// there.
 type Followed = FxHashMap<(ModuleId, CompactString), Option<Vec<(ModuleId, bool)>>>;
 
 /// Follows names through the exports of modules.
@@ -123,13 +116,13 @@ impl Names<'_> {
         followed: &mut Followed,
     ) -> Option<Vec<(ModuleId, bool)>> {
         // 1. A module of code defines what it exports.
-        let Some(exports) = self.exports.get(&module).filter(|exports| exports.barrel) else {
+        let Some(exports) = self.exports.get(&module).filter(|exports| exports.pass_through) else {
             return Some(vec![(module, false)]);
         };
 
-        // 2. A pair met before has the definitions found then, as when two barrels
-        //    re-export a third. One that is still being followed, which a cycle of
-        //    re-exports comes back to, adds none: those on the rest of the cycle are
+        // 2. A pair met before has the definitions found then, as when two pass-through
+        //    modules re-export a third. One that is still being followed, which a cycle
+        //    of re-exports comes back to, adds none: those on the rest of the cycle are
         //    found where it started.
         let key = (module, CompactString::from(name));
         match followed.get(&key) {
@@ -139,8 +132,8 @@ impl Names<'_> {
         }
         followed.insert(key.clone(), None);
 
-        // 3. A name the barrel re-exports by name comes from its source: the whole
-        //    source, for `export * as name`.
+        // 3. A name the pass-through module re-exports by name comes from its source:
+        //    the whole source, for `export * as name`.
         let definitions = match exports.reexports.iter().find(|reexport| reexport.name == name) {
             Some(reexport) => match &reexport.imported {
                 Some(imported) => {
@@ -226,7 +219,7 @@ mod tests {
     use zenith_utils::location::ByteRange;
 
     use super::*;
-    use crate::{GraphBuilder, ImportedName, NodeHandle, ReExport};
+    use crate::{GraphBuilder, ImportDetail, ImportKind, ImportedName, NodeHandle, ReExport};
 
     /// An import statement: what it imports, with `:type` after names whose
     /// type only it takes, or `*` for the whole module.
@@ -298,14 +291,14 @@ mod tests {
             .collect()
     }
 
-    /// A barrel with these re-exports, as `(name, source, imported)`, and
-    /// `export *` of the `stars`.
-    fn barrel(
+    /// A pass-through module with these re-exports, as `(name, source,
+    /// imported)`, and `export *` of the `stars`.
+    fn pass_through(
         reexports: &[(&'static str, &'static str, Option<&str>)],
         stars: &[&'static str],
     ) -> Exports<&'static str> {
         Exports {
-            barrel: true,
+            pass_through: true,
             names: ThinVec::new(),
             reexports: reexports
                 .iter()
@@ -346,7 +339,7 @@ mod tests {
             &[
                 (
                     "lib/index.ts",
-                    barrel(
+                    pass_through(
                         &[
                             ("format", "lib/format.ts", Some("format")),
                             ("Client", "lib/client.ts", Some("Client")),
@@ -359,7 +352,8 @@ mod tests {
                 ("lib/server.ts", module(&["serve"])),
             ],
         );
-        // The app no longer reaches the server code, or `sharp`, through the barrel.
+        // The app no longer reaches the server code, or `sharp`, through the
+        // pass-through module.
         assert_eq!(
             imports(&graph.through_reexports(&exports)),
             [
@@ -376,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn names_are_followed_through_reexports_of_barrels_and_export_star() {
+    fn names_are_followed_through_nested_re_exports_and_export_star() {
         let (graph, exports) = project(
             &[
                 import("app.ts", "index.ts", &["a", "b", "default", "ns"]),
@@ -389,14 +383,14 @@ mod tests {
             &[
                 (
                     "index.ts",
-                    barrel(
+                    pass_through(
                         &[("default", "c.ts", Some("c")), ("ns", "ns.ts", None)],
                         &["inner/index.ts"],
                     ),
                 ),
                 (
                     "inner/index.ts",
-                    barrel(&[("b", "inner/b.ts", Some("original"))], &["inner/a.ts"]),
+                    pass_through(&[("b", "inner/b.ts", Some("original"))], &["inner/a.ts"]),
                 ),
                 ("inner/a.ts", module(&["a"])),
                 ("inner/b.ts", module(&["original"])),
@@ -414,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn whole_modules_and_unknown_names_stay_on_the_barrel() {
+    fn whole_modules_and_unknown_names_stay_on_the_importer() {
         let (graph, exports) = project(
             &[
                 import("star.ts", "index.ts", &["*"]),
@@ -424,9 +418,9 @@ mod tests {
                 import("pkg.ts", "npm:lib", &["*"]),
             ],
             &[
-                ("index.ts", barrel(&[("a", "a.ts", Some("a"))], &[])),
+                ("index.ts", pass_through(&[("a", "a.ts", Some("a"))], &[])),
                 // `thing` may come from the external package, which can't be told.
-                ("pkg.ts", barrel(&[], &["npm:lib"])),
+                ("pkg.ts", pass_through(&[], &["npm:lib"])),
                 ("a.ts", module(&["a"])),
             ],
         );
@@ -443,7 +437,7 @@ mod tests {
 
     #[test]
     fn types_only_imports_of_names_become_type_imports() {
-        let mut types = barrel(&[("Props", "props.ts", Some("Props"))], &[]);
+        let mut types = pass_through(&[("Props", "props.ts", Some("Props"))], &[]);
         types.reexports.push(ReExport {
             name: "Theme".into(),
             source: "theme.ts",
@@ -483,15 +477,15 @@ mod tests {
                 import("b/index.ts", "y.ts", &["y"]),
             ],
             &[
-                ("a/index.ts", barrel(&[], &["b/index.ts"])),
-                ("b/index.ts", barrel(&[("y", "y.ts", Some("y"))], &["a/index.ts"])),
+                ("a/index.ts", pass_through(&[], &["b/index.ts"])),
+                ("b/index.ts", pass_through(&[("y", "y.ts", Some("y"))], &["a/index.ts"])),
                 ("y.ts", module(&["y"])),
             ],
         );
         let through = graph.through_reexports(&exports);
         let app: Vec<_> =
             imports(&through).into_iter().filter(|import| import.starts_with("app.ts")).collect();
-        // `x` is nowhere, so its import stays on the barrel.
+        // `x` is nowhere, so its import stays on the pass-through module.
         assert_eq!(app, ["app.ts -> a/index.ts", "app.ts -> y.ts"]);
     }
 
@@ -502,7 +496,7 @@ mod tests {
     }
 
     #[test]
-    fn names_are_followed_through_barrels_that_share_a_barrel() {
+    fn names_are_followed_through_modules_that_share_a_re_export() {
         let (graph, exports) = project(
             &[
                 import("app.ts", "ui/index.ts", &["t"]),
@@ -513,10 +507,10 @@ mod tests {
                 import("tokens/index.ts", "tokens/t.ts", &["t"]),
             ],
             &[
-                ("ui/index.ts", barrel(&[], &["buttons/index.ts", "forms/index.ts"])),
-                ("buttons/index.ts", barrel(&[], &["tokens/index.ts"])),
-                ("forms/index.ts", barrel(&[], &["tokens/index.ts"])),
-                ("tokens/index.ts", barrel(&[("t", "tokens/t.ts", Some("t"))], &[])),
+                ("ui/index.ts", pass_through(&[], &["buttons/index.ts", "forms/index.ts"])),
+                ("buttons/index.ts", pass_through(&[], &["tokens/index.ts"])),
+                ("forms/index.ts", pass_through(&[], &["tokens/index.ts"])),
+                ("tokens/index.ts", pass_through(&[("t", "tokens/t.ts", Some("t"))], &[])),
                 ("tokens/t.ts", module(&["t"])),
             ],
         );
@@ -541,8 +535,8 @@ mod tests {
                 import("b/index.ts", "a/index.ts", &["*"]),
             ],
             &[
-                ("a/index.ts", barrel(&[], &["b/index.ts", "c.ts"])),
-                ("b/index.ts", barrel(&[], &["a/index.ts"])),
+                ("a/index.ts", pass_through(&[], &["b/index.ts", "c.ts"])),
+                ("b/index.ts", pass_through(&[], &["a/index.ts"])),
                 ("c.ts", module(&["z"])),
             ],
         );
@@ -560,7 +554,10 @@ mod tests {
                 import("index.ts", "b.ts", &["b"]),
             ],
             &[
-                ("index.ts", barrel(&[("a", "a.ts", Some("a")), ("b", "b.ts", Some("b"))], &[])),
+                (
+                    "index.ts",
+                    pass_through(&[("a", "a.ts", Some("a")), ("b", "b.ts", Some("b"))], &[]),
+                ),
                 ("a.ts", module(&["a"])),
                 ("b.ts", module(&["b"])),
             ],
@@ -573,7 +570,7 @@ mod tests {
     fn a_statement_imports_each_module_once() {
         // `A` and `B` both come from `m.ts`, `B` as a type; `x` is nowhere; `T`
         // comes through `export type *`.
-        let mut index = barrel(&[("A", "m.ts", Some("A"))], &[]);
+        let mut index = pass_through(&[("A", "m.ts", Some("A"))], &[]);
         index.reexports.push(ReExport {
             name: "B".into(),
             source: "m.ts",

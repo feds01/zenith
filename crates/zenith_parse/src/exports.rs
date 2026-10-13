@@ -1,5 +1,5 @@
 //! What a file exports, read from its top-level statements, and whether it is
-//! a barrel, a file that only re-exports other modules.
+//! a pass-through module, a file that only re-exports other modules.
 
 use compact_str::CompactString;
 use oxc_ast::ast::{
@@ -20,11 +20,11 @@ pub(crate) trait ProgramHelpers {
     /// the index of its import statement in `imports`, the file's imports
     /// in source order.
     ///
-    /// The file is a barrel when it re-exports something and every statement in
-    /// it is an import with bindings or an export of imported bindings, so that
-    /// it runs no code of its own. A side-effect import, such as `import
-    /// "./x"`, runs the module it imports, so a file with one is not a
-    /// barrel.
+    /// The file is a pass-through module when it re-exports something and every
+    /// statement in it is an import with bindings or an export of imported
+    /// bindings, so that it runs no code of its own. A side-effect import,
+    /// such as `import "./x"`, runs the module it imports, so a file with
+    /// one is not a pass-through module.
     fn exports(&self, imports: &[ImportDetail]) -> Exports<u32>;
 }
 
@@ -70,19 +70,19 @@ impl ProgramHelpers for Program<'_> {
         }
 
         // 2. What each statement exports, and whether it runs code of its own.
-        let mut exports = Exports { barrel: true, ..Exports::default() };
+        let mut exports = Exports { pass_through: true, ..Exports::default() };
         for statement in &self.body {
             match statement {
                 Statement::ImportDeclaration(import) => {
                     // A side-effect import, or one of no names, runs the module it imports.
                     let side_effect = import.specifiers.as_ref().is_none_or(|s| s.is_empty());
                     if side_effect || index_of(import.span).is_none() {
-                        exports.barrel = false;
+                        exports.pass_through = false;
                     }
                 }
                 Statement::ExportFromDeclaration(export) => {
                     let Some(source) = index_of(export.span) else {
-                        exports.barrel = false;
+                        exports.pass_through = false;
                         continue;
                     };
                     for specifier in &export.specifiers {
@@ -97,7 +97,7 @@ impl ProgramHelpers for Program<'_> {
                 }
                 Statement::ExportAllDeclaration(export) => {
                     let Some(source) = index_of(export.span) else {
-                        exports.barrel = false;
+                        exports.pass_through = false;
                         continue;
                     };
                     let type_only = export.export_kind.is_type();
@@ -127,9 +127,9 @@ impl ProgramHelpers for Program<'_> {
                                 });
                             }
                             // A binding of the file's own code, which is declared elsewhere in
-                            // it, so the file is not a barrel.
+                            // it, so the file is not a pass-through module.
                             None => {
-                                exports.barrel = false;
+                                exports.pass_through = false;
                                 exports.names.push(ImportedName { name, type_only });
                             }
                         }
@@ -150,7 +150,7 @@ impl ProgramHelpers for Program<'_> {
                             type_only: *type_only,
                         }),
                         None => {
-                            exports.barrel = false;
+                            exports.pass_through = false;
                             let type_only = matches!(
                                 export.declaration,
                                 ExportDefaultDeclarationKind::TSInterfaceDeclaration(_)
@@ -160,17 +160,18 @@ impl ProgramHelpers for Program<'_> {
                     }
                 }
                 Statement::ExportDeclaration(export) => {
-                    exports.barrel = false;
+                    exports.pass_through = false;
                     declared_names(&export.declaration, &mut exports.names);
                 }
                 Statement::EmptyStatement(_) => {}
                 // Any other statement is code of the file's own, including `export =`.
-                _ => exports.barrel = false,
+                _ => exports.pass_through = false,
             }
         }
 
-        // A file that re-exports nothing is no barrel, even if it has no code.
-        exports.barrel &= !exports.reexports.is_empty() || !exports.stars.is_empty();
+        // A file that re-exports nothing is no pass-through module, even if it has no
+        // code.
+        exports.pass_through &= !exports.reexports.is_empty() || !exports.stars.is_empty();
         exports
     }
 }
@@ -229,8 +230,8 @@ mod tests {
     }
 
     #[test]
-    fn files_of_re_exports_are_barrels() {
-        let barrel = exports(
+    fn files_of_re_exports_pass_through() {
+        let module = exports(
             "export * from './a';\n\
              export { b, c as d } from './b';\n\
              export type { E } from './e';\n\
@@ -240,10 +241,10 @@ mod tests {
              export { f, G as g };\n\
              export default G;\n",
         );
-        assert!(barrel.barrel);
-        assert_eq!(barrel.stars.as_slice(), [(0, false)]);
+        assert!(module.pass_through);
+        assert_eq!(module.stars.as_slice(), [(0, false)]);
         assert_eq!(
-            barrel.reexports.as_slice(),
+            module.reexports.as_slice(),
             [
                 reexport("b", 1, Some("b"), false),
                 reexport("d", 1, Some("c"), false),
@@ -254,16 +255,16 @@ mod tests {
                 reexport("default", 5, Some("default"), false),
             ]
         );
-        assert!(barrel.names.is_empty());
+        assert!(module.names.is_empty());
 
         // An export before the import that binds it re-exports it too.
         let hoisted = exports("export { a };\nimport { a } from './a';\n");
-        assert!(hoisted.barrel);
+        assert!(hoisted.pass_through);
         assert_eq!(hoisted.reexports.as_slice(), [reexport("a", 0, Some("a"), false)]);
     }
 
     #[test]
-    fn files_with_code_of_their_own_are_not_barrels() {
+    fn files_with_code_of_their_own_do_not_pass_through() {
         for source in [
             "export * from './a';\nexport const b = 1;\n",
             "export * from './a';\nconsole.log('loaded');\n",
@@ -276,7 +277,7 @@ mod tests {
             "import { a } from './a';\n",
             "",
         ] {
-            assert!(!exports(source).barrel, "{source:?}");
+            assert!(!exports(source).pass_through, "{source:?}");
         }
     }
 
@@ -310,7 +311,7 @@ mod tests {
                 ("default", false),
             ]
         );
-        assert!(!module.barrel);
+        assert!(!module.pass_through);
         assert_eq!(
             exports("export default interface A {}\n").names.as_slice(),
             [ImportedName::new("default", true)]

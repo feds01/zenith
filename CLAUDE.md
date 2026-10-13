@@ -37,61 +37,26 @@ Linux/macOS/Windows, and `cargo deny`.
 
 Pipeline: config → discover → parse (parallel) → resolve (parallel) → graph → contracts (parallel) → render.
 
-The crates and what each one owns, on `main` today. Update the list when
-responsibilities move:
+The crates, and what each one owns. Update a line only when a crate takes on
+a new kind of responsibility, not for each feature:
 
-- `zenith`: the CLI (`cli.rs`, `commands/*`, `crash.rs`, `logger.rs`, and
-  `version.rs` with `build.rs` for git commit stamping), `project.rs`, which
-  finds the project and its configuration and runs the pipeline on it, and
-  the UI snapshot harness in `tests/ui.rs`.
-- `zenith_benchmark`: the divan benchmarks, and the deterministic synthetic
-  monorepo that they run on.
-- `zenith_config`: the `zenith.toml` types and JSON Schema, config discovery,
-  parsing, and validation into typed contract definitions, including the
-  syntax of selectors, layers and ignored imports.
-- `zenith_contracts`: resolving selectors into units, the labelled sets of
-  nodes that contracts reason about, from what the graph and the workspace
-  find, and failing on path and `pkg:` selectors that match nothing;
-  compiling contracts against a project, the view of the graph that each
-  checks against (without its excluded kinds, ignored imports, suppressed
-  statements and baselined imports), the six contract types, the
-  violations they find, the suppressions that had no effect, the baseline
-  file of known violations, their reports and summary entries, and the JSON
-  output of `zenith check`, with the pipeline's problems in it.
-- `zenith_diagnostics`: reports with labelled source excerpts, which each
-  crate makes from its own errors and findings, rendered in full or a line
-  each using `annotate-snippets`, or as GitHub Actions workflow commands;
-  the `SourceMap`, which reads a project's files when reports first need
-  them and finds where a span is; and errors and warnings collected per
-  pass.
-- `zenith_graph`: the module tree and import graph model, import kinds, the
-  names that imports take and modules export, node sets, units, finding the
-  nodes that a path glob or name pattern picks out, graph views that leave out
-  imports (by pair or by kind) and have boundaries that chains don't pass
-  through, the graph through re-exports, which follows imports of names to the
-  modules that define them, the grimp algorithms that run on them: shortest
-  import chains, layers and cycle breakers, and module overviews for
-  visualisations (`zenith graph`).
-- `zenith_parse`: oxc-based extraction of imports, their kinds and the
-  names they take, what each file exports and whether it is a barrel,
-  directives and suppression comments.
-- `zenith_pipeline`: the stages (discover, parse, resolve, graph) that turn
-  a project into its import graph, registered in order on a `Pipeline` that
-  runs and times them, and the `Session` they share. Each stage is a thin
-  adapter over the crate that does its work. Files it can't read or parse
-  are recorded as `FileError`s, and imports it can't resolve as
-  `UnresolvedImport`s, with reports and JSON.
-- `zenith_reporting`: the output of `zenith check`, without knowing what
-  is checked: the reports that the domain crates make, then the summary of
-  every contract, in the `pretty`, `compact` and `github` formats.
-- `zenith_resolve`: specifier resolution with `oxc_resolver`, its
-  classification, and `exports`-aware workspace resolution.
-- `zenith_utils`: file reading, path and specifier helpers, byte ranges, the
-  glob dialect and name patterns, the line index, terminal output:
-  highlighting, the logger, and printing text and trees, and the global
-  thread pool.
-- `zenith_workspace`: the file walker, narrowing it to the files that git
-  tracks, the files that git sees renamed, and workspace package discovery.
+- `zenith`: the CLI, its commands, and the UI snapshot harness in
+  `tests/ui.rs`.
+- `zenith_benchmark`: the benchmarks, and the synthetic monorepo they run on.
+- `zenith_config`: the `zenith.toml` types, schema, discovery and validation.
+- `zenith_contracts`: selectors, the contract types and the violations they
+  find, suppressions, the baseline, and the JSON output of `zenith check`.
+- `zenith_diagnostics`: reports with source excerpts, and how they render.
+- `zenith_graph`: the module tree and import graph, views of it, and the
+  algorithms that run on them.
+- `zenith_parse`: what each source file imports and exports, read with oxc.
+- `zenith_pipeline`: the stages that turn a project into its import graph,
+  and the session they share.
+- `zenith_reporting`: the output formats of `zenith check`.
+- `zenith_resolve`: specifier resolution with `oxc_resolver`.
+- `zenith_utils`: shared helpers: files, paths, globs, locations, terminal
+  output and the thread pool.
+- `zenith_workspace`: the file walker, git, and workspace packages.
 
 Key invariants:
 

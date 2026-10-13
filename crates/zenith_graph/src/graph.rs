@@ -133,6 +133,17 @@ pub struct ImportDetail {
     pub names: ImportedNames,
 }
 
+impl ImportDetail {
+    /// This import, as a type import if `type_only`.
+    pub(crate) fn with_type_only(&self, type_only: bool) -> Self {
+        let mut detail = self.clone();
+        if type_only {
+            detail.kind = ImportKind::Type;
+        }
+        detail
+    }
+}
+
 /// The module tree and import graph of a project.
 ///
 /// The graph holds every internal directory and file, every external package

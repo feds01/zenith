@@ -1,3 +1,7 @@
+<div class="logo" aria-hidden="true">
+{{#include ../../logo/zenith.svg}}
+</div>
+
 # zenith
 
 zenith is an architecture linter for TypeScript and JavaScript monorepos. It

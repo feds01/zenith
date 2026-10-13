@@ -32,12 +32,14 @@ name = "No cycles between workspace packages"
 modules = ["pkg:*"]
 exclude_kinds = ["type"]
 
-# 4. Client components (transitively) never reach server-only code.
+# 4. Client components (transitively) never reach server-only code. Chains
+#    stop at "use server" files, whose imports stay on the server.
 [contracts.client-safety]
 type = "forbidden"
 name = "Client components never reach server-only code"
 from = [{ path = "web/src/**", directive = "use client" }]
 to = ["npm:sharp", "npm:@mastra/*", "node:*", "npm:server-only"]
+boundaries = [{ path = "web/src/**", directive = "use server" }]
 guidance = "Keep server-only modules out of client bundles: import a narrower module, or move the call into a server action."
 
 # 5 and 11. @acme/ai is only imported through its root entry point.

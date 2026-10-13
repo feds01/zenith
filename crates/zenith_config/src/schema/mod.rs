@@ -335,6 +335,14 @@ contract_table! {
         /// imports too.
         #[serde(default)]
         allow_indirect_imports: bool,
+
+        /// Modules that chains of imports may start or end at, but not pass
+        /// through, e.g. `{ path = "web/**", directive = "use server" }`:
+        /// client code that imports a server function gets a reference to
+        /// it, not the code that it imports. Has no effect on direct imports,
+        /// so it can't be set with `allow_indirect_imports`.
+        #[serde(default)]
+        boundaries: Located<Vec<Located<SelectorValue>>>,
     }
 }
 
@@ -348,6 +356,14 @@ contract_table! {
         /// imports too.
         #[serde(default)]
         allow_indirect_imports: bool,
+
+        /// Modules that chains of imports may start or end at, but not pass
+        /// through, e.g. `{ path = "web/**", directive = "use server" }`:
+        /// client code that imports a server function gets a reference to
+        /// it, not the code that it imports. Has no effect on direct imports,
+        /// so it can't be set with `allow_indirect_imports`.
+        #[serde(default)]
+        boundaries: Located<Vec<Located<SelectorValue>>>,
     }
 }
 
@@ -378,6 +394,14 @@ contract_table! {
         /// imports too.
         #[serde(default)]
         allow_indirect_imports: bool,
+
+        /// Modules that chains of imports may start or end at, but not pass
+        /// through, e.g. `{ path = "web/**", directive = "use server" }`:
+        /// client code that imports a server function gets a reference to
+        /// it, not the code that it imports. Has no effect on direct imports,
+        /// so it can't be set with `allow_indirect_imports`.
+        #[serde(default)]
+        boundaries: Located<Vec<Located<SelectorValue>>>,
     }
 }
 

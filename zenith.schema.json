@@ -202,6 +202,13 @@
               "description": "If `true`, only direct imports count, rather than chains of\nimports too.",
               "default": false
             },
+            "boundaries": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SelectorValue"
+              },
+              "description": "Modules that chains of imports may start or end at, but not pass\nthrough, e.g. `{ path = \"web/**\", directive = \"use server\" }`:\nclient code that imports a server function gets a reference to\nit, not the code that it imports. Has no effect on direct imports,\nso it can't be set with `allow_indirect_imports`."
+            },
             "name": {
               "type": "string",
               "description": "The title shown in output. Defaults to the contract id."
@@ -262,6 +269,13 @@
               "type": "boolean",
               "description": "If `true`, only direct imports count, rather than chains of\nimports too.",
               "default": false
+            },
+            "boundaries": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SelectorValue"
+              },
+              "description": "Modules that chains of imports may start or end at, but not pass\nthrough, e.g. `{ path = \"web/**\", directive = \"use server\" }`:\nclient code that imports a server function gets a reference to\nit, not the code that it imports. Has no effect on direct imports,\nso it can't be set with `allow_indirect_imports`."
             },
             "name": {
               "type": "string",
@@ -342,6 +356,13 @@
               "type": "boolean",
               "description": "If `true`, only direct imports count, rather than chains of\nimports too.",
               "default": false
+            },
+            "boundaries": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SelectorValue"
+              },
+              "description": "Modules that chains of imports may start or end at, but not pass\nthrough, e.g. `{ path = \"web/**\", directive = \"use server\" }`:\nclient code that imports a server function gets a reference to\nit, not the code that it imports. Has no effect on direct imports,\nso it can't be set with `allow_indirect_imports`."
             },
             "name": {
               "type": "string",

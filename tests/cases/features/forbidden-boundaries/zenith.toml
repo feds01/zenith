@@ -1,0 +1,16 @@
+# Client components never reach server-only code. A client component may call
+# a server action, but only a reference to it ships to the browser, so chains
+# stop at "use server" files: `upload-form.tsx` and `save-button.tsx` are
+# fine, while `preview.tsx` bundles `sharp`.
+[contracts.client-safety]
+type = "forbidden"
+from = [{ path = "src/**", directive = "use client" }]
+to = ["npm:sharp", "npm:server-only", "node:*"]
+boundaries = [{ path = "src/**", directive = "use server" }]
+
+# The same contract without boundaries also reports the chains through the
+# server action.
+[contracts.client-safety-without-boundaries]
+type = "forbidden"
+from = [{ path = "src/**", directive = "use client" }]
+to = ["npm:sharp", "npm:server-only", "node:*"]

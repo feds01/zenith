@@ -1,0 +1,5 @@
+[contracts.c]
+type = "layers"
+layers = ["a"]
+allow_indirect_imports = true
+boundaries = ["a"]

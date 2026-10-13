@@ -205,9 +205,10 @@ re-exports research. It is v1 barrel over-reporting, accepted in v1.
 
 - `web/src/domains/campaigns/components/CampaignHeader.tsx:5` →
   `web/src/domains/campaigns/api/actions.ts` is a
-  "use server" file. Its closure, which takes in `@acme/api` and the
-  api ⇄ utils cycle, reaches nothing forbidden. v1 has no "use server"
-  boundary, so this import is a ready-made case for a later rule.
+  "use server" file, which the contract's `boundaries` stop chains at. Its
+  closure, which takes in `@acme/api` and the api ⇄ utils cycle, reaches
+  nothing forbidden anyway; `tests/cases/features/forbidden-boundaries`
+  covers a server action that does.
 - `web/src/domains/campaigns/components/CampaignAiPanel.tsx:4` →
   `web/src/domains/campaigns/hooks/use-campaign-brief.ts:1` →
   `packages/ai/src/domains/campaigns/brief.ts:1` → `npm:zod`.

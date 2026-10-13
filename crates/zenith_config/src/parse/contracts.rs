@@ -21,8 +21,9 @@ use crate::{
     error::{ConfigErrorKind, suggest},
     schema::{
         AcyclicTable, ContractTable, EncapsulationTable, ForbiddenTable, IndependenceTable,
-        LayersTable, ProtectedTable,
+        LayersTable, Located, ProtectedTable, SelectorValue,
     },
+    selector::Selector,
 };
 
 impl Parser {
@@ -122,10 +123,12 @@ impl Parser {
                 from: self.parse_selectors(&table.from),
                 to: self.parse_selectors(&table.to),
                 allow_indirect_imports: table.allow_indirect_imports,
+                boundaries: self.parse_boundaries(&table.boundaries, table.allow_indirect_imports),
             }),
             ContractTable::Independence(table) => ContractKind::Independence(IndependenceConfig {
                 modules: self.parse_selectors(&table.modules),
                 allow_indirect_imports: table.allow_indirect_imports,
+                boundaries: self.parse_boundaries(&table.boundaries, table.allow_indirect_imports),
             }),
             ContractTable::Layers(table) => ContractKind::Layers(self.parse_layers(table)),
             ContractTable::Protected(table) => ContractKind::Protected(ProtectedConfig {
@@ -181,7 +184,21 @@ impl Parser {
             exhaustive: table.exhaustive.value,
             exhaustive_ignores: self.parse_patterns(&table.exhaustive_ignores, NamePattern::new),
             allow_indirect_imports: table.allow_indirect_imports,
+            boundaries: self.parse_boundaries(&table.boundaries, table.allow_indirect_imports),
         }
+    }
+
+    /// Parse the `boundaries` of a contract that follows chains, unless
+    /// `allow_indirect_imports` turns the chains off.
+    fn parse_boundaries(
+        &mut self,
+        boundaries: &Located<Vec<Located<SelectorValue>>>,
+        allow_indirect_imports: bool,
+    ) -> Vec<Selector> {
+        if allow_indirect_imports && !boundaries.value.is_empty() {
+            self.add_error(ConfigErrorKind::BoundariesWithoutChains, Some(boundaries.range));
+        }
+        self.parse_selectors(&boundaries.value)
     }
 }
 

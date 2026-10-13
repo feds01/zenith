@@ -26,6 +26,7 @@ type = "forbidden"
 name = "Client components never reach server-only code"
 from = [{ path = "web/src/**", directive = "use client" }]
 to = ["npm:sharp", "node:*", "npm:server-only"]
+boundaries = [{ path = "web/src/**", directive = "use server" }]
 guidance = "Keep server-only modules out of client bundles."
 
 [contracts.features-independent]

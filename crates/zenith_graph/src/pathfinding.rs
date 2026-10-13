@@ -20,10 +20,11 @@ impl GraphView<'_> {
     /// backwards from `to`, until the two searches meet. Nodes are expanded
     /// in ascending id order, so the chain found is deterministic.
     ///
-    /// No chain passes through a member of `excluded_nodes`, or uses an
-    /// import in `excluded_imports` (on top of those the view leaves out).
-    /// The ends of a chain are never excluded, so `excluded_nodes` may
-    /// contain members of `from` and `to`.
+    /// No chain passes through a member of `excluded_nodes` or a boundary of
+    /// the view, or uses an import in `excluded_imports` (on top of those the
+    /// view leaves out). The ends of a chain are never excluded, so
+    /// `excluded_nodes` and the boundaries may contain members of `from` and
+    /// `to`.
     ///
     /// Returns `None` if there is no chain, or if `from` and `to` share a
     /// node: overlapping sets don't describe an import between them, so
@@ -50,9 +51,9 @@ impl GraphView<'_> {
     /// import first, in ascending order, then the indirect chains, shortest
     /// first.
     ///
-    /// Chains never pass through `excluded_nodes`, as in
-    /// [`Self::find_shortest_chain`]. Overlapping `from` and `to` have no
-    /// chains.
+    /// Chains never pass through `excluded_nodes` or the boundaries of the
+    /// view, as in [`Self::find_shortest_chain`]. Overlapping `from` and `to`
+    /// have no chains.
     pub fn find_shortest_chains(
         &self,
         from: &NodeSet,
@@ -68,13 +69,15 @@ impl GraphView<'_> {
     /// other nodes (grimp's `find_downstream_modules`).
     ///
     /// As in grimp, the members of `targets` are never part of the result,
-    /// even if they import each other.
+    /// even if they import each other. A boundary of the view is part of it
+    /// if it reaches a target, but the nodes that import it reach the target
+    /// only through it, so they are not, unless they reach it another way.
     pub fn find_downstream(&self, targets: &NodeSet) -> NodeSet {
         let mut seen = targets.clone();
         let mut stack: Vec<ModuleId> = targets.iter().collect();
         while let Some(module) = stack.pop() {
             for importer in self.importers_of(module) {
-                if seen.insert(importer) {
+                if seen.insert(importer) && !self.boundaries().contains(importer) {
                     stack.push(importer);
                 }
             }
@@ -207,16 +210,18 @@ impl ChainSearch {
     /// Expand the two searches a level at a time until they meet, and return
     /// the node where they do.
     ///
-    /// A node is checked against the other search before the exclusions, so
-    /// a chain can always end at a member of `from` or `to`. Once either
-    /// search runs out of nodes to expand, there is no chain: it would have
-    /// reached the other search's start.
+    /// A node is checked against the other search before the exclusions and
+    /// the boundaries of the view, so a chain can always end at a member of
+    /// `from` or `to`. Once either search runs out of nodes to expand, there
+    /// is no chain: it would have reached the other search's start.
     fn meet(
         &mut self,
         view: &GraphView,
         excluded_nodes: &NodeSet,
         excluded_imports: &EdgeSet,
     ) -> Option<ModuleId> {
+        let boundaries = view.boundaries();
+        let passable = |node| !excluded_nodes.contains(node) && !boundaries.contains(node);
         let mut expanded_forwards = 0;
         let mut expanded_backwards = 0;
         loop {
@@ -232,7 +237,7 @@ impl ChainSearch {
                         self.importers[imported] = Some(importer);
                         return Some(imported);
                     }
-                    if !excluded_nodes.contains(imported) && self.seen_forwards.insert(imported) {
+                    if passable(imported) && self.seen_forwards.insert(imported) {
                         self.importers[imported] = Some(importer);
                         self.forwards.push(imported);
                     }
@@ -254,7 +259,7 @@ impl ChainSearch {
                         self.imported[importer] = Some(imported);
                         return Some(importer);
                     }
-                    if !excluded_nodes.contains(importer) && self.seen_backwards.insert(importer) {
+                    if passable(importer) && self.seen_backwards.insert(importer) {
                         self.imported[importer] = Some(imported);
                         self.backwards.push(importer);
                     }
@@ -436,6 +441,41 @@ mod tests {
             shortest(&graph, &["a.ts"], &["b.ts"], &["a.ts", "b.ts"]).unwrap(),
             ["a.ts", "b.ts"]
         );
+    }
+
+    #[test]
+    fn chains_end_at_boundaries_but_do_not_pass_through_them() {
+        // `client.ts` reaches `node:fs` through the boundary `server.ts`, and
+        // `npm:sharp` both through it and around it.
+        let graph = graph_of(&[
+            ("client.ts", "server.ts"),
+            ("server.ts", "node:fs"),
+            ("server.ts", "npm:sharp"),
+            ("client.ts", "lib.ts"),
+            ("lib.ts", "util.ts"),
+            ("util.ts", "npm:sharp"),
+        ]);
+        let view = GraphView::new(&graph).with_boundaries(set(&graph, &["server.ts"]));
+        let chains = |from: &str, to: &str| -> Vec<Vec<&str>> {
+            let (from, to) = (set(&graph, &[from]), set(&graph, &[to]));
+            let chains = view.find_shortest_chains(&from, &to, &NodeSet::new());
+            chains.into_iter().map(|chain| names(&graph, chain)).collect()
+        };
+        assert!(chains("client.ts", "node:fs").is_empty());
+        assert_eq!(
+            chains("client.ts", "npm:sharp"),
+            [["client.ts", "lib.ts", "util.ts", "npm:sharp"]]
+        );
+
+        // A chain may end at a boundary, or start at one.
+        assert_eq!(chains("client.ts", "server.ts"), [["client.ts", "server.ts"]]);
+        assert_eq!(chains("server.ts", "node:fs"), [["server.ts", "node:fs"]]);
+
+        // Without the boundary, the chain through it is found.
+        let view = GraphView::new(&graph);
+        let (client, fs) = (set(&graph, &["client.ts"]), set(&graph, &["node:fs"]));
+        let chain = view.find_shortest_chain(&client, &fs, &NodeSet::new(), &EdgeSet::new());
+        assert_eq!(names(&graph, chain.unwrap()), ["client.ts", "server.ts", "node:fs"]);
     }
 
     #[test]
@@ -768,5 +808,34 @@ mod tests {
         let [b, t1] = ["b.ts", "t1.ts"].map(|name| id(&graph, name));
         let view = GraphView::with_excluded(&graph, [(b, t1)].into_iter().collect());
         assert_eq!(names(&graph, view.find_downstream(&targets).iter()), ["c.ts"]);
+    }
+
+    #[test]
+    fn downstream_nodes_reach_the_targets_without_passing_through_a_boundary() {
+        let graph = graph_of(&[
+            ("a.ts", "b.ts"),
+            ("b.ts", "t.ts"),
+            ("c.ts", "b.ts"),
+            ("c.ts", "d.ts"),
+            ("d.ts", "t.ts"),
+        ]);
+        let targets = set(&graph, &["t.ts"]);
+        let view = GraphView::new(&graph);
+        assert_eq!(
+            names(&graph, view.find_downstream(&targets).iter()),
+            ["a.ts", "b.ts", "c.ts", "d.ts"]
+        );
+
+        // `b.ts` reaches `t.ts` itself, but `a.ts` only through it. `c.ts` also
+        // reaches it through `d.ts`.
+        let view = view.with_boundaries(set(&graph, &["b.ts"]));
+        assert_eq!(names(&graph, view.find_downstream(&targets).iter()), ["b.ts", "c.ts", "d.ts"]);
+
+        // A target that is a boundary is still reached.
+        let view = GraphView::new(&graph).with_boundaries(targets.clone());
+        assert_eq!(
+            names(&graph, view.find_downstream(&targets).iter()),
+            ["a.ts", "b.ts", "c.ts", "d.ts"]
+        );
     }
 }

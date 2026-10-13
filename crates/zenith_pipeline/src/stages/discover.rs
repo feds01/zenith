@@ -1,7 +1,7 @@
 //! The [`Discover`] stage.
 
 use zenith_utils::path::relative_posix;
-use zenith_workspace::{TrackedFiles, discover_packages, walk};
+use zenith_workspace::{Git, discover_packages, walk};
 
 use crate::{PipelineError, Session, SourceFile, Stage, StageKind};
 
@@ -19,7 +19,7 @@ impl Stage for Discover {
         let root = &session.root;
         let mut found = walk(root, &session.walk_settings());
         if session.tracked_only {
-            found.retain_tracked(&TrackedFiles::find(root)?);
+            found.retain_tracked(&Git::new(root).tracked_files()?);
         }
         let workspace = discover_packages(root, &found.package_jsons);
         // The walk only finds files inside the root.

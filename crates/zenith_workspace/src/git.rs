@@ -1,9 +1,10 @@
-//! What git knows about a project: the files that it tracks, for scanning
-//! only those, as in a pre-commit hook, where untracked files aren't part of
-//! the commit, and the files that it sees renamed, for following them.
+//! What git knows about a project, through a [`Git`] client: the files that
+//! it tracks, for scanning only those, as in a pre-commit hook, where
+//! untracked files aren't part of the commit, and the files that it sees
+//! renamed, for following them.
 
 use std::{
-    ffi::OsStr,
+    ffi::OsString,
     fmt,
     path::{Path, PathBuf},
     process::Command,
@@ -15,78 +16,73 @@ use zenith_utils::path::relative_posix;
 
 use crate::WalkResult;
 
-/// The files that git tracks in a worktree: those in its index, which is the
-/// next commit's while a pre-commit hook runs.
+/// Runs git for a project, in the root of the worktree that the project is
+/// in.
+///
+/// Git runs hooks in the worktree's root, and sets some of their variables to
+/// paths relative to it, such as `GIT_INDEX_FILE=.git/index`, so the client
+/// runs git there too, whichever directory of the worktree the project is
+/// rooted at.
 #[derive(Debug, Clone)]
-pub struct TrackedFiles {
-    /// The worktree's root, the nearest directory with a `.git`.
+pub struct Git {
+    /// The project root, which is canonical.
+    root: PathBuf,
+
+    /// The worktree's root: the nearest directory with a `.git`, at or above
+    /// the project root, or the project root outside a worktree, where git
+    /// explains the problem.
     worktree: PathBuf,
 
-    /// The POSIX paths of the files, relative to `worktree`.
-    names: FxHashSet<String>,
+    /// The environment variables to run git with, besides zenith's own.
+    variables: Vec<(&'static str, OsString)>,
 }
 
-impl TrackedFiles {
-    /// The files that git tracks in the worktree that `root`, which must be
-    /// canonical, is in.
-    pub fn find(root: &Path) -> Result<Self, GitError> {
-        Self::find_with(root, [])
+impl Git {
+    /// A client for the project at `root`, which must be canonical.
+    pub fn new(root: &Path) -> Self {
+        let worktree = root.ancestors().find(|dir| dir.join(".git").exists()).unwrap_or(root);
+        Self { root: root.to_owned(), worktree: worktree.to_owned(), variables: Vec::new() }
     }
 
-    /// [`Self::find`], running git with the extra environment `variables`.
-    fn find_with<'a>(
-        root: &Path,
-        variables: impl IntoIterator<Item = (&'a str, &'a OsStr)>,
-    ) -> Result<Self, GitError> {
-        let (worktree, output) = run(root, &["ls-files", "-z", "--cached"], variables)?;
-        // `ls-files` lists the files relative to the directory it runs in, and `-z`
-        // keeps their names as they are, without quoting.
+    /// This client, running git with the environment variable `name` set to
+    /// `value`, as a hook would.
+    #[cfg(test)]
+    fn with_env(mut self, name: &'static str, value: &str) -> Self {
+        self.variables.push((name, value.into()));
+        self
+    }
+
+    /// The files that git tracks in the worktree: those in its index, which
+    /// is the next commit's while a pre-commit hook runs.
+    pub fn tracked_files(&self) -> Result<TrackedFiles, GitError> {
+        let output = self.run(&["ls-files", "-z", "--cached"])?;
+        // `ls-files` lists the files relative to the directory it runs in.
         let names = fields(&output).map(str::to_owned).collect();
-        Ok(Self { worktree, names })
+        Ok(TrackedFiles { worktree: self.worktree.clone(), names })
     }
 
-    /// Whether git tracks the file at `path`, which is absolute.
-    pub fn contains(&self, path: &Path) -> bool {
-        relative_posix(&self.worktree, path).is_some_and(|name| self.names.contains(&name))
-    }
-}
-
-/// The files that git sees renamed in a worktree, between its last commit and
-/// the files in it, which in a pre-commit hook are the commit's renames.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Renames {
-    /// The new name of each renamed file, by its old one, both POSIX paths
-    /// relative to the project root.
-    names: FxHashMap<String, String>,
-}
-
-impl Renames {
-    /// The files that git sees renamed inside `root`, which must be
-    /// canonical, or none outside a repository, before its first commit, or
-    /// without git. A file renamed into or out of `root` is not a rename
+    /// The files that git sees renamed inside the project root, between the
+    /// last commit and the files in the worktree, which in a pre-commit hook
+    /// are the commit's renames. There are none outside a repository, before
+    /// its first commit, or without git, since following renames is only a
+    /// convenience. A file renamed into or out of the root is not a rename
     /// inside it.
-    pub fn find(root: &Path) -> Self {
-        Self::find_with(root, []).unwrap_or_else(|error| {
-            let (GitError::Run(message) | GitError::Failed(message)) = error;
-            debug!("not following renamed files, as git could not list them: {message}");
-            Self::default()
+    pub fn renames(&self) -> Renames {
+        self.find_renames().unwrap_or_else(|error| {
+            debug!("not following renamed files: {error}");
+            Renames::default()
         })
     }
 
-    /// [`Self::find`], running git with the extra environment `variables`,
-    /// or why git could not list the renames.
-    fn find_with<'a>(
-        root: &Path,
-        variables: impl IntoIterator<Item = (&'a str, &'a OsStr)>,
-    ) -> Result<Self, GitError> {
+    /// [`Self::renames`], or why git could not list them.
+    fn find_renames(&self) -> Result<Renames, GitError> {
         // 1. Compare the last commit with the files in the worktree, finding renames.
-        let args = ["diff", "-M", "--name-status", "-z", "--no-ext-diff", "HEAD"];
-        let (worktree, output) = run(root, &args, variables)?;
+        let output = self.run(&["diff", "-M", "--name-status", "-z", "--no-ext-diff", "HEAD"])?;
 
         // 2. Git names the files relative to the worktree's root, and the project's are
         //    relative to its own root, which may be a directory inside it.
-        let Some(prefix) = relative_posix(&worktree, root) else {
-            return Ok(Self::default());
+        let Some(prefix) = relative_posix(&self.worktree, &self.root) else {
+            return Ok(Renames::default());
         };
         let inside = |name: &str| match prefix.as_str() {
             "" => Some(name.to_owned()),
@@ -110,9 +106,55 @@ impl Renames {
                 names.insert(old, new);
             }
         }
-        Ok(Self { names })
+        Ok(Renames { names })
     }
 
+    /// Run git with `args` in the worktree's root, returning what it printed.
+    fn run(&self, args: &[&str]) -> Result<String, GitError> {
+        let output = Command::new("git")
+            .current_dir(&self.worktree)
+            .args(args)
+            .envs(self.variables.iter().map(|(name, value)| (name, value)))
+            .output()
+            .map_err(|error| GitError::Run(error.to_string()))?;
+        if !output.status.success() {
+            return Err(GitError::Failed {
+                command: args.join(" "),
+                message: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+            });
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+}
+
+/// The files that git tracks in a worktree, as [`Git::tracked_files`] finds
+/// them.
+#[derive(Debug, Clone)]
+pub struct TrackedFiles {
+    /// The worktree's root.
+    worktree: PathBuf,
+
+    /// The POSIX paths of the files, relative to `worktree`.
+    names: FxHashSet<String>,
+}
+
+impl TrackedFiles {
+    /// Whether git tracks the file at `path`, which is absolute.
+    pub fn contains(&self, path: &Path) -> bool {
+        relative_posix(&self.worktree, path).is_some_and(|name| self.names.contains(&name))
+    }
+}
+
+/// The files that git sees renamed inside a project, as [`Git::renames`]
+/// finds them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Renames {
+    /// The new name of each renamed file, by its old one, both POSIX paths
+    /// relative to the project root.
+    names: FxHashMap<String, String>,
+}
+
+impl Renames {
     /// The new name of the file `name`, both relative to the project root:
     /// its name after the rename, or `name` itself if it wasn't renamed.
     pub fn follow<'n>(&'n self, name: &'n str) -> &'n str {
@@ -137,32 +179,6 @@ impl FromIterator<(String, String)> for Renames {
     }
 }
 
-/// Run git with `args` in the root of the worktree that `root` is in, and
-/// with the extra environment `variables`, returning that root and what git
-/// printed.
-fn run<'a>(
-    root: &Path,
-    args: &[&str],
-    variables: impl IntoIterator<Item = (&'a str, &'a OsStr)>,
-) -> Result<(PathBuf, String), GitError> {
-    // Git runs hooks in the worktree's root, and sets some of their variables to
-    // paths relative to it, such as `GIT_INDEX_FILE=.git/index`, so run git there
-    // too. Outside a worktree, git explains the problem.
-    let worktree = root.ancestors().find(|dir| dir.join(".git").exists()).unwrap_or(root);
-    let output = Command::new("git")
-        .current_dir(worktree)
-        .args(args)
-        .envs(variables)
-        .output()
-        .map_err(|error| GitError::Run(error.to_string()))?;
-    if !output.status.success() {
-        let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(GitError::Failed(message));
-    }
-    let output = String::from_utf8_lossy(&output.stdout).into_owned();
-    Ok((worktree.to_owned(), output))
-}
-
 /// The fields of git's `-z` output, which separates them with NUL bytes, and
 /// keeps names as they are, without quoting.
 fn fields(output: &str) -> impl Iterator<Item = &str> {
@@ -178,25 +194,28 @@ impl WalkResult {
     }
 }
 
-/// Why the files that git tracks couldn't be listed.
+/// Why git couldn't tell zenith what it asked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GitError {
     /// `git` could not be run, most likely because it isn't installed, with
     /// this message.
     Run(String),
 
-    /// `git ls-files` failed, most likely outside a repository, with this
-    /// message.
-    Failed(String),
+    /// Git ran but failed, most likely outside a repository.
+    Failed {
+        /// The command's arguments, e.g. `ls-files -z --cached`.
+        command: String,
+
+        /// What git said.
+        message: String,
+    },
 }
 
 impl fmt::Display for GitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Run(error) => write!(f, "could not run `git` to list the tracked files: {error}"),
-            Self::Failed(message) => {
-                write!(f, "could not list the files that git tracks: {message}")
-            }
+            Self::Run(error) => write!(f, "could not run `git`: {error}"),
+            Self::Failed { command, message } => write!(f, "`git {command}` failed: {message}"),
         }
     }
 }
@@ -264,7 +283,7 @@ mod tests {
             &["src/a.ts", "src/b.ts", "scratch.ts", "package.json", "new/package.json"],
             &["src/a.ts", "package.json"],
         );
-        let tracked = TrackedFiles::find(&root).unwrap();
+        let tracked = Git::new(&root).tracked_files().unwrap();
         assert!(tracked.contains(&root.join("src/a.ts")));
         assert!(!tracked.contains(&root.join("src/b.ts")));
 
@@ -281,7 +300,7 @@ mod tests {
     fn files_are_named_relative_to_a_root_inside_the_repository() {
         let (_dir, repository) = repository(&["web/src/a.ts", "web/b.ts"], &["web/src/a.ts"]);
         let root = repository.join("web");
-        let tracked = TrackedFiles::find(&root).unwrap();
+        let tracked = Git::new(&root).tracked_files().unwrap();
         assert!(tracked.contains(&root.join("src/a.ts")));
         assert!(!tracked.contains(&root.join("b.ts")));
     }
@@ -294,8 +313,8 @@ mod tests {
         if root.ancestors().any(|dir| dir.join(".git").exists()) {
             return;
         }
-        let error = TrackedFiles::find(&root).unwrap_err();
-        assert!(matches!(error, GitError::Failed(_)), "{error:?}");
+        let error = Git::new(&root).tracked_files().unwrap_err();
+        assert!(matches!(error, GitError::Failed { .. }), "{error:?}");
     }
 
     #[test]
@@ -304,8 +323,8 @@ mod tests {
         // relative to the worktree's root, where it runs them.
         let (_dir, repository) = repository(&["web/src/a.ts", "web/b.ts"], &["web/src/a.ts"]);
         let root = repository.join("web");
-        let index = [("GIT_INDEX_FILE", OsStr::new(".git/index"))];
-        let tracked = TrackedFiles::find_with(&root, index).unwrap();
+        let git = Git::new(&root).with_env("GIT_INDEX_FILE", ".git/index");
+        let tracked = git.tracked_files().unwrap();
         assert!(tracked.contains(&root.join("src/a.ts")));
         assert!(!tracked.contains(&root.join("b.ts")));
     }
@@ -318,7 +337,7 @@ mod tests {
         fs::write(root.join("src/b.ts"), "export const b = 'changed';\n").unwrap();
         fs::remove_file(root.join("d.ts")).unwrap();
 
-        let renames = Renames::find(&root);
+        let renames = Git::new(&root).renames();
         assert_eq!(renames.len(), 2);
         assert_eq!(renames.follow("src/a.ts"), "src/z.ts");
         assert_eq!(renames.follow("src/old/c.ts"), "src/new/c.ts");
@@ -335,22 +354,22 @@ mod tests {
         git(&repository, &["mv", "api/d.ts", "web/d.ts"]);
 
         let root = repository.join("web");
-        let index = [("GIT_INDEX_FILE", OsStr::new(".git/index"))];
-        let renames = Renames::find_with(&root, index).unwrap();
+        let git = Git::new(&root).with_env("GIT_INDEX_FILE", ".git/index");
+        let renames = git.find_renames().unwrap();
         assert_eq!(renames, [("a.ts".to_string(), "src/a.ts".to_string())].into_iter().collect());
     }
 
     #[test]
     fn there_are_no_renames_before_the_first_commit_or_outside_a_repository() {
         let (_dir, root) = repository(&["a.ts"], &["a.ts"]);
-        assert!(Renames::find_with(&root, []).is_err());
-        assert!(Renames::find(&root).is_empty());
+        assert!(Git::new(&root).find_renames().is_err());
+        assert!(Git::new(&root).renames().is_empty());
 
         let dir = TempDir::new().unwrap();
         let root = adjust_canonicalisation(dir.path());
         // A repository above the temporary directory could have renames.
         if !root.ancestors().any(|dir| dir.join(".git").exists()) {
-            assert!(Renames::find(&root).is_empty());
+            assert!(Git::new(&root).renames().is_empty());
         }
     }
 }

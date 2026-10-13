@@ -7,7 +7,7 @@ use log::warn;
 use zenith_contracts::{Baseline, Exemptions};
 use zenith_pipeline::StageKind;
 use zenith_utils::printing::{plural, thousands};
-use zenith_workspace::Renames;
+use zenith_workspace::Git;
 
 use crate::{
     ExitStatus,
@@ -38,7 +38,7 @@ pub fn baseline(global: &GlobalArgs, args: BaselineCommand) -> Result<ExitStatus
     let mut known = old.clone();
     if args.prune {
         let ids: Vec<_> = contracts.iter().map(|contract| contract.config.id.as_str()).collect();
-        known.follow_renames(ids.iter().copied(), &Renames::find(&session.root));
+        known.follow_renames(ids.iter().copied(), &Git::new(&session.root).renames());
         baseline = known.clone();
         baseline.prune(ids, &session.graph);
     } else {

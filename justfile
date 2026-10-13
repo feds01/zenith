@@ -214,20 +214,45 @@ publish-formula tap:
 
     git push
 
-# Stage the npm package of each release in $PLAN, dist's plan, from the artifacts in `dir`, for a maintainer to approve, skipping versions already on npm (run by the release workflow)
+# Assemble and pack the npm packages into `out`, from the release archives in `archives`, at the version of crates/zenith/Cargo.toml unless given another, and only for `targets` if given any
+[no-cd]
+npm-packages archives out version="" *targets:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shift 3
+    version="{{version}}"
+    if [ -z "$version" ]; then
+        version="$(sed -n 's/^version = "\(.*\)"/\1/p' "{{justfile_directory()}}/crates/zenith/Cargo.toml" | head -1)"
+    fi
+    # An absolute path: npm reads a relative one, like `out/zenith`, as a
+    # GitHub repository.
+    out="$(mkdir -p "{{out}}" && cd "{{out}}" && pwd)"
+    node "{{justfile_directory()}}/npm/assemble.mjs" "$version" "{{archives}}" "$out" "$@"
+    for package in "$out"/zenith*/; do
+        npm pack --json --pack-destination "$out" "$package" | jq --raw-output '.[].filename'
+    done
+
+# Stage the npm packages of the release in $PLAN, dist's plan, from the archives in `dir`, for a maintainer to approve, skipping versions already on npm (run by the release workflow)
 [no-cd]
 publish-npm dir:
     #!/usr/bin/env bash
     set -euo pipefail
-    # An absolute path: npm reads a relative one, like `npm/<package>`, as a
-    # GitHub repository.
-    dir="$(cd "{{dir}}" && pwd)"
+    # The version that the plan releases zenith at, if it releases it.
+    version="$(jq --raw-output '.releases[] | select(.app_name == "zenith") | .app_version' <<<"$PLAN")"
+    if [ -z "$version" ]; then
+        echo "The release has no zenith to stage"
+        exit 0
+    fi
 
-    packages="$(jq --raw-output '.releases[].artifacts[] | select(endswith("-npm-package.tar.gz"))' <<<"$PLAN")"
-    while IFS= read -r package; do
-        [ -n "$package" ] || continue
+    # 1. Assemble the packages: one per platform, and @feds01/zenith.
+    out="$(mktemp -d)"
+    node "{{justfile_directory()}}/npm/assemble.mjs" "$version" "{{dir}}" "$out"
+
+    # 2. Stage the platform packages first, then @feds01/zenith, which depends
+    #    on them.
+    for package in "$out"/zenith-*/ "$out/zenith/"; do
         # What it stages, e.g. `@feds01/zenith@0.1.0`.
-        spec="$(tar -xzOf "$dir/$package" package/package.json | jq --raw-output '.name + "@" + .version')"
+        spec="$(jq --raw-output '.name + "@" + .version' "$package/package.json")"
 
         # A version already on npm, published by hand or approved after an
         # earlier run, is skipped, so that the job can be re-run. One that is
@@ -241,8 +266,9 @@ publish-npm dir:
         # Staged, not published: it goes live once a maintainer approves it,
         # with 2FA. npm prints the id to approve it by, as
         # `+ @feds01/zenith@0.1.0 (staged with id <id>)`.
-        staged="$(npm stage publish --access public "$dir/$package")"
+        tarball="$out/$(npm pack --json --pack-destination "$out" "$package" | jq --raw-output '.[].filename')"
+        staged="$(npm stage publish --access public "$tarball")"
         echo "$staged"
         id="$(sed -n 's/.*(staged with id \(.*\))$/\1/p' <<<"$staged")"
         echo "::notice title=npm::Staged $spec. Approve it on npmjs.com, under Staged Packages, or with npm stage approve ${id:-<id>}."
-    done <<<"$packages"
+    done

@@ -14,154 +14,165 @@ use zenith_graph::{Exports, ImportDetail, ImportedName, ReExport};
 /// namespace import), and whether only its type is imported.
 type Binding = (u32, Option<CompactString>, bool);
 
-/// What the file of `program` exports. The source of each re-export is the
-/// index of its import statement in `imports`, the file's imports in source
-/// order.
-///
-/// The file is a barrel when it re-exports something and every statement in
-/// it is an import with bindings or an export of imported bindings, so that
-/// it runs no code of its own. A side-effect import, such as `import "./x"`,
-/// runs the module it imports, so a file with one is not a barrel.
-pub(crate) fn collect(program: &Program, imports: &[ImportDetail]) -> Exports<u32> {
-    // Each statement that imports is in `imports`, at the range of its span.
-    let index_of = |span: Span| {
-        imports
-            .binary_search_by_key(&span.start, |import| import.range.start())
-            .ok()
-            .and_then(|index| u32::try_from(index).ok())
-    };
+/// What zenith reads from a whole program, rather than statement by statement.
+pub(crate) trait ProgramHelpers {
+    /// What the file of this program exports. The source of each re-export is
+    /// the index of its import statement in `imports`, the file's imports
+    /// in source order.
+    ///
+    /// The file is a barrel when it re-exports something and every statement in
+    /// it is an import with bindings or an export of imported bindings, so that
+    /// it runs no code of its own. A side-effect import, such as `import
+    /// "./x"`, runs the module it imports, so a file with one is not a
+    /// barrel.
+    fn exports(&self, imports: &[ImportDetail]) -> Exports<u32>;
+}
 
-    // 1. The local names that imports bind, which may be exported before the
-    //    import, since imports are hoisted.
-    let mut bindings: FxHashMap<&str, Binding> = FxHashMap::default();
-    for statement in &program.body {
-        let Statement::ImportDeclaration(import) = statement else {
-            continue;
+impl ProgramHelpers for Program<'_> {
+    fn exports(&self, imports: &[ImportDetail]) -> Exports<u32> {
+        // Each statement that imports is in `imports`, at the range of its span.
+        let index_of = |span: Span| {
+            imports
+                .binary_search_by_key(&span.start, |import| import.range.start())
+                .ok()
+                .and_then(|index| u32::try_from(index).ok())
         };
-        let (Some(index), Some(specifiers)) = (index_of(import.span), &import.specifiers) else {
-            continue;
-        };
-        let type_only = import.import_kind.is_type();
-        for specifier in specifiers {
-            let binding = match specifier {
-                ImportDeclarationSpecifier::ImportSpecifier(specifier) => (
-                    specifier.local.name.as_str(),
-                    Some(CompactString::from(specifier.imported.name().as_str())),
-                    type_only || specifier.import_kind.is_type(),
-                ),
-                ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier) => {
-                    (specifier.local.name.as_str(), Some("default".into()), type_only)
-                }
-                ImportDeclarationSpecifier::ImportNamespaceSpecifier(specifier) => {
-                    (specifier.local.name.as_str(), None, type_only)
-                }
+
+        // 1. The local names that imports bind, which may be exported before the
+        //    import, since imports are hoisted.
+        let mut bindings: FxHashMap<&str, Binding> = FxHashMap::default();
+        for statement in &self.body {
+            let Statement::ImportDeclaration(import) = statement else {
+                continue;
             };
-            let (local, imported, type_only) = binding;
-            bindings.insert(local, (index, imported, type_only));
+            let (Some(index), Some(specifiers)) = (index_of(import.span), &import.specifiers)
+            else {
+                continue;
+            };
+            let type_only = import.import_kind.is_type();
+            for specifier in specifiers {
+                let binding = match specifier {
+                    ImportDeclarationSpecifier::ImportSpecifier(specifier) => (
+                        specifier.local.name.as_str(),
+                        Some(CompactString::from(specifier.imported.name().as_str())),
+                        type_only || specifier.import_kind.is_type(),
+                    ),
+                    ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier) => {
+                        (specifier.local.name.as_str(), Some("default".into()), type_only)
+                    }
+                    ImportDeclarationSpecifier::ImportNamespaceSpecifier(specifier) => {
+                        (specifier.local.name.as_str(), None, type_only)
+                    }
+                };
+                let (local, imported, type_only) = binding;
+                bindings.insert(local, (index, imported, type_only));
+            }
         }
-    }
 
-    // 2. What each statement exports, and whether it runs code of its own.
-    let mut exports = Exports { barrel: true, ..Exports::default() };
-    for statement in &program.body {
-        match statement {
-            Statement::ImportDeclaration(import) => {
-                // A side-effect import, or one of no names, runs the module it imports.
-                let side_effect = import.specifiers.as_ref().is_none_or(|s| s.is_empty());
-                if side_effect || index_of(import.span).is_none() {
-                    exports.barrel = false;
+        // 2. What each statement exports, and whether it runs code of its own.
+        let mut exports = Exports { barrel: true, ..Exports::default() };
+        for statement in &self.body {
+            match statement {
+                Statement::ImportDeclaration(import) => {
+                    // A side-effect import, or one of no names, runs the module it imports.
+                    let side_effect = import.specifiers.as_ref().is_none_or(|s| s.is_empty());
+                    if side_effect || index_of(import.span).is_none() {
+                        exports.barrel = false;
+                    }
                 }
-            }
-            Statement::ExportFromDeclaration(export) => {
-                let Some(source) = index_of(export.span) else {
-                    exports.barrel = false;
-                    continue;
-                };
-                for specifier in &export.specifiers {
-                    exports.reexports.push(ReExport {
-                        name: specifier.exported.name().as_str().into(),
-                        source,
-                        imported: Some(specifier.local.name().as_str().into()),
-                        type_only: export.export_kind.is_type() || specifier.export_kind.is_type(),
-                    });
+                Statement::ExportFromDeclaration(export) => {
+                    let Some(source) = index_of(export.span) else {
+                        exports.barrel = false;
+                        continue;
+                    };
+                    for specifier in &export.specifiers {
+                        exports.reexports.push(ReExport {
+                            name: specifier.exported.name().as_str().into(),
+                            source,
+                            imported: Some(specifier.local.name().as_str().into()),
+                            type_only: export.export_kind.is_type()
+                                || specifier.export_kind.is_type(),
+                        });
+                    }
                 }
-            }
-            Statement::ExportAllDeclaration(export) => {
-                let Some(source) = index_of(export.span) else {
-                    exports.barrel = false;
-                    continue;
-                };
-                let type_only = export.export_kind.is_type();
-                match &export.exported {
-                    // `export * as ns from "./m"` exports the whole module as `ns`.
-                    Some(name) => exports.reexports.push(ReExport {
-                        name: name.name().as_str().into(),
-                        source,
-                        imported: None,
-                        type_only,
-                    }),
-                    None => exports.stars.push((source, type_only)),
+                Statement::ExportAllDeclaration(export) => {
+                    let Some(source) = index_of(export.span) else {
+                        exports.barrel = false;
+                        continue;
+                    };
+                    let type_only = export.export_kind.is_type();
+                    match &export.exported {
+                        // `export * as ns from "./m"` exports the whole module as `ns`.
+                        Some(name) => exports.reexports.push(ReExport {
+                            name: name.name().as_str().into(),
+                            source,
+                            imported: None,
+                            type_only,
+                        }),
+                        None => exports.stars.push((source, type_only)),
+                    }
                 }
-            }
-            Statement::ExportNamedDeclaration(export) => {
-                for specifier in &export.specifiers {
-                    let name = CompactString::from(specifier.exported.name().as_str());
-                    let type_only = export.export_kind.is_type() || specifier.export_kind.is_type();
-                    match bindings.get(specifier.local.name().as_str()) {
-                        Some((source, imported, imported_type)) => {
-                            exports.reexports.push(ReExport {
-                                name,
-                                source: *source,
-                                imported: imported.clone(),
-                                type_only: type_only || *imported_type,
-                            });
+                Statement::ExportNamedDeclaration(export) => {
+                    for specifier in &export.specifiers {
+                        let name = CompactString::from(specifier.exported.name().as_str());
+                        let type_only =
+                            export.export_kind.is_type() || specifier.export_kind.is_type();
+                        match bindings.get(specifier.local.name().as_str()) {
+                            Some((source, imported, imported_type)) => {
+                                exports.reexports.push(ReExport {
+                                    name,
+                                    source: *source,
+                                    imported: imported.clone(),
+                                    type_only: type_only || *imported_type,
+                                });
+                            }
+                            // A binding of the file's own code, which is declared elsewhere in
+                            // it, so the file is not a barrel.
+                            None => {
+                                exports.barrel = false;
+                                exports.names.push(ImportedName { name, type_only });
+                            }
                         }
-                        // A binding of the file's own code, which is declared elsewhere in
-                        // it, so the file is not a barrel.
+                    }
+                }
+                Statement::ExportDefaultDeclaration(export) => {
+                    let reexported = match &export.declaration {
+                        ExportDefaultDeclarationKind::Identifier(identifier) => {
+                            bindings.get(identifier.name.as_str())
+                        }
+                        _ => None,
+                    };
+                    match reexported {
+                        Some((source, imported, type_only)) => exports.reexports.push(ReExport {
+                            name: "default".into(),
+                            source: *source,
+                            imported: imported.clone(),
+                            type_only: *type_only,
+                        }),
                         None => {
                             exports.barrel = false;
-                            exports.names.push(ImportedName { name, type_only });
+                            let type_only = matches!(
+                                export.declaration,
+                                ExportDefaultDeclarationKind::TSInterfaceDeclaration(_)
+                            );
+                            exports.names.push(ImportedName::new("default", type_only));
                         }
                     }
                 }
-            }
-            Statement::ExportDefaultDeclaration(export) => {
-                let reexported = match &export.declaration {
-                    ExportDefaultDeclarationKind::Identifier(identifier) => {
-                        bindings.get(identifier.name.as_str())
-                    }
-                    _ => None,
-                };
-                match reexported {
-                    Some((source, imported, type_only)) => exports.reexports.push(ReExport {
-                        name: "default".into(),
-                        source: *source,
-                        imported: imported.clone(),
-                        type_only: *type_only,
-                    }),
-                    None => {
-                        exports.barrel = false;
-                        let type_only = matches!(
-                            export.declaration,
-                            ExportDefaultDeclarationKind::TSInterfaceDeclaration(_)
-                        );
-                        exports.names.push(ImportedName::new("default", type_only));
-                    }
+                Statement::ExportDeclaration(export) => {
+                    exports.barrel = false;
+                    declared_names(&export.declaration, &mut exports.names);
                 }
+                Statement::EmptyStatement(_) => {}
+                // Any other statement is code of the file's own, including `export =`.
+                _ => exports.barrel = false,
             }
-            Statement::ExportDeclaration(export) => {
-                exports.barrel = false;
-                declared_names(&export.declaration, &mut exports.names);
-            }
-            Statement::EmptyStatement(_) => {}
-            // Any other statement is code of the file's own, including `export =`.
-            _ => exports.barrel = false,
         }
-    }
 
-    // A file that re-exports nothing is no barrel, even if it has no code.
-    exports.barrel &= !exports.reexports.is_empty() || !exports.stars.is_empty();
-    exports
+        // A file that re-exports nothing is no barrel, even if it has no code.
+        exports.barrel &= !exports.reexports.is_empty() || !exports.stars.is_empty();
+        exports
+    }
 }
 
 /// Add the names that `declaration` declares to `names`: types only for

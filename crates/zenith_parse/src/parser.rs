@@ -11,7 +11,9 @@ use thin_vec::ThinVec;
 use zenith_graph::Exports;
 use zenith_utils::fs::read_text;
 
-use crate::{ParsedFile, Suppression, SyntaxError, exports, visitor::ImportVisitor};
+use crate::{
+    ParsedFile, Suppression, SyntaxError, exports::ProgramHelpers, visitor::ImportVisitor,
+};
 
 /// Parses JavaScript and TypeScript files with [oxc](https://oxc.rs) into
 /// [`ParsedFile`]s.
@@ -143,7 +145,7 @@ impl Parser {
 
         // 5. Read what the file exports from its top-level statements.
         let exports = match self.names {
-            true => exports::collect(&parsed.program, &imports),
+            true => parsed.program.exports(&imports),
             false => Exports::default(),
         };
 

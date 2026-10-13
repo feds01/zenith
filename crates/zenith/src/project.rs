@@ -11,7 +11,7 @@ use zenith_diagnostics::SourceMap;
 use zenith_pipeline::{FileError, FileErrorKind, Pipeline, Session, StageKind};
 use zenith_utils::{path::adjust_canonicalisation, printing::plural};
 
-use crate::{Reported, cli::GlobalArgs, reporting};
+use crate::{Reported, cli::GlobalArgs, reporting, version::version};
 
 /// Open a session for the project that the global options point at.
 ///
@@ -20,6 +20,8 @@ use crate::{Reported, cli::GlobalArgs, reporting};
 /// `--root`, or else the directory of the configuration file. A project
 /// without a configuration file is rooted at the current directory, and uses
 /// the defaults. With `--tracked`, only the files that git tracks are scanned.
+/// The session keeps a parse cache, unless `--no-cache` or the configuration
+/// turns it off.
 pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
     // 1. Find the configuration file, if there is one.
     let cwd = env::current_dir().context("could not read the current directory")?;
@@ -58,8 +60,13 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
             Config::default()
         }
     };
+
+    // 4. Keep a parse cache for this version of zenith, unless it is turned off.
     let mut session = Session::new(root, config);
     session.tracked_only = global.tracked;
+    if !global.no_cache {
+        session.cache = session.cache_settings(&version().to_string());
+    }
     Ok(session)
 }
 
@@ -88,6 +95,12 @@ pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<Pipeli
             plural(session.files.len(), "source file"),
             plural(session.graph.detail_count(), "import")
         );
+        if session.cache.is_some() {
+            info!(
+                "reused the imports of {} of them from the parse cache",
+                session.stats.cached_files
+            );
+        }
         match session.stats.non_literal_imports {
             0 => {}
             1 => info!("skipped 1 import whose specifier is not a literal"),

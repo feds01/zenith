@@ -18,7 +18,12 @@
 //! run in. Files that can't be read or parsed, and imports that don't resolve,
 //! don't stop the pipeline: they are left out of the graph, and recorded in
 //! the session as [`FileError`]s and [`UnresolvedImport`]s.
+//!
+//! The [`Parse`] stage can keep what it finds in a cache, so that the next
+//! run neither reads nor parses the files that haven't changed. Set
+//! [`Session::cache`] to use one.
 
+mod cache;
 mod error;
 mod pipeline;
 mod schema;
@@ -28,6 +33,7 @@ mod stages;
 #[cfg(test)]
 mod tests;
 
+pub use cache::{CACHE_FILE_NAME, CacheSettings};
 pub use error::{FileError, FileErrorKind, PipelineError, UnresolvedImport};
 pub use pipeline::{Pipeline, Stage, StageKind};
 pub use schema::{FileProblemJson, UnresolvedJson};

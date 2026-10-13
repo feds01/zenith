@@ -51,7 +51,7 @@ a new kind of responsibility, not for each feature:
   algorithms that run on them.
 - `zenith_parse`: what each source file imports and exports, read with oxc.
 - `zenith_pipeline`: the stages that turn a project into its import graph,
-  and the session they share.
+  the session they share, and the parse cache.
 - `zenith_reporting`: the output formats of `zenith check`.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`.
 - `zenith_utils`: shared helpers: files, paths, globs, locations, terminal

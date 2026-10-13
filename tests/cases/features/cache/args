@@ -1,0 +1,5 @@
+# The first run parses every file into the cache, and the next reuses them.
+check -v
+check -v
+# `--no-cache` reads and parses every file, without the cache.
+check --no-cache -v

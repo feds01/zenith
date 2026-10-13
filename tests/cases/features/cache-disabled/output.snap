@@ -1,0 +1,18 @@
+$ zenith check -v
+exit: 0
+--- stdout
+Contracts
+
+0 kept, 0 broken · 2 files, 1 import
+--- stderr
+info: indexed 2 source files and 1 import
+
+$ zenith check -v
+exit: 0
+--- stdout
+Contracts
+
+0 kept, 0 broken · 2 files, 1 import
+--- stderr
+info: indexed 2 source files and 1 import
+

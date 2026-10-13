@@ -1,0 +1,68 @@
+$ zenith check -v
+exit: 1
+--- stdout
+error[ui-without-api]: `src/ui` must not import `src/api`
+ --> src/ui/button.tsx:3:27
+  |
+3 | import { fetchUser } from "../api/client";
+  |                           ^^^^^^^^^^^^^^^ imports `src/api/client.ts`
+
+warning: unused suppression: there is no contract `other-contract`
+ --> src/api/client.ts:1:1
+  |
+1 | // zenith-ignore other-contract: not checked here
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Contracts
+  ✗ ui-without-api  forbidden  broken (1 violation)
+
+0 kept, 1 broken · 3 files, 2 imports
+--- stderr
+info: indexed 3 source files and 2 imports
+info: reused the imports of 0 of them from the parse cache
+
+$ zenith check -v
+exit: 1
+--- stdout
+error[ui-without-api]: `src/ui` must not import `src/api`
+ --> src/ui/button.tsx:3:27
+  |
+3 | import { fetchUser } from "../api/client";
+  |                           ^^^^^^^^^^^^^^^ imports `src/api/client.ts`
+
+warning: unused suppression: there is no contract `other-contract`
+ --> src/api/client.ts:1:1
+  |
+1 | // zenith-ignore other-contract: not checked here
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Contracts
+  ✗ ui-without-api  forbidden  broken (1 violation)
+
+0 kept, 1 broken · 3 files, 2 imports
+--- stderr
+info: indexed 3 source files and 2 imports
+info: reused the imports of 3 of them from the parse cache
+
+$ zenith check --no-cache -v
+exit: 1
+--- stdout
+error[ui-without-api]: `src/ui` must not import `src/api`
+ --> src/ui/button.tsx:3:27
+  |
+3 | import { fetchUser } from "../api/client";
+  |                           ^^^^^^^^^^^^^^^ imports `src/api/client.ts`
+
+warning: unused suppression: there is no contract `other-contract`
+ --> src/api/client.ts:1:1
+  |
+1 | // zenith-ignore other-contract: not checked here
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Contracts
+  ✗ ui-without-api  forbidden  broken (1 violation)
+
+0 kept, 1 broken · 3 files, 2 imports
+--- stderr
+info: indexed 3 source files and 2 imports
+

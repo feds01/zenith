@@ -21,10 +21,9 @@ log = { workspace = true }
 rayon = { workspace = true }
 rustc-hash = { workspace = true }
 serde = { workspace = true }
-thin-vec = { workspace = true }
-
-[dev-dependencies]
 tempfile = { workspace = true }
+thin-vec = { workspace = true }
+xxhash-rust = { workspace = true }
 
 [lints]
 workspace = true

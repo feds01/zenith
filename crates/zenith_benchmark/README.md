@@ -54,6 +54,8 @@ LTO to fit in Docker's memory.
 | `workspace` | `discover_packages`: finding the workspace packages | The same repositories |
 | `pipeline` | `pipeline`: running every stage up to the graph, with the default configuration | The same repositories |
 | `pipeline` | `parse`, `resolve`, `graph`: each of those stages on its own | The same repositories |
+| `pipeline` | `parse_cold_cache`: the parse stage with an empty parse cache, which it writes, as on the first run | The same repositories |
+| `pipeline` | `parse_warm_cache`, `pipeline_warm_cache`: the parse stage, and every stage up to the graph, with a parse cache that has every file, as on a run after nothing changed | The same repositories |
 | `contracts` | `forbidden_without_chains`, `forbidden_with_chains`, `protected`, `independence`, `layers`, `acyclic`, `encapsulation`: checking a contract, compiled beforehand | The same repositories |
 | `baseline` | `record`: finding the baseline entries that keep every contract of `contracts.toml`, starting from an empty baseline, as `zenith baseline` does | The same repositories |
 | `check` | `check`: running the pipeline up to the graph, then compiling and checking every contract of `contracts.toml`, as `zenith check` does before showing its results | The same repositories |

@@ -1,0 +1,6 @@
+# The UI must not import the API. The parse cache must not change what a
+# check finds.
+[contracts.ui-without-api]
+type = "forbidden"
+from = ["src/ui"]
+to = ["src/api"]

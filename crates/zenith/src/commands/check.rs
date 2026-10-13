@@ -3,7 +3,7 @@
 use std::time::Instant;
 
 use anyhow::Result;
-use log::info;
+use log::{info, warn};
 use zenith_contracts::{
     Baseline, CheckJson, Contract, ContractReport, Exemptions, UnusedSuppression,
 };
@@ -32,8 +32,15 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
         true => None,
         false => Baseline::load(&session.baseline_path())?,
     };
-    if baseline.is_some() {
-        info!("using the baseline `{}`", session.config.baseline.path);
+    if let Some(baseline) = &baseline {
+        let shown = &session.config.baseline.path;
+        info!("using the baseline `{shown}`");
+        if baseline.conflicted {
+            warn!(
+                "the baseline `{shown}` has merge conflict markers, so the entries of both sides \
+                 count; `zenith baseline --prune` resolves them"
+            );
+        }
     }
 
     // 4. Check the contracts in parallel, without the imports that suppressions and

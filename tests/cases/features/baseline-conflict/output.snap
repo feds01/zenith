@@ -1,0 +1,31 @@
+$ zenith check
+exit: 1
+--- stdout
+error[a-not-b]: 1 stale baseline entry
+ --> zenith.baseline.toml:6:5
+  |
+6 |     "src/a/gone.ts -> src/b/y.ts",
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ its import no longer exists
+  |
+  = help: run `zenith baseline --prune` to remove it
+
+Contracts
+  ✗ a-not-b  forbidden  kept, with a stale baseline · 1 baselined
+
+1 kept, 0 broken · 1 stale baseline entry · 2 files, 1 import
+--- stderr
+warning: the baseline `zenith.baseline.toml` has merge conflict markers, so the entries of both sides count; `zenith baseline --prune` resolves them
+
+$ zenith baseline --prune
+exit: 0
+--- stdout
+Wrote 1 baseline entry for 1 contract to `zenith.baseline.toml` (was 2).
+
+$ zenith check
+exit: 0
+--- stdout
+Contracts
+  ✓ a-not-b  forbidden  kept · 1 baselined
+
+1 kept, 0 broken · 2 files, 1 import
+

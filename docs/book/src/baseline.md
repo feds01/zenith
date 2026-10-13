@@ -28,6 +28,9 @@ web-layers = [
   removes the stale entries without adding any. With `[baseline] stale =
   "warn"`, stale entries are only warnings.
 - `zenith check --no-baseline` ignores the file.
+- When a merge leaves git's conflict markers in the file, zenith reads the
+  entries of both sides, and warns. The entries that either side fixed are
+  then stale, so `zenith baseline --prune` resolves the conflict.
 
 ## How entries are found
 

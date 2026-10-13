@@ -1,0 +1,16 @@
+version = 1
+
+[contracts]
+f = [
+<<<<<<< HEAD
+    "a.ts -> c.ts",
+    "b.ts -> c.ts",
+||||||| merged common ancestors
+    "a.ts -> c.ts",
+    "b.ts -> c.ts",
+    "d.ts -> c.ts",
+=======
+    "b.ts -> c.ts",
+    "d.ts -> c.ts",
+>>>>>>> fix-a
+]

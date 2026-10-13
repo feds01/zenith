@@ -13,8 +13,9 @@ installers = ["shell", "powershell", "npm", "homebrew"]
 npm-scope = "@feds01"
 # The Homebrew tap that the formula is published to: `brew install feds01/tap/zenith`
 tap = "feds01/homebrew-tap"
-# Publish the npm package and the Homebrew formula with each release
-publish-jobs = ["homebrew", "npm"]
+# Publish the npm package and the Homebrew formula with each release. The
+# formula is published by our own job, which runs `just publish-formula`.
+publish-jobs = ["./publish-homebrew", "npm"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-apple-darwin", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
 # Path that installers should place binaries in
@@ -25,3 +26,8 @@ hosting = "github"
 install-updater = false
 # Only run the release workflow for release tags, never on PRs
 pr-run-mode = "skip"
+
+# The versions of the GitHub actions that the release workflow uses
+[dist.github-action-commits]
+# v7.0.1
+"actions/checkout" = "3d3c42e5aac5ba805825da76410c181273ba90b1"

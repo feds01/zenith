@@ -130,3 +130,31 @@ release:
 
     git tag -a "$tag" -m "Release $tag"
     git push origin "$tag"
+
+# Commit the Homebrew formula of each release in $PLAN, dist's plan, to the tap checked out at `tap`, and push it (run by the release workflow)
+publish-formula tap:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{tap}}"
+    git config user.name "github-actions[bot]"
+    git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+    export PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"
+    brew update
+
+    # Each release with a formula, as a line of JSON. Its formula may be named
+    # other than the app.
+    releases="$(jq --compact-output '.releases[] | select(any(.artifacts[]; endswith(".rb")))' <<<"$PLAN")"
+    while IFS= read -r release; do
+        [ -n "$release" ] || continue
+        formula="$(jq --raw-output '.artifacts[] | select(endswith(".rb"))' <<<"$release")"
+        version="$(jq --raw-output '.app_version' <<<"$release")"
+
+        # Fix the formula's style, without reformatting its description or homepage.
+        brew style --except-cops FormulaAudit/Homepage,FormulaAudit/Desc,FormulaAuditStrict \
+            --fix "Formula/$formula" || true
+
+        git add "Formula/$formula"
+        git commit --message "${formula%.rb} $version"
+    done <<<"$releases"
+
+    git push

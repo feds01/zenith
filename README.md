@@ -24,24 +24,33 @@ reviewed pull request at a time (see the spec's roadmap, §13).
 
 ## Installation
 
-The repository is private for now, so these need access to it.
+There are three ways to install zenith. npm and Homebrew download the
+binaries of a release, so they work once the first version is released and the
+repository is public. Until then, install from source, which needs access to
+the repository.
 
-From source:
+### npm
+
+```sh
+npm install --global @feds01/zenith
+```
+
+Or run it without installing: `npx @feds01/zenith check`.
+
+### Homebrew
+
+```sh
+brew install feds01/tap/zenith
+```
+
+### From source
 
 ```sh
 cargo install --git https://github.com/feds01/zenith zenith
 ```
 
-Prebuilt binaries and installers will be attached to
-[GitHub releases](https://github.com/feds01/zenith/releases) once the first
-version is tagged. Each release is also published to npm and to a Homebrew
-tap, which download those binaries, so they work once the repository is
-public:
-
-```sh
-npm install --global @feds01/zenith    # or `npx @feds01/zenith check`
-brew install feds01/tap/zenith
-```
+Each [GitHub release](https://github.com/feds01/zenith/releases) also has the
+prebuilt binaries, with shell and PowerShell installers.
 
 ## Development
 

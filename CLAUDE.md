@@ -88,7 +88,7 @@ responsibilities move:
   highlighting, the logger, and printing text and trees, and the global
   thread pool.
 - `zenith_workspace`: the file walker, narrowing it to the files that git
-  tracks, and workspace package discovery.
+  tracks, the files that git sees renamed, and workspace package discovery.
 
 Key invariants:
 

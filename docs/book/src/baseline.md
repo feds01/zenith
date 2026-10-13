@@ -27,6 +27,16 @@ web-layers = [
   the baseline shrinks as violations are fixed. `zenith baseline --prune`
   removes the stale entries without adding any. With `[baseline] stale =
   "warn"`, stale entries are only warnings.
+- Renaming or moving a file with baselined imports would make its entries
+  stale, and its imports new violations. `zenith baseline --prune` follows
+  the files that git sees renamed since the last commit, so their entries
+  take the new names. `zenith check` doesn't, so prune the baseline before
+  checking, for example in a pre-commit hook:
+
+  ```sh
+  zenith baseline --prune --tracked
+  zenith check --tracked
+  ```
 - `zenith check --no-baseline` ignores the file.
 - When a merge leaves git's conflict markers in the file, zenith reads the
   entries of both sides, and warns. The entries that either side fixed are

@@ -1964,6 +1964,7 @@ dependencies = [
  "zenith_reporting",
  "zenith_resolve",
  "zenith_utils",
+ "zenith_workspace",
 ]
 
 [[package]]

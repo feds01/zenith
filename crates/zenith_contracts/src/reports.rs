@@ -303,6 +303,7 @@ impl ReportBuilder<'_> {
             if let Some(span) = span {
                 finding.add_span(span);
             }
+            finding.add_help("run `zenith baseline --prune` to remove it");
             findings.push(finding);
         }
         findings.into_iter().map(|finding| finding.with_id(&config.id)).collect()

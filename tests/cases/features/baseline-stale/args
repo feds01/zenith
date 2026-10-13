@@ -1,5 +1,7 @@
 # One baselined violation and one stale entry: the stale entry fails.
 check
+check --format compact
+check --format github
 # Prune drops the stale entry and keeps the valid one.
 baseline --prune
 check

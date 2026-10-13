@@ -1,8 +1,9 @@
-# Publish the npm package of a release, @feds01/zenith, with npm's trusted
+# Stage the npm package of a release, @feds01/zenith, with npm's trusted
 # publishing: npm trusts the release workflow of this repository, so no token
-# is kept. The release workflow that dist generates calls it with the
-# release's plan.
-name: Publish the npm package
+# is kept. The staged version goes live once a maintainer approves it, with
+# 2FA. The release workflow that dist generates calls it with the release's
+# plan.
+name: Stage the npm package
 
 on:
   workflow_call:
@@ -14,7 +15,7 @@ on:
 jobs:
   publish-npm-package:
     runs-on: ubuntu-22.04
-    # The OIDC token that npm exchanges for one that publishes the package.
+    # The OIDC token that npm exchanges for one that stages the package.
     permissions:
       contents: read
       id-token: write
@@ -32,13 +33,16 @@ jobs:
           pattern: artifacts-*
           path: npm/
           merge-multiple: true
-      # Trusted publishing needs Node 22.14 and npm 11.5.1, or later, which
-      # Node 24 comes with. Without a `registry-url`, setup-node writes no
-      # .npmrc that expects a token.
+      # Staged publishing needs Node 22.14 and npm 11.15, or later, which the
+      # newest Node 24 comes with: `check-latest` takes it, rather than an
+      # older one that the runner has cached. Without a `registry-url`,
+      # setup-node writes no .npmrc that expects a token.
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      # Pinned, as each step here could publish the package.
+          check-latest: true
+      # Pinned, as it isn't GitHub's own, and each step here could stage the
+      # package.
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
-      - name: Publish the package
+      - name: Stage the package
         run: just --justfile zenith/justfile publish-npm npm

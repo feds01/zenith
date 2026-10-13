@@ -75,7 +75,10 @@ See [CLAUDE.md](CLAUDE.md) for the architecture and conventions.
 
 Bump `version` in `crates/zenith/Cargo.toml`, merge to `main`, then run
 `just release` to tag it. [cargo-dist](https://opensource.axo.dev/cargo-dist/)
-builds the binaries and installers and publishes the GitHub release.
+builds the binaries and installers and publishes the GitHub release. The npm
+package is staged rather than published: approve it on npmjs.com, under
+Staged Packages, or with `npm stage approve <id>` (npm 11.15 or later). The
+release run shows the id, and so does `npm stage list @feds01/zenith`.
 
 ## License
 

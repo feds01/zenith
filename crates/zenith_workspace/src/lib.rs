@@ -5,12 +5,12 @@
 //! package declarations (`package.json` `workspaces`, or
 //! `pnpm-workspace.yaml`) and matches them against the `package.json` files
 //! that the walk found. [`TrackedFiles`] narrows the walk down to the files
-//! that git tracks.
+//! that git tracks, and [`Renames`] are the files that git sees renamed.
 
 mod git;
 mod packages;
 mod walk;
 
-pub use git::{GitError, TrackedFiles};
+pub use git::{GitError, Renames, TrackedFiles};
 pub use packages::{Workspace, WorkspacePackage, discover_packages};
 pub use walk::{WalkResult, WalkSettings, walk};

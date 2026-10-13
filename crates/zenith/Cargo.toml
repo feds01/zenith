@@ -23,6 +23,7 @@ zenith_pipeline = { workspace = true }
 zenith_reporting = { workspace = true }
 zenith_resolve = { workspace = true }
 zenith_utils = { workspace = true }
+zenith_workspace = { workspace = true }
 
 anyhow = { workspace = true }
 argfile = { workspace = true }

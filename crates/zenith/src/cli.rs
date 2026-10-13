@@ -189,7 +189,8 @@ pub struct BaselineCommand {
     #[arg(long = "contract", value_name = "ID")]
     pub contracts: Vec<String>,
 
-    /// Only remove stale entries; never add new ones.
+    /// Only remove stale entries, after moving those of files that git sees
+    /// renamed to their new names; never add new ones.
     #[arg(long)]
     pub prune: bool,
 }

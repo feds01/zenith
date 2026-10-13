@@ -13,7 +13,8 @@
 //! Each entry is a direct import, `importer -> imported`, that is left out of
 //! its contract's view, as an `ignore_imports` entry would be. An entry whose
 //! import no longer exists is stale, so the baseline shrinks as violations are
-//! fixed.
+//! fixed. Pruning a baseline can first follow the files that git sees renamed,
+//! so that their entries move with them, rather than going stale.
 //!
 //! Since each entry is a line of its own, two branches that change nearby
 //! entries can conflict when they are merged. A baseline with git's conflict
@@ -31,7 +32,7 @@ use zenith_utils::{
     location::{ByteRange, LineIndex},
     text::comment_out_conflict_markers,
 };
-use zenith_workspace::Workspace;
+use zenith_workspace::{Renames, Workspace};
 
 use crate::{Contract, Exemptions};
 
@@ -157,6 +158,30 @@ impl Baseline {
         for id in ids {
             let mut entries = self.entries(id).to_vec();
             entries.retain(|entry| import(entry, graph).is_some());
+            self.set(id, entries);
+        }
+    }
+
+    /// Rename the files of the entries of the contracts `ids` that `renames`
+    /// has, the importer and the imported alike, so that the entries of a
+    /// moved file follow it.
+    pub fn follow_renames<'i>(
+        &mut self,
+        ids: impl IntoIterator<Item = &'i str>,
+        renames: &Renames,
+    ) {
+        if renames.is_empty() {
+            return;
+        }
+        for id in ids {
+            let entries = self.entries(id).iter().map(|entry| match entry.split_once(" -> ") {
+                Some((importer, imported)) => {
+                    let (importer, imported) = (importer.trim(), imported.trim());
+                    format!("{} -> {}", renames.follow(importer), renames.follow(imported))
+                }
+                None => entry.clone(),
+            });
+            let entries = entries.collect();
             self.set(id, entries);
         }
     }
@@ -522,5 +547,42 @@ g = [
         pruned.prune(["f", "g"], &project.graph);
         assert_eq!(pruned.contracts.keys().collect::<Vec<_>>(), ["gone"]);
         assert!(!pruned.is_empty());
+    }
+
+    #[test]
+    fn pruning_after_following_renames_keeps_the_entries_of_moved_files() {
+        let project = Project::new(
+            &values(&[("a/new.ts", "b/y.ts"), ("a/w.ts", "b/moved/z.ts")]),
+            &[],
+            FORBIDDEN,
+        );
+        let mut baseline = Baseline::default();
+        let entries = [
+            // The importer moved, and the imported did, with its directory.
+            "a/old.ts -> b/y.ts",
+            "a/w.ts -> b/z.ts",
+            // Moved, but no longer importing it, so stale.
+            "a/gone.ts -> b/y.ts",
+        ];
+        baseline.set("f", entries.map(str::to_string).into());
+        baseline.set("g", vec!["a/old.ts -> b/y.ts".to_string()]);
+        let renames: Renames =
+            [("a/old.ts", "a/new.ts"), ("b/z.ts", "b/moved/z.ts"), ("a/gone.ts", "a/elsewhere.ts")]
+                .into_iter()
+                .map(|(old, new)| (old.to_string(), new.to_string()))
+                .collect();
+
+        baseline.follow_renames(["f"], &renames);
+        assert_eq!(
+            baseline.entries("f"),
+            ["a/elsewhere.ts -> b/y.ts", "a/new.ts -> b/y.ts", "a/w.ts -> b/moved/z.ts"]
+        );
+        // Only the entries of the given contracts follow.
+        assert_eq!(baseline.entries("g"), ["a/old.ts -> b/y.ts"]);
+
+        baseline.prune(["f"], &project.graph);
+        assert_eq!(baseline.entries("f"), ["a/new.ts -> b/y.ts", "a/w.ts -> b/moved/z.ts"]);
+        let pruned = project.baseline("f", &["a/new.ts -> b/y.ts", "a/w.ts -> b/moved/z.ts"]);
+        assert!(pruned.check("f").is_kept());
     }
 }

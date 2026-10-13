@@ -7,6 +7,7 @@ use log::warn;
 use zenith_contracts::{Baseline, Exemptions};
 use zenith_pipeline::StageKind;
 use zenith_utils::printing::{plural, thousands};
+use zenith_workspace::Renames;
 
 use crate::{
     ExitStatus,
@@ -30,11 +31,15 @@ pub fn baseline(global: &GlobalArgs, args: BaselineCommand) -> Result<ExitStatus
     let old = Baseline::load(&path)?.unwrap_or_default();
     let mut baseline = old.clone();
 
-    // 4. Find the entries of the contracts afresh, or only remove the stale ones.
-    //    The entries of other contracts are kept, unless, without `--contract`, the
-    //    contracts no longer exist.
+    // 4. Find the entries of the contracts afresh, or only remove the stale ones,
+    //    after following the files that git sees renamed, so that their entries
+    //    move with them, and aren't counted as new. The entries of other contracts
+    //    are kept, unless, without `--contract`, the contracts no longer exist.
+    let mut known = old.clone();
     if args.prune {
-        let ids = contracts.iter().map(|contract| contract.config.id.as_str());
+        let ids: Vec<_> = contracts.iter().map(|contract| contract.config.id.as_str()).collect();
+        known.follow_renames(ids.iter().copied(), &Renames::find(&session.root));
+        baseline = known.clone();
         baseline.prune(ids, &session.graph);
     } else {
         let exemptions = Exemptions { suppressions: &session.suppressions, baseline: None };
@@ -67,7 +72,7 @@ pub fn baseline(global: &GlobalArgs, args: BaselineCommand) -> Result<ExitStatus
         plural(baseline.contracts.len(), "contract"),
         thousands(old.len())
     );
-    let new = baseline.count_new(&old);
+    let new = baseline.count_new(&known);
     if new > 0 {
         let them = if new == 1 { "it" } else { "them" };
         warn!("the baseline gained {}; review {them} before committing", plural(new, "entry"));

@@ -69,7 +69,8 @@ impl Parser {
     ///
     /// The extension of `path` picks the dialect: TypeScript for `.ts`, `.mts`
     /// and `.cts` (and `.d.ts` declarations), TypeScript with JSX for `.tsx`,
-    /// and JavaScript with JSX otherwise. A leading byte order mark is
+    /// and JavaScript with JSX otherwise. A `.cjs` file may use ES module
+    /// syntax too. A leading byte order mark is
     /// skipped, so offsets count from the character after it.
     pub fn parse_source(&mut self, path: &Path, source: &str) -> ParsedFile {
         let source = source.strip_prefix('\u{feff}').unwrap_or(source);
@@ -131,6 +132,11 @@ impl Parser {
 /// The dialect to parse the file at `path` in.
 fn source_type(path: &Path) -> SourceType {
     match SourceType::from_path(path) {
+        // Bundlers, and config loaders such as jiti, accept ES module syntax in
+        // `.cjs` files, so take it there too, as they do.
+        Ok(source_type) if source_type.is_javascript() && source_type.is_commonjs() => {
+            source_type.with_unambiguous(true).with_jsx(true)
+        }
         // JSX is common in the `.js` files of React projects.
         Ok(source_type) if source_type.is_javascript() => source_type.with_jsx(true),
         Ok(source_type) => source_type,
@@ -186,6 +192,14 @@ mod tests {
             assert!(parsed.errors.is_empty(), "{path}: {:?}", parsed.errors);
             assert_eq!(parsed.imports[0].specifier, "./a", "{path}");
         }
+    }
+
+    #[test]
+    fn commonjs_files_may_use_es_module_syntax() {
+        // A `tailwind.config.cjs`, say, which the config loader accepts.
+        let parsed = parse("x.cjs", "import a from './a';\nexport default { a };\n");
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        assert_eq!(parsed.imports[0].specifier, "./a");
     }
 
     #[test]

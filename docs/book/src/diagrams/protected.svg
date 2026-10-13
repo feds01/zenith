@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 296" role="img" aria-label="A protected contract: only the API route and the agents themselves may import an agent directly">
+<defs>
+<marker id="pr-a" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+<marker id="pr-bad" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head bad" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+<marker id="pr-ok" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head ok" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<rect class="unit solid" x="450" y="26" width="260" height="230" rx="12"/>
+<path class="edge ok" d="M580,113 L580,183.5" marker-end="url(#pr-ok)"/>
+<path class="edge ok" d="M205.5,70 C368,70 368,100 530.5,100" marker-end="url(#pr-ok)"/>
+<path class="edge bad" d="M198.5,170 C364.5,170 364.5,100 530.5,100" marker-end="url(#pr-bad)"/>
+<path class="edge" d="M120,183 C120,217.5 200.2,252 280.5,252" marker-end="url(#pr-a)"/>
+<path class="edge bad" d="M376,252 C456.8,252 456.8,200 537.5,200" marker-end="url(#pr-bad)"/>
+<g class="node file"><rect x="534" y="87" width="92" height="26" rx="6"/><text x="580" y="100">support.ts</text></g>
+<g class="node file"><rect x="541" y="187" width="78" height="26" rx="6"/><text x="580" y="200">tools.ts</text></g>
+<g class="node file"><rect x="34.5" y="57" width="171" height="26" rx="6"/><text x="120" y="70">app/api/chat/route.ts</text></g>
+<g class="tag ok"><rect x="62.5" y="31" width="115" height="18" rx="9"/><text x="120" y="40">allowed importer</text></g>
+<g class="node file"><rect x="41.5" y="157" width="157" height="26" rx="6"/><text x="120" y="170">components/chat.tsx</text></g>
+<g class="node file"><rect x="284" y="239" width="92" height="26" rx="6"/><text x="330" y="252">lib/run.ts</text></g>
+<g class="icon" transform="translate(470,47)"><rect x="-5" y="-1.5" width="10" height="8" rx="1.5"/><path d="M-3,-1.5 V-4 A3,3 0 0 1 3,-4 V-1.5"/></g>
+<text x="484" y="51" class="unit-label mono">web/src/agents</text>
+<g class="badge ok" transform="translate(580,148.2)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<text x="594" y="152.2" class="small t-ok">its own members</text>
+<g class="badge ok" transform="translate(368,85)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<g class="badge bad" transform="translate(364.5,135)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+<text x="158.2" y="252.4" class="small muted middle halo">not checked</text>
+<g class="badge bad" transform="translate(456.8,226)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+</svg>

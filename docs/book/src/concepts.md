@@ -9,7 +9,13 @@ is a POSIX path relative to the root, with `/` separators on every platform.
 
 ## Nodes
 
-zenith models the codebase as a tree of nodes:
+zenith models the codebase as a tree of nodes, with the external packages and
+builtins that it imports:
+
+<figure class="diagram">
+{{#include diagrams/nodes.svg}}
+<figcaption>A node's id is its path from the project root. Packages and builtins are named without their subpath.</figcaption>
+</figure>
 
 | Node | Example | |
 |---|---|---|
@@ -27,10 +33,20 @@ field and from `pnpm-workspace.yaml`. Each has a name, from its own
 `package.json`, and a directory. Names and directories often differ, so
 contracts can name packages with [`pkg:` selectors](selectors.md).
 
+<figure class="diagram">
+{{#include diagrams/packages.svg}}
+<figcaption>A <code>pkg:</code> selector matches packages by name, and picks their directories.</figcaption>
+</figure>
+
 ## Imports
 
 An import is an edge from a file to a file, package or builtin. Each import
 statement is recorded with its kind:
+
+<figure class="diagram">
+{{#include diagrams/imports.svg}}
+<figcaption>Each statement is an edge with its kind. A specifier that isn't a literal is skipped.</figcaption>
+</figure>
 
 | Kind | Made by |
 |---|---|
@@ -41,7 +57,7 @@ statement is recorded with its kind:
 
 Imports whose specifier isn't a literal, such as `import(path)`, are skipped
 and counted; `-v` lists them. Contracts can leave out imports by kind with
-[`exclude_kinds`](contracts/overview.md#shared-options): type-only imports
+[`exclude_kinds`](contracts/overview.md#common-options): type-only imports
 are erased at runtime, so they are often excluded.
 
 ## Units
@@ -49,6 +65,12 @@ are erased at runtime, so they are often excluded.
 Contracts reason about **units**: labelled sets of nodes, which
 [selectors](selectors.md) pick. A matched directory is one unit, with its
 whole subtree as members; a matched file, package or builtin is a unit of one.
+
+<figure class="diagram">
+{{#include diagrams/units.svg}}
+<figcaption>Each directory that <code>web/src/features/*</code> matches is a unit, with everything under it.</figcaption>
+</figure>
+
 Two units **overlap** if they share a member, and contracts skip pairs of
 overlapping units, so `from = ["a"]` and `to = ["a/*"]` checks nothing between
 `a` and itself.
@@ -61,3 +83,8 @@ a file the entry point of a client bundle, so everything it imports ships to
 the browser. zenith records every directive as written, and a
 [`directive` selector](selectors.md#the-table-form) can pick the files that
 have one, to draw a boundary that the directory layout doesn't show.
+
+<figure class="diagram">
+{{#include diagrams/directives.svg}}
+<figcaption>The client components start the client bundle, wherever they are. A <code>directive</code> selector makes each of them a unit.</figcaption>
+</figure>

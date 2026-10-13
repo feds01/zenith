@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" role="img" aria-label="The tree of nodes: directories and files under the project root, and the external packages and builtins they import">
+<defs>
+<marker id="nodes-a" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<path class="edge" d="M24,35.0 V76 H36.0"/>
+<path class="edge" d="M48.0,89.0 V113 H60.0"/>
+<path class="edge" d="M72.0,126.0 V150 H84.0"/>
+<path class="edge" d="M96.0,163.0 V187 H108.0"/>
+<path class="edge" d="M72.0,126.0 V224 H84.0"/>
+<path class="edge" d="M96.0,237.0 V261 H108.0"/>
+<path class="edge" d="M96.0,237.0 V298 H108.0"/>
+<rect class="unit" x="76" y="202" width="216" height="118" rx="12"/>
+<text x="284" y="219" class="unit-label end">its subtree</text>
+<path class="edge" d="M272,187 C382,187 406.5,187 516.5,187" marker-end="url(#nodes-a)"/>
+<path class="edge" d="M279,261 C385.9,261 409.6,224 516.5,224" marker-end="url(#nodes-a)"/>
+<path class="edge" d="M279,261 C385.9,261 409.6,298 516.5,298" marker-end="url(#nodes-a)"/>
+<circle class="badge" cx="24" cy="30" r="5" style="fill:var(--dg-dir)"/>
+<g class="tag plain"><rect x="128" y="21" width="83" height="18" rx="9"/><text x="169.5" y="30">zenith.toml</text></g>
+<g class="node dir"><rect x="36" y="63" width="42" height="26" rx="6"/><text x="57" y="76">web</text></g>
+<g class="node dir"><rect x="60" y="100" width="70" height="26" rx="6"/><text x="95" y="113">web/src</text></g>
+<g class="node dir"><rect x="84" y="137" width="99" height="26" rx="6"/><text x="133.5" y="150">web/src/app</text></g>
+<g class="node file"><rect x="108" y="174" width="164" height="26" rx="6"/><text x="190" y="187">web/src/app/page.tsx</text></g>
+<g class="node dir"><rect x="84" y="211" width="99" height="26" rx="6"/><text x="133.5" y="224">web/src/lib</text></g>
+<g class="node file"><rect x="108" y="248" width="171" height="26" rx="6"/><text x="193.5" y="261">web/src/lib/images.ts</text></g>
+<g class="node file"><rect x="108" y="285" width="171" height="26" rx="6"/><text x="193.5" y="298">web/src/lib/theme.css</text></g>
+<g class="node npm"><rect x="520" y="174" width="114" height="26" rx="6"/><text x="577" y="187">npm:react-dom</text></g>
+<g class="node npm"><rect x="520" y="285" width="85" height="26" rx="6"/><text x="562.5" y="298">npm:sharp</text></g>
+<g class="node builtin"><rect x="520" y="211" width="70" height="26" rx="6"/><text x="555" y="224">node:fs</text></g>
+<g class="node dir"><rect x="520" y="33" width="16" height="14" rx="4"/></g>
+<g class="node file"><rect x="650" y="33" width="16" height="14" rx="4"/></g>
+<g class="node npm"><rect x="520" y="57" width="16" height="14" rx="4"/></g>
+<g class="node builtin"><rect x="650" y="57" width="16" height="14" rx="4"/></g>
+<text x="38" y="34" class="title">project root</text>
+<text x="520" y="152" class="small muted">outside the project</text>
+<text x="506" y="180" class="mono small muted end halo">&quot;react-dom/client&quot;</text>
+<text x="506" y="217" class="mono small muted end halo">&quot;fs/promises&quot;</text>
+<text x="506" y="291" class="mono small muted end halo">&quot;sharp&quot;</text>
+<text x="542" y="44" class="small muted">directory</text>
+<text x="672" y="44" class="small muted">file</text>
+<text x="542" y="68" class="small muted">external package</text>
+<text x="672" y="68" class="small muted">builtin</text>
+</svg>

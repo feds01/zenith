@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="A forbidden contract: a client component reaches npm:sharp through lib/images.ts, which is a violation">
+<defs>
+<marker id="fb-a" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+<marker id="fb-bad" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head bad" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+<marker id="fb-ok" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head ok" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<rect class="unit" x="10" y="36" width="196" height="72" rx="12"/>
+<rect class="unit" x="10" y="126" width="196" height="72" rx="12"/>
+<rect class="unit" x="548.5" y="62" width="103" height="44" rx="10"/>
+<rect class="unit" x="556" y="138" width="88" height="44" rx="10"/>
+<rect class="unit" x="527" y="194" width="146" height="44" rx="10"/>
+<path class="edge bad" d="M193.5,84 L273.5,84" marker-end="url(#fb-bad)"/>
+<path class="edge bad" d="M391,84 L554,84" marker-end="url(#fb-bad)"/>
+<path class="edge ok" d="M190,174 L277.5,174" marker-end="url(#fb-ok)"/>
+<path class="edge dashed" d="M126,256 C288.6,256 369.9,216 532.5,216" marker-end="url(#fb-a)"/>
+<g class="tag"><rect x="63" y="45" width="90" height="18" rx="9"/><text x="108" y="54">&quot;use client&quot;</text></g>
+<g class="node file"><rect x="22.5" y="71" width="171" height="26" rx="6"/><text x="108" y="84">components/upload.tsx</text></g>
+<g class="tag"><rect x="63" y="135" width="90" height="18" rx="9"/><text x="108" y="144">&quot;use client&quot;</text></g>
+<g class="node file"><rect x="26" y="161" width="164" height="26" rx="6"/><text x="108" y="174">components/chart.tsx</text></g>
+<g class="node file faded"><rect x="20" y="243" width="106" height="26" rx="6"/><text x="73" y="256">app/page.tsx</text></g>
+<g class="node npm"><rect x="557.5" y="71" width="85" height="26" rx="6"/><text x="600" y="84">npm:sharp</text></g>
+<g class="node builtin"><rect x="565" y="147" width="70" height="26" rx="6"/><text x="600" y="160">node:fs</text></g>
+<g class="node npm"><rect x="536" y="203" width="128" height="26" rx="6"/><text x="600" y="216">npm:server-only</text></g>
+<g class="node file"><rect x="277" y="71" width="114" height="26" rx="6"/><text x="334" y="84">lib/images.ts</text></g>
+<g class="node npm"><rect x="281" y="161" width="106" height="26" rx="6"/><text x="334" y="174">npm:recharts</text></g>
+<text x="20" y="22" class="title t-unit">from</text>
+<text x="62" y="22" class="small muted">&quot;use client&quot; files under web/src</text>
+<text x="470" y="22" class="title t-unit">to</text>
+<text x="490" y="22" class="small muted mono">npm:sharp, node:*, npm:server-only</text>
+<text x="20" y="290" class="small muted">no directive, so not a unit</text>
+<g class="badge bad" transform="translate(472.5,84)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+<text x="334" y="52" class="small t-bad middle">a chain of 2 imports</text>
+<g class="badge ok" transform="translate(233.8,174)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<text x="329.2" y="256" class="small muted middle">not checked</text>
+</svg>

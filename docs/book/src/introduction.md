@@ -1,9 +1,29 @@
 # zenith
 
-zenith is an architecture linter for TypeScript and JavaScript monorepos. You
-write down how the parts of your codebase may depend on each other, as
-**contracts** in a `zenith.toml`, and `zenith check` tells you where the code
-breaks them.
+zenith is an architecture linter for TypeScript and JavaScript monorepos. It
+brings Python's [import-linter](https://import-linter.readthedocs.io/) to
+them: the contract model is import-linter's, and the graph algorithms are
+ports of its engine, [grimp](https://github.com/python-grimp/grimp), adapted
+to how JavaScript projects are organised. It is written in Rust, so a check of
+a monorepo with thousands of files takes well under a second.
+
+## How it works
+
+You write down how the parts of your codebase may depend on each other, as
+**contracts** in a `zenith.toml`. zenith finds the project's source files and
+workspace packages, parses their imports, and resolves each one to a file, a
+package or a builtin: together, they make the project's **import graph**. It
+then checks every contract against the graph, and reports each import, or
+chain of imports, that breaks one.
+
+<figure class="diagram">
+{{#include diagrams/how-it-works.svg}}
+<figcaption>zenith builds the import graph once, checks every contract against it, and reports the violations.</figcaption>
+</figure>
+
+## An example
+
+This contract keeps server-only code out of client bundles:
 
 ```toml
 [contracts.client-safety]
@@ -12,6 +32,9 @@ from = [{ path = "web/src/**", directive = "use client" }]
 to = ["npm:sharp", "node:*", "npm:server-only"]
 guidance = "Keep server-only modules out of client bundles."
 ```
+
+`zenith check` finds a client component that reaches `sharp` through another
+module, and shows the chain of imports:
 
 ```text
 error[client-safety]: `web/src/components/upload.tsx` must not import `npm:sharp`
@@ -27,12 +50,7 @@ error[client-safety]: `web/src/components/upload.tsx` must not import `npm:sharp
   = help: Keep server-only modules out of client bundles.
 ```
 
-It is inspired by Python's [import-linter](https://import-linter.readthedocs.io/)
-and its graph library, grimp, whose algorithms it ports, and is written in
-Rust, so a check of a monorepo with thousands of files takes well under a
-second.
-
-What it does:
+## What it does
 
 - **Six contract types:** [`forbidden`](contracts/forbidden.md),
   [`independence`](contracts/independence.md), [`layers`](contracts/layers.md),

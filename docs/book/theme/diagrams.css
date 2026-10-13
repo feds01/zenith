@@ -1,0 +1,338 @@
+/*
+ * Diagrams: SVGs that pages inline with `{{#include}}`, inside a
+ * `<figure class="diagram">`, so that their colours follow the book's theme.
+ */
+
+/* The light themes. */
+.light,
+.rust,
+html:not(.js) {
+    --dg-surface: color-mix(in srgb, var(--fg) 3%, var(--bg));
+    --dg-border: color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --dg-muted: hsl(215, 14%, 42%);
+    --dg-line: hsl(215, 12%, 58%);
+    --dg-dir: hsl(200, 98%, 37%);
+    --dg-file: hsl(215, 16%, 52%);
+    --dg-npm: hsl(262, 70%, 56%);
+    --dg-builtin: hsl(175, 84%, 30%);
+    --dg-unit: hsl(239, 70%, 60%);
+    --dg-ok: hsl(142, 72%, 32%);
+    --dg-bad: hsl(0, 72%, 50%);
+    --dg-warn: hsl(32, 95%, 42%);
+}
+
+/* The dark themes. */
+.coal,
+.navy,
+.ayu {
+    --dg-surface: color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --dg-border: color-mix(in srgb, var(--fg) 14%, var(--bg));
+    --dg-muted: hsl(215, 14%, 62%);
+    --dg-line: hsl(215, 12%, 50%);
+    --dg-dir: hsl(199, 89%, 62%);
+    --dg-file: hsl(215, 18%, 62%);
+    --dg-npm: hsl(255, 92%, 76%);
+    --dg-builtin: hsl(172, 66%, 50%);
+    --dg-unit: hsl(234, 89%, 74%);
+    --dg-ok: hsl(142, 69%, 58%);
+    --dg-bad: hsl(0, 91%, 71%);
+    --dg-warn: hsl(43, 96%, 56%);
+}
+
+/* The frame around a diagram, and its caption. */
+.diagram {
+    margin: 1.75em 0;
+    padding: 1.25em 1.25em 1em;
+    border: 1px solid var(--dg-border);
+    border-radius: 12px;
+    background: var(--dg-surface);
+    overflow-x: auto;
+}
+
+/* On a narrow screen, a diagram scrolls rather than shrinking out of legibility. */
+.diagram svg {
+    display: block;
+    width: 100%;
+    min-width: 540px;
+    height: auto;
+    overflow: visible;
+}
+
+.diagram figcaption {
+    margin-top: 0.9em;
+    color: var(--dg-muted);
+    font-size: 0.85em;
+    line-height: 1.5;
+    text-align: center;
+}
+
+/* Text. */
+.diagram text {
+    fill: var(--fg);
+    font-family: "Open Sans", sans-serif;
+    font-size: 12px;
+}
+
+.diagram .mono {
+    font-family: var(--mono-font);
+}
+
+.diagram .title {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.diagram .small {
+    font-size: 10.5px;
+}
+
+.diagram .muted {
+    fill: var(--dg-muted);
+}
+
+.diagram .middle {
+    text-anchor: middle;
+}
+
+.diagram .end {
+    text-anchor: end;
+}
+
+/* An edge label stays legible where it crosses a line. */
+.diagram .halo {
+    paint-order: stroke;
+    stroke: var(--dg-surface);
+    stroke-width: 4px;
+    stroke-linejoin: round;
+}
+
+.diagram .t-ok {
+    fill: var(--dg-ok);
+}
+
+.diagram .t-bad {
+    fill: var(--dg-bad);
+}
+
+.diagram .t-warn {
+    fill: var(--dg-warn);
+}
+
+.diagram .t-unit {
+    fill: var(--dg-unit);
+}
+
+.diagram .t-dir {
+    fill: var(--dg-dir);
+}
+
+/* Nodes: a directory, a file, an external package or a builtin. */
+.diagram .node rect {
+    fill: var(--bg);
+    stroke: var(--dg-file);
+    stroke-width: 1.2;
+}
+
+.diagram .node text {
+    font-family: var(--mono-font);
+    text-anchor: middle;
+    dominant-baseline: central;
+}
+
+.diagram .node.dir rect {
+    fill: color-mix(in srgb, var(--dg-dir) 10%, var(--bg));
+    stroke: var(--dg-dir);
+}
+
+.diagram .node.npm rect {
+    fill: color-mix(in srgb, var(--dg-npm) 10%, var(--bg));
+    stroke: var(--dg-npm);
+}
+
+.diagram .node.builtin rect {
+    fill: color-mix(in srgb, var(--dg-builtin) 10%, var(--bg));
+    stroke: var(--dg-builtin);
+}
+
+.diagram .node.faded rect {
+    stroke-dasharray: 3 3;
+}
+
+.diagram .node.faded text {
+    fill: var(--dg-muted);
+}
+
+/* Small labels on nodes and edges, such as a directive or an import kind. */
+.diagram .tag rect {
+    fill: color-mix(in srgb, var(--dg-unit) 14%, var(--bg));
+    stroke: none;
+}
+
+.diagram .tag text {
+    fill: var(--dg-unit);
+    font-family: var(--mono-font);
+    font-size: 10.5px;
+    text-anchor: middle;
+    dominant-baseline: central;
+}
+
+.diagram .tag.plain rect {
+    fill: color-mix(in srgb, var(--fg) 8%, var(--bg));
+}
+
+.diagram .tag.plain text {
+    fill: var(--dg-muted);
+}
+
+.diagram .tag.ok rect {
+    fill: color-mix(in srgb, var(--dg-ok) 14%, var(--bg));
+}
+
+.diagram .tag.ok text {
+    fill: var(--dg-ok);
+}
+
+/* Cards: the boxes that group a diagram's parts. */
+.diagram .card {
+    fill: var(--bg);
+    stroke: var(--dg-border);
+    stroke-width: 1.2;
+}
+
+/* Units: the sets of nodes that a selector picks. */
+.diagram .unit {
+    fill: color-mix(in srgb, var(--dg-unit) 6%, transparent);
+    stroke: var(--dg-unit);
+    stroke-width: 1.2;
+    stroke-dasharray: 5 4;
+}
+
+.diagram .unit.solid {
+    stroke-dasharray: none;
+}
+
+.diagram .unit-label {
+    fill: var(--dg-unit);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+/* Layers: bands from the highest to the lowest. */
+.diagram .band {
+    fill: color-mix(in srgb, var(--dg-unit) 7%, var(--bg));
+    stroke: color-mix(in srgb, var(--dg-unit) 30%, var(--bg));
+    stroke-width: 1;
+}
+
+.diagram .band.closed {
+    stroke: var(--dg-unit);
+    stroke-width: 1.6;
+}
+
+.diagram .divider {
+    stroke: color-mix(in srgb, var(--dg-unit) 45%, var(--bg));
+    stroke-width: 1.2;
+    stroke-dasharray: 3 3;
+}
+
+/* Edges: imports and dependencies. */
+.diagram .edge {
+    fill: none;
+    stroke: var(--dg-line);
+    stroke-width: 1.6;
+}
+
+.diagram .edge.ok {
+    stroke: var(--dg-ok);
+}
+
+.diagram .edge.bad {
+    stroke: var(--dg-bad);
+}
+
+.diagram .edge.warn {
+    stroke: var(--dg-warn);
+}
+
+.diagram .edge.flow {
+    stroke: var(--dg-unit);
+}
+
+.diagram .edge.dashed {
+    stroke-dasharray: 6 4;
+}
+
+.diagram .edge.dotted {
+    stroke-dasharray: 0.1 4.5;
+    stroke-linecap: round;
+    stroke-width: 2.4;
+}
+
+.diagram .edge.dashdot {
+    stroke-dasharray: 9 3 2 3;
+}
+
+.diagram .head {
+    fill: var(--dg-line);
+}
+
+.diagram .head.ok {
+    fill: var(--dg-ok);
+}
+
+.diagram .head.bad {
+    fill: var(--dg-bad);
+}
+
+.diagram .head.warn {
+    fill: var(--dg-warn);
+}
+
+.diagram .head.flow {
+    fill: var(--dg-unit);
+}
+
+/* Badges: whether an import is allowed, a violation, or a warning. */
+.diagram .badge circle {
+    stroke: var(--dg-surface);
+    stroke-width: 2;
+}
+
+.diagram .badge path {
+    fill: none;
+    stroke: var(--bg);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.diagram .badge.ok circle {
+    fill: var(--dg-ok);
+}
+
+.diagram .badge.bad circle {
+    fill: var(--dg-bad);
+}
+
+.diagram .badge.warn circle {
+    fill: var(--dg-warn);
+}
+
+/* Icons, such as a lock. */
+.diagram .icon {
+    fill: none;
+    stroke: var(--dg-unit);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* Swatches in a legend. */
+.diagram .swatch {
+    stroke-width: 1.2;
+}
+
+/* Links: the overview's diagrams lead to their pages. */
+.diagram a:hover .card {
+    stroke: var(--dg-unit);
+}

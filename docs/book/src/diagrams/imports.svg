@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 272" role="img" aria-label="Each import statement is an edge with its kind: value, type, dynamic or require; a specifier that is not a literal is skipped">
+<defs>
+<marker id="imports-flow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head flow" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<rect class="card" x="0" y="0" width="330" height="272" rx="10"/>
+<path class="edge flow " d="M330,68 L466.5,68" marker-end="url(#imports-flow)"/>
+<path class="edge flow dashed" d="M330,112 L466.5,112" marker-end="url(#imports-flow)"/>
+<path class="edge flow dotted" d="M330,156 L466.5,156" marker-end="url(#imports-flow)"/>
+<path class="edge flow dashdot" d="M330,200 L466.5,200" marker-end="url(#imports-flow)"/>
+<g class="node file"><rect x="470" y="55" width="142" height="26" rx="6"/><text x="541" y="68">web/src/lib/db.ts</text></g>
+<g class="tag"><rect x="377" y="59" width="46" height="18" rx="9"/><text x="400" y="68">value</text></g>
+<g class="node file"><rect x="470" y="99" width="135" height="26" rx="6"/><text x="537.5" y="112">web/src/types.ts</text></g>
+<g class="tag"><rect x="380.5" y="103" width="39" height="18" rx="9"/><text x="400" y="112">type</text></g>
+<g class="node file"><rect x="470" y="143" width="171" height="26" rx="6"/><text x="555.5" y="156">web/src/app/chart.tsx</text></g>
+<g class="tag"><rect x="371" y="147" width="58" height="18" rx="9"/><text x="400" y="156">dynamic</text></g>
+<g class="node npm"><rect x="470" y="187" width="85" height="26" rx="6"/><text x="512.5" y="200">npm:sharp</text></g>
+<g class="tag"><rect x="371" y="191" width="58" height="18" rx="9"/><text x="400" y="200">require</text></g>
+<g class="tag plain"><rect x="371" y="235" width="58" height="18" rx="9"/><text x="400" y="244">skipped</text></g>
+<text x="16" y="27" class="title mono">web/src/app/page.tsx</text>
+<text x="16" y="72" class="mono">import { db } from &quot;@/lib/db&quot;;</text>
+<text x="16" y="116" class="mono">import type { User } from &quot;@/types&quot;;</text>
+<text x="16" y="160" class="mono">const chart = import(&quot;./chart&quot;);</text>
+<text x="16" y="204" class="mono">const sharp = require(&quot;sharp&quot;);</text>
+<text x="16" y="248" class="mono muted">const page = import(path);</text>
+<text x="470" y="248" class="small muted">not a literal, so no edge</text>
+</svg>

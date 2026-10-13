@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 284" role="img" aria-label="An acyclic contract: @acme/client and @acme/core depend on each other, and the cheaper dependency is nominated as the cycle breaker">
+<defs>
+<marker id="ac-a" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+<marker id="ac-bad" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head bad" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<path class="edge" d="M321,34 C245.5,34 170,81.8 170,129.5" marker-end="url(#ac-a)"/>
+<path class="edge" d="M550,159 L550,237.5" marker-end="url(#ac-a)"/>
+<path class="edge" d="M223.0,140 C300,100 420,100 500.5,140" marker-end="url(#ac-a)"/>
+<path class="edge bad" d="M504.0,152 C420,192 300,192 226.5,152" marker-end="url(#ac-bad)"/>
+<path class="edge dashed" d="M550,133 C550,83.5 476.2,34 402.5,34" marker-end="url(#ac-a)"/>
+<g class="node dir"><rect x="321" y="21" width="78" height="26" rx="6"/><text x="360" y="34">@acme/ui</text></g>
+<g class="node dir"><rect x="117" y="133" width="106" height="26" rx="6"/><text x="170" y="146">@acme/client</text></g>
+<g class="node dir"><rect x="504" y="133" width="92" height="26" rx="6"/><text x="550" y="146">@acme/core</text></g>
+<g class="node dir"><rect x="500.5" y="241" width="99" height="26" rx="6"/><text x="550" y="254">@acme/types</text></g>
+<text x="360" y="99" class="small muted middle">12 imports</text>
+<g class="badge bad" transform="translate(360,181)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+<text x="360" y="207" class="small t-bad middle">1 import: the cycle breaker</text>
+<text x="513.9" y="54.9" class="small muted halo">type-only: excluded</text>
+</svg>

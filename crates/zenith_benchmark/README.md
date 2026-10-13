@@ -26,6 +26,23 @@ instructions, so a pool's workers spinning and stealing would make the
 counts differ from run to run. CodSpeed's numbers are therefore the work
 done, not the time taken on many cores; run `just bench` for those.
 
+### Measuring with CodSpeed before opening a PR
+
+CI's CodSpeed numbers are the ones to trust. `just bench-ci` runs the
+CodSpeed workflow on the current branch, once it is pushed, so a change can
+be measured without a PR, and compared with `main` in CodSpeed's dashboard.
+
+`just bench-instructions <bench> [filter]`, e.g.
+`just bench-instructions contracts layers`, measures one bench locally with
+CodSpeed's own CLI, under its simulation, in a Linux container
+(`codspeed/Dockerfile`), since CodSpeed's valgrind only runs on Linux. It
+needs Docker, and a CodSpeed login, once, with `just codspeed-login` (or a
+token in `CODSPEED_TOKEN`); each run is uploaded to CodSpeed, which links to
+its report. To compare two runs, set `CODSPEED_BASE` to the first run's id.
+These counts compare with each other, but not with CI's: the container runs
+on the host's architecture (arm64 on Apple silicon), and the build skips fat
+LTO to fit in Docker's memory.
+
 ## What is measured
 
 | Bench | Benchmark | Input |

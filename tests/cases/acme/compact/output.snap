@@ -14,6 +14,7 @@ packages/ai/src/domains/content/strategies/ads/index.ts:1:30: error[strategies-i
 web/src/components/assistant.tsx:1:32: error[mastra-protected]: `web/src/components/assistant.tsx` may not import the protected module `web/src/mastra`
 packages/api/src/domains/accounts/types.ts:1:35: error[api-domain-layers]: `packages/api/src/domains/accounts/types` must not import `packages/api/src/domains/accounts/api`
 packages/ai/src/connectors/editor.ts:1:32: error[legacy-freeze]: `@acme/ai` must not import `legacy-editor`
+warning: 1 import could not be resolved
 1 kept, 8 broken, 1 warning · 78 files, 127 imports
 
 $ zenith check --format compact --show-unresolved --contract legacy-freeze

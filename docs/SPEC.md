@@ -694,7 +694,7 @@ import { y } from "@/app/(dashboard)/types"; // zenith-ignore web-layers
 ## 9. CLI
 
 ```
-global: [--config <path>] [--root <dir>] [--color auto|always|never] [-v…]
+global: [--config <path>] [--root <dir>] [--tracked] [--color auto|always|never] [-v…]
 
 zenith check [--contract <id>]… [--format pretty|compact|json|github]
              [--no-baseline] [--show-unresolved] [--show-timings]
@@ -724,6 +724,14 @@ corpus runs). `-v` shows info logs, `-vv` debug logs (all on stderr). A
 command that builds the graph fails (exit 2) when the root has no source files,
 which most likely means it is the wrong directory, rather than reporting every
 path selector as unmatched.
+
+`--tracked` scans only the files that git tracks (`git ls-files`), after the
+usual includes, excludes and ignore files. It is for pre-commit hooks: zenith
+reads files from the working tree, and hook managers such as pre-commit stash
+unstaged changes to tracked files before running hooks, but leave untracked
+files in place, so without it an untracked file would fail a commit it isn't
+part of. Inside a hook, git's index is the next commit's. Outside a git
+repository, `--tracked` is an error (exit 2).
 
 The CLI mirrors teamsearch and bracketlint: clap derive, argfile expansion, a
 crash handler, and version info from `build.rs`. **(settled)** An `@path`
@@ -796,7 +804,7 @@ and excluded modules, so this needs no new algorithms.
 |---|---|
 | `zenith` | The binary: `cli.rs`, `commands/*`, `crash.rs`, `logger.rs`, `version.rs`, `build.rs` |
 | `zenith_config` | Config types (serde + schemars), discovery, TOML parsing, validation into typed contract definitions, including the syntax of selectors, layers and ignored imports |
-| `zenith_workspace` | File walker (adapted from the ruff-derived resolver in teamsearch and bracketlint), workspace package discovery |
+| `zenith_workspace` | File walker (adapted from the ruff-derived resolver in teamsearch and bracketlint), narrowing it to the files that git tracks, workspace package discovery |
 | `zenith_parse` | oxc-based extraction of imports, directives and suppression comments |
 | `zenith_resolve` | `oxc_resolver` setup and resolution classification, plus `exports`-aware workspace resolution |
 | `zenith_graph` | The module tree and import graph: interned tokens, hierarchy, edges with details, units, finding nodes by path glob or name pattern, views that leave out imports (by pair or by kind) and have boundaries that chains don't pass through, pathfinding, chains, layers, cycle breakers (a grimp port), and module overviews (a node's children and the dependencies between them, as a tree, Graphviz or JSON). No IO. |

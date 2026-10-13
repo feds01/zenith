@@ -88,7 +88,8 @@ it when responsibilities move. On `main` today:
   glob dialect and name patterns, the line index, terminal output:
   highlighting, the logger, and printing text and trees, and the global
   thread pool.
-- `zenith_workspace`: the file walker and workspace package discovery.
+- `zenith_workspace`: the file walker, narrowing it to the files that git
+  tracks, and workspace package discovery.
 
 Key invariants:
 

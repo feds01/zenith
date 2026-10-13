@@ -38,6 +38,7 @@ pub fn init(global: &GlobalArgs, args: InitCommand) -> Result<ExitStatus> {
     // 2. Find the source files and workspace packages, as the default configuration
     //    does.
     let mut session = Session::new(root, Config::default());
+    session.tracked_only = global.tracked;
     project::run_until(&mut session, StageKind::Discover)?;
 
     // 3. Write the starter configuration: the workspace packages, if there are two

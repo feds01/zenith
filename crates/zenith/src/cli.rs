@@ -75,6 +75,11 @@ pub struct GlobalArgs {
     #[arg(long, global = true, value_name = "DIR")]
     pub root: Option<PathBuf>,
 
+    /// Only scan the files that git tracks, e.g. in a pre-commit hook, where
+    /// untracked files aren't part of the commit.
+    #[arg(long, global = true)]
+    pub tracked: bool,
+
     /// When to use colour.
     #[arg(long, global = true, value_enum, default_value_t = ColourChoice::Auto, value_name = "WHEN")]
     pub color: ColourChoice,

@@ -5,8 +5,7 @@
 
 /* The light themes. */
 .light,
-.rust,
-html:not(.js) {
+.rust {
     --dg-surface: color-mix(in srgb, var(--fg) 3%, var(--bg));
     --dg-border: color-mix(in srgb, var(--fg) 12%, var(--bg));
     --dg-muted: hsl(215, 14%, 42%);

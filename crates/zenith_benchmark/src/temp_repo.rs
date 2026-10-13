@@ -150,7 +150,9 @@ mod tests {
         expected.extend(gitignored);
         expected.sort();
 
-        assert_eq!(relative(&temp.root, &found.source_files), expected);
+        let mut source_files = found.source_files;
+        source_files.sort();
+        assert_eq!(source_files, expected);
         assert_eq!(
             relative(&temp.root, &found.package_jsons),
             paths_of(&temp.repo, FileKind::Manifest)
@@ -167,7 +169,7 @@ mod tests {
 
         let sources: BTreeSet<String> =
             paths_of(&temp.repo, FileKind::Source).into_iter().collect();
-        let found = relative(&temp.root, &found.source_files);
+        let found = found.source_files;
         assert!(!found.is_empty());
         for path in found {
             assert!(sources.contains(&path), "{path} isn't a source file");

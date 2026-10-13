@@ -53,7 +53,7 @@ and put `zenith` on your `PATH`.
 With a Rust toolchain:
 
 ```sh
-cargo install --git https://github.com/feds01/zenith zenith
+cargo install --locked --git https://github.com/feds01/zenith zenith
 ```
 
 ## Check the installation

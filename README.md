@@ -18,67 +18,18 @@ workspace packages, `tsconfig` path aliases, `exports` maps, type-only imports,
 and `"use client"` and `"use server"` boundaries. Zenith is a single Rust
 binary built on [oxc](https://oxc.rs).
 
-## Status
-
-Zenith is under construction. The design is settled in
-[docs/SPEC.md](docs/SPEC.md), and the implementation lands on `main` one
-reviewed pull request at a time (see the spec's roadmap, §13).
-
 ## Installation
 
-There are three ways to install zenith. npm and Homebrew download the
-binaries of a release, so they work once the first version is released and the
-repository is public. Until then, install from source, which needs access to
-the repository.
+See [INSTALL.md](INSTALL.md).
 
-### npm
+## Documentation
 
-```sh
-npm install --global @feds01/zenith
-```
+The [user guide](https://feds01.github.io/zenith/) covers the contracts, the
+configuration and the command line.
 
-Or run it without installing: `npx @feds01/zenith check`.
+## Contributing
 
-### Homebrew
-
-```sh
-brew install feds01/tap/zenith
-```
-
-### From source
-
-```sh
-cargo install --git https://github.com/feds01/zenith zenith
-```
-
-Each [GitHub release](https://github.com/feds01/zenith/releases) also has the
-prebuilt binaries, with shell and PowerShell installers.
-
-## Development
-
-Zenith builds with a pinned nightly toolchain (see `rust-toolchain.toml`) and
-uses [just](https://github.com/casey/just):
-
-```sh
-just setup     # install the toolchain and the pre-commit hooks
-just test      # all tests
-just lint      # clippy (deny warnings) and the formatting check
-just run       # run the CLI from source, e.g. `just run version`
-```
-
-The user guide is in [docs/book](docs/book/src/introduction.md), published to
-[GitHub Pages](https://feds01.github.io/zenith/).
-
-See [CLAUDE.md](CLAUDE.md) for the architecture and conventions.
-
-## Releasing
-
-Bump `version` in `crates/zenith/Cargo.toml`, merge to `main`, then run
-`just release` to tag it. [cargo-dist](https://opensource.axo.dev/cargo-dist/)
-builds the binaries and installers and publishes the GitHub release. The npm
-package is staged rather than published: approve it on npmjs.com, under
-Staged Packages, or with `npm stage approve <id>` (npm 11.15 or later). The
-release run shows the id, and so does `npm stage list @feds01/zenith`.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

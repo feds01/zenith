@@ -667,6 +667,13 @@ violations, so a check fails only on **new** ones, and the debt can only shrink.
   selected with `--contract`. Without `--contract`, it drops entries of
   contracts that no longer exist. When no entries remain, it deletes the file.
   It warns when the baseline grows, so new debt is reviewed.
+- **Merge conflicts (settled).** Two branches that fix neighbouring entries
+  conflict when they are merged. A baseline with git's conflict markers is read
+  as the union of both sides (the markers are read as comments, so stale
+  entries are still shown where they are in the file), and `zenith check` warns
+  about it. The entries that either side fixed are then stale, so
+  `zenith baseline --prune` resolves the conflict, and writes the file without
+  the markers.
 
 ---
 

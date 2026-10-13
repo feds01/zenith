@@ -1,0 +1,5 @@
+# A merge left conflict markers in the baseline. Both sides count: the entry
+# that one side fixed is stale, and pruning it resolves the conflict.
+check
+baseline --prune
+check

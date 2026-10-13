@@ -14,8 +14,13 @@
 //! its contract's view, as an `ignore_imports` entry would be. An entry whose
 //! import no longer exists is stale, so the baseline shrinks as violations are
 //! fixed.
+//!
+//! Since each entry is a line of its own, two branches that change nearby
+//! entries can conflict when they are merged. A baseline with git's conflict
+//! markers is read as the union of both sides: the entries that a side fixed
+//! are then stale, and pruning them resolves the conflict.
 
-use std::{collections::BTreeMap, fmt, fs, io, path::Path};
+use std::{borrow::Cow, collections::BTreeMap, fmt, fs, io, path::Path};
 
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
@@ -43,11 +48,16 @@ pub struct Baseline {
     /// The entries of each contract, by id: sorted `importer -> imported`
     /// imports. Contracts without entries are left out.
     pub contracts: BTreeMap<String, Vec<String>>,
+
+    /// Whether the file had git's merge conflict markers, so its entries are
+    /// those of both sides. Saving it writes it without them.
+    #[serde(skip)]
+    pub conflicted: bool,
 }
 
 impl Default for Baseline {
     fn default() -> Self {
-        Self { version: BASELINE_VERSION, contracts: BTreeMap::new() }
+        Self { version: BASELINE_VERSION, contracts: BTreeMap::new(), conflicted: false }
     }
 }
 
@@ -62,12 +72,21 @@ impl Baseline {
             }
         };
         let path = || path.display().to_string();
-        let baseline: Self = toml::from_str(&contents).map_err(|error| BaselineError::Invalid {
+        let text = without_conflict_markers(&contents);
+        let mut baseline: Self = toml::from_str(&text).map_err(|error| BaselineError::Invalid {
             path: path(),
-            message: describe(&error, &contents),
+            message: describe(&error, &text),
         })?;
         if baseline.version != BASELINE_VERSION {
             return Err(BaselineError::Version { path: path(), version: baseline.version });
+        }
+        if let Cow::Owned(_) = text {
+            // Both sides may have kept an entry, and their entries follow each other.
+            baseline.conflicted = true;
+            for entries in baseline.contracts.values_mut() {
+                entries.sort();
+                entries.dedup();
+            }
         }
         Ok(Some(baseline))
     }
@@ -222,7 +241,7 @@ pub(crate) fn entry_ranges(text: &str, id: &str, entries: &[String]) -> Vec<Opti
         contracts: BTreeMap<String, Vec<Spanned<String>>>,
     }
 
-    let located = toml::from_str::<Located>(text).ok();
+    let located = toml::from_str::<Located>(&without_conflict_markers(text)).ok();
     let ranges: FxHashMap<_, _> = located
         .iter()
         .filter_map(|file| file.contracts.get(id))
@@ -230,6 +249,36 @@ pub(crate) fn entry_ranges(text: &str, id: &str, entries: &[String]) -> Vec<Opti
         .map(|entry| (entry.get_ref().as_str(), ByteRange::from(entry.span())))
         .collect();
     entries.iter().map(|entry| ranges.get(entry.as_str()).copied()).collect()
+}
+
+/// The `text` of a baseline file with each of git's merge conflict markers
+/// turned into a comment of the same length, so that the entries of both
+/// sides are read, at the same places in the file. Borrowed if there are
+/// none.
+fn without_conflict_markers(text: &str) -> Cow<'_, str> {
+    /// Whether `line` is one of git's markers: seven `<`, `|`, `=` or `>`,
+    /// then the end of the line, or a space and a label.
+    fn is_marker(line: &str) -> bool {
+        ["<<<<<<<", "|||||||", "=======", ">>>>>>>"].iter().any(|marker| {
+            line.strip_prefix(marker)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with([' ', '\r']))
+        })
+    }
+
+    if !text.lines().any(is_marker) {
+        return Cow::Borrowed(text);
+    }
+    let mut cleaned = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        match is_marker(line.trim_end_matches('\n')) {
+            true => {
+                cleaned.push('#');
+                cleaned.push_str(&line[1..]);
+            }
+            false => cleaned.push_str(line),
+        }
+    }
+    Cow::Owned(cleaned)
 }
 
 /// The import of `entry` in `graph`, or `None` if it is stale: the import no
@@ -389,6 +438,37 @@ g = [
         assert_eq!(ranges[1], None);
         assert_eq!(entry_ranges(text, "c", &entries), [None, None]);
         assert_eq!(entry_ranges("not = [toml", "b", &entries), [None, None]);
+    }
+
+    #[test]
+    fn conflicted_baselines_are_read_as_the_union_of_both_sides() {
+        // One side fixed `a.ts`, and the other `d.ts`, with git's `diff3` style,
+        // which also shows the common ancestor.
+        let text = include_str!("fixtures/conflicted.baseline.toml");
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("zenith.baseline.toml");
+        fs::write(&path, text).unwrap();
+        let baseline = Baseline::load(&path).unwrap().unwrap();
+        assert!(baseline.conflicted);
+        assert_eq!(baseline.entries("f"), ["a.ts -> c.ts", "b.ts -> c.ts", "d.ts -> c.ts"]);
+
+        // The entries are found where they are in the file, markers and all.
+        let entries = ["d.ts -> c.ts".to_string()];
+        let range = entry_ranges(text, "f", &entries)[0].unwrap();
+        assert_eq!(&text[std::ops::Range::from(range)], "\"d.ts -> c.ts\"");
+
+        // Saving it writes it without the markers.
+        baseline.save(&path).unwrap();
+        assert!(!Baseline::load(&path).unwrap().unwrap().conflicted);
+    }
+
+    #[test]
+    fn only_whole_marker_lines_are_conflict_markers() {
+        assert!(matches!(without_conflict_markers("a\n=======\nb\n"), Cow::Owned(_)));
+        assert!(matches!(without_conflict_markers(">>>>>>> theirs\r\n"), Cow::Owned(_)));
+        assert!(matches!(without_conflict_markers("========\n"), Cow::Borrowed(_)));
+        assert!(matches!(without_conflict_markers("  <<<<<<< HEAD\n"), Cow::Borrowed(_)));
+        assert_eq!(without_conflict_markers("<<<<<<< HEAD\nx\n"), "#<<<<<< HEAD\nx\n");
     }
 
     #[test]

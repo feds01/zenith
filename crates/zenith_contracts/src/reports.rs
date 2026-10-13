@@ -537,7 +537,7 @@ fn chain_summary(graph: &Graph, chain: &Chain) -> String {
 mod tests {
     use std::ops::Range;
 
-    use zenith_graph::{GraphBuilder, ModuleId};
+    use zenith_graph::{GraphBuilder, ImportedNames, ModuleId};
 
     use super::*;
     use crate::testing::{Project, values};
@@ -545,7 +545,7 @@ mod tests {
     fn detail(text: &str, statement: &str, specifier: &str, kind: ImportKind) -> ImportDetail {
         let start = text.find(statement).unwrap() as u32;
         let range = ByteRange::new(start, start + statement.len() as u32);
-        ImportDetail { range, specifier: specifier.into(), kind }
+        ImportDetail { range, specifier: specifier.into(), kind, names: ImportedNames::All }
     }
 
     #[test]

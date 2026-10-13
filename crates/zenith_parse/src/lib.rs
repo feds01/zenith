@@ -3,12 +3,14 @@
 //! A [`Parser`] parses source text with [oxc](https://oxc.rs), then walks the
 //! syntax tree for every form that imports a module, classifying each by its
 //! [`ImportKind`]. Alongside the imports, the [`ParsedFile`] holds the file's
-//! directive prologue (e.g. `"use client"`), its `zenith-ignore` suppression
+//! directive prologue (e.g. `"use client"`), what it exports and whether it
+//! is a barrel of re-exports, its `zenith-ignore` suppression
 //! comments, the dynamic imports and `require` calls whose specifier is not a
 //! literal, and any syntax errors. Everything is [`Located`] by its byte
 //! range in the file.
 
 mod error;
+mod exports;
 mod parser;
 mod suppressions;
 mod visitor;
@@ -17,7 +19,7 @@ pub use error::SyntaxError;
 pub use parser::Parser;
 pub use suppressions::Suppression;
 use thin_vec::ThinVec;
-use zenith_graph::{ImportDetail, ImportKind};
+use zenith_graph::{Exports, ImportDetail, ImportKind};
 use zenith_utils::location::Located;
 
 /// What zenith learns from one source file.
@@ -28,6 +30,10 @@ use zenith_utils::location::Located;
 pub struct ParsedFile {
     /// The imports, in source order, before their specifiers are resolved.
     pub imports: Vec<ImportDetail>,
+
+    /// What the file exports, with the source of each re-export as the index
+    /// of its import in [`imports`](Self::imports).
+    pub exports: Exports<u32>,
 
     /// The dynamic imports and `require` calls whose specifier is not a
     /// string literal or a template literal without substitutions, e.g.

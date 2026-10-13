@@ -9,6 +9,8 @@ repository = { workspace = true }
 publish = false
 
 [dependencies]
+compact_str = { workspace = true }
+rustc-hash = { workspace = true }
 zenith_diagnostics = { workspace = true }
 zenith_graph = { workspace = true }
 zenith_utils = { workspace = true }

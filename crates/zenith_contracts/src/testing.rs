@@ -2,7 +2,7 @@
 
 use thin_vec::{ThinVec, thin_vec};
 use zenith_config::Config;
-use zenith_graph::{Graph, GraphBuilder, ImportDetail, ImportKind, NodeHandle};
+use zenith_graph::{Graph, GraphBuilder, ImportDetail, ImportKind, ImportedNames, NodeHandle};
 use zenith_parse::Suppression;
 use zenith_pipeline::FileSuppressions;
 use zenith_utils::location::{ByteRange, Located};
@@ -66,8 +66,12 @@ impl Project {
                 builder.add_file(imported).unwrap().into()
             };
             let range = ByteRange::new(line * 100, line * 100 + 10);
-            let detail =
-                ImportDetail { range, specifier: format!("./import-{line}").into(), kind: *kind };
+            let detail = ImportDetail {
+                range,
+                specifier: format!("./import-{line}").into(),
+                kind: *kind,
+                names: ImportedNames::All,
+            };
             builder.add_import(importer, imported, detail);
         }
         for (file, directive) in directives {

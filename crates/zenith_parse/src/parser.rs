@@ -10,7 +10,7 @@ use oxc_span::SourceType;
 use thin_vec::ThinVec;
 use zenith_utils::fs::read_text;
 
-use crate::{ParsedFile, Suppression, SyntaxError, visitor::ImportVisitor};
+use crate::{ParsedFile, Suppression, SyntaxError, exports, visitor::ImportVisitor};
 
 /// Parses JavaScript and TypeScript files with [oxc](https://oxc.rs) into
 /// [`ParsedFile`]s.
@@ -125,7 +125,10 @@ impl Parser {
             .collect();
         let suppressions = Suppression::collect(source, &parsed.program.comments);
 
-        ParsedFile { imports, non_literal_imports, directives, suppressions, errors }
+        // 5. Read what the file exports from its top-level statements.
+        let exports = exports::collect(&parsed.program, &imports);
+
+        ParsedFile { imports, exports, non_literal_imports, directives, suppressions, errors }
     }
 }
 

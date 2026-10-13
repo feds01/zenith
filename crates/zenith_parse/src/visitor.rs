@@ -8,7 +8,7 @@ use oxc_ast::ast::{
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::Span;
 use thin_vec::ThinVec;
-use zenith_graph::{ImportDetail, ImportKind};
+use zenith_graph::{ImportDetail, ImportKind, ImportedName, ImportedNames};
 use zenith_utils::location::{ByteRange, Located};
 
 /// Collects the imports of one file as it walks the syntax tree.
@@ -32,12 +32,14 @@ impl ImportVisitor {
         (self.imports, self.non_literal_imports)
     }
 
-    /// Record an import of `specifier` made by the code at `span`.
-    fn import(&mut self, specifier: &str, kind: ImportKind, span: Span) {
+    /// Record an import of `specifier` made by the code at `span`, which
+    /// takes the `names` of the module.
+    fn import(&mut self, specifier: &str, kind: ImportKind, span: Span, names: ImportedNames) {
         self.imports.push(ImportDetail {
             range: ByteRange::new(span.start, span.end),
             specifier: specifier.into(),
             kind,
+            names,
         });
     }
 
@@ -53,7 +55,8 @@ impl ImportVisitor {
             _ => None,
         };
         match specifier {
-            Some(specifier) => self.import(specifier, kind, span),
+            // How the module is used can't be told from the call.
+            Some(specifier) => self.import(specifier, kind, span, ImportedNames::All),
             None => {
                 self.non_literal_imports
                     .push(Located::new(ByteRange::new(span.start, span.end), kind));
@@ -79,19 +82,49 @@ impl<'a> Visit<'a> for ImportVisitor {
                         )
                     })
             });
-        self.import(it.source.value.as_str(), ImportKind::of_static(type_only), it.span);
+        // A namespace import takes everything, and so does a side-effect import.
+        let names = match &it.specifiers {
+            Some(specifiers) => specifiers
+                .iter()
+                .map(|specifier| match specifier {
+                    ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
+                        Some(ImportedName::new(
+                            specifier.imported.name().as_str(),
+                            it.import_kind.is_type() || specifier.import_kind.is_type(),
+                        ))
+                    }
+                    ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => {
+                        Some(ImportedName::new("default", it.import_kind.is_type()))
+                    }
+                    ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => None,
+                })
+                .collect::<Option<_>>()
+                .map_or(ImportedNames::All, ImportedNames::of),
+            None => ImportedNames::All,
+        };
+        self.import(it.source.value.as_str(), ImportKind::of_static(type_only), it.span, names);
     }
 
     fn visit_export_from_declaration(&mut self, it: &ExportFromDeclaration<'a>) {
         let type_only = it.export_kind.is_type()
             || (!it.specifiers.is_empty()
                 && it.specifiers.iter().all(|specifier| specifier.export_kind.is_type()));
-        self.import(it.source.value.as_str(), ImportKind::of_static(type_only), it.span);
+        // It takes what it re-exports: `a` from `export { a as b } from "./m"`.
+        let names = it
+            .specifiers
+            .iter()
+            .map(|specifier| {
+                let type_only = it.export_kind.is_type() || specifier.export_kind.is_type();
+                ImportedName::new(specifier.local.name().as_str(), type_only)
+            })
+            .collect();
+        let names = ImportedNames::of(names);
+        self.import(it.source.value.as_str(), ImportKind::of_static(type_only), it.span, names);
     }
 
     fn visit_export_all_declaration(&mut self, it: &ExportAllDeclaration<'a>) {
         let kind = ImportKind::of_static(it.export_kind.is_type());
-        self.import(it.source.value.as_str(), kind, it.span);
+        self.import(it.source.value.as_str(), kind, it.span, ImportedNames::All);
     }
 
     fn visit_ts_import_equals_declaration(&mut self, it: &TSImportEqualsDeclaration<'a>) {
@@ -99,12 +132,12 @@ impl<'a> Visit<'a> for ImportVisitor {
         if let TSModuleReference::ExternalModuleReference(reference) = &it.module_reference {
             let kind =
                 if it.import_kind.is_type() { ImportKind::Type } else { ImportKind::Require };
-            self.import(reference.expression.value.as_str(), kind, it.span);
+            self.import(reference.expression.value.as_str(), kind, it.span, ImportedNames::All);
         }
     }
 
     fn visit_ts_import_type(&mut self, it: &TSImportType<'a>) {
-        self.import(it.source.value.as_str(), ImportKind::Type, it.span);
+        self.import(it.source.value.as_str(), ImportKind::Type, it.span, ImportedNames::All);
         // Its type arguments may hold more import types.
         walk::walk_ts_import_type(self, it);
     }
@@ -197,6 +230,49 @@ mod tests {
         );
         // Exports of local bindings import nothing.
         assert_eq!(kinds("x.ts", "const a = 1;\nexport { a };\nexport type { A };\n"), []);
+    }
+
+    #[test]
+    fn imports_name_what_they_take() {
+        /// The names that the one import in `source` takes, with `:type` after
+        /// those whose type only it takes, or `None` for all of them.
+        fn names(source: &str) -> Option<Vec<String>> {
+            let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
+            assert!(parsed.errors.is_empty(), "{source:?}: {:?}", parsed.errors);
+            match &parsed.imports[0].names {
+                ImportedNames::All => None,
+                ImportedNames::Names(names) => Some(
+                    names
+                        .iter()
+                        .map(|name| match name.type_only {
+                            true => format!("{}:type", name.name),
+                            false => name.name.to_string(),
+                        })
+                        .collect(),
+                ),
+            }
+        }
+
+        let some = |names: &[&str]| Some(names.iter().map(|name| name.to_string()).collect());
+        assert_eq!(names("import a, { b, c as d } from 's';"), some(&["default", "b", "c"]));
+        assert_eq!(names("import { type A, b } from 's';"), some(&["A:type", "b"]));
+        assert_eq!(names("import type { A } from 's';"), some(&["A:type"]));
+        assert_eq!(names("export { a as b, type C } from 's';"), some(&["a", "C:type"]));
+        assert_eq!(names("export { default } from 's';"), some(&["default"]));
+        // These use the whole module, or run it.
+        for source in [
+            "import * as ns from 's';",
+            "import a, * as ns from 's';",
+            "import 's';",
+            "import {} from 's';",
+            "export * from 's';",
+            "export * as ns from 's';",
+            "export {} from 's';",
+            "const a = await import('s');",
+            "const a = require('s');",
+        ] {
+            assert_eq!(names(source), None, "{source}");
+        }
     }
 
     #[test]

@@ -29,8 +29,10 @@ install-updater = false
 pr-run-mode = "skip"
 
 # The permissions of our publish jobs. npm's trusted publishing needs an OIDC
-# token.
+# token, and npm trusts any job in the release workflow that has one, so only
+# the npm job gets one.
 [dist.github-custom-job-permissions]
+"publish-homebrew" = { contents = "read" }
 "publish-npm" = { contents = "read", id-token = "write" }
 
 # The versions of the GitHub actions that the release workflow uses

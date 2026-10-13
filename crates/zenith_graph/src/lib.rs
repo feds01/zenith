@@ -22,7 +22,6 @@
 //! children, and the dependencies between them, as a tree, a Graphviz digraph
 //! or JSON.
 
-mod barrels;
 mod builder;
 mod cycles;
 mod exports;
@@ -33,12 +32,12 @@ mod layers;
 mod node_set;
 mod overview;
 mod pathfinding;
+mod reexports;
 #[cfg(test)]
 mod testing;
 mod unit;
 mod view;
 
-pub use barrels::ModuleExports;
 pub use builder::{FileHandle, GraphBuilder, GraphError, NodeHandle};
 pub use cycles::{UnitDependency, UnitGraph, UnitId};
 pub use exports::{Exports, ImportedName, ImportedNames, ReExport};
@@ -47,5 +46,6 @@ pub use kinds::{ImportKind, KindSet};
 pub use layers::{Architecture, LayerId, LayerRef, Level, LevelId, PackageDependency, Route};
 pub use node_set::NodeSet;
 pub use overview::{ChildDependency, ModuleOverview, OverviewChild, OverviewDot, OverviewTree};
+pub use reexports::ModuleExports;
 pub use unit::Unit;
 pub use view::{EdgeSet, GraphView};

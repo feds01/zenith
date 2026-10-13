@@ -1,14 +1,14 @@
-//! The import graph through barrels: an import of names from a barrel, a
-//! file that only re-exports other modules, becomes imports of the modules
-//! that define those names.
+//! The import graph through re-exports: an import of names from a module
+//! that only re-exports other modules, a barrel in JavaScript, becomes
+//! imports of the modules that define those names.
 //!
 //! Bundlers that know a barrel has no side effects leave out the modules it
 //! re-exports that nothing uses, so `import { a } from "./index"` only loads
 //! the module that defines `a`. Through the barrel, the import graph has a
 //! chain to every module the barrel re-exports, so contracts about what code
 //! reaches what, such as "client code must not reach server code", report
-//! violations that the bundle doesn't have. The graph through barrels has the
-//! same modules, and imports to where each name is defined instead.
+//! violations that the bundle doesn't have. The graph through re-exports has
+//! the same modules, and imports to where each name is defined instead.
 
 use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -31,7 +31,7 @@ impl Graph {
     /// one the barrel doesn't export, or that may come from an external
     /// package through `export *`. An import of only a name's type becomes a
     /// type import.
-    pub fn through_barrels(&self, exports: &ModuleExports) -> Graph {
+    pub fn through_reexports(&self, exports: &ModuleExports) -> Graph {
         let names = Names { exports };
         let mut imports = Vec::with_capacity(self.detail_count());
         for (importer, imported) in self.edges() {
@@ -141,15 +141,22 @@ impl Names<'_> {
         name: &str,
         seen: &mut FxHashSet<ModuleId>,
     ) -> Option<bool> {
+        // 1. A module whose exports are unknown may export anything, and one asked
+        //    about already doesn't add to the answer.
         let exports = self.exports.get(&module)?;
         if !seen.insert(module) {
             return Some(false);
         }
+
+        // 2. It exports the names it defines and those it re-exports by name.
         if exports.names.iter().any(|exported| exported.name == name)
             || exports.reexports.iter().any(|reexport| reexport.name == name)
         {
             return Some(true);
         }
+
+        // 3. Any other name, but `default`, it exports if a module it exports all of
+        //    with `export *` does. If none does, but one may, that can't be told.
         if name == "default" {
             return Some(false);
         }
@@ -306,7 +313,7 @@ mod tests {
         );
         // The app no longer reaches the server code, or `sharp`, through the barrel.
         assert_eq!(
-            imports(&graph.through_barrels(&exports)),
+            imports(&graph.through_reexports(&exports)),
             [
                 "app.ts -> lib/client.ts",
                 "app.ts -> lib/format.ts",
@@ -321,7 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn names_are_followed_through_barrels_of_barrels_and_export_star() {
+    fn names_are_followed_through_reexports_of_barrels_and_export_star() {
         let (graph, exports) = project(
             &[
                 import("app.ts", "index.ts", &["a", "b", "default", "ns"]),
@@ -349,7 +356,7 @@ mod tests {
                 ("ns.ts", module(&["x"])),
             ],
         );
-        let through = graph.through_barrels(&exports);
+        let through = graph.through_reexports(&exports);
         let app: Vec<_> =
             imports(&through).into_iter().filter(|import| import.starts_with("app.ts")).collect();
         assert_eq!(
@@ -375,7 +382,7 @@ mod tests {
                 ("a.ts", module(&["a"])),
             ],
         );
-        let through = graph.through_barrels(&exports);
+        let through = graph.through_reexports(&exports);
         let stayed: Vec<_> = imports(&through)
             .into_iter()
             .filter(|import| !import.starts_with("index.ts") && !import.starts_with("pkg.ts"))
@@ -409,7 +416,7 @@ mod tests {
                 ("render.ts", module(&["render"])),
             ],
         );
-        let through = graph.through_barrels(&exports);
+        let through = graph.through_reexports(&exports);
         let app: Vec<_> =
             imports(&through).into_iter().filter(|import| import.starts_with("app.ts")).collect();
         assert_eq!(
@@ -433,7 +440,7 @@ mod tests {
                 ("y.ts", module(&["y"])),
             ],
         );
-        let through = graph.through_barrels(&exports);
+        let through = graph.through_reexports(&exports);
         let app: Vec<_> =
             imports(&through).into_iter().filter(|import| import.starts_with("app.ts")).collect();
         // `x` is nowhere, so its import stays on the barrel.

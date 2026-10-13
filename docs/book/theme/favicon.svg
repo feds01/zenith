@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="zenith">
+<rect width="64" height="64" rx="14" fill="#14163a"/>
+<g transform="translate(4.48 5.76) scale(0.86)">
+<path fill="#d4d7f2" d="M19 25L30.2 25L30.2 33.5L19 33.5ZM33.8 25L45 25L45 33.5L33.8 33.5ZM11.5 36.5L30.2 36.5L30.2 45L11.5 45ZM33.8 36.5L52.5 36.5L52.5 45L33.8 45ZM4 48L30.2 48L30.2 56.5L4 56.5ZM33.8 48L60 48L60 56.5L33.8 56.5Z"/>
+<path d="M2 61H62" stroke="#d4d7f2" stroke-width="2.4"/>
+<path fill="#ecc97a" d="M32 0L34.2 10L32 20L29.8 10ZM24.5 10L32 7.8L39.5 10L32 12.2Z"/>
+<circle cx="32" cy="10" r="3.2" fill="#ecc97a"/>
+</g>
+</svg>

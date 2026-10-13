@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo/zenith-icon.svg" width="96" alt=""></p>
+
 # Zenith
 
 > An architecture linter for TypeScript and JavaScript codebases, built for monorepos.

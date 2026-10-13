@@ -7,6 +7,7 @@ resolver = "2"
 authors = ["Alexander Fedotov <alexander.fedotov.uk@gmail.com>"]
 edition = "2024"
 license = "MIT"
+homepage = "https://github.com/feds01/zenith"
 repository = "https://github.com/feds01/zenith"
 
 [workspace.dependencies]

@@ -8,44 +8,45 @@
 <rect class="card" x="0" y="196" width="200" height="114" rx="10"/>
 <rect class="card" x="250" y="0" width="220" height="310" rx="10"/>
 <rect class="card" x="520" y="40" width="200" height="230" rx="10"/>
-<path class="edge" d="M360,96 C360,113.2 305,113.2 305,130.5" marker-end="url(#hw-a)"/>
-<path class="edge" d="M360,96 C360,113.2 418,113.2 418,130.5" marker-end="url(#hw-a)"/>
-<path class="edge" d="M418,158 L418,192.5" marker-end="url(#hw-a)"/>
+<path class="edge" d="M340.5,84 L382.5,84" marker-end="url(#hw-a)"/>
+<path class="edge" d="M305,96 L305,130.5" marker-end="url(#hw-a)"/>
+<path class="edge bad" d="M418,134 L418,99.5" marker-end="url(#hw-bad)"/>
 <path class="edge bad" d="M305,158 L305,192.5" marker-end="url(#hw-bad)"/>
 <path class="edge bad" d="M305,220 L305,254.5" marker-end="url(#hw-bad)"/>
 <path class="edge flow" d="M200,89 L246.5,89" marker-end="url(#hw-flow)"/>
 <path class="edge flow" d="M200,253 L246.5,253" marker-end="url(#hw-flow)"/>
 <path class="edge flow" d="M470,155 L516.5,155" marker-end="url(#hw-flow)"/>
-<g class="node file"><rect x="324.5" y="72" width="71" height="24" rx="6"/><text x="360" y="84" style="font-size:11px">page.tsx</text></g>
+<g class="node file"><rect x="269.5" y="72" width="71" height="24" rx="6"/><text x="305" y="84" style="font-size:11px">page.tsx</text></g>
+<g class="node file"><rect x="386" y="72" width="64" height="24" rx="6"/><text x="418" y="84" style="font-size:11px">tabs.ts</text></g>
 <g class="node file"><rect x="263" y="134" width="84" height="24" rx="6"/><text x="305" y="146" style="font-size:11px">upload.tsx</text></g>
-<g class="node dir"><rect x="382.5" y="134" width="71" height="24" rx="6"/><text x="418" y="146" style="font-size:11px">@acme/ui</text></g>
+<g class="node file"><rect x="372.5" y="134" width="91" height="24" rx="6"/><text x="418" y="146" style="font-size:11px">sidebar.tsx</text></g>
 <g class="node file"><rect x="266.5" y="196" width="77" height="24" rx="6"/><text x="305" y="208" style="font-size:11px">images.ts</text></g>
-<g class="node npm"><rect x="379.5" y="196" width="77" height="24" rx="6"/><text x="418" y="208" style="font-size:11px">npm:react</text></g>
 <g class="node npm"><rect x="266.5" y="258" width="77" height="24" rx="6"/><text x="305" y="270" style="font-size:11px">npm:sharp</text></g>
 <text x="16" y="27" class="title">Your project</text>
 <text x="16" y="44" class="small muted">files and workspace packages</text>
-<text x="16" y="72" class="mono small t-dir">packages/ui/</text>
-<text x="16" y="91" class="mono small t-dir">web/src/</text>
-<text x="30" y="110" class="mono small">app/page.tsx</text>
-<text x="30" y="129" class="mono small">components/upload.tsx</text>
-<text x="30" y="148" class="mono small">lib/images.ts</text>
-<text x="16" y="167" class="mono small">package.json</text>
+<text x="16" y="72" class="mono small t-dir">web/src/</text>
+<text x="30" y="91" class="mono small">app/page.tsx</text>
+<text x="30" y="110" class="mono small">app/tabs.ts</text>
+<text x="30" y="129" class="mono small">components/sidebar.tsx</text>
+<text x="30" y="148" class="mono small">components/upload.tsx</text>
+<text x="30" y="167" class="mono small">lib/images.ts</text>
 <text x="16" y="223" class="title mono">zenith.toml</text>
-<text x="16" y="246" class="mono small muted">[contracts.client-safety]</text>
-<text x="16" y="263" class="mono small muted">type = &quot;forbidden&quot;</text>
-<text x="16" y="280" class="mono small muted">from = [ … ]</text>
-<text x="16" y="297" class="mono small muted">to = [&quot;npm:sharp&quot;, …]</text>
+<text x="16" y="246" class="mono small muted">[contracts.web-layers]</text>
+<text x="16" y="263" class="mono small muted">type = &quot;layers&quot;</text>
+<text x="16" y="280" class="mono small muted">[contracts.client-safety]</text>
+<text x="16" y="297" class="mono small muted">type = &quot;forbidden&quot;</text>
 <text x="266" y="27" class="title">The import graph</text>
 <text x="266" y="44" class="small muted">every import, resolved</text>
+<g class="badge bad" transform="translate(418,116.8)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
 <g class="badge bad" transform="translate(305,237.2)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
 <text x="536" y="67" class="title">The report</text>
 <text x="536" y="84" class="small muted">each contract, kept or broken</text>
 <g class="badge bad" transform="translate(546,112)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
-<text x="562" y="116" class="mono">client-safety</text>
+<text x="562" y="116" class="mono">web-layers</text>
 <text x="562" y="133" class="small t-bad">broken: 1 violation</text>
-<g class="badge ok" transform="translate(546,162)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
-<text x="562" y="166" class="mono">packages-acyclic</text>
-<text x="562" y="183" class="small t-ok">kept</text>
+<g class="badge bad" transform="translate(546,162)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+<text x="562" y="166" class="mono">client-safety</text>
+<text x="562" y="183" class="small t-bad">broken: 1 violation</text>
 <line class="card" x1="536" y1="204" x2="704" y2="204"/>
 <text x="536" y="230" class="mono t-bad">exit code 1</text>
 <text x="536" y="248" class="small muted">so the CI job fails</text>

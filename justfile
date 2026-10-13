@@ -185,6 +185,7 @@ release:
     git push origin "$tag"
 
 # Commit the Homebrew formula of each release in $PLAN, dist's plan, to the tap checked out at `tap`, and push it (run by the release workflow)
+[no-cd]
 publish-formula tap:
     #!/usr/bin/env bash
     set -euo pipefail

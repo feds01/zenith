@@ -7,8 +7,8 @@
 //! comments, the dynamic imports and `require` calls whose specifier is not a
 //! literal, and any syntax errors. Everything is [`Located`] by its byte
 //! range in the file. A parser that records names also finds the names that
-//! each import takes, what the file exports, and whether it is a barrel of
-//! re-exports.
+//! each import takes, what the file exports, and whether it only passes
+//! re-exports through.
 
 mod error;
 mod exports;

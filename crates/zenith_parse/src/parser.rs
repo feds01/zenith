@@ -62,9 +62,10 @@ impl Parser {
     }
 
     /// This parser, recording the names that imports take and what each file
-    /// exports if `names` is set. Only following imports through barrels needs
-    /// them, and they cost memory for every import, so without them every
-    /// import takes [`ImportedNames::All`] and every file exports nothing.
+    /// exports if `names` is set. Only following imports through pass-through
+    /// modules needs them, and they cost memory for every import, so
+    /// without them every import takes [`ImportedNames::All`] and every
+    /// file exports nothing.
     ///
     /// [`ImportedNames::All`]: zenith_graph::ImportedNames::All
     pub fn with_names(mut self, names: bool) -> Self {

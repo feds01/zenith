@@ -1,7 +1,7 @@
 //! What an import statement takes from the module it imports, and what a
-//! module exports, so that an import from a barrel, a file that only
-//! re-exports other modules, can be followed to the modules that define what
-//! it takes.
+//! module exports, so that an import from a pass-through module, a file that
+//! only re-exports other modules, can be followed to the modules that define
+//! what it takes.
 
 use compact_str::CompactString;
 use thin_vec::ThinVec;
@@ -56,10 +56,11 @@ impl ImportedName {
 /// or the node it resolved to, in the graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exports<S> {
-    /// Whether the module is a barrel: every statement in it imports or
-    /// re-exports, so that it has no code of its own, and importing a name
-    /// from it is importing the name from where it is defined.
-    pub barrel: bool,
+    /// Whether the module is a pass-through module: every statement in it
+    /// imports or re-exports, so that it has no code of its own, and
+    /// importing a name from it is importing the name from where it is
+    /// defined.
+    pub pass_through: bool,
 
     /// The names that the module exports from its own code, e.g. `a` for
     /// `export const a = 1`, `default` for `export default …`.
@@ -78,7 +79,7 @@ impl<S> Default for Exports<S> {
     /// is taken to be.
     fn default() -> Self {
         Self {
-            barrel: false,
+            pass_through: false,
             names: ThinVec::new(),
             reexports: ThinVec::new(),
             stars: ThinVec::new(),
@@ -92,7 +93,7 @@ impl<S> Exports<S> {
     /// whose import couldn't be resolved.
     pub fn map<T>(self, mut source: impl FnMut(S) -> Option<T>) -> Exports<T> {
         Exports {
-            barrel: self.barrel,
+            pass_through: self.pass_through,
             names: self.names,
             reexports: self
                 .reexports

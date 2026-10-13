@@ -32,6 +32,7 @@ mod layers;
 mod node_set;
 mod overview;
 mod pathfinding;
+mod reexports;
 #[cfg(test)]
 mod testing;
 mod unit;
@@ -45,5 +46,6 @@ pub use kinds::{ImportKind, KindSet};
 pub use layers::{Architecture, LayerId, LayerRef, Level, LevelId, PackageDependency, Route};
 pub use node_set::NodeSet;
 pub use overview::{ChildDependency, ModuleOverview, OverviewChild, OverviewDot, OverviewTree};
+pub use reexports::ModuleExports;
 pub use unit::Unit;
 pub use view::{EdgeSet, GraphView};

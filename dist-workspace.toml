@@ -15,7 +15,8 @@ npm-scope = "@feds01"
 tap = "feds01/homebrew-tap"
 # Publish the npm package and the Homebrew formula with each release, by our
 # own jobs, which run `just publish-npm` and `just publish-formula`. The npm
-# package is published with npm's trusted publishing, without a token.
+# package is staged with npm's trusted publishing, without a token, and goes
+# live once a maintainer approves it.
 publish-jobs = ["./publish-homebrew", "./publish-npm"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-apple-darwin", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]

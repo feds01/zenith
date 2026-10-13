@@ -183,6 +183,7 @@ release:
 
     git tag -a "$tag" -m "Release $tag"
     git push origin "$tag"
+    echo "Once the release workflow has run, approve the npm package on npmjs.com, under Staged Packages."
 
 # Commit the Homebrew formula of each release in $PLAN, dist's plan, to the tap checked out at `tap`, and push it (run by the release workflow)
 [no-cd]
@@ -213,7 +214,7 @@ publish-formula tap:
 
     git push
 
-# Publish the npm package of each release in $PLAN, dist's plan, from the artifacts in `dir`, skipping versions already on npm (run by the release workflow)
+# Stage the npm package of each release in $PLAN, dist's plan, from the artifacts in `dir`, for a maintainer to approve, skipping versions already on npm (run by the release workflow)
 [no-cd]
 publish-npm dir:
     #!/usr/bin/env bash
@@ -225,14 +226,23 @@ publish-npm dir:
     packages="$(jq --raw-output '.releases[].artifacts[] | select(endswith("-npm-package.tar.gz"))' <<<"$PLAN")"
     while IFS= read -r package; do
         [ -n "$package" ] || continue
-        # What it publishes, e.g. `@feds01/zenith@0.1.0`.
+        # What it stages, e.g. `@feds01/zenith@0.1.0`.
         spec="$(tar -xzOf "$dir/$package" package/package.json | jq --raw-output '.name + "@" + .version')"
 
-        # A version published by hand, or by an earlier run, is skipped, so
-        # that the job can be re-run.
+        # A version already on npm, published by hand or approved after an
+        # earlier run, is skipped, so that the job can be re-run. One that is
+        # staged but not yet approved can't be staged again: approve or reject
+        # it first.
         if [ -n "$(npm view "$spec" version 2>/dev/null)" ]; then
             echo "$spec is already on npm"
             continue
         fi
-        npm publish --access public "$dir/$package"
+
+        # Staged, not published: it goes live once a maintainer approves it,
+        # with 2FA. npm prints the id to approve it by, as
+        # `+ @feds01/zenith@0.1.0 (staged with id <id>)`.
+        staged="$(npm stage publish --access public "$dir/$package")"
+        echo "$staged"
+        id="$(sed -n 's/.*(staged with id \(.*\))$/\1/p' <<<"$staged")"
+        echo "::notice title=npm::Staged $spec. Approve it on npmjs.com, under Staged Packages, or with npm stage approve ${id:-<id>}."
     done <<<"$packages"

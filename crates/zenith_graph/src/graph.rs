@@ -211,25 +211,8 @@ impl Graph {
                 .filter_map(|(index, node)| Some((node.parent?, ModuleId::new(index)))),
         );
 
-        // Imports are sorted by importer, then imported, then detail, so each
-        // run of one pair is an edge, and the edges are sorted too.
-        let mut edges = Vec::new();
-        let mut detail_offsets = Vec::new();
-        let mut details = Vec::with_capacity(imports.len());
-        for (importer, imported, detail) in imports {
-            if edges.last() != Some(&(importer, imported)) {
-                edges.push((importer, imported));
-                detail_offsets.push(details.len());
-            }
-            details.push(detail);
-        }
-        detail_offsets.push(details.len());
-
-        let imports = Adjacency::group(node_count, edges.iter().copied());
-        let importers = Adjacency::group(
-            node_count,
-            edges.iter().map(|(importer, imported)| (*imported, *importer)),
-        );
+        let ImportParts { imports, importers, detail_offsets, details } =
+            ImportParts::group(node_count, imports);
 
         let mut nodes: IndexVec<ModuleId, Node> = nodes
             .into_iter()
@@ -244,6 +227,24 @@ impl Graph {
         let preorder = assign_preorder(&mut nodes, &children);
 
         Self { nodes, children, imports, importers, detail_offsets, details, preorder }
+    }
+
+    /// This graph's module tree, with `imports` instead of its own: each an
+    /// `(importer, imported, detail)` between its nodes, in any order.
+    pub fn with_imports(&self, mut imports: Vec<(ModuleId, ModuleId, ImportDetail)>) -> Self {
+        imports.sort_unstable();
+        imports.dedup();
+        let ImportParts { imports, importers, detail_offsets, details } =
+            ImportParts::group(self.node_count(), imports);
+        Self {
+            nodes: self.nodes.clone(),
+            children: self.children.clone(),
+            imports,
+            importers,
+            detail_offsets,
+            details,
+            preorder: self.preorder.clone(),
+        }
     }
 
     /// The number of nodes in the graph. There is always at least one, the
@@ -399,9 +400,51 @@ fn assign_preorder(
     preorder
 }
 
+/// The imports of a graph, grouped for lookups both ways.
+struct ImportParts {
+    /// The nodes each node imports.
+    imports: Adjacency,
+
+    /// The nodes that import each node.
+    importers: Adjacency,
+
+    /// Where the details of each edge start in `details`, and where the last
+    /// one ends.
+    detail_offsets: Vec<usize>,
+
+    /// Every detail, grouped by edge.
+    details: Vec<ImportDetail>,
+}
+
+impl ImportParts {
+    /// Group `imports` between `node_count` nodes, sorted by importer, then
+    /// imported, then detail, so that each run of one pair is an edge, and
+    /// the edges are sorted too.
+    fn group(node_count: usize, imports: Vec<(ModuleId, ModuleId, ImportDetail)>) -> Self {
+        let mut edges = Vec::new();
+        let mut detail_offsets = Vec::new();
+        let mut details = Vec::with_capacity(imports.len());
+        for (importer, imported, detail) in imports {
+            if edges.last() != Some(&(importer, imported)) {
+                edges.push((importer, imported));
+                detail_offsets.push(details.len());
+            }
+            details.push(detail);
+        }
+        detail_offsets.push(details.len());
+
+        let imports = Adjacency::group(node_count, edges.iter().copied());
+        let importers = Adjacency::group(
+            node_count,
+            edges.iter().map(|(importer, imported)| (*imported, *importer)),
+        );
+        Self { imports, importers, detail_offsets, details }
+    }
+}
+
 /// The adjacency lists of every node, stored back to back (compressed sparse
 /// rows), so a relation over any number of nodes takes two allocations.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Adjacency {
     /// Node `i`'s list is `targets[offsets[i]..offsets[i + 1]]`.
     offsets: Vec<usize>,

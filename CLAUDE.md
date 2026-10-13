@@ -68,9 +68,10 @@ responsibilities move:
   names that imports take and modules export, node sets, units, finding the
   nodes that a path glob or name pattern picks out, graph views that leave out
   imports (by pair or by kind) and have boundaries that chains don't pass
-  through, the grimp algorithms that run on them: shortest import chains,
-  layers and cycle breakers, and module overviews for visualisations (`zenith
-  graph`).
+  through, the graph through barrels, which follows imports of names to the
+  modules that define them, the grimp algorithms that run on them: shortest
+  import chains, layers and cycle breakers, and module overviews for
+  visualisations (`zenith graph`).
 - `zenith_parse`: oxc-based extraction of imports, their kinds and the
   names they take, what each file exports and whether it is a barrel,
   directives and suppression comments.

@@ -22,6 +22,7 @@
 //! children, and the dependencies between them, as a tree, a Graphviz digraph
 //! or JSON.
 
+mod barrels;
 mod builder;
 mod cycles;
 mod exports;
@@ -37,6 +38,7 @@ mod testing;
 mod unit;
 mod view;
 
+pub use barrels::ModuleExports;
 pub use builder::{FileHandle, GraphBuilder, GraphError, NodeHandle};
 pub use cycles::{UnitDependency, UnitGraph, UnitId};
 pub use exports::{Exports, ImportedName, ImportedNames, ReExport};

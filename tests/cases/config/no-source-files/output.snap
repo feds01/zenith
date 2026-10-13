@@ -1,0 +1,10 @@
+$ zenith check
+exit: 2
+--- stderr
+error: found no source files in the project root `$ROOT`; use `--root` to point at the project
+
+$ zenith graph
+exit: 2
+--- stderr
+error: found no source files in the project root `$ROOT`; use `--root` to point at the project
+

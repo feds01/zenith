@@ -1,0 +1,4 @@
+# A root without source files, such as the directory of a configuration file
+# kept outside the project, is an error rather than a selector error each.
+check
+graph

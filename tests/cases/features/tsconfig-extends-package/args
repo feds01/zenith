@@ -1,0 +1,4 @@
+# The app's tsconfig.json extends one from the `tsconfig` workspace package,
+# which can't be loaded without node_modules, so its `@/` alias is lost.
+check
+check --show-unresolved

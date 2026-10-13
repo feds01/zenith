@@ -171,6 +171,22 @@ impl Session {
                 "use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones",
             );
         }
+        // A `tsconfig.json` that extends one from a package can't be loaded until
+        // the package is installed, and then none of its `paths` resolve.
+        let in_tsconfig_errors =
+            self.unresolved.iter().filter(|import| import.reason.is_tsconfig_error()).count();
+        if in_tsconfig_errors > 0 {
+            let which = match (in_tsconfig_errors, self.unresolved.len()) {
+                (1, 1) => "it is in a file".to_string(),
+                (count, total) if count == total => "they are all in files".to_string(),
+                (1, _) => "1 of them is in a file".to_string(),
+                (count, _) => format!("{count} of them are in files"),
+            };
+            report.add_help(format!(
+                "{which} whose `tsconfig.json` couldn't be loaded; if it extends one from a \
+                 package, install the dependencies first"
+            ));
+        }
         Some(report)
     }
 

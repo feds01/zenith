@@ -607,7 +607,9 @@ webpack's enhanced-resolve, through `resolve_file`. With
 - A file whose `tsconfig.json` can't be loaded (because it extends one in a
   package that isn't installed, say) is resolved without it. A non-relative
   specifier that then fails is unresolved, with the `tsconfig.json` error as
-  the reason.
+  the reason, and `zenith check`'s warning says how many of the unresolved
+  imports are in such files, as installing the dependencies usually fixes
+  them.
 - **Default conditions (settled):** `types`, `source`, `import`, `module`,
   `require`, `node`, `default`. They are matched in the order the package
   lists them. `types` is included so that internal TS packages resolve to

@@ -1,0 +1,24 @@
+$ zenith check
+exit: 0
+--- stdout
+warning: 1 import could not be resolved
+  |
+  = help: use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
+  = help: it is in a file whose `tsconfig.json` couldn't be loaded; if it extends one from a package, install the dependencies first
+
+Contracts
+
+0 kept, 0 broken · 2 files, 0 imports
+
+$ zenith check --show-unresolved
+exit: 0
+--- stdout
+warning: 1 import could not be resolved
+  |
+  = note:   packages/app/src/main.ts:1:1  `@/lib/format`  (Tsconfig not found tsconfig/base.json)
+  = help: it is in a file whose `tsconfig.json` couldn't be loaded; if it extends one from a package, install the dependencies first
+
+Contracts
+
+0 kept, 0 broken · 2 files, 0 imports
+

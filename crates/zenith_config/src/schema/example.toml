@@ -21,6 +21,10 @@ exclude_kinds = []
 path = "zenith.baseline.toml"
 stale = "error"
 
+[cache]
+enabled = true
+dir = "node_modules/.cache/zenith"
+
 [contracts.client-safety]
 type = "forbidden"
 name = "Client components never reach server-only code"

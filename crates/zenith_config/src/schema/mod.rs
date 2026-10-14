@@ -21,7 +21,7 @@ use zenith_graph::ImportKind;
 use zenith_utils::location::ByteRange;
 
 use crate::{
-    config::{DEFAULT_BASELINE_PATH, StaleLevel},
+    config::{DEFAULT_BASELINE_PATH, DEFAULT_CACHE_DIR, StaleLevel},
     contracts::{AlertLevel, Reexports, Severity},
 };
 
@@ -99,6 +99,12 @@ pub(crate) struct ConfigFile {
     #[serde(default)]
     #[schemars(with = "BaselineTable")]
     pub(crate) baseline: IgnoredAny,
+
+    /// The cache of what zenith found in each file on earlier runs, which
+    /// lets it skip reading and parsing the files that haven't changed since.
+    #[serde(default)]
+    #[schemars(with = "CacheTable")]
+    pub(crate) cache: IgnoredAny,
 
     /// The architecture contracts, keyed by id. Ids may contain ASCII
     /// letters, digits, `-` and `_`, and are what `--contract`, the baseline
@@ -194,6 +200,24 @@ pub(crate) struct BaselineTable {
 impl Default for BaselineTable {
     fn default() -> Self {
         Self { path: DEFAULT_BASELINE_PATH.to_string(), stale: StaleLevel::default() }
+    }
+}
+
+/// The cache of what zenith found in each file on earlier runs.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields, expecting = "a table")]
+pub(crate) struct CacheTable {
+    /// Whether to use the cache. `--no-cache` turns it off for one run.
+    pub(crate) enabled: bool,
+
+    /// The directory to keep the cache in. Zenith creates it, with a
+    /// `.gitignore` that ignores everything in it.
+    pub(crate) dir: String,
+}
+
+impl Default for CacheTable {
+    fn default() -> Self {
+        Self { enabled: true, dir: DEFAULT_CACHE_DIR.to_string() }
     }
 }
 

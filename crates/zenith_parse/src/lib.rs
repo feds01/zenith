@@ -10,6 +10,7 @@
 //! each import takes, what the file exports, and whether it only passes
 //! re-exports through.
 
+mod cache;
 mod error;
 mod exports;
 mod parser;

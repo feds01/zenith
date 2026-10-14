@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use thin_vec::ThinVec;
+use zenith_cache::CacheSettings;
 use zenith_config::{Config, ContractConfig, Reexports, SOURCE_EXTENSIONS, Tsconfig};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
@@ -36,6 +37,11 @@ pub struct Session {
     /// The files that commands report on, every file unless
     /// [`Session::scope_to`] narrows it. Every file is still scanned.
     pub scope: Scope,
+
+    /// Where the [`Parse`](crate::StageKind::Parse) stage keeps its cache, or
+    /// `None` to read and parse every file. A new session has none; see
+    /// [`Session::cache_settings`].
+    pub cache: Option<CacheSettings>,
 
     /// The source files to scan, sorted by path. Found by the
     /// [`Discover`](crate::StageKind::Discover) stage.
@@ -165,6 +171,10 @@ pub struct Stats {
     /// The imports of external packages that aren't installed, so are named
     /// from their specifier alone.
     pub missing_packages: usize,
+
+    /// The source files whose imports came from the parse cache, rather than
+    /// the parser.
+    pub cached_files: usize,
 }
 
 impl Session {
@@ -176,6 +186,7 @@ impl Session {
             config,
             tracked_only: false,
             scope: Scope::default(),
+            cache: None,
             files: Vec::new(),
             workspace: Workspace::default(),
             parsed: Vec::new(),
@@ -330,6 +341,17 @@ impl Session {
         settings
     }
 
+    /// Where to keep the parse cache, as the configuration says, for
+    /// `version` of zenith, or `None` if the configuration turns it off. The
+    /// directory in the configuration is relative to the root.
+    pub fn cache_settings(&self, version: &str) -> Option<CacheSettings> {
+        let cache = &self.config.cache;
+        cache.enabled.then(|| CacheSettings {
+            dir: self.root.join(&cache.dir),
+            version: version.to_string(),
+        })
+    }
+
     /// The path of the baseline file, which the configuration gives relative
     /// to the root.
     pub fn baseline_path(&self) -> PathBuf {
@@ -385,6 +407,14 @@ mod tests {
         assert!(settings.aliases.is_empty() && settings.ignore_unresolved.is_empty());
         assert!(settings.workspace_packages.is_empty());
         assert_eq!(session.baseline_path(), Path::new("/repo/zenith.baseline.toml"));
+        assert_eq!(
+            session.cache_settings("1.0.0"),
+            Some(CacheSettings {
+                dir: PathBuf::from("/repo/node_modules/.cache/zenith"),
+                version: "1.0.0".to_string()
+            })
+        );
+        assert!(session.cache.is_none());
     }
 
     #[test]
@@ -406,9 +436,15 @@ mod tests {
 
             [baseline]
             path = "lint/baseline.toml"
+
+            [cache]
+            dir = ".zenith"
             "#,
         );
         assert_eq!(session.baseline_path(), Path::new("/repo/lint/baseline.toml"));
+        let cache = session.cache_settings("1.0.0").unwrap();
+        assert_eq!(cache.dir, Path::new("/repo/.zenith"));
+        assert_eq!(cache.dir, Path::new("/repo/.zenith"));
         let globs = |globs: &[zenith_utils::glob::Glob]| -> Vec<String> {
             globs.iter().map(|glob| glob.as_str().to_string()).collect()
         };
@@ -433,6 +469,11 @@ mod tests {
         let patterns: Vec<_> =
             settings.ignore_unresolved.iter().map(|pattern| pattern.as_str()).collect();
         assert_eq!(patterns, ["virtual:*"]);
+    }
+
+    #[test]
+    fn the_cache_can_be_turned_off() {
+        assert_eq!(session("[cache]\nenabled = false\n").cache_settings("1.0.0"), None);
     }
 
     #[test]

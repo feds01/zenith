@@ -1,0 +1,3 @@
+# `[cache] enabled = false` turns the parse cache off.
+[cache]
+enabled = false

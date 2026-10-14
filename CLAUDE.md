@@ -43,6 +43,8 @@ a new kind of responsibility, not for each feature:
 - `zenith`: the CLI, its commands, and the UI snapshot harness in
   `tests/ui.rs`.
 - `zenith_benchmark`: the benchmarks, and the synthetic monorepo they run on.
+- `zenith_cache`: the cache of what zenith found in each file between runs,
+  and its file format.
 - `zenith_config`: the `zenith.toml` types, schema, discovery and validation.
 - `zenith_contracts`: selectors, the contract types and the violations they
   find, suppressions, the baseline, and the JSON output of `zenith check`.

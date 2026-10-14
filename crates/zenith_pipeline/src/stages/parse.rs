@@ -1,16 +1,22 @@
 //! The [`Parse`] stage.
 
-use std::{io, mem};
+use std::{io, mem, time::SystemTime};
 
+use log::{debug, info};
 use rayon::prelude::*;
-use zenith_parse::{ParsedFile, Parser};
+use zenith_cache::{Cache, Lookup, Origin};
+use zenith_parse::{ParseOptions, ParsedFile, Parser};
 
-use crate::{FileError, FileErrorKind, PipelineError, Session, Stage, StageKind};
+use crate::{FileError, FileErrorKind, PipelineError, Session, SourceFile, Stage, StageKind};
 
 /// Parses the source files with `zenith_parse`, in parallel on the current
 /// rayon thread pool. Each worker keeps a parser, so that its arena is reused
 /// from file to file. The parser recurses into nested code, so the pool's
 /// threads need a deep stack (see [`Parser`]).
+///
+/// With [`Session::cache`] set, the files that haven't changed since the last
+/// run come from the parse cache instead, which is then rewritten if
+/// anything changed. Otherwise every file is read and parsed.
 ///
 /// A file that can't be read parses as empty. Read and syntax errors are
 /// moved to the session's file errors.
@@ -22,29 +28,19 @@ impl Stage for Parse {
     }
 
     fn run(&self, session: &mut Session) -> Result<(), PipelineError> {
+        // 1. Parse every file, or take the unchanged ones from the cache.
         let options = session.parse_options();
-        let root = &session.root;
-        let results: Vec<io::Result<ParsedFile>> = session
-            .files
-            .par_iter()
-            .map_init(
-                || Parser::with_options(options),
-                |parser, file| parser.parse_file(&file.path(root)),
-            )
-            .collect();
+        let mut parsed = match session.cache.clone() {
+            Some(settings) => parse_cached(session, Cache::load(settings, options), options),
+            None => parse_all(session, options),
+        };
 
-        let mut parsed = Vec::with_capacity(results.len());
-        for (file, result) in session.files.iter().zip(results) {
-            let mut file_parsed = result.unwrap_or_else(|error| {
-                let kind = FileErrorKind::Read(error);
-                session.file_errors.push(FileError { file: file.name.clone(), kind });
-                ParsedFile::default()
-            });
-            if !file_parsed.errors.is_empty() {
-                let kind = FileErrorKind::Syntax(mem::take(&mut file_parsed.errors));
+        // 2. Move the syntax errors to the session.
+        for (file, parsed) in session.files.iter().zip(&mut parsed) {
+            if !parsed.errors.is_empty() {
+                let kind = FileErrorKind::Syntax(mem::take(&mut parsed.errors));
                 session.file_errors.push(FileError { file: file.name.clone(), kind });
             }
-            parsed.push(file_parsed);
         }
 
         // The files are sorted by path, which isn't quite the order of names.
@@ -52,4 +48,91 @@ impl Stage for Parse {
         session.parsed = parsed;
         Ok(())
     }
+}
+
+/// Read and parse every file of `session` with `options`, moving the read
+/// errors to the session.
+fn parse_all(session: &mut Session, options: ParseOptions) -> Vec<ParsedFile> {
+    let root = &session.root;
+    let results: Vec<io::Result<ParsedFile>> = session
+        .files
+        .par_iter()
+        .map_init(
+            || Parser::with_options(options),
+            |parser, file| parser.parse_file(&file.path(root)),
+        )
+        .collect();
+    let files = session.files.iter().zip(results);
+    files.map(|(file, result)| read_or_default(&mut session.file_errors, file, result)).collect()
+}
+
+/// Parse the files of `session` with `options` that `cache` doesn't show
+/// unchanged, moving the read errors to the session, then rewrite the cache
+/// if anything in it changed.
+fn parse_cached(
+    session: &mut Session,
+    mut cache: Cache<ParsedFile>,
+    options: ParseOptions,
+) -> Vec<ParsedFile> {
+    // 1. Take out the entry of each file. Those left are of files that are gone.
+    let started = SystemTime::now();
+    let entries: Vec<_> = session.files.iter().map(|file| cache.take(&file.name)).collect();
+    let removed = cache.len();
+
+    // 2. Parse each file, unless its entry shows that it hasn't changed.
+    let root = &session.root;
+    let results: Vec<Lookup<ParsedFile>> = session
+        .files
+        .par_iter()
+        .zip(entries)
+        .map_init(
+            || Parser::with_options(options),
+            |parser, (file, entry)| {
+                let path = file.path(root);
+                cache.lookup(&path, entry, |source| parser.parse_source(&path, source))
+            },
+        )
+        .collect();
+
+    // 3. Move the read errors to the session.
+    let mut parsed = Vec::with_capacity(results.len());
+    let mut stamps = Vec::with_capacity(results.len());
+    let mut unchanged = 0;
+    for (file, lookup) in session.files.iter().zip(results) {
+        parsed.push(read_or_default(&mut session.file_errors, file, lookup.value));
+        stamps.push(lookup.stamp);
+        session.stats.cached_files += usize::from(lookup.origin != Origin::Computed);
+        unchanged += usize::from(lookup.origin == Origin::Unchanged);
+    }
+
+    // 4. Rewrite the cache if anything in it changed: a file was parsed, was read
+    //    to find it unchanged, or is gone. A file that can't be read has no entry.
+    debug!("{unchanged} of {} files are unchanged since the last run", parsed.len());
+    let entries: Vec<_> = session
+        .files
+        .iter()
+        .zip(&stamps)
+        .zip(&parsed)
+        .filter_map(|((file, stamp), parsed)| Some((file.name.as_str(), stamp.as_ref()?, parsed)))
+        .collect();
+    if (entries.len() != unchanged || removed > 0)
+        && let Err(error) = cache.save(started, entries.into_iter())
+    {
+        let dir = &cache.settings().dir;
+        info!("could not write the parse cache to `{}`: {error}", dir.display());
+    }
+    parsed
+}
+
+/// What `file` parsed to, or an empty file if it couldn't be read, with the
+/// error moved to `file_errors`.
+fn read_or_default(
+    file_errors: &mut Vec<FileError>,
+    file: &SourceFile,
+    result: io::Result<ParsedFile>,
+) -> ParsedFile {
+    result.unwrap_or_else(|error| {
+        file_errors.push(FileError { file: file.name.clone(), kind: FileErrorKind::Read(error) });
+        ParsedFile::default()
+    })
 }

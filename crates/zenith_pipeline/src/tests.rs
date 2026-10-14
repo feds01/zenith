@@ -1,11 +1,18 @@
 //! Running the standard pipeline on projects in temporary directories.
 
-use std::{fs, ops::Range, path::PathBuf};
+use std::{
+    fs,
+    ops::Range,
+    path::PathBuf,
+    time::{Duration, SystemTime},
+};
 
 use tempfile::TempDir;
+use zenith_cache::CacheSettings;
 use zenith_config::{Config, ConfigFile};
 use zenith_diagnostics::{ReportElement, Reporter};
 use zenith_graph::{Graph, ImportKind, ModuleId, NodeKind};
+use zenith_parse::ParsedFile;
 use zenith_resolve::{ResolverError, UnresolvedReason};
 use zenith_utils::path::adjust_canonicalisation;
 
@@ -43,6 +50,32 @@ impl Project {
         let mut session = self.session(toml);
         Pipeline::standard().run_until(&mut session, StageKind::Graph)?;
         Ok(session)
+    }
+
+    /// Run the standard pipeline on the project, with its parse cache for
+    /// zenith `version`.
+    fn build_cached(&self, version: &str) -> Session {
+        let mut session = self.session("");
+        session.cache = session.cache_settings(version);
+        Pipeline::standard().run_until(&mut session, StageKind::Graph).unwrap();
+        session
+    }
+
+    /// The settings of the project's parse cache.
+    fn cache(&self) -> CacheSettings {
+        self.session("").cache_settings("1.0.0").unwrap()
+    }
+
+    /// Set back the modification time of every file in the project by an
+    /// hour, as if it had been checked out long before.
+    fn backdate(&self) {
+        let hour_ago = SystemTime::now() - Duration::from_secs(3_600);
+        for entry in fs::read_dir(&self.root).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_file() {
+                fs::File::options().write(true).open(path).unwrap().set_modified(hour_ago).unwrap();
+            }
+        }
     }
 }
 
@@ -403,4 +436,129 @@ fn the_graph_is_the_same_on_every_build() {
     assert_eq!(first.graph.detail_count(), 400);
     assert!(first.unresolved.is_empty(), "{:?}", first.unresolved);
     assert_eq!(summary(&first.graph), summary(&second.graph));
+}
+
+/// Everything that a build found, for comparing builds.
+fn findings(session: &Session) -> Vec<String> {
+    let errors = session.file_errors.iter().map(|error| match &error.kind {
+        FileErrorKind::Read(read) => format!("{}: {}", error.file, read.kind()),
+        FileErrorKind::Syntax(errors) => format!("{}: {errors:?}", error.file),
+    });
+    let unresolved = session.unresolved.iter().map(|import| format!("{import:?}"));
+    let suppressions = session.suppressions.iter().map(|file| format!("{file:?}"));
+    let stats = &session.stats;
+    let stats = format!("{} {}", stats.non_literal_imports, stats.missing_packages);
+    let files = session.files.iter().map(|file| file.name.clone());
+    summary(&session.graph)
+        .into_iter()
+        .chain(errors)
+        .chain(unresolved)
+        .chain(suppressions)
+        .chain(files)
+        .chain([stats])
+        .collect()
+}
+
+/// A project with something of everything that the parser finds, and files
+/// that can't be read or parsed.
+fn varied_project() -> Project {
+    Project::new(&[
+        ("app.tsx", b"'use client';\n// zenith-ignore a: legacy\nimport { b } from './b';\nimport(name);\n"),
+        ("b.ts", b"import type { C } from 'c'; // zenith-ignore d\nexport const b = require('./missing');\n"),
+        ("binary.ts", b"import a from './app';\n\xff\n"),
+        ("recovered.ts", b"import a from './app';\nconst b;\n"),
+        ("fatal.ts", b"import a from './app';\nconst = ;\n"),
+    ])
+}
+
+#[test]
+fn the_cache_never_changes_what_a_build_finds() {
+    let project = varied_project();
+    let uncached = project.build("").unwrap();
+    assert_eq!(uncached.stats.cached_files, 0);
+    assert_eq!(uncached.file_errors.len(), 3);
+
+    // Cold, then warm but too recent to trust the files' metadata, then warm and
+    // trusted. The unreadable file is never cached.
+    let cold = project.build_cached("1.0.0");
+    let warm = project.build_cached("1.0.0");
+    project.backdate();
+    let verified = project.build_cached("1.0.0");
+    let trusted = project.build_cached("1.0.0");
+    let cached: Vec<_> =
+        [&cold, &warm, &verified, &trusted].map(|session| session.stats.cached_files).into();
+    assert_eq!(cached, [0, 4, 4, 4]);
+    for session in [&cold, &warm, &verified, &trusted] {
+        assert_eq!(findings(session), findings(&uncached));
+    }
+    let gitignore = project.cache().dir.join(".gitignore");
+    assert!(project.cache().path::<ParsedFile>().is_file() && gitignore.is_file());
+}
+
+#[test]
+fn changed_added_and_removed_files_are_found() {
+    let project =
+        Project::new(&[("a.ts", b"import './b';\n"), ("b.ts", b"import './c';\n"), ("c.ts", b"")]);
+    project.backdate();
+    project.build_cached("1.0.0");
+
+    // The same size, so only the times tell that it changed.
+    fs::write(project.root.join("a.ts"), "import './c';\n").unwrap();
+    fs::remove_file(project.root.join("b.ts")).unwrap();
+    fs::write(project.root.join("d.ts"), "import './a';\n").unwrap();
+    let session = project.build_cached("1.0.0");
+    assert_eq!(session.stats.cached_files, 1);
+    assert_eq!(findings(&session), findings(&project.build("").unwrap()));
+    assert_eq!(imports_of(&session.graph, "a.ts")[0].0, "c.ts");
+
+    // The new cache has the new files, and not the removed one.
+    let session = project.build_cached("1.0.0");
+    assert_eq!(session.stats.cached_files, 3);
+    assert_eq!(files(&session.graph), ["a.ts", "c.ts", "d.ts"]);
+}
+
+#[test]
+fn an_unchanged_project_leaves_the_cache_alone() {
+    let project = varied_project();
+    project.backdate();
+    project.build_cached("1.0.0");
+    let written = fs::read(project.cache().path::<ParsedFile>()).unwrap();
+    project.build_cached("1.0.0");
+    assert_eq!(fs::read(project.cache().path::<ParsedFile>()).unwrap(), written);
+}
+
+#[test]
+fn a_corrupt_cache_or_one_of_another_version_is_replaced() {
+    let project = varied_project();
+    let expected = findings(&project.build("").unwrap());
+    project.build_cached("1.0.0");
+
+    let file = project.cache().path::<ParsedFile>();
+    let mut bytes = fs::read(&file).unwrap();
+    let last = bytes.len() - 1;
+    bytes[last] ^= 1;
+    fs::write(&file, bytes).unwrap();
+    let session = project.build_cached("1.0.0");
+    assert_eq!(session.stats.cached_files, 0);
+    assert_eq!(findings(&session), expected);
+    assert_eq!(project.build_cached("1.0.0").stats.cached_files, 4);
+
+    let session = project.build_cached("1.1.0");
+    assert_eq!(session.stats.cached_files, 0);
+    assert_eq!(findings(&session), expected);
+    assert_eq!(project.build_cached("1.1.0").stats.cached_files, 4);
+}
+
+#[test]
+fn a_cache_that_cannot_be_written_is_skipped() {
+    let project = varied_project();
+    // The cache directory is a file.
+    let dir = project.cache().dir;
+    fs::create_dir_all(dir.parent().unwrap()).unwrap();
+    fs::write(&dir, "").unwrap();
+    for _ in 0..2 {
+        let session = project.build_cached("1.0.0");
+        assert_eq!(session.stats.cached_files, 0);
+        assert_eq!(findings(&session), findings(&project.build("").unwrap()));
+    }
 }

@@ -1,7 +1,9 @@
 //! File reading helpers.
 
 use std::{
-    fmt, fs, io,
+    fmt,
+    fs::{File, Metadata},
+    io::{self, Read},
     path::{Path, PathBuf},
 };
 
@@ -12,11 +14,26 @@ use crate::path::normalize_path;
 /// Read a text file, without a leading byte order mark, which editors on
 /// Windows often write and which npm, pnpm and yarn all accept.
 pub fn read_text(path: &Path) -> io::Result<String> {
-    let contents = fs::read_to_string(path)?;
+    read_text_from(&mut File::open(path)?)
+}
+
+/// Read what is left of `reader` as text, without a leading byte order
+/// mark, as [`read_text`] does, e.g. a file whose metadata was read first.
+pub fn read_text_from(reader: &mut impl Read) -> io::Result<String> {
+    let contents = io::read_to_string(reader)?;
     Ok(match contents.strip_prefix('\u{feff}') {
         Some(contents) => contents.to_string(),
         None => contents,
     })
+}
+
+/// Read a text file, as [`read_text`] does, with its metadata, taken before
+/// it is read, or `None` if that couldn't be taken. Opening the file once for
+/// both is faster than looking it up twice.
+pub fn read_text_with_metadata(path: &Path) -> io::Result<(String, Option<Metadata>)> {
+    let mut file = File::open(path)?;
+    let metadata = file.metadata().ok();
+    Ok((read_text_from(&mut file)?, metadata))
 }
 
 /// Why a JSON file couldn't be read.
@@ -62,6 +79,8 @@ pub fn find_in_ancestors(start: &Path, name: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use serde_json::json;
     use tempfile::TempDir;
 
@@ -75,6 +94,20 @@ mod tests {
 
         assert_eq!(read_text(&path).unwrap(), "{ \"name\": \"web\" }");
         assert_eq!(read_json(&path).unwrap(), json!({ "name": "web" }));
+    }
+
+    #[test]
+    fn reads_text_from_an_open_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("a.ts");
+        fs::write(&path, "\u{feff}import a from './a';\n").unwrap();
+        let mut file = File::open(&path).unwrap();
+        assert_eq!(read_text_from(&mut file).unwrap(), "import a from './a';\n");
+
+        fs::write(&path, b"\xff").unwrap();
+        let error = read_text_from(&mut File::open(&path).unwrap()).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), read_text(&path).unwrap_err().to_string());
     }
 
     #[test]

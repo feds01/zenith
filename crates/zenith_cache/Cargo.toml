@@ -1,0 +1,20 @@
+[package]
+name = "zenith_cache"
+version = "0.1.0"
+description = "Caches what zenith finds in each file between runs"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = false
+
+[dependencies]
+zenith_utils = { workspace = true }
+
+log = { workspace = true }
+rustc-hash = { workspace = true }
+tempfile = { workspace = true }
+xxhash-rust = { workspace = true }
+
+[lints]
+workspace = true

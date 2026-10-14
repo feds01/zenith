@@ -84,6 +84,11 @@ pub struct GlobalArgs {
     #[arg(long, global = true, value_enum, default_value_t = ColourChoice::Auto, value_name = "WHEN")]
     pub color: ColourChoice,
 
+    /// Read and parse every file, without reading or writing the parse
+    /// cache.
+    #[arg(long, global = true)]
+    pub no_cache: bool,
+
     /// Show info logs; repeat for debug logs.
     #[arg(short, long, global = true, action = ArgAction::Count)]
     pub verbose: u8,
@@ -397,6 +402,7 @@ mod tests {
         assert_eq!(cli.global.color, ColourChoice::Never);
         assert_eq!(cli.global.root, Some(PathBuf::from("acme")));
         assert_eq!(cli.global.log_level(), LevelFilter::Debug);
+        assert!(!cli.global.no_cache);
         let Command::Why(why) = cli.command else { panic!("expected `why`") };
         assert_eq!(
             (why.from.to_string(), why.to.to_string()),
@@ -442,7 +448,7 @@ mod tests {
             "zenith resolve web/src/app.ts @/lib/format",
             "zenith init --force",
             "zenith schema",
-            "zenith --config zenith.toml --root . --color always -v version",
+            "zenith --config zenith.toml --root . --color always --no-cache -v version",
         ] {
             if let Err(error) = Cli::try_parse_from(line.split_whitespace()) {
                 panic!("{line}: {error}");

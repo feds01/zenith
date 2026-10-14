@@ -27,6 +27,7 @@ Every command takes these options:
 | `--config <path>` | The configuration file, instead of the nearest `zenith.toml`. |
 | `--root <dir>` | The project root, instead of the configuration file's directory. |
 | `--tracked` | Only scan the files that git tracks, leaving out untracked ones. Use it in pre-commit hooks, where untracked files aren't part of the commit. Outside a git repository, it is an error. |
+| `--no-cache` | Read and parse every file, without reading or writing the [cache](configuration.md#cache). |
 | `--color auto\|always\|never` | Whether to colour the output. By default, only when it goes to a terminal and `NO_COLOR` isn't set. |
 | `-v`, `-vv` | Show more of what zenith is doing, on stderr. |
 

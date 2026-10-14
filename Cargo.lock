@@ -1906,6 +1906,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
+name = "xxhash-rust"
+version = "0.8.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "550a2b930b62486a393c52d5c3b84bff264b28aa437ed64694d31e93b1757af7"
+
+[[package]]
 name = "yaml-rust2"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1976,12 +1982,25 @@ dependencies = [
  "heck",
  "mimalloc",
  "tempfile",
+ "zenith_cache",
  "zenith_config",
  "zenith_contracts",
  "zenith_graph",
+ "zenith_parse",
  "zenith_pipeline",
  "zenith_utils",
  "zenith_workspace",
+]
+
+[[package]]
+name = "zenith_cache"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "rustc-hash",
+ "tempfile",
+ "xxhash-rust",
+ "zenith_utils",
 ]
 
 [[package]]
@@ -2061,6 +2080,7 @@ dependencies = [
  "rustc-hash",
  "tempfile",
  "thin-vec",
+ "zenith_cache",
  "zenith_config",
  "zenith_diagnostics",
  "zenith_graph",
@@ -2077,6 +2097,7 @@ dependencies = [
  "serde",
  "tempfile",
  "thin-vec",
+ "zenith_cache",
  "zenith_config",
  "zenith_diagnostics",
  "zenith_graph",

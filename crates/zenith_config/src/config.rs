@@ -41,6 +41,9 @@ pub struct Config {
     /// The baseline of known violations.
     pub baseline: BaselineConfig,
 
+    /// The cache of what zenith found in each file on earlier runs.
+    pub cache: CacheConfig,
+
     /// The contracts, in the order of the file.
     pub contracts: Vec<ContractConfig>,
 
@@ -209,6 +212,27 @@ impl BaselineConfig {
 impl Default for BaselineConfig {
     fn default() -> Self {
         Self { path: DEFAULT_BASELINE_PATH.to_string(), stale: StaleLevel::default() }
+    }
+}
+
+/// The cache of what zenith found in each file on earlier runs, which lets
+/// it skip reading and parsing the files that haven't changed since.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheConfig {
+    /// Whether to use the cache.
+    pub enabled: bool,
+
+    /// The directory to keep the cache in, relative to the project root.
+    pub dir: String,
+}
+
+/// The default directory of the cache, where JavaScript tools conventionally
+/// keep theirs.
+pub(crate) const DEFAULT_CACHE_DIR: &str = "node_modules/.cache/zenith";
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self { enabled: true, dir: DEFAULT_CACHE_DIR.to_string() }
     }
 }
 

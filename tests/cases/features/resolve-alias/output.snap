@@ -25,6 +25,7 @@ exit: 0
   └─ui/ (1 file)
 --- stderr
 info: indexed 2 source files and 1 import
+info: reused the imports of 2 of them from the parse cache
 info: `./missing` in src/ui/avatar.ts:3:1 could not be resolved: Cannot find module './missing'
 warning: 1 import could not be resolved
 

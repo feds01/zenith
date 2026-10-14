@@ -43,6 +43,8 @@ a new kind of responsibility, not for each feature:
 - `zenith`: the CLI, its commands, and the UI snapshot harness in
   `tests/ui.rs`.
 - `zenith_benchmark`: the benchmarks, and the synthetic monorepo they run on.
+- `zenith_cache`: the cache of what zenith found in each file between runs,
+  and its file format.
 - `zenith_config`: the `zenith.toml` types, schema, discovery and validation.
 - `zenith_contracts`: selectors, the contract types and the violations they
   find, suppressions, the baseline, and the JSON output of `zenith check`.
@@ -51,7 +53,7 @@ a new kind of responsibility, not for each feature:
   algorithms that run on them.
 - `zenith_parse`: what each source file imports and exports, read with oxc.
 - `zenith_pipeline`: the stages that turn a project into its import graph,
-  the session they share, and the parse cache.
+  and the session they share.
 - `zenith_reporting`: the output formats of `zenith check`.
 - `zenith_resolve`: specifier resolution with `oxc_resolver`.
 - `zenith_utils`: shared helpers: files, paths, globs, locations, terminal

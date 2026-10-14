@@ -1982,12 +1982,28 @@ dependencies = [
  "heck",
  "mimalloc",
  "tempfile",
+ "zenith_cache",
  "zenith_config",
  "zenith_contracts",
  "zenith_graph",
+ "zenith_parse",
  "zenith_pipeline",
  "zenith_utils",
  "zenith_workspace",
+]
+
+[[package]]
+name = "zenith_cache"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "rustc-hash",
+ "tempfile",
+ "thin-vec",
+ "xxhash-rust",
+ "zenith_graph",
+ "zenith_parse",
+ "zenith_utils",
 ]
 
 [[package]]
@@ -2083,7 +2099,7 @@ dependencies = [
  "serde",
  "tempfile",
  "thin-vec",
- "xxhash-rust",
+ "zenith_cache",
  "zenith_config",
  "zenith_diagnostics",
  "zenith_graph",

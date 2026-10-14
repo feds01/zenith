@@ -2,7 +2,7 @@
 
 use std::{
     fmt,
-    fs::File,
+    fs::{File, Metadata},
     io::{self, Read},
     path::{Path, PathBuf},
 };
@@ -25,6 +25,15 @@ pub fn read_text_from(reader: &mut impl Read) -> io::Result<String> {
         Some(contents) => contents.to_string(),
         None => contents,
     })
+}
+
+/// Read a text file, as [`read_text`] does, with its metadata, taken before
+/// it is read, or `None` if that couldn't be taken. Opening the file once for
+/// both is faster than looking it up twice.
+pub fn read_text_with_metadata(path: &Path) -> io::Result<(String, Option<Metadata>)> {
+    let mut file = File::open(path)?;
+    let metadata = file.metadata().ok();
+    Ok((read_text_from(&mut file)?, metadata))
 }
 
 /// Why a JSON file couldn't be read.

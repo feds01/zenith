@@ -9,6 +9,7 @@ repository = { workspace = true }
 publish = false
 
 [dependencies]
+zenith_cache = { workspace = true }
 zenith_config = { workspace = true }
 zenith_diagnostics = { workspace = true }
 zenith_graph = { workspace = true }
@@ -21,9 +22,10 @@ log = { workspace = true }
 rayon = { workspace = true }
 rustc-hash = { workspace = true }
 serde = { workspace = true }
-tempfile = { workspace = true }
 thin-vec = { workspace = true }
-xxhash-rust = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

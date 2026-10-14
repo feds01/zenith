@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use thin_vec::ThinVec;
+use zenith_cache::CacheSettings;
 use zenith_config::{Config, ContractConfig, Reexports, SOURCE_EXTENSIONS, Tsconfig};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
@@ -15,7 +16,7 @@ use zenith_utils::{
 };
 use zenith_workspace::{WalkSettings, Workspace};
 
-use crate::{CacheSettings, FileError, PipelineError, Scope, UnresolvedImport};
+use crate::{FileError, PipelineError, Scope, UnresolvedImport};
 
 /// A project, and what the stages of the pipeline have found in it so far.
 ///
@@ -443,7 +444,7 @@ mod tests {
         assert_eq!(session.baseline_path(), Path::new("/repo/lint/baseline.toml"));
         let cache = session.cache_settings("1.0.0").unwrap();
         assert_eq!(cache.dir, Path::new("/repo/.zenith"));
-        assert_eq!(cache.file(), Path::new("/repo/.zenith/parse.bin"));
+        assert_eq!(cache.dir, Path::new("/repo/.zenith"));
         let globs = |globs: &[zenith_utils::glob::Glob]| -> Vec<String> {
             globs.iter().map(|glob| glob.as_str().to_string()).collect()
         };

@@ -8,13 +8,15 @@ use std::{
 };
 
 use tempfile::TempDir;
+use zenith_cache::CacheSettings;
 use zenith_config::{Config, ConfigFile};
 use zenith_diagnostics::{ReportElement, Reporter};
 use zenith_graph::{Graph, ImportKind, ModuleId, NodeKind};
+use zenith_parse::ParsedFile;
 use zenith_resolve::{ResolverError, UnresolvedReason};
 use zenith_utils::path::adjust_canonicalisation;
 
-use crate::{CacheSettings, FileErrorKind, Pipeline, PipelineError, Session, StageKind};
+use crate::{FileErrorKind, Pipeline, PipelineError, Session, StageKind};
 
 /// A project in a temporary directory.
 struct Project {
@@ -490,7 +492,7 @@ fn the_cache_never_changes_what_a_build_finds() {
         assert_eq!(findings(session), findings(&uncached));
     }
     let gitignore = project.cache().dir.join(".gitignore");
-    assert!(project.cache().file().is_file() && gitignore.is_file());
+    assert!(project.cache().path::<ParsedFile>().is_file() && gitignore.is_file());
 }
 
 #[test]
@@ -520,9 +522,9 @@ fn an_unchanged_project_leaves_the_cache_alone() {
     let project = varied_project();
     project.backdate();
     project.build_cached("1.0.0");
-    let written = fs::read(project.cache().file()).unwrap();
+    let written = fs::read(project.cache().path::<ParsedFile>()).unwrap();
     project.build_cached("1.0.0");
-    assert_eq!(fs::read(project.cache().file()).unwrap(), written);
+    assert_eq!(fs::read(project.cache().path::<ParsedFile>()).unwrap(), written);
 }
 
 #[test]
@@ -531,7 +533,7 @@ fn a_corrupt_cache_or_one_of_another_version_is_replaced() {
     let expected = findings(&project.build("").unwrap());
     project.build_cached("1.0.0");
 
-    let file = project.cache().file();
+    let file = project.cache().path::<ParsedFile>();
     let mut bytes = fs::read(&file).unwrap();
     let last = bytes.len() - 1;
     bytes[last] ^= 1;

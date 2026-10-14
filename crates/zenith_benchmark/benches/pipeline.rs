@@ -13,10 +13,10 @@ use std::{
 use divan::Bencher;
 use tempfile::TempDir;
 use zenith_benchmark::TempRepo;
+use zenith_cache::CacheSettings;
 use zenith_config::Config;
-use zenith_pipeline::{
-    BuildGraph, CacheSettings, Parse, Pipeline, Resolve, Session, Stage, StageKind,
-};
+use zenith_parse::ParsedFile;
+use zenith_pipeline::{BuildGraph, Parse, Pipeline, Resolve, Session, Stage, StageKind};
 
 // The allocator of the `zenith` binary. CodSpeed measures the allocations
 // itself, in its memory mode.
@@ -146,7 +146,7 @@ fn parse_cold_cache(bencher: Bencher, source_files: usize) {
     bencher
         .with_inputs(|| {
             // Only the cache file is removed: creating its directory is a one-off.
-            let _ = fs::remove_file(cache.file());
+            let _ = fs::remove_file(cache.path::<ParsedFile>());
             let mut session = session(source_files, Some(StageKind::Discover));
             session.cache = Some(cache.clone());
             session

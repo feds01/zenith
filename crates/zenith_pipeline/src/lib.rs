@@ -23,7 +23,6 @@
 //! run neither reads nor parses the files that haven't changed. Set
 //! [`Session::cache`] to use one.
 
-mod cache;
 mod error;
 mod pipeline;
 mod schema;
@@ -33,7 +32,6 @@ mod stages;
 #[cfg(test)]
 mod tests;
 
-pub use cache::{CACHE_FILE_NAME, CacheSettings};
 pub use error::{FileError, FileErrorKind, PipelineError, UnresolvedImport};
 pub use pipeline::{Pipeline, Stage, StageKind};
 pub use schema::{FileProblemJson, UnresolvedJson};

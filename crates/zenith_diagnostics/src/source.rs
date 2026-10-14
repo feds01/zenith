@@ -98,6 +98,21 @@ impl Source {
             .count();
         Position { line, column: before as u32 + 1 }
     }
+
+    /// The whole lines that `range` is on: the 1-based number of the first,
+    /// and their bytes, including the `\n` that ends the last. The end of a
+    /// source that ends with a `\n` is on its last line, not the empty one
+    /// after it, as excerpts show it.
+    pub fn lines(&self, range: ByteRange) -> (u32, ByteRange) {
+        let line = |offset: u32| match offset as usize == self.contents.len() {
+            true if self.contents.ends_with('\n') => self.lines.line(offset - 1),
+            _ => self.lines.line(offset),
+        };
+        let (first, last) = (line(range.start()), line(range.end()));
+        let lines =
+            ByteRange::new(self.lines.line_range(first).start(), self.lines.line_range(last).end());
+        (first, lines)
+    }
 }
 
 /// The sources that reports point into, each with a [`SourceId`].

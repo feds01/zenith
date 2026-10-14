@@ -99,13 +99,20 @@ impl<'a> Reporter<'a> {
         title.elements(elements)
     }
 
-    /// The excerpt of a code block, with its span labelled.
+    /// The excerpt of a code block, with its span labelled. Only the lines of
+    /// the span are given to `annotate-snippets`, which reads every line of
+    /// the source it is given.
     fn snippet(&self, block: &'a ReportCodeBlock) -> Snippet<'a, Annotation<'a>> {
         let source = self.sources.get(block.span.source);
-        let annotation = AnnotationKind::Primary
-            .span(Range::from(block.span.range))
-            .label(block.label.as_deref());
-        Snippet::source(&source.contents).path(&source.path).fold(true).annotation(annotation)
+        let (line, lines) = source.lines(block.span.range);
+        let start = (block.span.range.start() - lines.start()) as usize;
+        let end = (block.span.range.end() - lines.start()) as usize;
+        let annotation = AnnotationKind::Primary.span(start..end).label(block.label.as_deref());
+        Snippet::source(&source.contents[Range::from(lines)])
+            .line_start(line as usize)
+            .path(&source.path)
+            .fold(true)
+            .annotation(annotation)
     }
 
     /// The workflow command of a report.

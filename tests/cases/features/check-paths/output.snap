@@ -1,0 +1,61 @@
+$ zenith check --format compact
+exit: 1
+--- stdout
+src/web/a.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`
+src/web/b.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`
+warning: 1 import could not be resolved
+0 kept, 1 broken · 4 files, 2 imports
+
+$ zenith check src/web/a.ts --format compact
+exit: 1
+--- stdout
+src/web/a.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`
+0 kept, 1 broken · 4 files, 2 imports
+
+$ zenith check src/api/server.ts --format compact
+exit: 1
+--- stdout
+src/web/b.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`
+0 kept, 1 broken · 4 files, 2 imports
+
+$ zenith check src/web
+exit: 1
+--- stdout
+error[web-not-api]: `src/web` must not import `src/api`
+ --> src/web/a.ts:1:24
+  |
+1 | import { client } from "../api/client";
+  |                        ^^^^^^^^^^^^^^^ imports `src/api/client.ts`
+  |
+ ::: src/web/b.ts:1:24
+  |
+1 | import { server } from "../api/server";
+  |                        ^^^^^^^^^^^^^^^ imports `src/api/server.ts`
+
+warning: 1 import could not be resolved
+  |
+  = help: use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
+
+Contracts
+  ✗ web-not-api  forbidden  broken (2 violations)
+
+0 kept, 1 broken · 4 files, 2 imports
+
+$ zenith check src/ui --format compact
+exit: 0
+--- stdout
+1 kept, 0 broken · 4 files, 2 imports
+
+$ zenith check . --format compact
+exit: 1
+--- stdout
+src/web/a.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`
+src/web/b.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`
+warning: 1 import could not be resolved
+0 kept, 1 broken · 4 files, 2 imports
+
+$ zenith check .. --format compact
+exit: 2
+--- stderr
+error: `..` is not inside the project root
+

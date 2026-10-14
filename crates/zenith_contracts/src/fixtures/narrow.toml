@@ -1,0 +1,14 @@
+[contracts.f]
+type = "forbidden"
+from = ["web"]
+to = ["api"]
+
+[contracts.c]
+type = "acyclic"
+modules = ["m/*"]
+
+[contracts.l]
+type = "layers"
+containers = ["domains/*"]
+layers = ["types"]
+exhaustive = true

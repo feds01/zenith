@@ -2,13 +2,14 @@
 
 use std::time::Instant;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use log::{info, warn};
 use zenith_contracts::{
     Baseline, CheckJson, Contract, ContractReport, Exemptions, UnusedSuppression,
 };
-use zenith_pipeline::StageKind;
+use zenith_pipeline::{Scope, Session, StageKind};
 use zenith_reporting::{Format, Output, Summary};
+use zenith_utils::path::{adjust_canonicalisation, relative_posix};
 
 use crate::{
     ExitStatus,
@@ -20,9 +21,12 @@ use crate::{
 /// if a contract of `error` severity is broken, or has stale baseline entries
 /// that are errors.
 pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
-    // 1. Open the project, and build its graph.
+    // 1. Open the project, build its graph, and keep only the problems of the files
+    //    under the paths, if any are given.
     let mut session = project::open(global)?;
     let pipeline = project::run_until(&mut session, StageKind::Graph)?;
+    let scope = scope(&session, &args)?;
+    session.narrow(&scope);
 
     // 2. Compile the contracts to check: every one, or those of `--contract`.
     let contracts = project::compile_contracts(&session, &args.contracts)?;
@@ -44,13 +48,18 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     }
 
     // 4. Check the contracts in parallel, without the imports that suppressions and
-    //    the baseline leave out, and find the suppressions that had no effect.
+    //    the baseline leave out, and find the suppressions that had no effect. Keep
+    //    only what involves the files under the paths.
     let start = Instant::now();
     let exemptions =
         Exemptions { suppressions: &session.suppressions, baseline: baseline.as_ref() };
     let graphs = session.graphs();
-    let checked = Contract::check_all(&contracts, graphs, &session.workspace, &exemptions);
-    let unused = UnusedSuppression::find(&session.config, &exemptions, &checked);
+    let mut checked = Contract::check_all(&contracts, graphs, &session.workspace, &exemptions);
+    let mut unused = UnusedSuppression::find(&session.config, &exemptions, &checked);
+    for report in &mut checked {
+        report.narrow(graphs.of(report.config), &scope);
+    }
+    unused.retain(|unused| scope.contains(unused.file));
     let check_time = start.elapsed();
 
     // 5. Summarise every contract.
@@ -112,4 +121,18 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     // 7. Fail if a contract of `error` severity is broken, or has stale baseline
     //    entries that are errors.
     Ok(if summary.failed() { ExitStatus::Failure } else { ExitStatus::Success })
+}
+
+/// The files under the paths of `args`, or every file if there are none. A
+/// path is relative to the working directory, and must be inside the root; it
+/// need not exist, as a deleted file's importers may still involve it.
+fn scope(session: &Session, args: &CheckCommand) -> Result<Scope> {
+    let mut paths = Vec::new();
+    for path in &args.paths {
+        match relative_posix(&session.root, &adjust_canonicalisation(path)) {
+            Some(name) => paths.push(name),
+            None => bail!("`{}` is not inside the project root", path.display()),
+        }
+    }
+    Ok(Scope::new(paths))
 }

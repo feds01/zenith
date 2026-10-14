@@ -11,7 +11,7 @@ use zenith_resolve::{Resolved, Resolver, ResolverError, ResolverSettings, Tsconf
 use zenith_utils::{location::Located, path::absolute_path, printing::plural};
 use zenith_workspace::{WalkSettings, Workspace};
 
-use crate::{FileError, UnresolvedImport};
+use crate::{FileError, Scope, UnresolvedImport};
 
 /// A project, and what the stages of the pipeline have found in it so far.
 ///
@@ -233,6 +233,14 @@ impl Session {
             ));
         }
         Some(report)
+    }
+
+    /// Keep only the problems of the files in `scope`: the files that
+    /// couldn't be read or parsed, and the imports that couldn't be resolved.
+    /// The graph keeps every file.
+    pub fn narrow(&mut self, scope: &Scope) {
+        self.file_errors.retain(|error| scope.contains(&error.file));
+        self.unresolved.retain(|import| scope.contains(&import.file));
     }
 
     /// The graphs that the contracts check against.

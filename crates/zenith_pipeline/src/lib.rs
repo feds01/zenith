@@ -22,6 +22,7 @@
 mod error;
 mod pipeline;
 mod schema;
+mod scope;
 mod session;
 mod stages;
 #[cfg(test)]
@@ -30,5 +31,6 @@ mod tests;
 pub use error::{FileError, FileErrorKind, PipelineError, UnresolvedImport};
 pub use pipeline::{Pipeline, Stage, StageKind};
 pub use schema::{FileProblemJson, UnresolvedJson};
+pub use scope::Scope;
 pub use session::{FileSuppressions, Graphs, ResolvedImport, Session, SourceFile, Stats};
 pub use stages::{BuildGraph, Discover, Parse, Resolve};

@@ -1,0 +1,10 @@
+# Every finding, then only those of the files under the paths: an importing
+# file, an imported one, a directory, a path that matches nothing, and the root.
+check --format compact
+check src/web/a.ts --format compact
+check src/api/server.ts --format compact
+check src/web
+check src/ui --format compact
+check . --format compact
+# A path outside the root is an error.
+check .. --format compact

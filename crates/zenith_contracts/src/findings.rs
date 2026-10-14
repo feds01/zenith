@@ -7,7 +7,8 @@
 
 use std::fmt;
 
-use zenith_graph::{GraphView, ImportDetail, ModuleId, Route};
+use zenith_graph::{Graph, GraphView, ImportDetail, ModuleId, Route};
+use zenith_pipeline::Scope;
 
 use crate::view::Statements;
 
@@ -26,6 +27,11 @@ pub struct Link {
 }
 
 impl Link {
+    /// Whether the importer or the imported node, in `graph`, is in `scope`.
+    pub(crate) fn touches(&self, graph: &Graph, scope: &Scope) -> bool {
+        scope.contains(graph.name(self.importer)) || scope.contains(graph.name(self.imported))
+    }
+
     /// The import from `importer` to `imported` in `view`, with its
     /// statements that count.
     pub(crate) fn new(
@@ -150,6 +156,40 @@ impl Violation {
             Self::IllegalImports { imports, .. } => imports.len(),
             Self::Cycle { breakers, .. } => breakers.len(),
             Self::UndeclaredModule { .. } => 1,
+        }
+    }
+
+    /// Keep only the findings that involve a node in `scope`, in `graph`,
+    /// the graph they were found in, and return whether any is left:
+    ///
+    /// - the chains with an import from or into it, as a link or an extra head
+    ///   or tail;
+    /// - the illegal imports from or into it;
+    /// - the cycle breakers with an import from or into it;
+    /// - an undeclared module in it, or with a node of it inside.
+    pub(crate) fn narrow(&mut self, graph: &Graph, scope: &Scope) -> bool {
+        let touches = |link: &Link| link.touches(graph, scope);
+        match self {
+            Self::Dependency { chains, .. } => {
+                chains.retain(|chain| {
+                    chain
+                        .links
+                        .iter()
+                        .chain(&chain.extra_heads)
+                        .chain(&chain.extra_tails)
+                        .any(touches)
+                });
+                !chains.is_empty()
+            }
+            Self::IllegalImports { imports, .. } => {
+                imports.retain(touches);
+                !imports.is_empty()
+            }
+            Self::Cycle { breakers, .. } => {
+                breakers.retain(|breaker| breaker.imports.iter().any(touches));
+                !breakers.is_empty()
+            }
+            Self::UndeclaredModule { module, .. } => scope.overlaps(graph.name(*module)),
         }
     }
 

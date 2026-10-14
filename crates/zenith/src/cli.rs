@@ -161,6 +161,12 @@ pub enum Command {
 /// Arguments of `zenith check`.
 #[derive(Clone, Debug, clap::Args)]
 pub struct CheckCommand {
+    /// Only report what involves the files under these paths: the
+    /// violations with an import from or into one of them, and their
+    /// problems. Every file is still checked.
+    #[arg(value_name = "PATH")]
+    pub paths: Vec<PathBuf>,
+
     /// Only check the contracts with these ids.
     #[arg(long = "contract", value_name = "ID")]
     pub contracts: Vec<String>,

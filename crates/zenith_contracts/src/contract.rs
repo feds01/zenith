@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use rayon::prelude::*;
 use zenith_config::{AlertLevel, ContractConfig, IgnoreImport, Selector};
 use zenith_graph::{Graph, ModuleId, NodeSet, Unit};
-use zenith_pipeline::{FileSuppressions, Graphs};
+use zenith_pipeline::{FileSuppressions, Graphs, Scope};
 use zenith_utils::location::ByteRange;
 use zenith_workspace::Workspace;
 
@@ -176,6 +176,19 @@ pub struct ContractReport<'c> {
 }
 
 impl ContractReport<'_> {
+    /// Keep only the findings that involve a file in `scope`: the violations
+    /// with an import from or into one, as [`Violation::narrow`] keeps them,
+    /// and the stale baseline entries of one. `graph` is the graph the
+    /// contract was checked against. The unmatched `ignore_imports` entries
+    /// are about the configuration, not a file, so they are all kept.
+    pub fn narrow(&mut self, graph: &Graph, scope: &Scope) {
+        if scope.is_everything() {
+            return;
+        }
+        self.violations.retain_mut(|violation| violation.narrow(graph, scope));
+        self.stale_entries.retain(|entry| entry.split(" -> ").any(|name| scope.contains(name)));
+    }
+
     /// The `ignore_imports` entries that match no import and break the
     /// contract, because its `unmatched_ignore_imports` is `error`.
     pub fn unmatched_ignore_errors(&self) -> &[&IgnoreImport] {
@@ -295,11 +308,53 @@ impl<'a> UnitResolver<'a> {
 #[cfg(test)]
 mod tests {
     use zenith_config::{AlertLevel, Severity};
+    use zenith_pipeline::Scope;
 
     use crate::{
         Violation,
         testing::{Project, values},
     };
+
+    #[test]
+    fn narrowing_keeps_the_findings_that_involve_the_scope() {
+        let imports = values(&[
+            ("web/a.ts", "api/x.ts"),
+            ("web/b.ts", "api/y.ts"),
+            ("m/a/x.ts", "m/b/y.ts"),
+            ("m/b/y.ts", "m/a/x.ts"),
+            ("domains/orders/helpers/a.ts", "domains/orders/types.ts"),
+        ]);
+        let project = Project::new(&imports, &[], include_str!("fixtures/narrow.toml"))
+            .baseline("f", &["web/a.ts -> api/z.ts", "web/old.ts -> api/x.ts"]);
+        let narrowed = |paths: &[&str]| {
+            let scope = Scope::new(paths.iter().map(|path| path.to_string()).collect());
+            let mut found = Vec::new();
+            for id in ["f", "c", "l"] {
+                let mut report = project.check(id);
+                report.narrow(&project.graph, &scope);
+                found.extend(report.violations.iter().flat_map(|v| project.describe(v)));
+                found.extend(report.stale_entries.iter().map(|entry| format!("stale {entry}")));
+            }
+            found
+        };
+
+        // An importing file, a directory with a file of a cycle breaker in it,
+        // and a file inside an undeclared module.
+        assert_eq!(
+            narrowed(&["web/a.ts", "m/a", "domains/orders/helpers/a.ts"]),
+            [
+                "web -> api: web/a.ts -> api/x.ts",
+                "stale web/a.ts -> api/z.ts",
+                "m/*: break m/b -> m/a (m/b/y.ts -> m/a/x.ts) in m/b -> m/a",
+                "domains/orders: `domains/orders/helpers` is not a layer",
+            ]
+        );
+        // An imported file.
+        assert_eq!(narrowed(&["api/y.ts"]), ["web -> api: web/b.ts -> api/y.ts"]);
+        // Nothing, and everything.
+        assert!(narrowed(&["other"]).is_empty());
+        assert_eq!(narrowed(&[]).len(), 6);
+    }
 
     #[test]
     fn every_unmatched_selector_is_an_error_at_its_place_in_the_file() {

@@ -20,8 +20,10 @@ use crate::{
 /// if a contract of `error` severity is broken, or has stale baseline entries
 /// that are errors.
 pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
-    // 1. Open the project, and build its graph.
+    // 1. Open the project, scoped to the paths if any are given, and build its
+    //    graph.
     let mut session = project::open(global)?;
+    session.scope_to(&args.paths)?;
     let pipeline = project::run_until(&mut session, StageKind::Graph)?;
 
     // 2. Compile the contracts to check: every one, or those of `--contract`.
@@ -44,13 +46,18 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     }
 
     // 4. Check the contracts in parallel, without the imports that suppressions and
-    //    the baseline leave out, and find the suppressions that had no effect.
+    //    the baseline leave out, and find the suppressions that had no effect. Keep
+    //    only what involves the files under the paths.
     let start = Instant::now();
     let exemptions =
         Exemptions { suppressions: &session.suppressions, baseline: baseline.as_ref() };
     let graphs = session.graphs();
-    let checked = Contract::check_all(&contracts, graphs, &session.workspace, &exemptions);
-    let unused = UnusedSuppression::find(&session.config, &exemptions, &checked);
+    let mut checked = Contract::check_all(&contracts, graphs, &session.workspace, &exemptions);
+    let mut unused = UnusedSuppression::find(&session.config, &exemptions, &checked);
+    for report in &mut checked {
+        report.narrow(graphs.of(report.config), &session.scope);
+    }
+    unused.retain(|unused| session.scope.contains(unused.file));
     let check_time = start.elapsed();
 
     // 5. Summarise every contract.

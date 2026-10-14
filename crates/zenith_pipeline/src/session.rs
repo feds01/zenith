@@ -8,10 +8,14 @@ use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_parse::{ParseOptions, ParsedFile, Suppression};
 use zenith_resolve::{Resolved, Resolver, ResolverError, ResolverSettings, TsconfigMode};
-use zenith_utils::{location::Located, path::absolute_path, printing::plural};
+use zenith_utils::{
+    location::Located,
+    path::{absolute_path, adjust_canonicalisation, relative_posix},
+    printing::plural,
+};
 use zenith_workspace::{WalkSettings, Workspace};
 
-use crate::{FileError, UnresolvedImport};
+use crate::{FileError, PipelineError, Scope, UnresolvedImport};
 
 /// A project, and what the stages of the pipeline have found in it so far.
 ///
@@ -28,6 +32,10 @@ pub struct Session {
     /// Whether to scan only the files that git tracks, leaving out untracked
     /// ones, as in a pre-commit hook.
     pub tracked_only: bool,
+
+    /// The files that commands report on, every file unless
+    /// [`Session::scope_to`] narrows it. Every file is still scanned.
+    pub scope: Scope,
 
     /// The source files to scan, sorted by path. Found by the
     /// [`Discover`](crate::StageKind::Discover) stage.
@@ -167,6 +175,7 @@ impl Session {
             root,
             config,
             tracked_only: false,
+            scope: Scope::default(),
             files: Vec::new(),
             workspace: Workspace::default(),
             parsed: Vec::new(),
@@ -233,6 +242,28 @@ impl Session {
             ));
         }
         Some(report)
+    }
+
+    /// Report only on the files under `paths`, which are relative to the
+    /// working directory, and must be inside the root. They need not exist,
+    /// as a deleted file's importers may still involve it. No paths is every
+    /// file.
+    pub fn scope_to(&mut self, paths: &[PathBuf]) -> Result<(), PipelineError> {
+        let names = paths.iter().map(|path| {
+            relative_posix(&self.root, &adjust_canonicalisation(path))
+                .ok_or_else(|| PipelineError::OutsideRoot(path.clone()))
+        });
+        self.scope = Scope::new(names.collect::<Result<_, _>>()?);
+        Ok(())
+    }
+
+    /// Keep only the problems of the files in the session's scope: the files
+    /// that couldn't be read or parsed, and the imports that couldn't be
+    /// resolved. The graph keeps every file.
+    pub fn narrow(&mut self) {
+        let scope = &self.scope;
+        self.file_errors.retain(|error| scope.contains(&error.file));
+        self.unresolved.retain(|import| scope.contains(&import.file));
     }
 
     /// The graphs that the contracts check against.

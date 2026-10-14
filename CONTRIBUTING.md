@@ -27,7 +27,7 @@ Every change to it on `main` is published to
 
 ## Releasing
 
-Bump `version` in `crates/zenith/Cargo.toml`, and with it `Cargo.lock`, merge
+Bump `version` in the root `Cargo.toml`, and with it `Cargo.lock`, merge
 to `main`, then run `just release` to tag it.
 [cargo-dist](https://opensource.axo.dev/cargo-dist/) builds the binaries and
 installers, and publishes the GitHub release and the Homebrew formula.

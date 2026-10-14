@@ -1,12 +1,12 @@
 [package]
 name = "zenith_graph"
-version = "0.1.0"
+version = { workspace = true }
 description = "The module tree and import graph of a zenith project"
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
-publish = false
+publish = { workspace = true }
 
 [dependencies]
 bitflags = { workspace = true }

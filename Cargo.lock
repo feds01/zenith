@@ -1952,7 +1952,7 @@ dependencies = [
 
 [[package]]
 name = "zenith"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "argfile",
@@ -1975,7 +1975,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_benchmark"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "codspeed-divan-compat",
  "fastrand",
@@ -1994,7 +1994,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_cache"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "log",
  "rustc-hash",
@@ -2005,7 +2005,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_config"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "indexmap",
  "schemars",
@@ -2021,7 +2021,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_contracts"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "rayon",
  "rustc-hash",
@@ -2042,7 +2042,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_diagnostics"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "annotate-snippets",
  "tempfile",
@@ -2051,7 +2051,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_graph"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bitflags",
  "compact_str",
@@ -2069,7 +2069,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_parse"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "compact_str",
  "oxc_allocator",
@@ -2089,7 +2089,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_pipeline"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "log",
  "rayon",
@@ -2109,7 +2109,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_reporting"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "zenith_diagnostics",
  "zenith_utils",
@@ -2117,7 +2117,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_resolve"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "oxc_resolver",
  "rustc-hash",
@@ -2128,7 +2128,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_utils"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dunce",
  "log",
@@ -2140,7 +2140,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_workspace"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ignore",
  "log",

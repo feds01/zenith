@@ -1,12 +1,12 @@
 [package]
 name = "zenith_parse"
-version = "0.1.0"
+version = { workspace = true }
 description = "Extracts the imports, directives and suppression comments of JS/TS files"
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
-publish = false
+publish = { workspace = true }
 
 [dependencies]
 zenith_cache = { workspace = true }

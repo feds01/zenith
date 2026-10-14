@@ -1,12 +1,12 @@
 [package]
 name = "zenith_utils"
-version = "0.1.0"
+version = { workspace = true }
 description = "Utilities shared by the zenith crates"
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
-publish = false
+publish = { workspace = true }
 
 [dependencies]
 dunce = { workspace = true }

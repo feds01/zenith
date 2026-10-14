@@ -4,11 +4,13 @@ members = ["crates/zenith*"]
 resolver = "2"
 
 [workspace.package]
-authors = ["Alexander Fedotov <alexander.fedotov.uk@gmail.com>"]
+version = "0.2.0"
+authors =["Alexander Fedotov <alexander.fedotov.uk@gmail.com>"]
 edition = "2024"
 license = "MIT"
 homepage = "https://github.com/feds01/zenith"
 repository = "https://github.com/feds01/zenith"
+publish = false
 
 [workspace.dependencies]
 zenith_cache = { path = "crates/zenith_cache" }

@@ -1,12 +1,12 @@
 [package]
 name = "zenith_pipeline"
-version = "0.1.0"
+version = { workspace = true }
 description = "Runs the stages that turn a zenith project into its import graph"
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
-publish = false
+publish = { workspace = true }
 
 [dependencies]
 zenith_cache = { workspace = true }

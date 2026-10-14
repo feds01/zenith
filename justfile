@@ -142,7 +142,7 @@ book:
 clean:
     cargo clean
 
-# Tag and push a release from main, using the version in crates/zenith/Cargo.toml
+# Tag and push a release from main, using the workspace version in Cargo.toml
 release:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -165,8 +165,8 @@ release:
         fail "main is not in sync with origin/main"
     fi
 
-    # The version comes from the binary crate, and must not be tagged yet.
-    version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/zenith/Cargo.toml | head -1)"
+    # The version comes from the workspace, and must not be tagged yet.
+    version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
     tag="v$version"
     if git rev-parse --quiet --verify "refs/tags/$tag" >/dev/null; then
         fail "tag $tag already exists, bump the version first"
@@ -214,7 +214,7 @@ publish-formula tap:
 
     git push
 
-# Assemble and pack the npm packages into `out`, from the release archives in `archives`, at the version of crates/zenith/Cargo.toml unless given another, and only for `targets` if given any
+# Assemble and pack the npm packages into `out`, from the release archives in `archives`, at the workspace version in Cargo.toml unless given another, and only for `targets` if given any
 [no-cd]
 npm-packages archives out version="" *targets:
     #!/usr/bin/env bash
@@ -222,7 +222,7 @@ npm-packages archives out version="" *targets:
     shift 3
     version="{{version}}"
     if [ -z "$version" ]; then
-        version="$(sed -n 's/^version = "\(.*\)"/\1/p' "{{justfile_directory()}}/crates/zenith/Cargo.toml" | head -1)"
+        version="$(sed -n 's/^version = "\(.*\)"/\1/p' "{{justfile_directory()}}/Cargo.toml" | head -1)"
     fi
     # An absolute path: npm reads a relative one, like `out/zenith`, as a
     # GitHub repository.

@@ -17,7 +17,7 @@ mod suppressions;
 mod visitor;
 
 pub use error::SyntaxError;
-pub use parser::Parser;
+pub use parser::{ParseOptions, Parser};
 pub use suppressions::Suppression;
 use thin_vec::ThinVec;
 use zenith_graph::{Exports, ImportDetail, ImportKind};
@@ -34,7 +34,7 @@ pub struct ParsedFile {
 
     /// What the file exports, with the source of each re-export as the index
     /// of its import in [`imports`](Self::imports). Nothing, unless the
-    /// parser records names (see [`Parser::with_names`]).
+    /// parser records names (see [`ParseOptions::names`]).
     pub exports: Exports<u32>,
 
     /// The dynamic imports and `require` calls whose specifier is not a

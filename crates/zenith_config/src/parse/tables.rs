@@ -51,7 +51,7 @@ impl Parser {
         };
         AnalysisConfig {
             exclude_kinds: table.exclude_kinds.into_iter().collect(),
-            barrels: table.barrels,
+            reexports: table.reexports,
         }
     }
 

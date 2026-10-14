@@ -22,7 +22,7 @@ ignore_unresolved = ["/*", "virtual:*"]            # specifiers not to warn abou
 
 [analysis]
 exclude_kinds = []         # the import kinds that every contract leaves out
-barrels = "opaque"         # or "transparent": how contracts see barrels
+reexports = "opaque"         # or "transparent": how contracts see pass-through modules
 
 [baseline]
 path = "zenith.baseline.toml"

@@ -18,7 +18,7 @@ use zenith_utils::{
 };
 
 use crate::{
-    contracts::{Barrels, ContractConfig, Severity},
+    contracts::{ContractConfig, Reexports, Severity},
     error::{ConfigError, LoadError},
     parse,
 };
@@ -177,8 +177,8 @@ pub struct AnalysisConfig {
     /// The import kinds that contracts ignore, unless they set their own.
     pub exclude_kinds: KindSet,
 
-    /// How contracts see imports through barrels, unless they say.
-    pub barrels: Barrels,
+    /// How contracts see imports through re-exports, unless they say.
+    pub reexports: Reexports,
 }
 
 /// The baseline of known violations.

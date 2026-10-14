@@ -161,8 +161,8 @@ pub enum ConfigErrorKind {
     /// only direct imports count, and they pass through nothing.
     BoundariesWithoutChains,
 
-    /// An `encapsulation` contract sets `barrels = "transparent"`, although
-    /// importing through entry points, which are often barrels, is what it
+    /// An `encapsulation` contract sets `reexports = "transparent"`, although
+    /// importing through entry points, which often only re-export, is what it
     /// allows.
     TransparentEncapsulation,
 }
@@ -201,8 +201,8 @@ impl ConfigErrorKind {
                     .to_string()
             }
             Self::TransparentEncapsulation => {
-                "`encapsulation` contracts can't see through barrels, since importing through an \
-                 entry point, which is often a barrel, is what they allow"
+                "`encapsulation` contracts can't see through re-exports, since importing through an \
+                 entry point, which often only re-exports, is what they allow"
                     .to_string()
             }
         }

@@ -42,10 +42,10 @@ pub struct ContractConfig {
     /// else `[analysis] exclude_kinds`.
     pub exclude_kinds: KindSet,
 
-    /// How it sees imports through barrels: its own `barrels`, or else
-    /// `[analysis] barrels`. Always opaque for `encapsulation`, which is
-    /// about importing through entry points, as barrels often are.
-    pub barrels: Barrels,
+    /// How it sees imports through re-exports: its own `reexports`, or else
+    /// `[analysis] reexports`. Always opaque for `encapsulation`, which is
+    /// about importing through entry points, which often only re-export.
+    pub reexports: Reexports,
 
     /// Imports to remove before checking, in the order of the file.
     pub ignore_imports: Vec<IgnoreImport>,
@@ -107,18 +107,18 @@ impl ContractKind {
     }
 }
 
-/// How a contract sees the imports of barrels, the files that only re-export
-/// other modules.
+/// How a contract sees the imports of pass-through modules, the files that only
+/// re-export other modules.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum Barrels {
-    /// An import of a barrel imports the barrel, which imports every module
+pub enum Reexports {
+    /// An import of a pass-through module imports it, and so every module
     /// it re-exports.
     #[default]
     Opaque,
 
-    /// An import of names from a barrel imports the modules that define
-    /// them, as a bundler that leaves out unused modules loads them.
+    /// An import of names from a pass-through module imports the modules that
+    /// define them, as a bundler that leaves out unused modules loads them.
     Transparent,
 }
 

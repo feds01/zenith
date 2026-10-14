@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use thin_vec::ThinVec;
-use zenith_config::{Barrels, Config, ContractConfig, SOURCE_EXTENSIONS, Tsconfig};
+use zenith_config::{Config, ContractConfig, Reexports, SOURCE_EXTENSIONS, Tsconfig};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_parse::{ParsedFile, Suppression};
@@ -53,7 +53,7 @@ pub struct Session {
     /// root.
     pub graph: Graph,
 
-    /// The import graph through re-exports, for the contracts whose `barrels`
+    /// The import graph through re-exports, for the contracts whose `reexports`
     /// are transparent. Built by the [`Graph`](crate::StageKind::Graph)
     /// stage if a contract is.
     pub graph_through_reexports: Option<Graph>,
@@ -100,9 +100,9 @@ impl<'g> Graphs<'g> {
     /// Panics if the contract sees through re-exports but the graph through
     /// them wasn't built, which the graph stage does when one does.
     pub fn of(&self, config: &ContractConfig) -> &'g Graph {
-        match config.barrels {
-            Barrels::Opaque => self.graph,
-            Barrels::Transparent => self
+        match config.reexports {
+            Reexports::Opaque => self.graph,
+            Reexports::Transparent => self
                 .through_reexports
                 .expect("the graph through re-exports is built for the contracts that need it"),
         }
@@ -243,7 +243,7 @@ impl Session {
     /// Whether any contract sees through re-exports, so needs the graph through
     /// them.
     pub fn needs_graph_through_reexports(&self) -> bool {
-        self.config.contracts.iter().any(|contract| contract.barrels == Barrels::Transparent)
+        self.config.contracts.iter().any(|contract| contract.reexports == Reexports::Transparent)
     }
 
     /// Which files to scan, as the configuration says.

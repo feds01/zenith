@@ -24,9 +24,8 @@ pub use config::{
     OPTIONAL_EXTENSIONS, ResolveConfig, SOURCE_EXTENSIONS, StaleLevel, Tsconfig,
 };
 pub use contracts::{
-    AcyclicConfig, AlertLevel, Barrels, ContractConfig, ContractKind, EncapsulationConfig,
-    ForbiddenConfig, IndependenceConfig, Layer, LayerMember, LayersConfig, ProtectedConfig,
-    Severity,
+    AcyclicConfig, AlertLevel, ContractConfig, ContractKind, EncapsulationConfig, ForbiddenConfig,
+    IndependenceConfig, Layer, LayerMember, LayersConfig, ProtectedConfig, Reexports, Severity,
 };
 pub use error::{
     ConfigError, ConfigErrorKind, IgnoreImportError, LayerError, LoadError, SelectorError,

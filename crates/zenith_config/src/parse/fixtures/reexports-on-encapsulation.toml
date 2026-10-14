@@ -1,4 +1,4 @@
 [contracts.c]
 type = "encapsulation"
 modules = ["packages/*"]
-barrels = "transparent"
+reexports = "transparent"

@@ -1,4 +1,4 @@
-# The same rule twice: through the barrel, and as a bundler sees it.
+# The same rule twice: through the pass-through module, and as a bundler sees it.
 [contracts.client-safety-opaque]
 type = "forbidden"
 from = [{ path = "src/client", directive = "use client" }]
@@ -8,4 +8,4 @@ to = ["node:*"]
 type = "forbidden"
 from = [{ path = "src/client", directive = "use client" }]
 to = ["node:*"]
-barrels = "transparent"
+reexports = "transparent"

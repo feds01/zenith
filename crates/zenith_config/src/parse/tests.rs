@@ -11,7 +11,7 @@ use zenith_utils::{
 
 use crate::{
     config::{Config, StaleLevel, Tsconfig},
-    contracts::{AlertLevel, Barrels, CONTRACT_TYPES, ContractKind, Severity},
+    contracts::{AlertLevel, CONTRACT_TYPES, ContractKind, Reexports, Severity},
     error::{ConfigError, ConfigErrorKind, SelectorError},
     selector::{BuiltinScheme, Selector, SelectorTarget},
 };
@@ -495,7 +495,7 @@ fn unknown_keys_of_contracts_are_errors() {
         (
             "type = \"forbidden\"\nfrom = []\nto = []\nmodules = []",
             "5:1: in contract `c`: unknown key `modules`, expected one of `from`, `to`, \
-             `allow_indirect_imports`, `boundaries`, `name`, `severity`, `exclude_kinds`, `barrels`, \
+             `allow_indirect_imports`, `boundaries`, `name`, `severity`, `exclude_kinds`, `reexports`, \
              `ignore_imports`, `unmatched_ignore_imports`, `guidance` [modules]",
         ),
     ] {
@@ -729,24 +729,27 @@ fn boundaries_without_chains_are_an_error() {
 }
 
 #[test]
-fn barrels_default_to_the_analysis_and_encapsulation_never_sees_through_them() {
-    assert_eq!(Config::default().analysis.barrels, Barrels::Opaque);
-    let config = valid(include_str!("fixtures/barrels.toml"));
-    let barrels: Vec<_> =
-        config.contracts.iter().map(|contract| (contract.id.as_str(), contract.barrels)).collect();
+fn reexports_default_to_the_analysis_and_encapsulation_never_sees_through_them() {
+    assert_eq!(Config::default().analysis.reexports, Reexports::Opaque);
+    let config = valid(include_str!("fixtures/reexports.toml"));
+    let reexports: Vec<_> = config
+        .contracts
+        .iter()
+        .map(|contract| (contract.id.as_str(), contract.reexports))
+        .collect();
     assert_eq!(
-        barrels,
-        [("a", Barrels::Transparent), ("b", Barrels::Opaque), ("c", Barrels::Opaque)]
+        reexports,
+        [("a", Reexports::Transparent), ("b", Reexports::Opaque), ("c", Reexports::Opaque)]
     );
 }
 
 #[test]
-fn encapsulation_that_sees_through_barrels_is_an_error() {
-    let contents = include_str!("fixtures/barrels-on-encapsulation.toml");
+fn encapsulation_that_sees_through_reexports_is_an_error() {
+    let contents = include_str!("fixtures/reexports-on-encapsulation.toml");
     assert_eq!(
         only_error(contents),
-        "4:11: in contract `c`: `encapsulation` contracts can't see through barrels, since \
-         importing through an entry point, which is often a barrel, is what they allow \
+        "4:13: in contract `c`: `encapsulation` contracts can't see through re-exports, since \
+         importing through an entry point, which often only re-exports, is what they allow \
          [\"transparent\"]"
     );
 }

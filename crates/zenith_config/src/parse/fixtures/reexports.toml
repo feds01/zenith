@@ -1,5 +1,5 @@
 [analysis]
-barrels = "transparent"
+reexports = "transparent"
 
 [contracts.a]
 type = "forbidden"
@@ -10,7 +10,7 @@ to = ["node:*"]
 type = "forbidden"
 from = ["web"]
 to = ["node:*"]
-barrels = "opaque"
+reexports = "opaque"
 
 [contracts.c]
 type = "encapsulation"

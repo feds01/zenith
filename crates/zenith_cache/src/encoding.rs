@@ -130,6 +130,11 @@ pub struct Encoder {
 }
 
 impl Encoder {
+    /// The bytes written so far.
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
+
     /// A byte.
     pub fn u8(&mut self, value: u8) {
         self.bytes.push(value);
@@ -201,6 +206,16 @@ pub struct Decoder<'a> {
 }
 
 impl<'a> Decoder<'a> {
+    /// A decoder of `bytes`.
+    pub fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes }
+    }
+
+    /// Whether every byte has been read.
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
     /// The next `len` bytes.
     fn take(&mut self, len: usize) -> Option<&'a [u8]> {
         let (taken, rest) = self.bytes.split_at_checked(len)?;

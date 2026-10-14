@@ -27,7 +27,6 @@
 //! always one run's cache, whichever wrote last.
 
 mod encoding;
-mod parsed;
 
 use std::{
     fs::{self, Metadata},

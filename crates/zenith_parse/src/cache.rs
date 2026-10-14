@@ -1,17 +1,16 @@
-//! How what the parser found in a file is kept in the cache.
+//! How what the parser finds in a file is kept in zenith's cache.
 
 use std::borrow::Cow;
 
 use thin_vec::ThinVec;
+use zenith_cache::{Cached, Decoder, Encoder};
 use zenith_graph::{Exports, ImportDetail, ImportKind, ImportedName, ImportedNames, ReExport};
-use zenith_parse::{ParsedFile, Suppression, SyntaxError};
 use zenith_utils::location::Located;
 
-use crate::{Cached, Decoder, Encoder};
+use crate::{ParsedFile, Suppression, SyntaxError};
 
 /// Everything the parser finds in a file, which depends only on its
-/// contents and the [`ParseOptions`](zenith_parse::ParseOptions) it parsed
-/// with.
+/// contents and the [`ParseOptions`](crate::ParseOptions) it parsed with.
 impl Cached for ParsedFile {
     const FILE: &'static str = "parse.bin";
 
@@ -140,13 +139,10 @@ fn decode_exports(decoder: &mut Decoder<'_>) -> Option<Exports<u32>> {
 mod tests {
     use std::path::Path;
 
-    use zenith_parse::{ParseOptions, Parser};
+    use zenith_utils::location::ByteRange;
 
     use super::*;
-    use crate::encoding::{
-        Rejected, decode, encode,
-        tests::{KEY, file_with, stamp},
-    };
+    use crate::{ParseOptions, Parser};
 
     /// A file with every kind of thing that the parser finds in one.
     const SOURCE: &str = "'use client';
@@ -174,19 +170,22 @@ const d;
         let Exports { names, reexports, stars, .. } = &parsed.exports;
         assert!(!names.is_empty() && !reexports.is_empty() && !stars.is_empty());
 
-        let bytes = encode(KEY, 0, [("a.ts", &stamp(), &parsed)].into_iter());
-        let decoded = decode::<ParsedFile>(&bytes, KEY).unwrap();
-        assert_eq!(decoded.entries["a.ts"].value, parsed);
+        let mut encoder = Encoder::default();
+        parsed.encode(&mut encoder);
+        let bytes = encoder.into_bytes();
+        let mut decoder = Decoder::new(&bytes);
+        assert_eq!(ParsedFile::decode(&mut decoder), Some(parsed));
+        assert!(decoder.is_empty());
     }
 
     #[test]
     fn rejects_an_unknown_import_kind() {
-        let file = file_with(|encoder| {
-            encoder.length(1);
-            encoder.range(zenith_utils::location::ByteRange::new(0, 1));
-            encoder.u8(ImportKind::ALL.len() as u8);
-            encoder.str("./a");
-        });
-        assert_eq!(decode::<ParsedFile>(&file, KEY).unwrap_err(), Rejected::Corrupt);
+        let mut encoder = Encoder::default();
+        encoder.length(1);
+        encoder.range(ByteRange::new(0, 1));
+        encoder.u8(ImportKind::ALL.len() as u8);
+        encoder.str("./a");
+        let bytes = encoder.into_bytes();
+        assert_eq!(ParsedFile::decode(&mut Decoder::new(&bytes)), None);
     }
 }

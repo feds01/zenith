@@ -9,6 +9,7 @@ repository = { workspace = true }
 publish = false
 
 [dependencies]
+zenith_cache = { workspace = true }
 zenith_diagnostics = { workspace = true }
 zenith_graph = { workspace = true }
 zenith_utils = { workspace = true }

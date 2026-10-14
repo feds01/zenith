@@ -1999,10 +1999,7 @@ dependencies = [
  "log",
  "rustc-hash",
  "tempfile",
- "thin-vec",
  "xxhash-rust",
- "zenith_graph",
- "zenith_parse",
  "zenith_utils",
 ]
 
@@ -2083,6 +2080,7 @@ dependencies = [
  "rustc-hash",
  "tempfile",
  "thin-vec",
+ "zenith_cache",
  "zenith_config",
  "zenith_diagnostics",
  "zenith_graph",

@@ -1,12 +1,12 @@
 [package]
 name = "zenith_config"
-version = "0.2.0"
+version = { workspace = true }
 description = "The zenith.toml configuration file of a zenith project"
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
-publish = false
+publish = { workspace = true }
 
 [dependencies]
 zenith_diagnostics = { workspace = true }

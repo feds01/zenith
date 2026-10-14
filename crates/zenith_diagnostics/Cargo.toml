@@ -1,12 +1,12 @@
 [package]
 name = "zenith_diagnostics"
-version = "0.2.0"
+version = { workspace = true }
 description = "The errors and warnings that zenith reports about its input, and their rendering"
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
-publish = false
+publish = { workspace = true }
 
 [dependencies]
 zenith_utils = { workspace = true }

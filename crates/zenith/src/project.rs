@@ -64,7 +64,8 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
 }
 
 /// Run the standard pipeline on `session`, up to and including the `last`
-/// stage, and warn about the files that could not be read or parsed. Returns
+/// stage, keep only the problems of the files in its scope, and warn about
+/// those that could not be read or parsed. Returns
 /// the pipeline, which knows how long each stage took.
 ///
 /// A graph without source files is an error: the root is most likely wrong,
@@ -72,6 +73,7 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
 pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<Pipeline> {
     let mut pipeline = Pipeline::standard();
     pipeline.run_until(session, last)?;
+    session.narrow();
     report_file_errors(&mut SourceMap::with_root(&session.root), &session.file_errors);
 
     if last >= StageKind::Graph {

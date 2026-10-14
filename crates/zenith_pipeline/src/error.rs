@@ -1,7 +1,7 @@
 //! What can go wrong in the pipeline: errors that stop it, and problems with
 //! single files and imports that don't.
 
-use std::{fmt, io};
+use std::{fmt, io, path::PathBuf};
 
 use thin_vec::ThinVec;
 use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span};
@@ -22,6 +22,9 @@ pub enum PipelineError {
 
     /// The files that git tracks could not be listed, to scan only those.
     Git(GitError),
+
+    /// A path to scope the session to is not inside the project root.
+    OutsideRoot(PathBuf),
 }
 
 impl fmt::Display for PipelineError {
@@ -30,6 +33,9 @@ impl fmt::Display for PipelineError {
             Self::Resolver(error) => write!(f, "{error}"),
             Self::Graph(error) => write!(f, "{error}"),
             Self::Git(error) => write!(f, "{error}"),
+            Self::OutsideRoot(path) => {
+                write!(f, "`{}` is not inside the project root", path.display())
+            }
         }
     }
 }

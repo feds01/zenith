@@ -1,0 +1,17 @@
+[analysis]
+reexports = "transparent"
+
+[contracts.a]
+type = "forbidden"
+from = ["web"]
+to = ["node:*"]
+
+[contracts.b]
+type = "forbidden"
+from = ["web"]
+to = ["node:*"]
+reexports = "opaque"
+
+[contracts.c]
+type = "encapsulation"
+modules = ["packages/*"]

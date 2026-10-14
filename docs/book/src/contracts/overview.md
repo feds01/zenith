@@ -30,6 +30,7 @@ Every contract type takes these options:
 | `name` | the id | The title shown in the output. |
 | `severity` | `"error"` | `"warn"` reports a broken contract without failing the check, for rolling a contract out gradually. |
 | `exclude_kinds` | `[analysis] exclude_kinds` | The [import kinds](../concepts.md#imports) to leave out, e.g. `["type"]`. |
+| `reexports` | `[analysis] reexports` | `"transparent"` sees an import of names from a [pass-through module](../concepts.md#pass-through modules) as imports of the modules that define them, as bundlers load them; `"opaque"` as an import of the pass-through module. Not for `encapsulation`. |
 | `ignore_imports` | `[]` | `"<selector> -> <selector>"` entries: the direct imports between them are left out of the contract. |
 | `unmatched_ignore_imports` | `"error"` | Whether an `ignore_imports` entry that matches no import breaks the contract (`"error"`), is a warning (`"warn"`) or is fine (`"none"`). |
 | `guidance` | none | Text shown under each violation, such as how to fix it. |

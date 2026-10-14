@@ -1,0 +1,11 @@
+# The same rule twice: through the pass-through module, and as a bundler sees it.
+[contracts.client-safety-opaque]
+type = "forbidden"
+from = [{ path = "src/client", directive = "use client" }]
+to = ["node:*"]
+
+[contracts.client-safety]
+type = "forbidden"
+from = [{ path = "src/client", directive = "use client" }]
+to = ["node:*"]
+reexports = "transparent"

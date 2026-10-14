@@ -28,6 +28,7 @@ use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use toml::Spanned;
 use zenith_graph::{EdgeSet, Graph, ModuleId};
+use zenith_pipeline::Graphs;
 use zenith_utils::{
     location::{ByteRange, LineIndex},
     text::comment_out_conflict_markers,
@@ -134,18 +135,20 @@ impl Baseline {
     }
 
     /// Replace the entries of each of `contracts` with the imports that make
-    /// its violations in `graph`, without those that `exempts` leaves out.
-    /// The contracts are checked in parallel.
+    /// its violations in the graph of `graphs` that it sees, without those that
+    /// `exempts` leaves out. The contracts are checked in parallel.
     pub fn record(
         &mut self,
         contracts: &[Contract],
-        graph: &Graph,
+        graphs: Graphs,
         workspace: &Workspace,
         exempts: &Exemptions,
     ) {
         let found: Vec<_> = contracts
             .par_iter()
-            .map(|contract| contract.baseline_entries(graph, workspace, exempts))
+            .map(|contract| {
+                contract.baseline_entries(graphs.of(contract.config), workspace, exempts)
+            })
             .collect();
         for (contract, entries) in contracts.iter().zip(found) {
             self.set(&contract.config.id, entries);
@@ -537,7 +540,7 @@ g = [
         let mut pruned = baseline.clone();
 
         let exemptions = Exemptions { suppressions: &[], baseline: None };
-        baseline.record(&contracts[..1], &project.graph, &project.workspace, &exemptions);
+        baseline.record(&contracts[..1], (&project.graph).into(), &project.workspace, &exemptions);
         assert_eq!(baseline.entries("f"), ["a/x.ts -> b/y.ts"]);
         assert_eq!(baseline.len(), 3);
         assert_eq!(baseline.count_new(&pruned), 1);

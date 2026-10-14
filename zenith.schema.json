@@ -116,6 +116,11 @@
           },
           "description": "The import kinds that contracts ignore unless they set their own\n`exclude_kinds`, e.g. `[\"type\"]` to exempt type-only imports.",
           "default": []
+        },
+        "reexports": {
+          "$ref": "#/$defs/Reexports",
+          "description": "How contracts see the imports of pass-through modules, the files that\nonly re-export other modules, unless they set their own `reexports`.",
+          "default": "opaque"
         }
       },
       "description": "Defaults that apply to every contract."
@@ -144,6 +149,21 @@
         }
       ],
       "description": "How an import is made. Contracts can exclude imports of given kinds, e.g.\nto exempt type-only imports."
+    },
+    "Reexports": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "opaque",
+          "description": "An import of a pass-through module imports it, and so every module\nit re-exports."
+        },
+        {
+          "type": "string",
+          "const": "transparent",
+          "description": "An import of names from a pass-through module imports the modules that\ndefine them, as a bundler that leaves out unused modules loads them."
+        }
+      ],
+      "description": "How a contract sees the imports of pass-through modules, the files that only\nre-export other modules."
     },
     "BaselineTable": {
       "type": "object",
@@ -225,6 +245,10 @@
               },
               "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
             },
+            "reexports": {
+              "$ref": "#/$defs/Reexports",
+              "description": "How to see the imports of pass-through modules, the files that only\nre-export other modules: `\"opaque\"`, an import of a pass-through module\nimports every module it re-exports, or `\"transparent\"`, an\nimport of names from it imports the modules that define them.\nDefaults to `[analysis] reexports`."
+            },
             "ignore_imports": {
               "type": "array",
               "items": {
@@ -292,6 +316,10 @@
                 "$ref": "#/$defs/ImportKind"
               },
               "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
+            },
+            "reexports": {
+              "$ref": "#/$defs/Reexports",
+              "description": "How to see the imports of pass-through modules, the files that only\nre-export other modules: `\"opaque\"`, an import of a pass-through module\nimports every module it re-exports, or `\"transparent\"`, an\nimport of names from it imports the modules that define them.\nDefaults to `[analysis] reexports`."
             },
             "ignore_imports": {
               "type": "array",
@@ -380,6 +408,10 @@
               },
               "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
             },
+            "reexports": {
+              "$ref": "#/$defs/Reexports",
+              "description": "How to see the imports of pass-through modules, the files that only\nre-export other modules: `\"opaque\"`, an import of a pass-through module\nimports every module it re-exports, or `\"transparent\"`, an\nimport of names from it imports the modules that define them.\nDefaults to `[analysis] reexports`."
+            },
             "ignore_imports": {
               "type": "array",
               "items": {
@@ -441,6 +473,10 @@
                 "$ref": "#/$defs/ImportKind"
               },
               "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
+            },
+            "reexports": {
+              "$ref": "#/$defs/Reexports",
+              "description": "How to see the imports of pass-through modules, the files that only\nre-export other modules: `\"opaque\"`, an import of a pass-through module\nimports every module it re-exports, or `\"transparent\"`, an\nimport of names from it imports the modules that define them.\nDefaults to `[analysis] reexports`."
             },
             "ignore_imports": {
               "type": "array",
@@ -511,6 +547,10 @@
                 "$ref": "#/$defs/ImportKind"
               },
               "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
+            },
+            "reexports": {
+              "$ref": "#/$defs/Reexports",
+              "description": "How to see the imports of pass-through modules, the files that only\nre-export other modules: `\"opaque\"`, an import of a pass-through module\nimports every module it re-exports, or `\"transparent\"`, an\nimport of names from it imports the modules that define them.\nDefaults to `[analysis] reexports`."
             },
             "ignore_imports": {
               "type": "array",
@@ -583,6 +623,10 @@
                 "$ref": "#/$defs/ImportKind"
               },
               "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
+            },
+            "reexports": {
+              "$ref": "#/$defs/Reexports",
+              "description": "How to see the imports of pass-through modules, the files that only\nre-export other modules: `\"opaque\"`, an import of a pass-through module\nimports every module it re-exports, or `\"transparent\"`, an\nimport of names from it imports the modules that define them.\nDefaults to `[analysis] reexports`."
             },
             "ignore_imports": {
               "type": "array",

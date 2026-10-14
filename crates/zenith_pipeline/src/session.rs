@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use thin_vec::ThinVec;
-use zenith_config::{Config, SOURCE_EXTENSIONS, Tsconfig};
+use zenith_config::{Config, ContractConfig, Reexports, SOURCE_EXTENSIONS, Tsconfig};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_parse::{ParsedFile, Suppression};
@@ -53,6 +53,11 @@ pub struct Session {
     /// root.
     pub graph: Graph,
 
+    /// The import graph through re-exports, for the contracts whose `reexports`
+    /// are transparent. Built by the [`Graph`](crate::StageKind::Graph)
+    /// stage if a contract is.
+    pub graph_through_reexports: Option<Graph>,
+
     /// The source files that could not be read or parsed in full, sorted by
     /// file. Found by the [`Parse`](crate::StageKind::Parse) stage.
     pub file_errors: Vec<FileError>,
@@ -68,6 +73,40 @@ pub struct Session {
 
     /// Counts of what the stages found.
     pub stats: Stats,
+}
+
+/// The graphs that contracts check against: the import graph, and the graph
+/// through re-exports if a contract needs it. They have the same modules, so
+/// either resolves a contract's selectors.
+#[derive(Debug, Clone, Copy)]
+pub struct Graphs<'g> {
+    /// The import graph.
+    pub graph: &'g Graph,
+
+    /// The import graph through re-exports, if a contract needs it.
+    pub through_reexports: Option<&'g Graph>,
+}
+
+/// Just the import graph, for contracts that don't see through re-exports.
+impl<'g> From<&'g Graph> for Graphs<'g> {
+    fn from(graph: &'g Graph) -> Self {
+        Self { graph, through_reexports: None }
+    }
+}
+
+impl<'g> Graphs<'g> {
+    /// The graph that the contract `config` checks against.
+    ///
+    /// Panics if the contract sees through re-exports but the graph through
+    /// them wasn't built, which the graph stage does when one does.
+    pub fn of(&self, config: &ContractConfig) -> &'g Graph {
+        match config.reexports {
+            Reexports::Opaque => self.graph,
+            Reexports::Transparent => self
+                .through_reexports
+                .expect("the graph through re-exports is built for the contracts that need it"),
+        }
+    }
 }
 
 /// What an import resolved to, as the session keeps it until the graph is
@@ -133,6 +172,7 @@ impl Session {
             parsed: Vec::new(),
             resolved: Vec::new(),
             graph: GraphBuilder::new().finish(),
+            graph_through_reexports: None,
             file_errors: Vec::new(),
             unresolved: Vec::new(),
             suppressions: Vec::new(),
@@ -193,6 +233,17 @@ impl Session {
             ));
         }
         Some(report)
+    }
+
+    /// The graphs that the contracts check against.
+    pub fn graphs(&self) -> Graphs<'_> {
+        Graphs { graph: &self.graph, through_reexports: self.graph_through_reexports.as_ref() }
+    }
+
+    /// Whether any contract sees through re-exports, so needs the graph through
+    /// them.
+    pub fn needs_graph_through_reexports(&self) -> bool {
+        self.config.contracts.iter().any(|contract| contract.reexports == Reexports::Transparent)
     }
 
     /// Which files to scan, as the configuration says.

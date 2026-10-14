@@ -55,7 +55,7 @@ fn record(bencher: Bencher, source_files: usize) {
 
     bencher.bench(|| {
         let mut baseline = Baseline::default();
-        baseline.record(&contracts, &session.graph, &session.workspace, &exemptions);
+        baseline.record(&contracts, session.graphs(), &session.workspace, &exemptions);
         baseline
     });
 }

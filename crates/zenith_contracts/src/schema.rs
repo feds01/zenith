@@ -116,7 +116,7 @@ impl<'a> CheckJson<'a> {
             },
             contracts: checked
                 .iter()
-                .map(|report| report.json(&session.graph, sources, timed))
+                .map(|report| report.json(session.graphs().of(report.config), sources, timed))
                 .collect(),
             unused_suppressions: unused.iter().map(|unused| unused.json(sources)).collect(),
             unresolved: session.unresolved.iter().map(|import| import.json(sources)).collect(),

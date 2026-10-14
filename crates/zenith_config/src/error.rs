@@ -160,6 +160,11 @@ pub enum ConfigErrorKind {
     /// A contract has `boundaries` and `allow_indirect_imports`, with which
     /// only direct imports count, and they pass through nothing.
     BoundariesWithoutChains,
+
+    /// An `encapsulation` contract sets `reexports = "transparent"`, although
+    /// importing through entry points, which often only re-export, is what it
+    /// allows.
+    TransparentEncapsulation,
 }
 
 impl ConfigErrorKind {
@@ -193,6 +198,11 @@ impl ConfigErrorKind {
             Self::BoundariesWithoutChains => {
                 "`boundaries` has no effect with `allow_indirect_imports = true`, since direct \
                  imports pass through nothing"
+                    .to_string()
+            }
+            Self::TransparentEncapsulation => {
+                "`encapsulation` contracts can't see through re-exports, since importing through an \
+                 entry point, which often only re-exports, is what they allow"
                     .to_string()
             }
         }

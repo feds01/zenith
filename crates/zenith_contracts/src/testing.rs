@@ -138,7 +138,8 @@ impl Project {
         let configs = ids.iter().map(|id| self.config.contract(id).unwrap());
         let contracts = Contract::compile_all(configs, &self.graph, &self.workspace).unwrap();
         let exemptions = self.exemptions();
-        let reports = Contract::check_all(&contracts, &self.graph, &self.workspace, &exemptions);
+        let reports =
+            Contract::check_all(&contracts, (&self.graph).into(), &self.workspace, &exemptions);
         UnusedSuppression::find(&self.config, &exemptions, &reports)
     }
 

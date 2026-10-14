@@ -22,7 +22,7 @@ use zenith_utils::location::ByteRange;
 
 use crate::{
     config::{DEFAULT_BASELINE_PATH, StaleLevel},
-    contracts::{AlertLevel, Severity},
+    contracts::{AlertLevel, Reexports, Severity},
 };
 
 /// A value with the byte range that it was written at.
@@ -172,6 +172,10 @@ pub(crate) struct AnalysisTable {
     /// The import kinds that contracts ignore unless they set their own
     /// `exclude_kinds`, e.g. `["type"]` to exempt type-only imports.
     pub(crate) exclude_kinds: Vec<ImportKind>,
+
+    /// How contracts see the imports of pass-through modules, the files that
+    /// only re-export other modules, unless they set their own `reexports`.
+    pub(crate) reexports: Reexports,
 }
 
 /// The baseline of known violations.
@@ -244,6 +248,9 @@ pub(crate) struct SharedOptions<'a> {
     /// The import kinds to ignore, if set.
     pub(crate) exclude_kinds: Option<&'a [ImportKind]>,
 
+    /// How to see imports through re-exports, if set.
+    pub(crate) reexports: Option<&'a Located<Reexports>>,
+
     /// The imports to ignore.
     pub(crate) ignore_imports: &'a [Located<String>],
 
@@ -289,6 +296,15 @@ macro_rules! contract_table {
             /// imports. Defaults to `[analysis] exclude_kinds`.
             pub(crate) exclude_kinds: Option<Vec<ImportKind>>,
 
+            /// How to see the imports of pass-through modules, the files that only
+            /// re-export other modules: `"opaque"`, an import of a pass-through module
+            /// imports every module it re-exports, or `"transparent"`, an
+            /// import of names from it imports the modules that define them.
+            /// Defaults to `[analysis] reexports`.
+            #[serde(default)]
+            #[schemars(with = "Reexports")]
+            pub(crate) reexports: Option<Located<Reexports>>,
+
             /// Imports to ignore, as `"<selector> -> <selector>"`: the direct
             /// imports from the first selector's modules to the second's are
             /// removed before checking.
@@ -312,6 +328,7 @@ macro_rules! contract_table {
                     name: self.name.as_deref(),
                     severity: self.severity,
                     exclude_kinds: self.exclude_kinds.as_deref(),
+                    reexports: self.reexports.as_ref(),
                     ignore_imports: &self.ignore_imports,
                     unmatched_ignore_imports: self.unmatched_ignore_imports,
                     guidance: self.guidance.as_deref(),

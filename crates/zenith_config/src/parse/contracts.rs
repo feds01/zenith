@@ -16,7 +16,7 @@ use crate::{
     config::AnalysisConfig,
     contracts::{
         AcyclicConfig, CONTRACT_TYPES, ContractConfig, ContractKind, EncapsulationConfig,
-        ForbiddenConfig, IndependenceConfig, LayersConfig, ProtectedConfig,
+        ForbiddenConfig, IndependenceConfig, LayersConfig, ProtectedConfig, Reexports,
     },
     error::{ConfigErrorKind, suggest},
     schema::{
@@ -117,6 +117,8 @@ impl Parser {
             .exclude_kinds
             .map_or(analysis.exclude_kinds, |kinds| kinds.iter().copied().collect());
         let ignore_imports = self.parse_ignore_imports(shared.ignore_imports);
+        let mut reexports =
+            shared.reexports.map_or(analysis.reexports, |reexports| reexports.value);
 
         let kind = match table {
             ContractTable::Forbidden(table) => ContractKind::Forbidden(ForbiddenConfig {
@@ -141,6 +143,12 @@ impl Parser {
                 skip: self.parse_selectors(&table.skip),
             }),
             ContractTable::Encapsulation(table) => {
+                // Importing through an entry point, which often only re-exports, is what
+                // it allows, so it never sees through them.
+                if let Some(Located { value: Reexports::Transparent, range }) = shared.reexports {
+                    self.add_error(ConfigErrorKind::TransparentEncapsulation, Some(*range));
+                }
+                reexports = Reexports::Opaque;
                 ContractKind::Encapsulation(EncapsulationConfig {
                     modules: self.parse_selectors(&table.modules),
                     entrypoints: self.parse_patterns(&table.entrypoints, Glob::new),
@@ -154,6 +162,7 @@ impl Parser {
             id,
             severity: shared.severity,
             exclude_kinds,
+            reexports,
             ignore_imports,
             unmatched_ignore_imports: shared.unmatched_ignore_imports,
             guidance: shared.guidance.map(String::from),

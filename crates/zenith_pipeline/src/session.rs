@@ -6,7 +6,7 @@ use thin_vec::ThinVec;
 use zenith_config::{Config, ContractConfig, Reexports, SOURCE_EXTENSIONS, Tsconfig};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
-use zenith_parse::{ParsedFile, Suppression};
+use zenith_parse::{ParseOptions, ParsedFile, Suppression};
 use zenith_resolve::{Resolved, Resolver, ResolverError, ResolverSettings, TsconfigMode};
 use zenith_utils::{location::Located, path::absolute_path, printing::plural};
 use zenith_workspace::{WalkSettings, Workspace};
@@ -244,6 +244,13 @@ impl Session {
     /// them.
     pub fn needs_graph_through_reexports(&self) -> bool {
         self.config.contracts.iter().any(|contract| contract.reexports == Reexports::Transparent)
+    }
+
+    /// What to parse each file for, as the configuration says: the names
+    /// that imports take and what each file exports, only if a contract
+    /// follows imports through re-exports.
+    pub fn parse_options(&self) -> ParseOptions {
+        ParseOptions { names: self.needs_graph_through_reexports() }
     }
 
     /// Which files to scan, as the configuration says.

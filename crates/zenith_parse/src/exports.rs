@@ -207,11 +207,12 @@ mod tests {
 
     use zenith_graph::{Exports, ImportedName, ImportedNames, ReExport};
 
-    use crate::Parser;
+    use crate::{ParseOptions, Parser};
 
     /// The exports of `source`, parsed as a TypeScript file.
     fn exports(source: &str) -> Exports<u32> {
-        let parsed = Parser::new().with_names(true).parse_source(Path::new("x.ts"), source);
+        let parsed = Parser::with_options(ParseOptions { names: true })
+            .parse_source(Path::new("x.ts"), source);
         assert!(parsed.errors.is_empty(), "{source:?}: {:?}", parsed.errors);
         parsed.exports
     }

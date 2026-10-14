@@ -5,7 +5,7 @@ use std::{io, mem, path::Path};
 
 use oxc_allocator::Allocator;
 use oxc_ast_visit::Visit;
-use oxc_parser::ParseOptions;
+use oxc_parser::ParseOptions as OxcParseOptions;
 use oxc_span::SourceType;
 use thin_vec::ThinVec;
 use zenith_graph::Exports;
@@ -50,9 +50,21 @@ pub struct Parser {
     /// The arena that each file's syntax tree is allocated in.
     allocator: Allocator,
 
+    /// What to record.
+    options: ParseOptions,
+}
+
+/// What a [`Parser`] records. Everything that changes what it finds from a
+/// source is here, so that a cache of what it found can be keyed on these.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct ParseOptions {
     /// Whether to record the names that imports take and what each file
-    /// exports.
-    names: bool,
+    /// exports. Only following imports through pass-through modules needs
+    /// them, and they cost memory for every import, so without them every
+    /// import takes [`ImportedNames::All`] and every file exports nothing.
+    ///
+    /// [`ImportedNames::All`]: zenith_graph::ImportedNames::All
+    pub names: bool,
 }
 
 impl Parser {
@@ -61,16 +73,9 @@ impl Parser {
         Self::default()
     }
 
-    /// This parser, recording the names that imports take and what each file
-    /// exports if `names` is set. Only following imports through pass-through
-    /// modules needs them, and they cost memory for every import, so
-    /// without them every import takes [`ImportedNames::All`] and every
-    /// file exports nothing.
-    ///
-    /// [`ImportedNames::All`]: zenith_graph::ImportedNames::All
-    pub fn with_names(mut self, names: bool) -> Self {
-        self.names = names;
-        self
+    /// A parser with an empty arena, which records what `options` say.
+    pub fn with_options(options: ParseOptions) -> Self {
+        Self { options, ..Self::default() }
     }
 
     /// Read the source file at `path` and parse it with
@@ -101,7 +106,7 @@ impl Parser {
     /// into owned values, so that nothing borrows from the arena.
     fn parse_in_arena(&self, source_type: SourceType, source: &str) -> ParsedFile {
         // 1. Parse the source into the arena.
-        let options = ParseOptions {
+        let options = OxcParseOptions {
             // CommonJS modules may `return` at the top level.
             allow_return_outside_function: true,
             allow_v8_intrinsics: true,
@@ -109,7 +114,7 @@ impl Parser {
             preserve_parens: false,
             // Nothing here hashes identifiers, so don't pay for the hashes.
             enable_ident_hashes: false,
-            ..ParseOptions::default()
+            ..OxcParseOptions::default()
         };
         let parsed = oxc_parser::Parser::new(&self.allocator, source, source_type)
             .with_options(options)
@@ -131,7 +136,7 @@ impl Parser {
         }
 
         // 3. Walk the syntax tree for the imports.
-        let mut visitor = ImportVisitor::new(self.names);
+        let mut visitor = ImportVisitor::new(self.options.names);
         visitor.visit_program(&parsed.program);
         let (imports, non_literal_imports) = visitor.finish();
 
@@ -145,7 +150,7 @@ impl Parser {
         let suppressions = Suppression::collect(source, &parsed.program.comments);
 
         // 5. Read what the file exports from its top-level statements.
-        let exports = match self.names {
+        let exports = match self.options.names {
             true => parsed.program.exports(&imports),
             false => Exports::default(),
         };

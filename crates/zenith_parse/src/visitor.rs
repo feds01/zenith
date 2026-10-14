@@ -178,7 +178,7 @@ mod tests {
     use std::{ops::Range, path::Path};
 
     use super::*;
-    use crate::Parser;
+    use crate::{ParseOptions, Parser};
 
     /// The specifier and kind of each import in `source`, parsed as `path`.
     fn kinds(path: &str, source: &str) -> Vec<(String, ImportKind)> {
@@ -252,7 +252,8 @@ mod tests {
         /// The names that the one import in `source` takes, with `:type` after
         /// those whose type only it takes, or `None` for all of them.
         fn names(source: &str) -> Option<Vec<String>> {
-            let parsed = Parser::new().with_names(true).parse_source(Path::new("x.ts"), source);
+            let parsed = Parser::with_options(ParseOptions { names: true })
+                .parse_source(Path::new("x.ts"), source);
             assert!(parsed.errors.is_empty(), "{source:?}: {:?}", parsed.errors);
             match &parsed.imports[0].names {
                 ImportedNames::All => None,

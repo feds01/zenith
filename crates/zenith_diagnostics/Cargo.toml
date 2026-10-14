@@ -1,6 +1,6 @@
 [package]
 name = "zenith_diagnostics"
-version = "0.1.0"
+version = "0.2.0"
 description = "The errors and warnings that zenith reports about its input, and their rendering"
 authors = { workspace = true }
 edition = { workspace = true }

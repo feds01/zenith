@@ -1,6 +1,6 @@
 [package]
 name = "zenith_parse"
-version = "0.1.0"
+version = "0.2.0"
 description = "Extracts the imports, directives and suppression comments of JS/TS files"
 authors = { workspace = true }
 edition = { workspace = true }

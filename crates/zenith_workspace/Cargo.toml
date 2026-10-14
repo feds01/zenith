@@ -1,6 +1,6 @@
 [package]
 name = "zenith_workspace"
-version = "0.1.0"
+version = "0.2.0"
 description = "Finds the files and workspace packages of a zenith project"
 authors = { workspace = true }
 edition = { workspace = true }

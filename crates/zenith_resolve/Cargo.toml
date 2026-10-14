@@ -1,6 +1,6 @@
 [package]
 name = "zenith_resolve"
-version = "0.1.0"
+version = "0.2.0"
 description = "Resolves import specifiers the way TypeScript and bundlers do"
 authors = { workspace = true }
 edition = { workspace = true }

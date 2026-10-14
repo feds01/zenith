@@ -1,6 +1,6 @@
 [package]
 name = "zenith_reporting"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shows the output of zenith check, whatever is checked"
 authors = { workspace = true }
 edition = { workspace = true }

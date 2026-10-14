@@ -30,7 +30,13 @@ Every change to it on `main` is published to
 Bump `version` in `crates/zenith/Cargo.toml`, and with it `Cargo.lock`, merge
 to `main`, then run `just release` to tag it.
 [cargo-dist](https://opensource.axo.dev/cargo-dist/) builds the binaries and
-installers, and publishes the GitHub release and the Homebrew formula. The npm
-package is staged rather than published: approve it on npmjs.com, under
-Staged Packages, or with `npm stage approve <id>` (npm 11.15 or later). The
-release run shows the id, and so does `npm stage list @feds01/zenith`.
+installers, and publishes the GitHub release and the Homebrew formula.
+
+The npm packages are built from the release's archives by `just publish-npm`,
+from the templates in [npm/](npm): a package per platform with just its
+binary, such as `@feds01/zenith-darwin-arm64`, and `@feds01/zenith`, which
+depends on them all, optionally, and runs the right one. `just npm-packages`
+builds them locally. They are staged rather than published: approve them on
+npmjs.com, under Staged Packages, or with `npm stage approve <id>` (npm 11.15
+or later), the platform packages before `@feds01/zenith`. The release run
+shows the ids, and so does `npm stage list <package>`.

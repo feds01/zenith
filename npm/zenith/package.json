@@ -1,0 +1,22 @@
+{
+  "name": "@feds01/zenith",
+  "version": "0.0.0",
+  "description": "An architecture linter for TypeScript and JavaScript codebases",
+  "keywords": ["architecture", "linter", "imports", "monorepo", "typescript", "javascript"],
+  "homepage": "https://feds01.github.io/zenith/",
+  "bugs": "https://github.com/feds01/zenith/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/feds01/zenith.git"
+  },
+  "license": "MIT",
+  "author": "Alexander Fedotov <alexander.fedotov.uk@gmail.com>",
+  "bin": {
+    "zenith": "bin/zenith.js"
+  },
+  "files": ["bin"],
+  "engines": {
+    "node": ">=14"
+  },
+  "optionalDependencies": {}
+}

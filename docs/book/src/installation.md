@@ -13,8 +13,24 @@ npm install --save-dev @feds01/zenith
 npx zenith check
 ```
 
-The package installs the binary for your platform. Install it with `--global`
-to have `zenith` everywhere.
+Install it with `--global` to have `zenith` everywhere.
+
+The binary for each platform is in a package of its own, such as
+`@feds01/zenith-darwin-arm64` or `@feds01/zenith-linux-x64`, which
+`@feds01/zenith` lists as optional dependencies, so the package manager
+installs only the one for your platform. There is no install script, and
+nothing is downloaded when zenith first runs:
+
+- bun installs it without an entry in `trustedDependencies`;
+- the lockfile's integrity hashes cover the binary;
+- it installs offline from the package manager's cache.
+
+There are packages for macOS (Apple silicon and Intel), Linux (ARM64 and
+x86-64, static binaries that run with glibc or musl) and Windows (x86-64).
+Leaving optional dependencies out, e.g. with `npm install --omit=optional`,
+leaves out the binary too, and `zenith` then says which package to add. On
+other platforms, build zenith [from source](#from-source) and set
+`ZENITH_BINARY` to the path of the binary.
 
 ## Homebrew
 

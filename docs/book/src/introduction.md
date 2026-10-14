@@ -2,27 +2,23 @@
 {{#include ../../logo/zenith.svg}}
 </div>
 
-# zenith
+# Zenith
 
-zenith is an architecture linter for TypeScript and JavaScript monorepos. It
-brings Python's [import-linter](https://import-linter.readthedocs.io/) to
-them: the contract model is import-linter's, and the graph algorithms are
-ports of its engine, [grimp](https://github.com/python-grimp/grimp), adapted
-to how JavaScript projects are organised. It is written in Rust, so a check of
-a monorepo with thousands of files takes well under a second.
+zenith is an architecture linter for TypeScript and JavaScript monorepos.
 
-## How it works
+You
+write down how the parts of your codebase may depend on each other, as
+**contracts** in a `zenith.toml`, and `zenith check` reports every import, or
+chain of imports, that breaks one. A check of a monorepo with thousands of
+files takes well under a second.
 
-You write down how the parts of your codebase may depend on each other, as
-**contracts** in a `zenith.toml`. zenith finds the project's source files and
-workspace packages, parses their imports, and resolves each one to a file, a
-package or a builtin: together, they make the project's **import graph**. It
-then checks every contract against the graph, and reports each import, or
-chain of imports, that breaks one.
+If you have used [import-linter](https://import-linter.readthedocs.io/) in
+Python, the contracts will feel familiar: zenith brings the same ideas to
+JavaScript projects.
 
 <figure class="diagram">
 {{#include diagrams/how-it-works.svg}}
-<figcaption>zenith builds the import graph once, checks every contract against it, and reports the violations.</figcaption>
+<figcaption>zenith checks every contract against your project's imports, and reports the violations.</figcaption>
 </figure>
 
 ## An example
@@ -83,10 +79,8 @@ Contracts
   [`independence`](contracts/independence.md), [`layers`](contracts/layers.md),
   [`protected`](contracts/protected.md), [`acyclic`](contracts/acyclic.md) and
   [`encapsulation`](contracts/encapsulation.md).
-- **Monorepo aware:** workspace packages are found from `package.json` and
-  `pnpm-workspace.yaml`, and can be named in contracts with `pkg:` selectors.
-  Imports between them resolve as TypeScript and Node do, with or without
-  `node_modules` installed.
+- **Monorepo aware:** workspace packages are found automatically, and can be
+  named in contracts with `pkg:` selectors.
 - **Built for adoption:** a [baseline](baseline.md) records the violations a
   codebase already has, so only new ones fail, and
   [suppressions](suppressions.md) exempt single imports.

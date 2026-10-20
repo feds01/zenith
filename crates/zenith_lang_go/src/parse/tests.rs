@@ -6,6 +6,11 @@ use zenith_utils::location::ByteRange;
 
 use super::*;
 
+/// Parse `source` with a new parser.
+fn parse(source: &str) -> GoFile {
+    Parser::new().parse(source)
+}
+
 /// The text of `range` in `source`.
 fn text(source: &str, range: ByteRange) -> &str {
     &source[Range::from(range)]
@@ -23,7 +28,7 @@ fn comments<'a>(source: &'a str, file: &GoFile) -> Vec<&'a str> {
 
 /// The errors of `file`, with the text that each is at.
 fn errors<'a>(source: &'a str, file: &GoFile) -> Vec<(GoSyntaxError, &'a str)> {
-    file.errors.iter().map(|error| (error.value, text(source, error.range))).collect()
+    file.errors.iter().map(|error| (error.value.clone(), text(source, error.range))).collect()
 }
 
 /// The imports of a clean file, as (name, path) pairs.
@@ -135,10 +140,16 @@ import (
 
 #[test]
 fn separates_specs_with_semicolons() {
-    let source = "package a\nimport (\"a\"; b \"b\"; \"c\"\n;\"d\")\nimport \"e\"; import \"f\"\n";
+    let source = "package a\nimport (\"a\"; b \"b\"; \"c\"\n\"d\")\nimport \"e\"; import \"f\"\n";
     let file = parse(source);
     assert_eq!(paths(&file), ["a", "b", "c", "d", "e", "f"]);
     assert!(file.errors.is_empty());
+
+    // A line break is a semicolon too, so a semicolon after it is one too many.
+    let source = "package a\nimport (\"a\"\n;\"b\")\n";
+    let file = parse(source);
+    assert_eq!(errors(source, &file), [(GoSyntaxError::Invalid, "\n")]);
+    assert_eq!(paths(&file), ["a", "b"]);
 }
 
 #[test]
@@ -355,46 +366,26 @@ fn takes_the_first_build_constraint_only_before_the_package_clause() {
 
 #[test]
 fn reads_interpreted_strings() {
-    let source = r#"package a
-import (
-	"plain/path"
-	"quote\"inside"
-	"back\\slash"
-	"tab\tnewline\n"
-	"hex\x41\x2f"
-	"unicodeé\U0001F600"
-	"octal\101\057"
-	"bell\a\b\f\r\v"
-	"émoji/路径"
-)
-"#;
+    let source = "package a\nimport (\n\t\"plain/path\"\n\t\"émoji/路径\"\n\t\"a b\"\n)\n";
     let file = parse(source);
-    assert_eq!(
-        paths(&file),
-        [
-            "plain/path",
-            "quote\"inside",
-            "back\\slash",
-            "tab\tnewline\n",
-            "hexA/",
-            "unicodeé😀",
-            "octalA/",
-            "bell\u{7}\u{8}\u{c}\r\u{b}",
-            "émoji/路径",
-        ]
-    );
+    assert_eq!(paths(&file), ["plain/path", "émoji/路径", "a b"]);
     assert!(file.errors.is_empty());
     // The range of the path is the string as written.
-    assert_eq!(text(source, file.imports[1].path_range), r#""quote\"inside""#);
-    assert_eq!(text(source, file.imports[1].range), r#""quote\"inside""#);
+    assert_eq!(text(source, file.imports[1].path_range), "\"émoji/路径\"");
+    assert_eq!(text(source, file.imports[1].range), "\"émoji/路径\"");
 }
 
 #[test]
-fn combines_hex_and_octal_escapes_into_characters() {
-    // `é` is the two bytes 0xC3 0xA9.
-    let file = parse("package a\nimport \"caf\\xc3\\xa9\"\nimport \"caf\\303\\251\"\n");
-    assert_eq!(paths(&file), ["café", "café"]);
-    assert!(file.errors.is_empty());
+fn reports_escaped_import_paths() {
+    // Escapes are not decoded, so the import is left out, and the others are read.
+    for path in [r#""quote\"inside""#, r#""back\\slash""#, r#""hex\x41""#, r#""é\u00e9""#] {
+        let source = format!("package a\nimport {path}\nimport \"b\"\n");
+        let file = parse(&source);
+        assert_eq!(errors(&source, &file), [(GoSyntaxError::EscapedImportPath, path)]);
+        assert_eq!(paths(&file), ["b"], "{path}");
+    }
+    // A raw string has no escapes.
+    assert_eq!(paths(&parse("package a\nimport `back\\slash`\n")), ["back\\slash"]);
 }
 
 #[test]
@@ -505,135 +496,6 @@ fn reports_a_missing_package_clause() {
 }
 
 #[test]
-fn reports_a_missing_package_name() {
-    // The error is at what is found instead, which may be an import.
-    let source = "package\nimport \"a\"\n";
-    let file = parse(source);
-    assert!(file.package.is_none());
-    assert_eq!(errors(source, &file), [(GoSyntaxError::MissingPackageName, "import")]);
-    assert_eq!(paths(&file), ["a"]);
-
-    let source = "package 123\nimport \"a\"\n";
-    let file = parse(source);
-    assert_eq!(errors(source, &file), [(GoSyntaxError::MissingPackageName, "1")]);
-    assert!(file.imports.is_empty());
-
-    let source = "package ";
-    let file = parse(source);
-    assert_eq!(errors(source, &file), [(GoSyntaxError::MissingPackageName, "")]);
-}
-
-#[test]
-fn reports_an_unterminated_string_and_recovers() {
-    let source = "package a\nimport (\n\t\"a\n\t\"b\"\n\t\"c\r\n\t\"d\"\n)\nimport \"e\"\n";
-    let file = parse(source);
-    assert_eq!(
-        errors(source, &file),
-        [(GoSyntaxError::UnterminatedString, "\"a"), (GoSyntaxError::UnterminatedString, "\"c"),]
-    );
-    // The strings that were closed are still read, and the group still ends.
-    assert_eq!(paths(&file), ["b", "d", "e"]);
-
-    // At the end of the file.
-    let source = "package a\nimport \"a";
-    let file = parse(source);
-    assert_eq!(errors(source, &file), [(GoSyntaxError::UnterminatedString, "\"a")]);
-    assert!(file.imports.is_empty());
-
-    // A raw string is closed by the next backquote, or never.
-    let source = "package a\nimport `a";
-    let file = parse(source);
-    assert_eq!(errors(source, &file), [(GoSyntaxError::UnterminatedString, "`a")]);
-    assert!(file.imports.is_empty());
-}
-
-#[test]
-fn reports_an_escape_at_the_end_of_a_string() {
-    let source = "package a\nimport \"a\\";
-    let file = parse(source);
-    assert_eq!(errors(source, &file), [(GoSyntaxError::UnterminatedString, "\"a\\")]);
-
-    let source = "package a\nimport \"a\\\nimport \"b\"\n";
-    let file = parse(source);
-    assert_eq!(errors(source, &file)[0], (GoSyntaxError::UnterminatedString, "\"a\\"));
-    assert_eq!(paths(&file), ["b"]);
-}
-
-#[test]
-fn reports_invalid_escapes() {
-    let cases = [
-        (r#"import "a\qb""#, r"\q"),
-        (r#"import "a\'b""#, r"\'"),
-        (r#"import "a\xZZb""#, r"\x"),
-        (r#"import "a\x4""#, r"\x4"),
-        (r#"import "a\u12zb""#, r"\u12"),
-        (r#"import "a\u12""#, r"\u12"),
-        (r#"import "a\UFFFFFFFFb""#, r"\UFFFFFFFF"),
-        (r#"import "a\ud800b""#, r"\ud800"),
-        (r#"import "a\400b""#, r"\400"),
-        (r#"import "a\7""#, r"\7"),
-        (r#"import "a\éb""#, r"\é"),
-    ];
-    for (declaration, bad) in cases {
-        let source = format!("package a\n{declaration}\nimport \"b\"\n");
-        let file = parse(&source);
-        assert_eq!(errors(&source, &file), [(GoSyntaxError::InvalidEscape, bad)], "{declaration}");
-        assert_eq!(paths(&file), ["b"], "{declaration}");
-    }
-}
-
-#[test]
-fn reports_strings_that_are_not_utf8() {
-    let source = "package a\nimport \"a\\xff\"\nimport \"b\"\n";
-    let file = parse(source);
-    assert_eq!(errors(source, &file), [(GoSyntaxError::InvalidUtf8, "a\\xff")]);
-    assert_eq!(paths(&file), ["b"]);
-}
-
-#[test]
-fn reports_a_missing_import_path() {
-    // Nothing after the keyword, or after a name.
-    for (declaration, at) in [
-        ("import", ""),
-        ("import _", ""),
-        ("import alias", ""),
-        ("import 42", "4"),
-        ("import alias\n\"a\"", "\n"),
-        ("import . 5", "5"),
-    ] {
-        let source = format!("package a\n{declaration}");
-        let file = parse(&source);
-        assert_eq!(
-            errors(&source, &file),
-            [(GoSyntaxError::MissingImportPath, at)],
-            "{declaration:?}"
-        );
-        assert!(file.imports.is_empty(), "{declaration:?}");
-    }
-
-    // In a group, the next spec is still read.
-    let source = "package a\nimport (\n\talias\n\t\"a\"\n\t_\n\tb \"b\"\n\t5 \"c\"\n\t_ )\n";
-    let file = parse(source);
-    assert_eq!(
-        errors(source, &file),
-        [
-            (GoSyntaxError::MissingImportPath, "\n"),
-            (GoSyntaxError::MissingImportPath, "\n"),
-            (GoSyntaxError::UnexpectedToken, "5"),
-            (GoSyntaxError::MissingImportPath, ")"),
-        ]
-    );
-    assert_eq!(
-        names(&file),
-        [
-            (ImportName::Default, "a"),
-            (ImportName::Alias("b".to_owned()), "b"),
-            (ImportName::Default, "c"),
-        ]
-    );
-}
-
-#[test]
 fn reports_an_empty_import_path() {
     let source = "package a\nimport \"\"\nimport ``\nimport \"a\"\n";
     let file = parse(source);
@@ -645,17 +507,80 @@ fn reports_an_empty_import_path() {
 }
 
 #[test]
+fn reports_a_missing_package_name() {
+    // The clause is invalid, and the imports after it are still read.
+    let source = "package\nimport \"a\"\n";
+    let file = parse(source);
+    assert!(file.package.is_none());
+    assert_eq!(errors(source, &file), [(GoSyntaxError::Invalid, "package")]);
+    assert_eq!(paths(&file), ["a"]);
+
+    for source in ["package 123\nimport \"a\"\n", "package "] {
+        let file = parse(source);
+        assert!(file.package.is_none(), "{source:?}");
+        assert_eq!(errors(source, &file), [(GoSyntaxError::Invalid, "package")], "{source:?}");
+    }
+}
+
+#[test]
+fn reports_an_unterminated_string_and_recovers() {
+    // The strings that were closed are still read, and the group still ends.
+    let source = "package a\nimport (\n\t\"a\n\t\"b\"\n)\nimport \"c\"\n";
+    let file = parse(source);
+    assert_eq!(errors(source, &file), [(GoSyntaxError::Invalid, "\"a")]);
+    assert_eq!(paths(&file), ["b", "c"]);
+
+    // At the end of the file, the closing quote is missing.
+    for (source, quote) in [("package a\nimport \"a", "\""), ("package a\nimport `a", "`")] {
+        let file = parse(source);
+        assert_eq!(errors(source, &file), [(GoSyntaxError::Missing(quote.to_owned()), "")]);
+        assert!(file.imports.is_empty());
+    }
+}
+
+#[test]
+fn reports_a_missing_import_path() {
+    // Nothing after the keyword, or after a name.
+    for declaration in ["import", "import _", "import alias", "import 42", "import . 5"] {
+        let source = format!("package a\n{declaration}");
+        let file = parse(&source);
+        assert_eq!(errors(&source, &file), [(GoSyntaxError::Invalid, declaration)]);
+        assert!(file.imports.is_empty(), "{declaration:?}");
+    }
+
+    // In a group, the other specs are still read.
+    let source = "package a\nimport (\n\talias\n\t\"a\"\n\t_\n\tb \"b\"\n\t5 \"c\"\n\t_ )\n";
+    let file = parse(source);
+    assert_eq!(
+        errors(source, &file),
+        [
+            (GoSyntaxError::Invalid, "_"),
+            (GoSyntaxError::Invalid, "5"),
+            (GoSyntaxError::Invalid, "_")
+        ]
+    );
+    assert_eq!(
+        names(&file),
+        [
+            (ImportName::Alias("alias".to_owned()), "a"),
+            (ImportName::Alias("b".to_owned()), "b"),
+            (ImportName::Default, "c"),
+        ]
+    );
+}
+
+#[test]
 fn reports_an_unterminated_import_group() {
-    // The file ends.
+    // The file ends, so the closing parenthesis is missing.
     let source = "package a\nimport (\n\t\"a\"\n\t\"b\"\n";
     let file = parse(source);
-    assert_eq!(errors(source, &file), [(GoSyntaxError::UnterminatedImportGroup, "(")]);
+    assert_eq!(errors(source, &file), [(GoSyntaxError::Missing(")".to_owned()), "")]);
     assert_eq!(paths(&file), ["a", "b"]);
 
-    // A declaration starts. It is left alone, so the imports end there.
+    // A declaration starts, and the imports end there.
     let source = "package a\nimport (\n\t\"a\"\n\nfunc main() {}\nimport \"b\"\n";
     let file = parse(source);
-    assert_eq!(errors(source, &file), [(GoSyntaxError::UnterminatedImportGroup, "(")]);
+    assert_eq!(errors(source, &file), [(GoSyntaxError::Invalid, "import (\n\t\"a\"\n\n")]);
     assert_eq!(paths(&file), ["a"]);
 }
 
@@ -663,28 +588,24 @@ fn reports_an_unterminated_import_group() {
 fn reports_what_is_not_an_import_spec_in_a_group() {
     let source = "package a\nimport (\n\t\"a\"\n\t}\n\t+ \"b\"\n\t\"c\"\n)\nimport \"d\"\n";
     let file = parse(source);
-    assert_eq!(
-        errors(source, &file),
-        [(GoSyntaxError::UnexpectedToken, "}"), (GoSyntaxError::UnexpectedToken, "+")]
-    );
+    assert_eq!(errors(source, &file), [(GoSyntaxError::Invalid, "}\n\t+")]);
     assert_eq!(paths(&file), ["a", "b", "c", "d"]);
 }
 
 #[test]
 fn reports_an_unterminated_comment() {
-    let source = "package a\nimport \"a\"\n/* never closed\nimport \"b\"\n";
-    let file = parse(source);
-    assert_eq!(paths(&file), ["a"]);
-    assert_eq!(errors(source, &file).len(), 1);
-    assert_eq!(errors(source, &file)[0].0, GoSyntaxError::UnterminatedComment);
-    assert_eq!(errors(source, &file)[0].1, "/* never closed\nimport \"b\"\n");
+    // It ends the imports, and is reported, as the imports after it are missed.
+    for (source, at) in [
+        ("package a\nimport \"a\"\n/* never closed\nimport \"b\"\n", "/* never closed"),
+        // `/*/` does not close itself.
+        ("package a\nimport \"a\"\n/*/\nimport \"b\"\n", "/*/"),
+    ] {
+        let file = parse(source);
+        assert_eq!(paths(&file), ["a"]);
+        assert_eq!(errors(source, &file), [(GoSyntaxError::Invalid, at)]);
+    }
 
-    // `/*/` does not close itself, but the `*/` of `/*/ ... */` closes.
-    let source = "package a\nimport \"a\"\n/*/\nimport \"b\"\n";
-    let file = parse(source);
-    assert_eq!(paths(&file), ["a"]);
-    assert_eq!(errors(source, &file)[0].0, GoSyntaxError::UnterminatedComment);
-
+    // The `*/` of `/*/ ... */` closes it.
     let source = "package a\n/*/ import \"a\" */ import \"b\"\n";
     let file = parse(source);
     assert_eq!(paths(&file), ["b"]);
@@ -723,10 +644,15 @@ fn tolerates_garbage() {
 
 #[test]
 fn displays_errors() {
-    assert_eq!(GoSyntaxError::UnterminatedString.to_string(), "string literal not terminated");
+    assert_eq!(GoSyntaxError::Invalid.to_string(), "invalid syntax");
+    assert_eq!(GoSyntaxError::Missing(")".to_owned()).to_string(), "expected `)`");
     assert_eq!(
-        GoSyntaxError::UnterminatedImportGroup.to_string(),
-        "import group not terminated, expected `)`"
+        GoSyntaxError::Missing("package_identifier".to_owned()).to_string(),
+        "expected package identifier"
+    );
+    assert_eq!(
+        GoSyntaxError::EscapedImportPath.to_string(),
+        "escapes in import paths are not supported"
     );
 }
 
@@ -750,7 +676,6 @@ import (
 \t_ \"embed\"
 \t. \"github.com/onsi/gomega\"
 \tпакет `raw/путь`
-\t\"esc\\u00e9/\\x41\\\"q\\\"\"
 )
 
 import \"os\"; import \"io\"
@@ -778,7 +703,6 @@ fn reads_a_realistic_file() {
             "embed",
             "github.com/onsi/gomega",
             "raw/путь",
-            "escé/A\"q\"",
             "os",
             "io",
         ]
@@ -811,7 +735,7 @@ fn never_panics_on_a_truncated_file() {
 
 #[test]
 fn never_panics_on_random_input() {
-    // Strings of the pieces that the scanner treats specially, from a fixed
+    // Strings of the pieces that are special in Go syntax, from a fixed
     // pseudo-random sequence.
     const PIECES: &[&str] = &[
         "package",

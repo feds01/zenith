@@ -1,12 +1,12 @@
 //! Reads what a Go source file imports.
 //!
-//! Go requires the import declarations to come straight after the package
-//! clause, so this is not a Go parser: it scans the comments, the package
-//! clause and the import declarations, and stops at the first other top-level
-//! token.
+//! A [`Parser`] parses the source with
+//! [tree-sitter](https://tree-sitter.github.io)'s Go grammar, then reads the
+//! comments and the package clause at the top of the file, and the import
+//! declarations, which Go requires to come straight after the package clause.
 //!
 //! ```
-//! use zenith_lang_go::parse::{ImportName, parse};
+//! use zenith_lang_go::parse::{ImportName, Parser};
 //!
 //! let source = r#"package main
 //!
@@ -16,7 +16,7 @@
 //!     _ "embed"
 //! )
 //! "#;
-//! let file = parse(source);
+//! let file = Parser::new().parse(source);
 //! assert_eq!(file.package.unwrap().value, "main");
 //! assert!(file.errors.is_empty());
 //!
@@ -27,12 +27,11 @@
 //! ```
 //!
 //! The file is read as written: build constraints are reported but not
-//! evaluated, and nothing is checked beyond what is needed to find the
-//! imports. Malformed input never panics. It is recovered from where
-//! possible, and each problem found is recorded in [`GoFile::errors`].
+//! evaluated. Malformed input never panics. Each syntax error at the top of the
+//! file is recorded in [`GoFile::errors`], and the imports around it are still
+//! read.
 
-mod scanner;
-mod string;
+mod reader;
 
 #[cfg(test)]
 mod tests;
@@ -41,18 +40,49 @@ use std::fmt;
 
 use zenith_utils::location::{ByteRange, Located};
 
-/// Read the package clause, the import declarations and the comments in front
-/// of them from the Go `source` of one file.
+/// Parses Go source files into [`GoFile`]s.
 ///
-/// All offsets are bytes into `source`, which must be shorter than 4 GiB. A
-/// longer source is not read, and reports [`GoSyntaxError::SourceTooLarge`].
-pub fn parse(source: &str) -> GoFile {
-    if u32::try_from(source.len()).is_err() {
-        let mut file = GoFile::default();
-        file.errors.push(Located::new(ByteRange::default(), GoSyntaxError::SourceTooLarge));
-        return file;
+/// A parser holds tree-sitter's parser state, which it reuses between files,
+/// so keep one per thread rather than making one per file.
+pub struct Parser {
+    /// The tree-sitter parser, set up with the Go grammar.
+    inner: tree_sitter::Parser,
+}
+
+impl Parser {
+    /// A parser of Go files.
+    pub fn new() -> Self {
+        let mut inner = tree_sitter::Parser::new();
+        inner
+            .set_language(&tree_sitter_go::LANGUAGE.into())
+            .expect("the Go grammar is built for this version of tree-sitter");
+        Self { inner }
     }
-    scanner::Scanner::new(source).scan()
+
+    /// Read the package clause, the import declarations and the comments in
+    /// front of them from the Go `source` of one file.
+    ///
+    /// All offsets are bytes into `source`, which must be shorter than 4 GiB. A
+    /// longer source is not read, and reports
+    /// [`GoSyntaxError::SourceTooLarge`].
+    pub fn parse(&mut self, source: &str) -> GoFile {
+        if u32::try_from(source.len()).is_err() {
+            let mut file = GoFile::default();
+            file.errors.push(Located::new(ByteRange::default(), GoSyntaxError::SourceTooLarge));
+            return file;
+        }
+        let tree = self
+            .inner
+            .parse(source, None)
+            .expect("a parser with a language and no cancellation always parses");
+        reader::read(source, tree.root_node())
+    }
+}
+
+impl Default for Parser {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// What a Go source file imports, with where in the file each thing is.
@@ -69,8 +99,8 @@ pub struct GoFile {
     pub build_constraint: Option<Located<String>>,
 
     /// The imports of the file, in source order. An import that could not be
-    /// read, such as one with an unterminated path, is left out, and reported
-    /// in [`errors`](Self::errors).
+    /// read, such as one with an unterminated path or an escape in its path,
+    /// is left out, and reported in [`errors`](Self::errors).
     pub imports: Vec<GoImport>,
 
     /// The comments from the start of the file to the end of its imports, in
@@ -89,9 +119,9 @@ pub struct GoFile {
 /// `import ( ... )` group.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GoImport {
-    /// The import path, with the escapes of an interpreted string decoded,
-    /// such as `fmt` or `github.com/acme/logging/v2`. For `import "C"`, a
-    /// cgo import, it is `C`.
+    /// The import path, between its quotes, such as `fmt` or
+    /// `github.com/acme/logging/v2`. For `import "C"`, a cgo import, it is
+    /// `C`.
     pub path: String,
 
     /// The whole spec, from its name, or else its path, to the end of its
@@ -135,7 +165,7 @@ pub struct GoComment {
 }
 
 /// What is wrong in a syntax error of a Go file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum GoSyntaxError {
     /// The source is 4 GiB or longer, which is more than offsets can address.
     SourceTooLarge,
@@ -143,52 +173,37 @@ pub enum GoSyntaxError {
     /// The file does not start with a package clause.
     MissingPackageClause,
 
-    /// The `package` keyword has no name after it.
-    MissingPackageName,
+    /// Code that is not valid Go, such as a stray token, an unterminated
+    /// string or an unterminated comment.
+    Invalid,
 
-    /// A `/* */` comment is never closed. It runs to the end of the file.
-    UnterminatedComment,
+    /// Something that Go requires is missing, such as the `)` of an import
+    /// group. It holds the name of what is missing, in the Go grammar of
+    /// tree-sitter: a token, such as `)`, or a kind of node, such as
+    /// `package_identifier`.
+    Missing(String),
 
-    /// A string is never closed. An interpreted string must end on the line it
-    /// starts on.
-    UnterminatedString,
-
-    /// An escape sequence in an interpreted string is not one of Go's, or has
-    /// too few digits, or a value that is not allowed.
-    InvalidEscape,
-
-    /// An interpreted string with `\x` or octal escapes is not valid UTF-8
-    /// once its escapes are decoded.
-    InvalidUtf8,
-
-    /// An import spec has no path, where a string was expected.
-    MissingImportPath,
+    /// An import path has an escape sequence in it, such as `"fmt\x41"`,
+    /// which zenith does not decode. Real import paths never need one.
+    EscapedImportPath,
 
     /// An import path is the empty string.
     EmptyImportPath,
-
-    /// An `import (` group is never closed, because the file ends, or a
-    /// `func`, `var`, `type` or `const` declaration starts, before its `)`.
-    UnterminatedImportGroup,
-
-    /// Something that is not an import spec is in an import group.
-    UnexpectedToken,
 }
 
 impl fmt::Display for GoSyntaxError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::SourceTooLarge => "the source is too large to read",
-            Self::MissingPackageClause => "expected the package clause",
-            Self::MissingPackageName => "expected the package name",
-            Self::UnterminatedComment => "comment not terminated",
-            Self::UnterminatedString => "string literal not terminated",
-            Self::InvalidEscape => "invalid escape sequence in string literal",
-            Self::InvalidUtf8 => "string literal is not valid UTF-8",
-            Self::MissingImportPath => "expected the import path, a string literal",
-            Self::EmptyImportPath => "the import path is empty",
-            Self::UnterminatedImportGroup => "import group not terminated, expected `)`",
-            Self::UnexpectedToken => "expected an import spec",
-        })
+        match self {
+            Self::SourceTooLarge => f.write_str("the source is too large to read"),
+            Self::MissingPackageClause => f.write_str("expected the package clause"),
+            Self::Invalid => f.write_str("invalid syntax"),
+            // A kind of node is a name in snake case, and a token is anything else.
+            Self::Missing(kind) if kind.chars().all(|c| c.is_ascii_lowercase() || c == '_') => {
+                write!(f, "expected {}", kind.replace('_', " "))
+            }
+            Self::Missing(token) => write!(f, "expected `{token}`"),
+            Self::EscapedImportPath => f.write_str("escapes in import paths are not supported"),
+            Self::EmptyImportPath => f.write_str("the import path is empty"),
+        }
     }
 }

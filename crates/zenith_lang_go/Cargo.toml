@@ -11,5 +11,8 @@ publish = { workspace = true }
 [dependencies]
 zenith_utils = { workspace = true }
 
+tree-sitter = { workspace = true }
+tree-sitter-go = { workspace = true }
+
 [lints]
 workspace = true

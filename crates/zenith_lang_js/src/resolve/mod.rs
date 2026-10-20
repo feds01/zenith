@@ -12,13 +12,13 @@
 //! resolved without it.
 //!
 //! Every resolution is then classified as an internal file, an external
-//! package, a builtin, or unresolved (see [`Resolved`]).
+//! package, a builtin, or unresolved (see [`Resolved`](zenith_lang::Resolved)).
 
 mod exports;
 mod resolver;
 mod settings;
 
-pub use resolver::{ResolveFailure, Resolved, Resolver, ResolverError, UnresolvedReason};
+pub use resolver::{Resolver, ResolverError};
 pub use settings::{
     DEFAULT_CONDITIONS, DEFAULT_EXTENSIONS, DEFAULT_MAIN_FIELDS, ResolverSettings, TsconfigMode,
 };

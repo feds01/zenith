@@ -2,11 +2,11 @@
 
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
-use zenith_resolve::Resolved;
+use zenith_lang::Resolved;
 
 use crate::{PipelineError, ResolvedImport, Session, Stage, StageKind};
 
-/// Resolves the specifier of every parsed import with `zenith_resolve`, in
+/// Resolves the specifier of every parsed import with `zenith_lang_js`, in
 /// parallel, sharing one resolver and its caches between the workers.
 pub struct Resolve;
 

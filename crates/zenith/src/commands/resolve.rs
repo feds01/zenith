@@ -1,8 +1,8 @@
 //! `zenith resolve`.
 
 use anyhow::{Result, bail};
+use zenith_lang::Resolved;
 use zenith_pipeline::StageKind;
-use zenith_resolve::Resolved;
 use zenith_utils::path::adjust_canonicalisation;
 
 use crate::{

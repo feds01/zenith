@@ -55,7 +55,6 @@ a new kind of responsibility, not for each feature:
 - `zenith_pipeline`: the stages that turn a project into its import graph,
   and the session they share.
 - `zenith_reporting`: the output formats of `zenith check`.
-- `zenith_resolve`: specifier resolution with `oxc_resolver`.
 - `zenith_utils`: shared helpers: files, paths, globs, locations, terminal
   output and the thread pool.
 - `zenith_workspace`: the file walker, git, and workspace packages.

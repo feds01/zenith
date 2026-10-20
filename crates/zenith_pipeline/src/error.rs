@@ -6,8 +6,9 @@ use std::{fmt, io, path::PathBuf};
 use thin_vec::ThinVec;
 use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span};
 use zenith_graph::{GraphError, ImportDetail};
+use zenith_lang::UnresolvedReason;
+use zenith_lang_js::ResolverError;
 use zenith_parse::SyntaxError;
-use zenith_resolve::{ResolverError, UnresolvedReason};
 use zenith_utils::{location::Located, printing::plural};
 use zenith_workspace::GitError;
 

@@ -24,7 +24,6 @@ zenith_lang_js = { path = "crates/zenith_lang_js" }
 zenith_parse = { path = "crates/zenith_parse" }
 zenith_pipeline = { path = "crates/zenith_pipeline" }
 zenith_reporting = { path = "crates/zenith_reporting" }
-zenith_resolve = { path = "crates/zenith_resolve" }
 zenith_utils = { path = "crates/zenith_utils" }
 zenith_workspace = { path = "crates/zenith_workspace" }
 

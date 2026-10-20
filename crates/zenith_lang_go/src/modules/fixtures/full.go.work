@@ -1,0 +1,18 @@
+go 1.23.0
+
+toolchain go1.23.4
+
+godebug default=go1.22
+
+use ./api
+use (
+	./libs/shared // the shared code
+	"./tools/gen"
+)
+
+replace golang.org/x/sync => ./third_party/sync
+replace (
+	github.com/old/lib v1.0.0 => github.com/new/lib v1.0.1
+)
+
+frobnicate

@@ -13,6 +13,7 @@ zenith_utils = { workspace = true }
 
 tree-sitter = { workspace = true }
 tree-sitter-go = { workspace = true }
+tree-sitter-gomod-orchard = { workspace = true }
 
 [lints]
 workspace = true

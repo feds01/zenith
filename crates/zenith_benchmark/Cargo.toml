@@ -28,6 +28,10 @@ name = "glob"
 harness = false
 
 [[bench]]
+name = "lang_go"
+harness = false
+
+[[bench]]
 name = "lang_js"
 harness = false
 
@@ -54,6 +58,7 @@ tempfile = { workspace = true }
 zenith_cache = { workspace = true }
 zenith_contracts = { workspace = true }
 zenith_lang = { workspace = true }
+zenith_lang_go = { workspace = true }
 zenith_pipeline = { workspace = true }
 
 divan = { workspace = true }

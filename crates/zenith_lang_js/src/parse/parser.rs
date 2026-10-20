@@ -1,7 +1,7 @@
 //! The parser, which parses JavaScript and TypeScript sources into
 //! [`ParsedFile`]s.
 
-use std::{io, mem, path::Path};
+use std::{io, path::Path};
 
 use oxc_allocator::Allocator;
 use oxc_ast_visit::Visit;
@@ -12,11 +12,7 @@ use zenith_graph::Exports;
 use zenith_lang::{ParsedFile, Suppression};
 use zenith_utils::fs::read_text;
 
-use super::{
-    convert::{comment, syntax_error},
-    exports::ProgramHelpers,
-    visitor::ImportVisitor,
-};
+use super::{convert::IntoLang, exports::ProgramHelpers, visitor::ImportVisitor};
 
 /// Parses JavaScript and TypeScript files with [oxc](https://oxc.rs) into
 /// [`ParsedFile`]s.
@@ -126,13 +122,8 @@ impl Parser {
         // 2. Collect the syntax errors. If the parser gave up, the syntax tree is
         //    empty. The comments were kept, but leave them out too, rather than report
         //    suppressions with no imports to apply to.
-        let mut errors: ThinVec<_> = parsed
-            .diagnostics
-            .into_iter()
-            .map(|mut diagnostic| {
-                syntax_error(mem::take(&mut diagnostic.message), &diagnostic.labels)
-            })
-            .collect();
+        let mut errors: ThinVec<_> =
+            parsed.diagnostics.into_iter().map(IntoLang::into_lang).collect();
         errors.sort_by_key(|error| error.range);
         if parsed.fatal_error {
             return ParsedFile { errors, ..ParsedFile::default() };
@@ -151,7 +142,7 @@ impl Parser {
             .map(|directive| directive.directive.as_str().to_owned())
             .collect();
         let suppressions =
-            Suppression::collect(source, parsed.program.comments.iter().map(comment));
+            Suppression::collect(source, parsed.program.comments.iter().map(IntoLang::into_lang));
 
         // 5. Read what the file exports from its top-level statements.
         let exports = match self.options.names {

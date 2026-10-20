@@ -1,47 +1,68 @@
 //! Conversions from what oxc reports to the language-neutral types of
 //! `zenith_lang`.
 
-use std::borrow::Cow;
+use std::mem;
 
 use oxc_ast::{Comment, CommentKind as OxcCommentKind};
+use oxc_diagnostics::OxcDiagnostic;
 use oxc_span::{LabeledSpan, Span};
 use zenith_lang::{self as lang, SyntaxError};
 use zenith_utils::location::{ByteRange, Located};
 
-/// The comment that oxc found, as `zenith_lang` describes comments.
-pub(super) fn comment(comment: &Comment) -> lang::Comment {
-    let kind = match comment.kind {
-        OxcCommentKind::Line | OxcCommentKind::HtmlOpen | OxcCommentKind::HtmlClose => {
-            lang::CommentKind::Line
-        }
-        OxcCommentKind::SingleLineBlock | OxcCommentKind::MultiLineBlock => {
-            lang::CommentKind::Block
-        }
-    };
-    lang::Comment {
-        range: byte_range(comment.span),
-        content: byte_range(comment.content_span()),
-        kind,
-        trailing: comment.is_trailing(),
-        followed_by_newline: comment.followed_by_newline(),
-        attached_to: comment.attached_to,
+/// Something oxc reports, which converts into its `zenith_lang` counterpart.
+///
+/// Neither side of the conversion is defined in this crate, so it can't be a
+/// `From` implementation.
+pub(super) trait IntoLang {
+    /// The `zenith_lang` type it converts into.
+    type Lang;
+
+    /// Convert it into its `zenith_lang` counterpart.
+    fn into_lang(self) -> Self::Lang;
+}
+
+impl IntoLang for Span {
+    type Lang = ByteRange;
+
+    fn into_lang(self) -> ByteRange {
+        ByteRange::new(self.start, self.end)
     }
 }
 
-/// The error with oxc's `message`, at the code its primary label points at,
-/// or its first label if none is primary.
-pub(super) fn syntax_error(
-    message: Cow<'static, str>,
-    labels: &[LabeledSpan],
-) -> Located<SyntaxError> {
-    let label = labels.iter().find(|label| label.primary()).or_else(|| labels.first());
-    let span = label.map_or(Span::default(), LabeledSpan::span);
-    Located::new(byte_range(span), SyntaxError { message })
+impl IntoLang for &Comment {
+    type Lang = lang::Comment;
+
+    fn into_lang(self) -> lang::Comment {
+        let kind = match self.kind {
+            OxcCommentKind::Line | OxcCommentKind::HtmlOpen | OxcCommentKind::HtmlClose => {
+                lang::CommentKind::Line
+            }
+            OxcCommentKind::SingleLineBlock | OxcCommentKind::MultiLineBlock => {
+                lang::CommentKind::Block
+            }
+        };
+        lang::Comment {
+            range: self.span.into_lang(),
+            content: self.content_span().into_lang(),
+            kind,
+            trailing: self.is_trailing(),
+            followed_by_newline: self.followed_by_newline(),
+            attached_to: self.attached_to,
+        }
+    }
 }
 
-/// The range of `span`.
-fn byte_range(span: Span) -> ByteRange {
-    ByteRange::new(span.start, span.end)
+impl IntoLang for OxcDiagnostic {
+    type Lang = Located<SyntaxError>;
+
+    /// The error with oxc's message, at the code its primary label points at,
+    /// or its first label if none is primary.
+    fn into_lang(mut self) -> Located<SyntaxError> {
+        let label =
+            self.labels.iter().find(|label| label.primary()).or_else(|| self.labels.first());
+        let range = label.map_or(Span::default(), LabeledSpan::span).into_lang();
+        Located::new(range, SyntaxError { message: mem::take(&mut self.message) })
+    }
 }
 
 #[cfg(test)]

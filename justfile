@@ -96,7 +96,7 @@ bench-instructions bench *filter:
         -v zenith-codspeed-rustup:/usr/local/rustup \
         -v zenith-codspeed-target:/target -e CARGO_TARGET_DIR=/target \
         -e CARGO_PROFILE_RELEASE_LTO=false -e CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 \
-        -e RAYON_NUM_THREADS=1 -e CODSPEED_TOKEN -e CODSPEED_BASE \
+        -e RAYON_NUM_THREADS=1 -e MIMALLOC_PURGE_DELAY=-1 -e CODSPEED_TOKEN -e CODSPEED_BASE \
         zenith-codspeed sh -c '
             set -eu
             git config --global --add safe.directory "*"

@@ -96,10 +96,9 @@ impl<'g> ModuleOverview<'g> {
             .collect();
         let children = children
             .iter()
-            .zip(&units)
-            .map(|(child, members)| {
+            .map(|child| {
                 let node = graph.node(*child);
-                let (name, kind, files) = (node.name(), node.kind(), count_files(graph, members));
+                let (name, kind, files) = (node.name(), node.kind(), graph.file_count(*child));
                 OverviewChild { id: *child, name, kind, files }
             })
             .collect();
@@ -191,19 +190,13 @@ fn tree_node(graph: &Graph, id: ModuleId, depth: usize, top: bool) -> TreeNode {
     }
 
     let slash = if id == ModuleId::ROOT { "" } else { "/" };
-    let label =
-        format!("{shown}{slash} ({})", plural(count_files(graph, &graph.members(id)), "file"));
+    let label = format!("{shown}{slash} ({})", plural(graph.file_count(id), "file"));
     if depth == 0 {
         return TreeNode::leaf(label);
     }
     let children =
         graph.children(id).iter().map(|child| tree_node(graph, *child, depth - 1, false));
     TreeNode::branch(label, children.collect())
-}
-
-/// The number of files among `members`, which can hold packages too.
-fn count_files(graph: &Graph, members: &NodeSet) -> usize {
-    members.iter().filter(|member| graph.node(*member).kind() != NodeKind::Directory).count()
 }
 
 /// The name of a node, with `.` for the root.

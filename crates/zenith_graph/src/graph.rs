@@ -360,8 +360,8 @@ impl Graph {
     /// target, or the node itself for an external package or builtin.
     ///
     /// A package is a member of the same units as the files in it. It is
-    /// imported but never imports, and it is not a file: count files by
-    /// [`NodeKind::File`], not by the number of members.
+    /// imported but never imports, and it is not a file: count files with
+    /// [`Self::file_count`], not by the number of members.
     pub fn members(&self, id: ModuleId) -> NodeSet {
         let members = self.subtree(id).iter().copied();
         match &self.packages {
@@ -375,6 +375,13 @@ impl Graph {
                 })
                 .collect(),
         }
+    }
+
+    /// The number of files in the subtree of `id`, or 1 for an external
+    /// package or builtin, which stands for itself. Packages are directories,
+    /// so they are not counted.
+    pub fn file_count(&self, id: ModuleId) -> usize {
+        self.subtree(id).iter().filter(|node| self.node(**node).kind != NodeKind::Directory).count()
     }
 
     /// Whether any directory of the graph is a package.

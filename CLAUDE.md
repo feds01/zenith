@@ -55,6 +55,8 @@ a new kind of responsibility, not for each feature:
   the types they share: what a file imports, its suppressions and syntax
   errors, what an import resolves to, and a project's workspace packages. It
   depends on no parser or resolver.
+- `zenith_lang_go`: Go support: what each file imports, and how import
+  paths resolve against the project's Go modules.
 - `zenith_lang_js`: JavaScript and TypeScript support: parsing with oxc,
   specifier resolution with `oxc_resolver`, and workspace package discovery
   from `package.json`.

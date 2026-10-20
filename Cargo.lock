@@ -2082,6 +2082,9 @@ dependencies = [
 [[package]]
 name = "zenith_lang_go"
 version = "0.2.0"
+dependencies = [
+ "zenith_utils",
+]
 
 [[package]]
 name = "zenith_lang_js"

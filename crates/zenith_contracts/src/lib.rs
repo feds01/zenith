@@ -23,6 +23,8 @@ mod baseline;
 mod contract;
 mod error;
 mod findings;
+#[cfg(test)]
+mod packages;
 mod reports;
 mod rules;
 mod schema;

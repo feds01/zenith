@@ -462,6 +462,13 @@ impl ReportBuilder<'_> {
                     ));
                 }
             }
+            // A package that the chain goes through is the line between the file that
+            // imports it and the file in it that imports on.
+            if let Some(next) = chain.links.get(index + 1)
+                && next.importer != link.imported
+            {
+                lines.push(format!("  -> {}", self.graph.name(link.imported)));
+            }
         }
         if let Some(last) = chain.links.last() {
             lines.push(format!("  -> {}", self.graph.name(last.imported)));
@@ -518,8 +525,7 @@ pub(crate) fn import_span(text: &str, import: &ImportDetail) -> ByteRange {
 /// The nodes of `chain`, as `a.ts -> b.ts -> npm:c`, without the middle of a
 /// chain longer than five nodes.
 fn chain_summary(graph: &Graph, chain: &Chain) -> String {
-    let mut nodes: Vec<_> = chain.links.iter().map(|link| graph.name(link.importer)).collect();
-    nodes.extend(chain.links.last().map(|link| graph.name(link.imported)));
+    let nodes: Vec<_> = chain.nodes().into_iter().map(|node| graph.name(node)).collect();
     if nodes.len() <= 5 {
         return nodes.join(" -> ");
     }
@@ -686,6 +692,64 @@ mod tests {
                 "a/x.ts:2:1: error[ab]: `a` must not import `b`",
                 "error[ab]: `a` must not import `b` (via a/z.ts -> c/w.ts -> b/y.ts)",
             ]
+        );
+    }
+
+    #[test]
+    fn chains_through_packages_show_the_package_between_the_files() {
+        let project = Project::new(
+            &values(&[
+                ("cmd/main.go", "internal/db/"),
+                ("internal/db/conn.go", "internal/cache/"),
+                ("internal/cache/store.go", "node:os"),
+            ]),
+            &[],
+            include_str!("fixtures/packages.toml"),
+        );
+        let report = project.check("through-packages");
+        let Violation::Dependency { chains, .. } = &report.violations[0] else {
+            panic!("expected a dependency");
+        };
+        let mut sources = SourceMap::new();
+        // The imports are at bytes 100 and 200, the start of the second line of
+        // their files.
+        sources.add("cmd/main.go", format!("{}\nimport \"db\"\n", " ".repeat(99)));
+        sources.add("internal/db/conn.go", format!("{}\nimport \"cache\"\n", " ".repeat(199)));
+        let baseline = BaselineConfig::default();
+        let mut builder = ReportBuilder {
+            graph: &project.graph,
+            sources: &mut sources,
+            config: None,
+            baseline: &baseline,
+        };
+        assert_eq!(
+            builder.chain(&chains[0]),
+            [
+                "  cmd/main.go:2",
+                "  -> internal/db",
+                "  -> internal/db/conn.go:2",
+                "  -> internal/cache",
+            ]
+            .join("\n")
+        );
+        assert_eq!(
+            chain_summary(&project.graph, &chains[0]),
+            "cmd/main.go -> internal/db -> internal/db/conn.go -> internal/cache"
+        );
+
+        let findings = report.findings(&project.graph, &mut sources, None, &baseline);
+        let rendered: Vec<_> = findings
+            .iter()
+            .map(|finding| {
+                zenith_diagnostics::Reporter::new(&sources, std::slice::from_ref(finding))
+                    .short()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            rendered,
+            ["cmd/main.go:2:1: error[through-packages]: `cmd` must not import `internal/cache` \
+                 (via cmd/main.go -> internal/db -> internal/db/conn.go -> internal/cache)"]
         );
     }
 }

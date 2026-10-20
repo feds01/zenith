@@ -222,7 +222,9 @@ enum Scope<'a> {
 /// A chain of imports.
 #[derive(Debug, Serialize)]
 struct ChainJson<'a> {
-    /// The links, from the first importer to the last imported node.
+    /// The links, from the first importer to the last imported node. A link
+    /// that imports a package is followed by a link from a file in that
+    /// package.
     links: Vec<LinkJson<'a>>,
 
     /// The other imports into the second node of the chain.
@@ -255,7 +257,8 @@ struct LinkJson<'a> {
     /// The importing file.
     importer: &'a str,
 
-    /// The imported node.
+    /// The imported node: a file, an external package, a builtin, or a
+    /// package, by the path of its directory.
     imported: &'a str,
 
     /// The statements that make the import, where their specifiers are.

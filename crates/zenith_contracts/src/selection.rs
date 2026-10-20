@@ -144,8 +144,9 @@ mod tests {
 
     use thin_vec::thin_vec;
     use zenith_config::{Config, ContractKind};
-    use zenith_graph::{GraphBuilder, ModuleId};
+    use zenith_graph::{GraphBuilder, ImportDetail, ImportKind, ImportedNames, ModuleId};
     use zenith_lang::WorkspacePackage;
+    use zenith_utils::location::ByteRange;
 
     use super::*;
 
@@ -468,5 +469,43 @@ mod tests {
         );
         assert_eq!(try_resolve("npm:left-pad"), Ok(0));
         assert_eq!(try_resolve("node:path"), Ok(0));
+    }
+
+    #[test]
+    fn a_directory_unit_holds_the_packages_in_it() {
+        let mut builder = GraphBuilder::new();
+        let main = builder.add_file("cmd/main.go").unwrap();
+        builder.add_file("internal/db/conn.go").unwrap();
+        builder.add_file("internal/db/sub/deep.go").unwrap();
+        let detail = ImportDetail {
+            range: ByteRange::new(0, 10),
+            specifier: "app/internal/db".into(),
+            kind: ImportKind::Value,
+            names: ImportedNames::All,
+        };
+        builder.add_package_import(main, "internal/db", detail).unwrap();
+        let project = Project { graph: builder.finish(), workspace: Workspace::default() };
+
+        // The package is named by its directory, and is a member of the units that
+        // hold the directory, as the files in it are.
+        let (units, _) = resolve(&project, &selector("internal"));
+        assert_eq!(
+            units,
+            [(
+                "internal".to_string(),
+                vec![
+                    "internal/db".to_string(),
+                    "internal/db/conn.go".to_string(),
+                    "internal/db/sub/deep.go".to_string(),
+                ]
+            )]
+        );
+        let (units, _) = resolve(&project, &selector("internal/db"));
+        assert_eq!(units[0].1[0], "internal/db");
+        // A directory that nothing imports as a package is not a member.
+        let (units, _) = resolve(&project, &selector("internal/db/sub"));
+        assert_eq!(units[0].1, ["internal/db/sub/deep.go"]);
+        let (units, _) = resolve(&project, &selector("cmd"));
+        assert_eq!(units[0].1, ["cmd/main.go"]);
     }
 }

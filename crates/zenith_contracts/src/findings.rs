@@ -18,7 +18,10 @@ pub struct Link {
     /// The importing file.
     pub importer: ModuleId,
 
-    /// The imported node: a file, an external package or a builtin.
+    /// The imported node: a file, an external package, a builtin, or a
+    /// package, a directory that is imported as a whole. A package is shown
+    /// by its path, and an import of it is one link, however many files it
+    /// has.
     pub imported: ModuleId,
 
     /// The statements that make the import, in source order, without those
@@ -28,8 +31,11 @@ pub struct Link {
 
 impl Link {
     /// Whether the importer or the imported node, in `graph`, is in `scope`.
+    /// An imported package is, if a file directly in it is.
     pub(crate) fn touches(&self, graph: &Graph, scope: &Scope) -> bool {
-        scope.contains(graph.name(self.importer)) || scope.contains(graph.name(self.imported))
+        scope.contains(graph.name(self.importer))
+            || scope.contains(graph.name(self.imported))
+            || graph.package_files(self.imported).any(|file| scope.contains(graph.name(file)))
     }
 
     /// The import from `importer` to `imported` in `view`, with its
@@ -48,7 +54,14 @@ impl Link {
 }
 
 /// A chain of imports, each link's `imported` being the next link's
-/// `importer`.
+/// `importer`, or, if it is a package, the package that the next link's
+/// importer is a file directly in.
+///
+/// For example, if `cmd/main.go` imports the package `internal/db`, and
+/// `internal/db/conn.go` imports the package `internal/cache`, the chain from
+/// `cmd/main.go` to `internal/cache` has two links: `cmd/main.go ->
+/// internal/db` and `internal/db/conn.go -> internal/cache`. What leads from
+/// the package to the file in it is not an import, so no link stands for it.
 ///
 /// A chain between two layers can stand for several routes that share their
 /// middle, as in import-linter: `extra_heads` are the other imports into the
@@ -58,7 +71,7 @@ impl Link {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Chain {
     /// The links, from the first importer to the last imported node. There
-    /// is at least one.
+    /// is at least one. Each is an import that the code makes.
     pub links: Vec<Link>,
 
     /// The other imports into the second node of the chain, in the order of
@@ -71,10 +84,29 @@ pub struct Chain {
 }
 
 impl Chain {
+    /// The nodes that the chain goes through, in order: the importer of each
+    /// link, the package between two links if there is one, and the node that
+    /// the last link imports.
+    pub fn nodes(&self) -> Vec<ModuleId> {
+        let mut nodes = Vec::with_capacity(self.links.len() + 1);
+        for (index, link) in self.links.iter().enumerate() {
+            nodes.push(link.importer);
+            let next = self.links.get(index + 1);
+            if next.is_some_and(|next| next.importer != link.imported) {
+                nodes.push(link.imported);
+            }
+        }
+        nodes.extend(self.links.last().map(|link| link.imported));
+        nodes
+    }
+
     /// The chain through the nodes of `path` in `view`, whose links keep only
-    /// the statements that count.
+    /// the statements that count. A hop from a package into one of its files
+    /// is not an import, so it is not a link.
     pub(crate) fn from_path(view: &GraphView, statements: &Statements, path: &[ModuleId]) -> Self {
-        let links = path.windows(2).map(|pair| Link::new(view, statements, pair[0], pair[1]));
+        let graph = view.graph();
+        let imports = path.windows(2).filter(|pair| !graph.is_package_member(pair[0], pair[1]));
+        let links = imports.map(|pair| Link::new(view, statements, pair[0], pair[1]));
         Self { links: links.collect(), extra_heads: Vec::new(), extra_tails: Vec::new() }
     }
 
@@ -90,9 +122,13 @@ impl Chain {
         let path: Vec<_> =
             [heads[0]].into_iter().chain(middle.iter().copied()).chain([tails[0]]).collect();
         let link = |importer, imported| Link::new(view, statements, importer, imported);
+        // A package that ends the middle has the files in it as tails, which it does
+        // not import.
+        let graph = view.graph();
+        let imported = tails[1..].iter().filter(|tail| !graph.is_package_member(*last, **tail));
         Self {
             extra_heads: heads[1..].iter().map(|head| link(*head, *first)).collect(),
-            extra_tails: tails[1..].iter().map(|tail| link(*last, *tail)).collect(),
+            extra_tails: imported.map(|tail| link(*last, *tail)).collect(),
             ..Self::from_path(view, statements, &path)
         }
     }

@@ -58,11 +58,14 @@ jobs:
       # The simulation counts the instructions of every thread, so work spread
       # over a pool would also count its workers spinning, stealing and parking,
       # which differs from run to run. On one thread, each benchmark counts the
-      # same instructions every time.
+      # same instructions every time. mimalloc returns freed memory to the OS
+      # on a timer, which the simulation's slow clock fires in some samples
+      # and not others, so it is turned off.
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v5
         env:
           RAYON_NUM_THREADS: 1
+          MIMALLOC_PURGE_DELAY: -1
         with:
           mode: simulation,memory
           run: cargo codspeed run -p zenith_benchmark

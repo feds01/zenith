@@ -34,7 +34,7 @@ impl ModuleId {
 pub enum NodeKind {
     /// A directory inside the project. A directory stands for its whole
     /// subtree and never has imports of its own. An import can still target
-    /// it, if it is a package: see [`Node::is_package`].
+    /// it, if it is a package: see [`Graph::is_package`].
     Directory,
 
     /// A file inside the project.
@@ -69,16 +69,6 @@ pub struct Node {
     /// so this is a [`ThinVec`]: one pointer wide, where a `Vec` is three.
     directives: ThinVec<String>,
 
-    /// Whether imports target this directory as a package: a unit of code
-    /// that is imported as a whole, such as a Go package. Only directories
-    /// are packages.
-    package: bool,
-
-    /// The id of the parent directory, or [`NO_PARENT`] for the root, and for
-    /// external packages and builtins. It is the raw `u32` rather than an
-    /// `Option`, which would make every node four bytes wider.
-    parent: u32,
-
     /// The position of the node in [`Graph::preorder`].
     pre: u32,
 
@@ -86,9 +76,10 @@ pub struct Node {
     post: u32,
 }
 
-/// The parent of a node without one. Ids stay below `u32::MAX`, because the
-/// builder keeps the node count below it.
-const NO_PARENT: u32 = u32::MAX;
+// A graph has a node for every file, so a node is kept small: what only some
+// graphs need, such as packages, is kept apart from it.
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(size_of::<Node>() == 40);
 
 impl Node {
     /// The node's name: a POSIX path relative to the root for internal nodes
@@ -112,18 +103,6 @@ impl Node {
     /// Whether this node is part of the project's module tree.
     pub fn is_internal(&self) -> bool {
         self.kind.is_internal()
-    }
-
-    /// Whether imports target this directory as a package, the way a Go
-    /// import names a directory rather than a file.
-    ///
-    /// An import of a package is an import of every file directly in the
-    /// directory, but it is stored once, as an import of the directory
-    /// itself, from the file that makes it. A package never imports anything:
-    /// what it reaches is what its files reach, which the searches for chains
-    /// follow without the graph storing an import for it.
-    pub fn is_package(&self) -> bool {
-        self.package
     }
 
     /// The last segment of an internal node's name, e.g. `api.ts` for
@@ -209,9 +188,22 @@ pub struct Graph {
     /// order. Every subtree is a contiguous range of it.
     preorder: Vec<ModuleId>,
 
-    /// Whether any node is a package, so that searches that don't need to
-    /// look for them can skip it.
-    has_packages: bool,
+    /// The packages, or `None` if there are none, as in most graphs, which
+    /// then pay nothing for them.
+    packages: Option<Box<Packages>>,
+}
+
+/// The directories that imports target as a package: a unit of code that is
+/// imported as a whole, such as a Go package. They are kept apart from the
+/// nodes, so that a graph without any has no room for them.
+#[derive(Debug, Clone)]
+struct Packages {
+    /// The packages.
+    flags: NodeSet,
+
+    /// The parent directory of every node, which is `None` for the root, and
+    /// for external packages and builtins.
+    parents: IndexVec<ModuleId, Option<ModuleId>>,
 }
 
 /// A node as the builder hands it to [`Graph::from_parts`].
@@ -259,31 +251,28 @@ impl Graph {
         let ImportParts { imports, importers, detail_offsets, details } =
             ImportParts::group(node_count, imports);
 
+        let flags: NodeSet = (nodes.iter().enumerate())
+            .filter(|(_, node)| node.package)
+            .map(|(index, _)| ModuleId::new(index))
+            .collect();
+        let packages = (!flags.is_empty()).then(|| {
+            let parents = nodes.iter().map(|node| node.parent).collect();
+            Box::new(Packages { flags, parents })
+        });
+
         let mut nodes: IndexVec<ModuleId, Node> = nodes
             .into_iter()
             .map(|node| Node {
                 name: node.name.into_boxed_str(),
                 kind: node.kind,
                 directives: node.directives,
-                package: node.package,
-                parent: node.parent.map_or(NO_PARENT, ModuleId::raw),
                 pre: 0,
                 post: 0,
             })
             .collect();
         let preorder = assign_preorder(&mut nodes, &children);
-        let has_packages = nodes.iter().any(Node::is_package);
 
-        Self {
-            nodes,
-            children,
-            imports,
-            importers,
-            detail_offsets,
-            details,
-            preorder,
-            has_packages,
-        }
+        Self { nodes, children, imports, importers, detail_offsets, details, preorder, packages }
     }
 
     /// This graph's module tree, with `imports` instead of its own: each an
@@ -304,7 +293,7 @@ impl Graph {
             detail_offsets,
             details,
             preorder: self.preorder.clone(),
-            has_packages: self.has_packages,
+            packages: self.packages.clone(),
         }
     }
 
@@ -374,38 +363,54 @@ impl Graph {
     /// imported but never imports, and it is not a file: count files by
     /// [`NodeKind::File`], not by the number of members.
     pub fn members(&self, id: ModuleId) -> NodeSet {
-        self.subtree(id)
-            .iter()
-            .copied()
-            .filter(|member| {
-                let node = self.node(*member);
-                node.kind != NodeKind::Directory || node.package
-            })
-            .collect()
+        let members = self.subtree(id).iter().copied();
+        match &self.packages {
+            None => {
+                members.filter(|member| self.node(*member).kind != NodeKind::Directory).collect()
+            }
+            Some(packages) => members
+                .filter(|member| {
+                    self.node(*member).kind != NodeKind::Directory
+                        || packages.flags.contains(*member)
+                })
+                .collect(),
+        }
     }
 
     /// Whether any directory of the graph is a package.
     pub fn has_packages(&self) -> bool {
-        self.has_packages
+        self.packages.is_some()
+    }
+
+    /// Whether imports target the directory `id` as a package, the way a Go
+    /// import names a directory rather than a file.
+    ///
+    /// An import of a package is an import of every file directly in the
+    /// directory, but it is stored once, as an import of the directory
+    /// itself, from the file that makes it. A package never imports anything:
+    /// what it reaches is what its files reach, which the searches for chains
+    /// follow without the graph storing an import for it.
+    pub fn is_package(&self, id: ModuleId) -> bool {
+        self.packages.as_ref().is_some_and(|packages| packages.flags.contains(id))
     }
 
     /// The files directly in the package `id`, in ascending id order. There
     /// are none if `id` is not a package. Its subdirectories are not part of
     /// it.
     pub fn package_files(&self, id: ModuleId) -> impl Iterator<Item = ModuleId> + '_ {
-        let files = if self.node(id).package { self.children(id) } else { &[] };
+        let files = if self.is_package(id) { self.children(id) } else { &[] };
         files.iter().copied().filter(|child| self.node(*child).kind == NodeKind::File)
     }
 
     /// The package that the file `id` is directly in, if its directory is
     /// one.
     pub fn package_of(&self, id: ModuleId) -> Option<ModuleId> {
-        let node = self.node(id);
-        if !self.has_packages || node.kind != NodeKind::File || node.parent == NO_PARENT {
+        let packages = self.packages.as_ref()?;
+        if self.node(id).kind != NodeKind::File {
             return None;
         }
-        let parent = ModuleId::from_raw(node.parent);
-        self.node(parent).package.then_some(parent)
+        let parent = packages.parents[id]?;
+        packages.flags.contains(parent).then_some(parent)
     }
 
     /// Whether `file` is one of the files directly in the package `package`.
@@ -814,7 +819,7 @@ mod tests {
     #[test]
     fn a_directory_that_is_imported_is_a_package() {
         let graph = packages();
-        let package = |name| graph.node(id(&graph, name)).is_package();
+        let package = |name| graph.is_package(id(&graph, name));
 
         assert!(package("internal/db") && package("internal/log"));
         assert!(!package("internal") && !package("internal/db/sub") && !package("cmd"));
@@ -921,7 +926,7 @@ mod tests {
         let graph = builder.finish();
 
         let [tool, lib] = ["tools/gen/main.go", "lib.go"].map(|name| id(&graph, name));
-        assert!(graph.node(ModuleId::ROOT).is_package());
+        assert!(graph.is_package(ModuleId::ROOT));
         assert_eq!(graph.imports_of(tool), [ModuleId::ROOT]);
         assert_eq!(graph.package_of(lib), Some(ModuleId::ROOT));
         assert_eq!(graph.package_of(tool), None);
@@ -936,7 +941,7 @@ mod tests {
         let graph = packages();
         let rebuilt = graph.with_imports(Vec::new());
         assert!(rebuilt.has_packages());
-        assert!(rebuilt.node(id(&rebuilt, "internal/db")).is_package());
+        assert!(rebuilt.is_package(id(&rebuilt, "internal/db")));
         assert_eq!(
             rebuilt.package_of(id(&rebuilt, "internal/db/conn.go")),
             Some(id(&rebuilt, "internal/db"))

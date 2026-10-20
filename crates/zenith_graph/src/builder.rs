@@ -599,8 +599,8 @@ mod tests {
         );
         let [main, db, internal] =
             ["cmd/app/main.go", "internal/db", "internal"].map(|name| id(&graph, name));
-        assert!(graph.node(db).is_package());
-        assert!(!graph.node(internal).is_package());
+        assert!(graph.is_package(db));
+        assert!(!graph.is_package(internal));
         assert_eq!(graph.node(db).kind(), NodeKind::Directory);
         assert_eq!(graph.imports_of(main), [db]);
         assert_eq!(graph.details(main, db), [detail(1, ImportKind::Value)]);
@@ -669,7 +669,7 @@ mod tests {
 
         // `lib` is a package only because `lib/sub/b.go` imports it.
         let lib = id(&graph, "lib");
-        assert!(graph.node(lib).is_package());
+        assert!(graph.is_package(lib));
         assert_eq!(graph.importers_of(lib), [id(&graph, "lib/sub/b.go")]);
         assert_eq!(graph.detail_count(), 1);
 
@@ -677,7 +677,7 @@ mod tests {
         let file = builder.add_file("lib/a.go").unwrap();
         builder.add_package_import(file, "lib", detail(1, ImportKind::Value)).unwrap();
         let graph = builder.finish();
-        assert!(!graph.node(id(&graph, "lib")).is_package());
+        assert!(!graph.is_package(id(&graph, "lib")));
         assert_eq!(graph.detail_count(), 0);
     }
 

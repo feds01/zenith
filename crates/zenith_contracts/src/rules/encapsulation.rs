@@ -44,7 +44,7 @@ impl Encapsulation {
                 .iter()
                 .filter(|member| {
                     let node = graph.node(*member);
-                    (node.kind() == NodeKind::File || node.is_package())
+                    (node.kind() == NodeKind::File || graph.is_package(*member))
                         && globs.iter().any(|glob| node.matches_glob(glob, OPTIONAL_EXTENSIONS))
                 })
                 .collect();

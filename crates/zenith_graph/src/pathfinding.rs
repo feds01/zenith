@@ -84,10 +84,18 @@ impl GraphView<'_> {
     /// if it reaches a target, but the nodes that import it reach the target
     /// only through it, so they are not, unless they reach it another way.
     pub fn find_downstream(&self, targets: &NodeSet) -> NodeSet {
+        match self.graph().has_packages() {
+            true => self.downstream::<ThroughPackages>(targets),
+            false => self.downstream::<Imports>(targets),
+        }
+    }
+
+    /// [`Self::find_downstream`], stepping as `S` does.
+    fn downstream<S: Steps>(&self, targets: &NodeSet) -> NodeSet {
         let mut seen = targets.clone();
         let mut stack: Vec<ModuleId> = targets.iter().collect();
         while let Some(module) = stack.pop() {
-            for importer in self.steps_to(module) {
+            for importer in S::to(self, module) {
                 if seen.insert(importer) && !self.boundaries().contains(importer) {
                     stack.push(importer);
                 }
@@ -109,6 +117,52 @@ impl GraphView<'_> {
                 .filter(|imported| to.contains(*imported))
                 .map(move |imported| (importer, imported))
         })
+    }
+}
+
+/// How a search steps from node to node.
+///
+/// Most graphs have no packages, so most searches follow imports and nothing
+/// else. They are generic over this trait, and the choice is made once per
+/// search, so that the common case is the code it would be without packages.
+trait Steps {
+    /// Whether the steps go through packages.
+    const PACKAGES: bool;
+
+    /// The nodes that a chain can go to from `id`.
+    fn from<'a>(view: &'a GraphView, id: ModuleId) -> impl Iterator<Item = ModuleId> + 'a;
+
+    /// The nodes that a chain can come to `id` from.
+    fn to<'a>(view: &'a GraphView, id: ModuleId) -> impl Iterator<Item = ModuleId> + 'a;
+}
+
+/// Steps along imports.
+struct Imports;
+
+impl Steps for Imports {
+    const PACKAGES: bool = false;
+
+    fn from<'a>(view: &'a GraphView, id: ModuleId) -> impl Iterator<Item = ModuleId> + 'a {
+        view.imports_of(id)
+    }
+
+    fn to<'a>(view: &'a GraphView, id: ModuleId) -> impl Iterator<Item = ModuleId> + 'a {
+        view.importers_of(id)
+    }
+}
+
+/// Steps along imports, and from a package into the files in it.
+struct ThroughPackages;
+
+impl Steps for ThroughPackages {
+    const PACKAGES: bool = true;
+
+    fn from<'a>(view: &'a GraphView, id: ModuleId) -> impl Iterator<Item = ModuleId> + 'a {
+        view.steps_from(id)
+    }
+
+    fn to<'a>(view: &'a GraphView, id: ModuleId) -> impl Iterator<Item = ModuleId> + 'a {
+        view.steps_to(id)
     }
 }
 
@@ -184,8 +238,13 @@ impl ChainSearch {
         let graph = view.graph();
         let mut indirect = Vec::new();
         while let Some(chain) = self.run(view, from, to, excluded_nodes, &excluded_imports) {
-            let imports = chain.array_windows().filter(|&&[a, b]| !graph.is_package_member(a, b));
-            excluded_imports.extend(imports.map(|&[a, b]| (a, b)));
+            if graph.has_packages() {
+                let imports =
+                    chain.array_windows().filter(|&&[a, b]| !graph.is_package_member(a, b));
+                excluded_imports.extend(imports.map(|&[a, b]| (a, b)));
+            } else {
+                excluded_imports.extend(chain.array_windows().map(|&[a, b]| (a, b)));
+            }
             indirect.push(chain);
         }
         (direct, indirect)
@@ -193,6 +252,22 @@ impl ChainSearch {
 
     /// Find a shortest chain from `from` to `to`, which must not overlap.
     fn run(
+        &mut self,
+        view: &GraphView,
+        from: &NodeSet,
+        to: &NodeSet,
+        excluded_nodes: &NodeSet,
+        excluded_imports: &EdgeSet,
+    ) -> Option<Vec<ModuleId>> {
+        if view.graph().has_packages() {
+            self.run_with::<ThroughPackages>(view, from, to, excluded_nodes, excluded_imports)
+        } else {
+            self.run_with::<Imports>(view, from, to, excluded_nodes, excluded_imports)
+        }
+    }
+
+    /// [`Self::run`], stepping as `S` does.
+    fn run_with<S: Steps>(
         &mut self,
         view: &GraphView,
         from: &NodeSet,
@@ -221,11 +296,11 @@ impl ChainSearch {
         // A package imports nothing, so it starts no chain. It is left unseen, so
         // that a chain can still go through it, if one of its files isn't in
         // `from`.
-        let graph = view.graph();
-        if graph.has_packages() {
+        if S::PACKAGES {
+            let graph = view.graph();
             let seen = &mut self.seen_forwards;
             self.forwards.retain(|node| {
-                let package = graph.node(*node).is_package();
+                let package = graph.is_package(*node);
                 if package {
                     seen.remove(*node);
                 }
@@ -233,7 +308,7 @@ impl ChainSearch {
             });
         }
 
-        let middle = self.meet(view, excluded_nodes, excluded_imports)?;
+        let middle = self.meet::<S>(view, excluded_nodes, excluded_imports)?;
         Some(self.chain_through(middle))
     }
 
@@ -244,7 +319,7 @@ impl ChainSearch {
     /// the boundaries of the view, so a chain can always end at a member of
     /// `from` or `to`. Once either search runs out of nodes to expand, there
     /// is no chain: it would have reached the other search's start.
-    fn meet(
+    fn meet<S: Steps>(
         &mut self,
         view: &GraphView,
         excluded_nodes: &NodeSet,
@@ -259,7 +334,7 @@ impl ChainSearch {
             while expanded_forwards < level_end {
                 let importer = self.forwards[expanded_forwards];
                 expanded_forwards += 1;
-                for imported in view.steps_from(importer) {
+                for imported in S::from(view, importer) {
                     if excluded_imports.contains(importer, imported) {
                         continue;
                     }
@@ -281,7 +356,7 @@ impl ChainSearch {
             while expanded_backwards < level_end {
                 let imported = self.backwards[expanded_backwards];
                 expanded_backwards += 1;
-                for importer in view.steps_to(imported) {
+                for importer in S::to(view, imported) {
                     if excluded_imports.contains(importer, imported) {
                         continue;
                     }

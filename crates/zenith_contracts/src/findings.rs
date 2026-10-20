@@ -105,7 +105,9 @@ impl Chain {
     /// is not an import, so it is not a link.
     pub(crate) fn from_path(view: &GraphView, statements: &Statements, path: &[ModuleId]) -> Self {
         let graph = view.graph();
-        let imports = path.windows(2).filter(|pair| !graph.is_package_member(pair[0], pair[1]));
+        let packages = graph.has_packages();
+        let imports =
+            path.windows(2).filter(|pair| !packages || !graph.is_package_member(pair[0], pair[1]));
         let links = imports.map(|pair| Link::new(view, statements, pair[0], pair[1]));
         Self { links: links.collect(), extra_heads: Vec::new(), extra_tails: Vec::new() }
     }
@@ -125,7 +127,9 @@ impl Chain {
         // A package that ends the middle has the files in it as tails, which it does
         // not import.
         let graph = view.graph();
-        let imported = tails[1..].iter().filter(|tail| !graph.is_package_member(*last, **tail));
+        let packages = graph.has_packages();
+        let imported =
+            tails[1..].iter().filter(|tail| !packages || !graph.is_package_member(*last, **tail));
         Self {
             extra_heads: heads[1..].iter().map(|head| link(*head, *first)).collect(),
             extra_tails: imported.map(|tail| link(*last, *tail)).collect(),

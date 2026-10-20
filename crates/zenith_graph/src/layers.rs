@@ -288,13 +288,15 @@ impl GraphView<'_> {
         let mut middles: Vec<_> = indirect.iter().map(|chain| &chain[1..chain.len() - 1]).collect();
         middles.sort_unstable();
         middles.dedup();
+        let packages = self.graph().has_packages();
         for middle in middles {
             let (first, last) = (middle[0], middle[middle.len() - 1]);
-            routes.push(Route::indirect(
-                self.importers_of(first).filter(|head| from.contains(*head)),
-                middle,
-                self.steps_from(last).filter(|tail| to.contains(*tail)),
-            ));
+            let heads = self.importers_of(first).filter(|head| from.contains(*head));
+            routes.push(if packages {
+                Route::indirect(heads, middle, self.steps_from(last).filter(|t| to.contains(*t)))
+            } else {
+                Route::indirect(heads, middle, self.imports_of(last).filter(|t| to.contains(*t)))
+            });
         }
         routes
     }

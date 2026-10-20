@@ -3,8 +3,8 @@
 use crate::{Graph, ModuleId, NodeSet};
 
 /// A labelled set of the nodes that take part in imports, such as a
-/// directory's files. Contracts reason about units, and a [`UnitGraph`]
-/// aggregates the imports between them.
+/// directory's files and the packages in it. Contracts reason about units, and
+/// a [`UnitGraph`] aggregates the imports between them.
 ///
 /// [`UnitGraph`]: crate::UnitGraph
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,7 +18,8 @@ pub struct Unit {
     /// package or a builtin.
     pub root: ModuleId,
 
-    /// The files in the subtree of a directory, or the node itself.
+    /// The files and packages in the subtree of a directory, or the node
+    /// itself.
     pub members: NodeSet,
 }
 

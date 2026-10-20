@@ -41,6 +41,15 @@ impl NodeSet {
         added
     }
 
+    /// Remove a node from the set. Returns whether it was there.
+    pub fn remove(&mut self, id: ModuleId) -> bool {
+        let present = self.bits.contains(id.index());
+        if present {
+            self.bits.remove(id.index());
+        }
+        present
+    }
+
     /// Whether the set contains a node.
     pub fn contains(&self, id: ModuleId) -> bool {
         self.bits.contains(id.index())

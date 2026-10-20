@@ -9,21 +9,26 @@ use crate::{
 
 /// Build a graph from `(importer, imported)` pairs. Importers are files. An
 /// imported name starting with `npm:` is an external package, one starting
-/// with `node:` is a builtin, and anything else is a file. Each import is a
-/// value import on its own line.
+/// with `node:` is a builtin, one ending in `/` is the package in that
+/// directory, and anything else is a file. Each import is a value import on
+/// its own line.
 pub(crate) fn graph_of(imports: &[(&str, &str)]) -> Graph {
     let mut builder = GraphBuilder::new();
     for (index, (importer, imported)) in imports.iter().enumerate() {
         let importer = builder.add_file(importer).unwrap();
+        let line = u32::try_from(index).unwrap() + 1;
+        let detail = detail(line, ImportKind::Value);
         let imported: NodeHandle = if imported.starts_with("npm:") {
             builder.add_external(imported).unwrap()
         } else if imported.starts_with("node:") {
             builder.add_builtin(imported).unwrap()
+        } else if let Some(package) = imported.strip_suffix('/') {
+            builder.add_package_import(importer, package, detail).unwrap();
+            continue;
         } else {
             builder.add_file(imported).unwrap().into()
         };
-        let line = u32::try_from(index).unwrap() + 1;
-        builder.add_import(importer, imported, detail(line, ImportKind::Value));
+        builder.add_import(importer, imported, detail);
     }
     builder.finish()
 }

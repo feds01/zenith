@@ -40,8 +40,8 @@ impl Project {
     /// A project of the `(importer, imported, kind)` imports, each on a line
     /// of its own, configured by `toml`. An imported name starting with
     /// `npm:` is an external package, one starting with `node:` is a builtin,
-    /// and anything else is a file. The `clients` files start with
-    /// `"use client"`.
+    /// one ending in `/` is the package in that directory, and anything else
+    /// is a file. The `clients` files start with `"use client"`.
     pub(crate) fn new(imports: &[(&str, &str, ImportKind)], clients: &[&str], toml: &str) -> Self {
         let directives: Vec<_> = clients.iter().map(|client| (*client, "use client")).collect();
         Self::with_directives(imports, &directives, toml)
@@ -57,19 +57,22 @@ impl Project {
         let mut builder = GraphBuilder::new();
         for (line, (importer, imported, kind)) in (1..).zip(imports) {
             let importer = builder.add_file(importer).unwrap();
-            let imported: NodeHandle = if imported.starts_with("npm:") {
-                builder.add_external(imported).unwrap()
-            } else if imported.starts_with("node:") {
-                builder.add_builtin(imported).unwrap()
-            } else {
-                builder.add_file(imported).unwrap().into()
-            };
             let range = ByteRange::new(line * 100, line * 100 + 10);
             let detail = ImportDetail {
                 range,
                 specifier: format!("./import-{line}").into(),
                 kind: *kind,
                 names: ImportedNames::All,
+            };
+            let imported: NodeHandle = if imported.starts_with("npm:") {
+                builder.add_external(imported).unwrap()
+            } else if imported.starts_with("node:") {
+                builder.add_builtin(imported).unwrap()
+            } else if let Some(package) = imported.strip_suffix('/') {
+                builder.add_package_import(importer, package, detail).unwrap();
+                continue;
+            } else {
+                builder.add_file(imported).unwrap().into()
             };
             builder.add_import(importer, imported, detail);
         }
@@ -188,11 +191,10 @@ impl Project {
         }
     }
 
-    /// The nodes of `chain`, as `a.ts -> b.ts -> npm:c`.
+    /// The nodes of `chain`, as `a.ts -> b.ts -> npm:c`. A package that the
+    /// chain goes through is shown, then the file in it that imports on.
     fn path(&self, chain: &Chain) -> String {
-        let mut names: Vec<_> =
-            chain.links.iter().map(|link| self.graph.name(link.importer)).collect();
-        names.extend(chain.links.last().map(|link| self.graph.name(link.imported)));
+        let names: Vec<_> = chain.nodes().into_iter().map(|node| self.graph.name(node)).collect();
         names.join(" -> ")
     }
 

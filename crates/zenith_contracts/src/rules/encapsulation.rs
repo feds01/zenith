@@ -28,7 +28,8 @@ impl Encapsulation {
                 units.error(ContractErrorKind::NotADirectory { module: unit.label }, range);
                 continue;
             }
-            // Entry points are relative to the module, and match files only.
+            // Entry points are relative to the module, and match files, and packages, which
+            // are imported as a whole.
             let root = escape(graph.name(unit.root));
             let globs: Vec<_> = config
                 .entrypoints
@@ -43,7 +44,7 @@ impl Encapsulation {
                 .iter()
                 .filter(|member| {
                     let node = graph.node(*member);
-                    node.kind() == NodeKind::File
+                    (node.kind() == NodeKind::File || graph.is_package(*member))
                         && globs.iter().any(|glob| node.matches_glob(glob, OPTIONAL_EXTENSIONS))
                 })
                 .collect();

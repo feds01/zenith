@@ -655,4 +655,35 @@ mod tests {
         });
         assert!(!breakers.is_empty());
     }
+
+    #[test]
+    fn units_depend_on_the_packages_they_import() {
+        let graph = graph_of(&[("a/x.go", "b/"), ("b/y.go", "a/")]);
+        let units = units_of(&graph, &["a", "b"]);
+        assert_eq!(pairs(units.dependencies()), [(0, 1), (1, 0)]);
+        assert_eq!(units.nominate_cycle_breakers().len(), 1);
+    }
+
+    #[test]
+    fn a_package_and_its_files_are_not_a_cycle() {
+        let graph =
+            graph_of(&[("cmd/main.go", "lib/"), ("lib/x.go", "util/"), ("lib/sub/y.go", "lib/")]);
+        // As one unit, and as units apart: nothing links the package to its
+        // files as an import, so the package is imported but never imports.
+        let units = units_of(&graph, &["cmd", "lib", "util"]);
+        assert_eq!(pairs(units.dependencies()), [(0, 1), (1, 2)]);
+        assert!(units.nominate_cycle_breakers().is_empty());
+
+        let view = GraphView::new(&graph);
+        let apart = [
+            NodeSet::single(id(&graph, "lib")),
+            NodeSet::single(id(&graph, "lib/x.go")),
+            members(&graph, "lib/sub"),
+            members(&graph, "util"),
+            members(&graph, "cmd"),
+        ];
+        let units = UnitGraph::build(&view, &apart);
+        assert_eq!(pairs(units.dependencies()), [(1, 3), (2, 0), (4, 0)]);
+        assert!(units.nominate_cycle_breakers().is_empty());
+    }
 }

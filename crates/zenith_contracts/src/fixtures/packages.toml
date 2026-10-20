@@ -1,0 +1,80 @@
+[contracts.through-packages]
+type = "forbidden"
+from = ["cmd"]
+to = ["internal/cache"]
+
+[contracts.through-three-packages]
+type = "forbidden"
+from = ["cmd"]
+to = ["internal/store"]
+
+[contracts.of-a-package]
+type = "forbidden"
+from = ["cmd"]
+to = ["internal/db"]
+
+[contracts.not-through-a-subdirectory]
+type = "forbidden"
+from = ["cmd"]
+to = ["internal/secret"]
+
+[contracts.direct-only]
+type = "forbidden"
+from = ["cmd"]
+to = ["internal/cache"]
+allow_indirect_imports = true
+
+[contracts.every-kind-but-values]
+type = "forbidden"
+from = ["cmd"]
+to = ["internal/cache"]
+exclude_kinds = ["type", "dynamic", "require"]
+
+[contracts.ignored-package]
+type = "forbidden"
+from = ["cmd"]
+to = ["internal/db"]
+ignore_imports = ["cmd/** -> internal/db"]
+
+[contracts.ignored-inside-the-chain]
+type = "forbidden"
+from = ["cmd"]
+to = ["internal/cache"]
+ignore_imports = ["internal/db/** -> internal/cache"]
+
+[contracts.ignored-nothing]
+type = "forbidden"
+from = ["cmd"]
+to = ["internal/db"]
+ignore_imports = ["cmd/** -> internal/cache", "cmd/** -> internal/secret"]
+
+[contracts.layers-direct]
+type = "layers"
+layers = ["internal/cache", "internal/db"]
+
+[contracts.layers-through]
+type = "layers"
+layers = ["internal/cache", "cmd"]
+
+[contracts.independent]
+type = "independence"
+modules = ["internal/db", "internal/log"]
+
+[contracts.protected]
+type = "protected"
+modules = ["internal/db"]
+allowed_importers = ["tests"]
+
+[contracts.encapsulated]
+type = "encapsulation"
+modules = ["internal"]
+entrypoints = ["log"]
+
+[contracts.cycles]
+type = "acyclic"
+modules = ["cyc/*"]
+
+[contracts.no-cycles]
+type = "acyclic"
+modules = ["internal"]
+depth = 2

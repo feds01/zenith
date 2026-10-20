@@ -33,7 +33,8 @@ impl ModuleId {
 #[serde(rename_all = "lowercase")]
 pub enum NodeKind {
     /// A directory inside the project. A directory stands for its whole
-    /// subtree and never has imports of its own.
+    /// subtree and never has imports of its own. An import can still target
+    /// it, if it is a package: see [`Graph::is_package`].
     Directory,
 
     /// A file inside the project.
@@ -74,6 +75,11 @@ pub struct Node {
     /// The end (exclusive) of the node's subtree in [`Graph::preorder`].
     post: u32,
 }
+
+// A graph has a node for every file, so a node is kept small: what only some
+// graphs need, such as packages, is kept apart from it.
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(size_of::<Node>() == 40);
 
 impl Node {
     /// The node's name: a POSIX path relative to the root for internal nodes
@@ -181,6 +187,23 @@ pub struct Graph {
     /// children in id order), then the external packages and builtins in id
     /// order. Every subtree is a contiguous range of it.
     preorder: Vec<ModuleId>,
+
+    /// The packages, or `None` if there are none, as in most graphs, which
+    /// then pay nothing for them.
+    packages: Option<Box<Packages>>,
+}
+
+/// The directories that imports target as a package: a unit of code that is
+/// imported as a whole, such as a Go package. They are kept apart from the
+/// nodes, so that a graph without any has no room for them.
+#[derive(Debug, Clone)]
+struct Packages {
+    /// The packages.
+    flags: NodeSet,
+
+    /// The parent directory of every node, which is `None` for the root, and
+    /// for external packages and builtins.
+    parents: IndexVec<ModuleId, Option<ModuleId>>,
 }
 
 /// A node as the builder hands it to [`Graph::from_parts`].
@@ -194,6 +217,9 @@ pub(crate) struct NodeParts {
 
     /// The directive prologue of a scanned file.
     pub(crate) directives: ThinVec<String>,
+
+    /// Whether the node is a directory that imports target as a package.
+    pub(crate) package: bool,
 
     /// The parent directory, or `None` for the root and for external
     /// packages and builtins.
@@ -225,6 +251,15 @@ impl Graph {
         let ImportParts { imports, importers, detail_offsets, details } =
             ImportParts::group(node_count, imports);
 
+        let flags: NodeSet = (nodes.iter().enumerate())
+            .filter(|(_, node)| node.package)
+            .map(|(index, _)| ModuleId::new(index))
+            .collect();
+        let packages = (!flags.is_empty()).then(|| {
+            let parents = nodes.iter().map(|node| node.parent).collect();
+            Box::new(Packages { flags, parents })
+        });
+
         let mut nodes: IndexVec<ModuleId, Node> = nodes
             .into_iter()
             .map(|node| Node {
@@ -237,7 +272,7 @@ impl Graph {
             .collect();
         let preorder = assign_preorder(&mut nodes, &children);
 
-        Self { nodes, children, imports, importers, detail_offsets, details, preorder }
+        Self { nodes, children, imports, importers, detail_offsets, details, preorder, packages }
     }
 
     /// This graph's module tree, with `imports` instead of its own: each an
@@ -258,6 +293,7 @@ impl Graph {
             detail_offsets,
             details,
             preorder: self.preorder.clone(),
+            packages: self.packages.clone(),
         }
     }
 
@@ -320,13 +356,77 @@ impl Graph {
     }
 
     /// The nodes that can take part in imports in the subtree of `id`: every
-    /// file in it, or the node itself for an external package or builtin.
+    /// file in it and every package, that is, every directory that imports
+    /// target, or the node itself for an external package or builtin.
+    ///
+    /// A package is a member of the same units as the files in it. It is
+    /// imported but never imports, and it is not a file: count files with
+    /// [`Self::file_count`], not by the number of members.
     pub fn members(&self, id: ModuleId) -> NodeSet {
-        self.subtree(id)
-            .iter()
-            .copied()
-            .filter(|member| self.node(*member).kind != NodeKind::Directory)
-            .collect()
+        let members = self.subtree(id).iter().copied();
+        match &self.packages {
+            None => {
+                members.filter(|member| self.node(*member).kind != NodeKind::Directory).collect()
+            }
+            Some(packages) => members
+                .filter(|member| {
+                    self.node(*member).kind != NodeKind::Directory
+                        || packages.flags.contains(*member)
+                })
+                .collect(),
+        }
+    }
+
+    /// The number of files in the subtree of `id`, or 1 for an external
+    /// package or builtin, which stands for itself. Packages are directories,
+    /// so they are not counted.
+    pub fn file_count(&self, id: ModuleId) -> usize {
+        self.subtree(id).iter().filter(|node| self.node(**node).kind != NodeKind::Directory).count()
+    }
+
+    /// Whether any directory of the graph is a package.
+    pub fn has_packages(&self) -> bool {
+        self.packages.is_some()
+    }
+
+    /// Whether imports target the directory `id` as a package, the way a Go
+    /// import names a directory rather than a file.
+    ///
+    /// An import of a package is an import of every file directly in the
+    /// directory, but it is stored once, as an import of the directory
+    /// itself, from the file that makes it. A package never imports anything:
+    /// what it reaches is what its files reach, which the searches for chains
+    /// follow without the graph storing an import for it.
+    pub fn is_package(&self, id: ModuleId) -> bool {
+        self.packages.as_ref().is_some_and(|packages| packages.flags.contains(id))
+    }
+
+    /// The files directly in the package `id`, in ascending id order. There
+    /// are none if `id` is not a package. Its subdirectories are not part of
+    /// it.
+    pub fn package_files(&self, id: ModuleId) -> impl Iterator<Item = ModuleId> + '_ {
+        let files = if self.is_package(id) { self.children(id) } else { &[] };
+        files.iter().copied().filter(|child| self.node(*child).kind == NodeKind::File)
+    }
+
+    /// The package that the file `id` is directly in, if its directory is
+    /// one.
+    pub fn package_of(&self, id: ModuleId) -> Option<ModuleId> {
+        let packages = self.packages.as_ref()?;
+        if self.node(id).kind != NodeKind::File {
+            return None;
+        }
+        let parent = packages.parents[id]?;
+        packages.flags.contains(parent).then_some(parent)
+    }
+
+    /// Whether `file` is one of the files directly in the package `package`.
+    ///
+    /// A hop from a package to one of its files is not an import. It is how a
+    /// chain of imports goes on from a package to what its files import, and
+    /// no contract reports it.
+    pub fn is_package_member(&self, package: ModuleId, file: ModuleId) -> bool {
+        self.package_of(file) == Some(package)
     }
 
     /// The nodes that `id` imports directly.
@@ -709,5 +809,150 @@ mod tests {
         );
         assert!(graph.node(id(&graph, "web/app/styles.css")).directives().is_empty());
         assert!(graph.node(id(&graph, "web/app")).directives().is_empty());
+    }
+
+    /// `cmd` imports the packages `internal/db` and `internal/log`, and the
+    /// package `internal/db` has a subdirectory.
+    fn packages() -> Graph {
+        graph_of(&[
+            ("cmd/main.go", "internal/db/"),
+            ("cmd/main.go", "internal/log/"),
+            ("internal/db/conn.go", "internal/log/"),
+            ("internal/db/query.go", "node:fmt"),
+            ("internal/db/sub/deep.go", "node:os"),
+        ])
+    }
+
+    #[test]
+    fn a_directory_that_is_imported_is_a_package() {
+        let graph = packages();
+        let package = |name| graph.is_package(id(&graph, name));
+
+        assert!(package("internal/db") && package("internal/log"));
+        assert!(!package("internal") && !package("internal/db/sub") && !package("cmd"));
+        assert!(!package("") && !package("cmd/main.go") && !package("node:fmt"));
+        assert_eq!(graph.node(id(&graph, "internal/db")).kind(), NodeKind::Directory);
+        assert!(graph.has_packages());
+        assert!(!graph_of(&[("a.ts", "b.ts")]).has_packages());
+    }
+
+    #[test]
+    fn an_import_of_a_package_is_an_edge_to_its_directory() {
+        let graph = packages();
+        let [main, db, log, conn] =
+            ["cmd/main.go", "internal/db", "internal/log", "internal/db/conn.go"]
+                .map(|name| id(&graph, name));
+
+        assert_eq!(graph.imports_of(main), [db, log]);
+        assert_eq!(graph.importers_of(db), [main]);
+        assert_eq!(graph.importers_of(log), [main, conn]);
+        assert!(graph.has_import(main, db));
+        assert_eq!(graph.details(main, db), [detail(1, ImportKind::Value)]);
+        assert_eq!(graph.detail_count(), 5);
+    }
+
+    #[test]
+    fn nothing_links_a_package_to_its_files_as_an_import() {
+        let graph = packages();
+        let [db, conn, query, deep] = [
+            "internal/db",
+            "internal/db/conn.go",
+            "internal/db/query.go",
+            "internal/db/sub/deep.go",
+        ]
+        .map(|name| id(&graph, name));
+
+        // A package imports nothing and is imported by nothing in it, so no
+        // edge, detail or import statistic stands for the link.
+        assert!(graph.imports_of(db).is_empty());
+        for file in [conn, query, deep] {
+            assert!(!graph.importers_of(file).contains(&db));
+            assert!(graph.details(db, file).is_empty() && graph.details(file, db).is_empty());
+        }
+        assert_eq!(graph.edges().count(), 5);
+        assert_eq!(graph.detail_count(), 5);
+        assert!(graph.edges().all(|(importer, _)| graph.node(importer).kind() == NodeKind::File));
+    }
+
+    #[test]
+    fn members_include_packages_but_a_package_is_not_a_file() {
+        let graph = packages();
+        let members = |name| names(&graph, graph.members(id(&graph, name)).iter());
+
+        assert_eq!(
+            members("internal"),
+            [
+                "internal/db",
+                "internal/db/conn.go",
+                "internal/db/query.go",
+                "internal/db/sub/deep.go",
+                "internal/log",
+            ]
+        );
+        assert_eq!(members("internal/db/sub"), ["internal/db/sub/deep.go"]);
+        assert_eq!(members("cmd"), ["cmd/main.go"]);
+        assert_eq!(members("internal/log"), ["internal/log"]);
+
+        let files = |name| {
+            let members = graph.members(id(&graph, name));
+            members.iter().filter(|member| graph.node(*member).kind() == NodeKind::File).count()
+        };
+        assert_eq!(files("internal"), 3);
+    }
+
+    #[test]
+    fn a_package_holds_the_files_directly_in_it() {
+        let graph = packages();
+        let [db, sub, main] =
+            ["internal/db", "internal/db/sub", "cmd/main.go"].map(|name| id(&graph, name));
+        let files = |package| names(&graph, graph.package_files(package));
+
+        // Not the subdirectory, nor what is in it.
+        assert_eq!(files(db), ["internal/db/conn.go", "internal/db/query.go"]);
+        assert!(files(sub).is_empty());
+        assert!(files(main).is_empty());
+        assert!(files(ModuleId::ROOT).is_empty());
+
+        let conn = id(&graph, "internal/db/conn.go");
+        let deep = id(&graph, "internal/db/sub/deep.go");
+        assert_eq!(graph.package_of(conn), Some(db));
+        assert_eq!(graph.package_of(deep), None);
+        assert_eq!(graph.package_of(main), None);
+        assert_eq!(graph.package_of(db), None);
+        assert!(graph.is_package_member(db, conn));
+        assert!(!graph.is_package_member(db, deep));
+        assert!(!graph.is_package_member(conn, db));
+    }
+
+    #[test]
+    fn the_root_can_be_a_package() {
+        let mut builder = GraphBuilder::new();
+        let tool = builder.add_file("tools/gen/main.go").unwrap();
+        builder.add_file("lib.go").unwrap();
+        builder.add_package_import(tool, "", detail(1, ImportKind::Value)).unwrap();
+        let graph = builder.finish();
+
+        let [tool, lib] = ["tools/gen/main.go", "lib.go"].map(|name| id(&graph, name));
+        assert!(graph.is_package(ModuleId::ROOT));
+        assert_eq!(graph.imports_of(tool), [ModuleId::ROOT]);
+        assert_eq!(graph.package_of(lib), Some(ModuleId::ROOT));
+        assert_eq!(graph.package_of(tool), None);
+        assert_eq!(
+            names(&graph, graph.members(ModuleId::ROOT).iter()),
+            ["", "lib.go", "tools/gen/main.go"]
+        );
+    }
+
+    #[test]
+    fn a_graph_with_other_imports_has_the_same_packages() {
+        let graph = packages();
+        let rebuilt = graph.with_imports(Vec::new());
+        assert!(rebuilt.has_packages());
+        assert!(rebuilt.is_package(id(&rebuilt, "internal/db")));
+        assert_eq!(
+            rebuilt.package_of(id(&rebuilt, "internal/db/conn.go")),
+            Some(id(&rebuilt, "internal/db"))
+        );
+        assert_eq!(rebuilt.detail_count(), 0);
     }
 }

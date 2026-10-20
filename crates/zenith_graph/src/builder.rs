@@ -24,8 +24,8 @@ index_vec::define_index_type! {
 
 index_vec::define_index_type! {
     /// A handle to anything an import can point at while a graph is being
-    /// built: a file, an external package or a builtin. Files convert into
-    /// it.
+    /// built: a file, an external package, a builtin or a package directory.
+    /// Files convert into it.
     pub struct NodeHandle = u32;
     DEBUG_FORMAT = "NodeHandle({})";
     MAX_INDEX = u32::MAX as usize;
@@ -110,6 +110,10 @@ struct PendingNode {
     /// What the node represents.
     kind: NodeKind,
 
+    /// Whether imports target the node as a package, which only a directory
+    /// can be.
+    package: bool,
+
     /// The handle of the parent directory, or `None` for the root and for
     /// external packages and builtins.
     parent: Option<NodeHandle>,
@@ -158,8 +162,12 @@ impl Default for GraphBuilder {
 impl GraphBuilder {
     /// Create a builder containing only the root directory.
     pub fn new() -> Self {
-        let root =
-            PendingNode { kind: NodeKind::Directory, parent: None, directives: ThinVec::new() };
+        let root = PendingNode {
+            kind: NodeKind::Directory,
+            package: false,
+            parent: None,
+            directives: ThinVec::new(),
+        };
         let nodes = index_vec![root];
         let handles = FxHashMap::from_iter([(String::new(), NodeHandle::new(0))]);
         Self { handles, nodes, imports: Vec::new() }
@@ -213,6 +221,37 @@ impl GraphBuilder {
         }
     }
 
+    /// Record an import from `importer` of the package in the directory
+    /// `package`, a POSIX path relative to the root such as `internal/db`, or
+    /// `""` for the root. The directory is added, with its ancestors, if it
+    /// is not there, and from now on is a package, whose name is its path.
+    ///
+    /// The import is of the whole package, so it makes one edge, to the
+    /// directory, however many files the package has. It is the one place
+    /// where an import targets a directory.
+    ///
+    /// A file that imports the package it is in gets no edge, as one that
+    /// imports itself gets none, and a detail recorded twice is kept once.
+    /// Nothing is added unless `package` is a directory path, or the root.
+    pub fn add_package_import(
+        &mut self,
+        importer: FileHandle,
+        package: &str,
+        detail: ImportDetail,
+    ) -> Result<(), GraphError> {
+        let package = match package.is_empty() {
+            true => NodeHandle::new(0),
+            false if is_relative_posix(package) => self.directory(package)?,
+            false => return Err(GraphError::InvalidPath { path: package.to_string() }),
+        };
+        let importer = NodeHandle::from(importer);
+        if self.nodes[importer].parent != Some(package) {
+            self.nodes[package].package = true;
+            self.imports.push(PendingImport { importer, imported: package, detail });
+        }
+        Ok(())
+    }
+
     /// Finish building: assign ids in name order, and sort every list.
     pub fn finish(self) -> Graph {
         let GraphBuilder { handles, mut nodes, imports } = self;
@@ -239,6 +278,7 @@ impl GraphBuilder {
                     name: mem::take(&mut names[*handle]),
                     kind: node.kind,
                     directives: mem::take(&mut node.directives),
+                    package: node.package,
                     parent: node.parent.map(|parent| ids[parent]),
                 }
             })
@@ -303,7 +343,8 @@ impl GraphBuilder {
         if self.nodes.len() >= u32::MAX as usize {
             return Err(GraphError::TooManyNodes);
         }
-        let handle = self.nodes.push(PendingNode { kind, parent, directives: ThinVec::new() });
+        let node = PendingNode { kind, package: false, parent, directives: ThinVec::new() };
+        let handle = self.nodes.push(node);
         self.handles.insert(name.to_string(), handle);
         Ok(handle)
     }
@@ -532,6 +573,162 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "`npm:react` is already an external package, so it cannot also be a file"
+        );
+    }
+
+    #[test]
+    fn an_import_of_a_package_adds_its_directory_and_marks_it() {
+        let mut builder = GraphBuilder::new();
+        let main = builder.add_file("cmd/app/main.go").unwrap();
+        builder.add_package_import(main, "internal/db", detail(1, ImportKind::Value)).unwrap();
+        // Adding a file in the package afterwards, or before, is the same.
+        builder.add_file("internal/db/conn.go").unwrap();
+        let graph = builder.finish();
+
+        assert_eq!(
+            names(&graph, graph.ids()),
+            [
+                "",
+                "cmd",
+                "cmd/app",
+                "cmd/app/main.go",
+                "internal",
+                "internal/db",
+                "internal/db/conn.go"
+            ]
+        );
+        let [main, db, internal] =
+            ["cmd/app/main.go", "internal/db", "internal"].map(|name| id(&graph, name));
+        assert!(graph.node(db).is_package());
+        assert!(!graph.node(internal).is_package());
+        assert_eq!(graph.node(db).kind(), NodeKind::Directory);
+        assert_eq!(graph.imports_of(main), [db]);
+        assert_eq!(graph.details(main, db), [detail(1, ImportKind::Value)]);
+    }
+
+    #[test]
+    fn the_order_of_package_imports_does_not_change_the_graph() {
+        let steps: [fn(&mut GraphBuilder); 3] = [
+            |builder| {
+                let main = builder.add_file("cmd/main.go").unwrap();
+                builder
+                    .add_package_import(main, "internal/db", detail(2, ImportKind::Value))
+                    .unwrap();
+            },
+            |builder| {
+                let conn = builder.add_file("internal/db/conn.go").unwrap();
+                builder
+                    .add_package_import(conn, "internal/log", detail(1, ImportKind::Value))
+                    .unwrap();
+            },
+            |builder| {
+                let main = builder.add_file("cmd/main.go").unwrap();
+                builder
+                    .add_package_import(main, "internal/db", detail(1, ImportKind::Type))
+                    .unwrap();
+            },
+        ];
+        let build = |steps: &mut dyn Iterator<Item = &fn(&mut GraphBuilder)>| {
+            let mut builder = GraphBuilder::new();
+            for step in steps {
+                step(&mut builder);
+            }
+            builder.finish()
+        };
+
+        let forwards = build(&mut steps.iter());
+        let backwards = build(&mut steps.iter().rev());
+        assert_eq!(summary(&forwards), summary(&backwards));
+        let [main, db] = ["cmd/main.go", "internal/db"].map(|name| id(&forwards, name));
+        assert_eq!(
+            forwards.details(main, db),
+            [detail(1, ImportKind::Type), detail(2, ImportKind::Value)]
+        );
+    }
+
+    #[test]
+    fn a_package_import_recorded_twice_is_kept_once() {
+        let mut builder = GraphBuilder::new();
+        let main = builder.add_file("main.go").unwrap();
+        for _ in 0..2 {
+            builder.add_package_import(main, "lib", detail(1, ImportKind::Value)).unwrap();
+        }
+        let graph = builder.finish();
+        assert_eq!(graph.detail_count(), 1);
+        assert_eq!(graph.edges().count(), 1);
+    }
+
+    #[test]
+    fn a_file_importing_its_own_package_gets_no_edge() {
+        let mut builder = GraphBuilder::new();
+        let file = builder.add_file("lib/a.go").unwrap();
+        builder.add_package_import(file, "lib", detail(1, ImportKind::Value)).unwrap();
+        let other = builder.add_file("lib/sub/b.go").unwrap();
+        builder.add_package_import(other, "lib", detail(1, ImportKind::Value)).unwrap();
+        let graph = builder.finish();
+
+        // `lib` is a package only because `lib/sub/b.go` imports it.
+        let lib = id(&graph, "lib");
+        assert!(graph.node(lib).is_package());
+        assert_eq!(graph.importers_of(lib), [id(&graph, "lib/sub/b.go")]);
+        assert_eq!(graph.detail_count(), 1);
+
+        let mut builder = GraphBuilder::new();
+        let file = builder.add_file("lib/a.go").unwrap();
+        builder.add_package_import(file, "lib", detail(1, ImportKind::Value)).unwrap();
+        let graph = builder.finish();
+        assert!(!graph.node(id(&graph, "lib")).is_package());
+        assert_eq!(graph.detail_count(), 0);
+    }
+
+    #[test]
+    fn rejects_a_package_that_is_not_a_directory_path() {
+        let mut builder = GraphBuilder::new();
+        let main = builder.add_file("main.go").unwrap();
+        builder.add_file("lib/a.go").unwrap();
+        for path in ["/lib", "lib/", "lib//db", "./lib", "lib/../db", ".."] {
+            assert_eq!(
+                builder.add_package_import(main, path, detail(1, ImportKind::Value)),
+                Err(GraphError::InvalidPath { path: path.to_string() }),
+                "{path:?}"
+            );
+        }
+        assert_eq!(
+            builder.add_package_import(main, "lib/a.go", detail(1, ImportKind::Value)),
+            Err(GraphError::KindConflict {
+                name: "lib/a.go".to_string(),
+                existing: NodeKind::File,
+                added: NodeKind::Directory,
+            })
+        );
+        assert_eq!(
+            builder.add_package_import(main, "main.go/sub", detail(1, ImportKind::Value)),
+            Err(GraphError::KindConflict {
+                name: "main.go".to_string(),
+                existing: NodeKind::File,
+                added: NodeKind::Directory,
+            })
+        );
+
+        // Failed imports leave nothing behind.
+        let graph = builder.finish();
+        assert_eq!(names(&graph, graph.ids()), ["", "lib", "lib/a.go", "main.go"]);
+        assert_eq!(graph.detail_count(), 0);
+        assert!(!graph.has_packages());
+    }
+
+    #[test]
+    fn a_package_cannot_be_added_as_a_file() {
+        let mut builder = GraphBuilder::new();
+        let main = builder.add_file("main.go").unwrap();
+        builder.add_package_import(main, "lib", detail(1, ImportKind::Value)).unwrap();
+        assert_eq!(
+            builder.add_file("lib"),
+            Err(GraphError::KindConflict {
+                name: "lib".to_string(),
+                existing: NodeKind::Directory,
+                added: NodeKind::File,
+            })
         );
     }
 }

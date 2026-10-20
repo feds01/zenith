@@ -95,6 +95,10 @@ pub struct PackageDependency {
 /// imports `high/b.ts` and `high/c.ts`, then `low` reaches `high` by one
 /// route, with the heads `low/a.ts` and `low/d.ts`, the middle `utils.ts`,
 /// and the tails `high/b.ts` and `high/c.ts`.
+///
+/// A middle can go through packages: a package, then one of its files that
+/// imports the next node, as in `utils`, `utils/a.go`. The heads are then the
+/// importers of the package.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Route {
     /// The heads, then the middle, then the tails.
@@ -279,7 +283,8 @@ impl GraphView<'_> {
         let mut routes: Vec<_> = direct.into_iter().map(Route::direct).collect();
 
         // Chains with the same middle make the same route, since its heads
-        // and tails are every import into and out of the middle.
+        // and tails are every import into and out of the middle. The tails
+        // of a middle that ends in a package are also the files in it.
         let mut middles: Vec<_> = indirect.iter().map(|chain| &chain[1..chain.len() - 1]).collect();
         middles.sort_unstable();
         middles.dedup();
@@ -288,7 +293,7 @@ impl GraphView<'_> {
             routes.push(Route::indirect(
                 self.importers_of(first).filter(|head| from.contains(*head)),
                 middle,
-                self.imports_of(last).filter(|tail| to.contains(*tail)),
+                self.steps_from(last).filter(|tail| to.contains(*tail)),
             ));
         }
         routes
@@ -879,5 +884,107 @@ mod tests {
                 .count();
         }
         assert!(with_dependencies > 50 && indirect > 50, "{with_dependencies} {indirect}");
+    }
+
+    #[test]
+    fn a_package_import_of_a_layer_is_a_direct_dependency() {
+        let graph = graph_of(&[("low/a.go", "high/"), ("high/h.go", "high/sub/")]);
+        let view = GraphView::new(&graph);
+        let levels = Architecture::new([single(&graph, "high"), single(&graph, "low")]);
+        let expected = [(at(1), at(0), vec![direct("low/a.go", "high")])];
+        let dependencies = view.find_illegal_dependencies_for_layers(&levels);
+        assert_eq!(named(&graph, &dependencies), expected);
+
+        let dependencies = view.find_illegal_direct_dependencies_for_layers(&levels);
+        assert_eq!(named(&graph, &dependencies), expected);
+    }
+
+    #[test]
+    fn routes_go_through_packages_with_every_head_and_tail() {
+        let graph = graph_of(&[
+            ("low/a.go", "util/"),
+            ("low/b.go", "util/"),
+            ("util/x.go", "high/"),
+            ("util/x.go", "tools/"),
+            ("util/y.go", "high/sub/"),
+            // Not in the package `util`.
+            ("util/deep/z.go", "high/other/"),
+        ]);
+        let view = GraphView::new(&graph);
+        let levels = Architecture::new([single(&graph, "high"), single(&graph, "low")]);
+        let dependencies = view.find_illegal_dependencies_for_layers(&levels);
+        assert_eq!(
+            named(&graph, &dependencies),
+            [(
+                at(1),
+                at(0),
+                vec![
+                    (vec!["low/a.go", "low/b.go"], vec!["util", "util/x.go"], vec!["high"]),
+                    (vec!["low/a.go", "low/b.go"], vec!["util", "util/y.go"], vec!["high/sub"]),
+                ]
+            )]
+        );
+    }
+
+    #[test]
+    fn a_chain_of_packages_is_one_route() {
+        let graph = graph_of(&[
+            ("low/a.go", "one/"),
+            ("one/x.go", "two/"),
+            ("two/y.go", "three/"),
+            ("three/z.go", "high/"),
+        ]);
+        let view = GraphView::new(&graph);
+        let levels = Architecture::new([single(&graph, "high"), single(&graph, "low")]);
+        let dependencies = view.find_illegal_dependencies_for_layers(&levels);
+        assert_eq!(
+            named(&graph, &dependencies),
+            [(
+                at(1),
+                at(0),
+                vec![(
+                    vec!["low/a.go"],
+                    vec!["one", "one/x.go", "two", "two/y.go", "three", "three/z.go"],
+                    vec!["high"]
+                )]
+            )]
+        );
+    }
+
+    #[test]
+    fn importing_a_package_reaches_the_file_of_a_layer_in_it() {
+        // The layer is the file, which the package includes, so importing the
+        // package breaks the architecture, through the package.
+        let graph = graph_of(&[("low/a.go", "high/"), ("high/h.go", "npm:x")]);
+        let view = GraphView::new(&graph);
+        let levels = Architecture::new([single(&graph, "high/h.go"), single(&graph, "low")]);
+        let dependencies = view.find_illegal_dependencies_for_layers(&levels);
+        assert_eq!(
+            named(&graph, &dependencies),
+            [(at(1), at(0), vec![(vec!["low/a.go"], vec!["high"], vec!["high/h.go"])])]
+        );
+
+        // Direct imports only count imports of the layer's own nodes.
+        assert!(view.find_illegal_direct_dependencies_for_layers(&levels).is_empty());
+    }
+
+    #[test]
+    fn chains_through_packages_do_not_pass_through_other_layers() {
+        // `mid` is a layer of one file in the package `util`.
+        let graph = graph_of(&[("low/a.go", "util/"), ("util/m.go", "high/")]);
+        let view = GraphView::new(&graph);
+        let levels = Architecture::new([
+            single(&graph, "high"),
+            single(&graph, "util/m.go"),
+            single(&graph, "low"),
+        ]);
+        let dependencies = view.find_illegal_dependencies_for_layers(&levels);
+        assert_eq!(
+            named(&graph, &dependencies),
+            [
+                (at(1), at(0), vec![direct("util/m.go", "high")]),
+                (at(2), at(1), vec![(vec!["low/a.go"], vec!["util"], vec!["util/m.go"])]),
+            ]
+        );
     }
 }

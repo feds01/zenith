@@ -52,7 +52,8 @@ pub struct OverviewChild<'g> {
     /// What the child is.
     pub kind: NodeKind,
 
-    /// The number of files in the child, or 1 for a file.
+    /// The number of files in the child, or 1 for a file. A package is not a
+    /// file, so it is not counted.
     pub files: usize,
 }
 
@@ -98,7 +99,7 @@ impl<'g> ModuleOverview<'g> {
             .zip(&units)
             .map(|(child, members)| {
                 let node = graph.node(*child);
-                let (name, kind, files) = (node.name(), node.kind(), members.len());
+                let (name, kind, files) = (node.name(), node.kind(), count_files(graph, members));
                 OverviewChild { id: *child, name, kind, files }
             })
             .collect();
@@ -190,13 +191,19 @@ fn tree_node(graph: &Graph, id: ModuleId, depth: usize, top: bool) -> TreeNode {
     }
 
     let slash = if id == ModuleId::ROOT { "" } else { "/" };
-    let label = format!("{shown}{slash} ({})", plural(graph.members(id).len(), "file"));
+    let label =
+        format!("{shown}{slash} ({})", plural(count_files(graph, &graph.members(id)), "file"));
     if depth == 0 {
         return TreeNode::leaf(label);
     }
     let children =
         graph.children(id).iter().map(|child| tree_node(graph, *child, depth - 1, false));
     TreeNode::branch(label, children.collect())
+}
+
+/// The number of files among `members`, which can hold packages too.
+fn count_files(graph: &Graph, members: &NodeSet) -> usize {
+    members.iter().filter(|member| graph.node(*member).kind() != NodeKind::Directory).count()
 }
 
 /// The name of a node, with `.` for the root.
@@ -323,5 +330,40 @@ mod tests {
         let root = serde_json::to_value(overview(&graph, "")).unwrap();
         assert_eq!(root["module"], ".");
         assert_eq!(root["children"][0]["kind"], "directory");
+    }
+
+    #[test]
+    fn packages_are_not_counted_as_files() {
+        let graph = graph_of(&[
+            ("cmd/main.go", "internal/db/"),
+            ("internal/db/conn.go", "internal/cache/"),
+            ("internal/cache/store.go", "node:fmt"),
+        ]);
+        let overview = overview(&graph, "internal");
+        let files: Vec<_> =
+            overview.children().iter().map(|child| (child.name, child.files)).collect();
+        assert_eq!(files, [("internal/cache", 1), ("internal/db", 1)]);
+        assert_eq!(
+            overview.dependencies(),
+            [ChildDependency { from: "internal/db", to: "internal/cache", imports: 1 }]
+        );
+
+        let expected = [
+            "internal/ (2 files)",
+            "├─cache/ (1 file)",
+            "│ └─store.go",
+            "└─db/ (1 file)",
+            "  └─conn.go",
+            "",
+            "dependencies between the children of `internal`:",
+            "  internal/db -> internal/cache (1 import)",
+        ];
+        assert_eq!(overview.tree(2).to_string(), expected.join("\n") + "\n");
+
+        let json = serde_json::to_value(&overview).unwrap();
+        assert_eq!(
+            json["children"][1],
+            serde_json::json!({ "name": "internal/db", "kind": "directory", "files": 1 })
+        );
     }
 }

@@ -4,6 +4,11 @@
 //! A chain is a path of imports: `[a, b, c]` means that `a` imports `b` and
 //! `b` imports `c`. The searches are methods of [`GraphView`], so they never
 //! use the imports that a contract ignores.
+//!
+//! A chain can go through a package, a directory that is imported as a whole.
+//! `[a, p, f, c]` means that `a` imports the package `p`, and `f`, a file
+//! directly in `p`, imports `c`. The hop from `p` to `f` is not an import, so
+//! it is never excluded, and no chain starts with one.
 
 use std::{cell::RefCell, iter};
 
@@ -25,6 +30,10 @@ impl GraphView<'_> {
     /// view leaves out). The ends of a chain are never excluded, so
     /// `excluded_nodes` and the boundaries may contain members of `from` and
     /// `to`.
+    ///
+    /// A package in `from` does not start a chain, since it imports nothing: a
+    /// chain from it would begin with a hop into one of its files, which is
+    /// not an import. A chain may still reach it and go through it.
     ///
     /// Returns `None` if there is no chain, or if `from` and `to` share a
     /// node: overlapping sets don't describe an import between them, so
@@ -66,7 +75,9 @@ impl GraphView<'_> {
     }
 
     /// Every node that imports a member of `targets`, directly or through
-    /// other nodes (grimp's `find_downstream_modules`).
+    /// other nodes (grimp's `find_downstream_modules`). A package imports
+    /// the files directly in it, so it is part of the result if one of them
+    /// is a target, or reaches one.
     ///
     /// As in grimp, the members of `targets` are never part of the result,
     /// even if they import each other. A boundary of the view is part of it
@@ -76,7 +87,7 @@ impl GraphView<'_> {
         let mut seen = targets.clone();
         let mut stack: Vec<ModuleId> = targets.iter().collect();
         while let Some(module) = stack.pop() {
-            for importer in self.importers_of(module) {
+            for importer in self.steps_to(module) {
                 if seen.insert(importer) && !self.boundaries().contains(importer) {
                     stack.push(importer);
                 }
@@ -168,9 +179,13 @@ impl ChainSearch {
         let direct: Vec<_> = view.direct_imports(from, to).collect();
         let mut excluded_imports: EdgeSet = direct.iter().copied().collect();
 
+        // The hop from a package into one of its files is not an import, so it is
+        // never left out: another chain may use it.
+        let graph = view.graph();
         let mut indirect = Vec::new();
         while let Some(chain) = self.run(view, from, to, excluded_nodes, &excluded_imports) {
-            excluded_imports.extend(chain.array_windows().map(|&[a, b]| (a, b)));
+            let imports = chain.array_windows().filter(|&&[a, b]| !graph.is_package_member(a, b));
+            excluded_imports.extend(imports.map(|&[a, b]| (a, b)));
             indirect.push(chain);
         }
         (direct, indirect)
@@ -203,6 +218,21 @@ impl ChainSearch {
         self.seen_forwards.clone_from(from);
         self.seen_backwards.clone_from(to);
 
+        // A package imports nothing, so it starts no chain. It is left unseen, so
+        // that a chain can still go through it, if one of its files isn't in
+        // `from`.
+        let graph = view.graph();
+        if graph.has_packages() {
+            let seen = &mut self.seen_forwards;
+            self.forwards.retain(|node| {
+                let package = graph.node(*node).is_package();
+                if package {
+                    seen.remove(*node);
+                }
+                !package
+            });
+        }
+
         let middle = self.meet(view, excluded_nodes, excluded_imports)?;
         Some(self.chain_through(middle))
     }
@@ -229,7 +259,7 @@ impl ChainSearch {
             while expanded_forwards < level_end {
                 let importer = self.forwards[expanded_forwards];
                 expanded_forwards += 1;
-                for imported in view.imports_of(importer) {
+                for imported in view.steps_from(importer) {
                     if excluded_imports.contains(importer, imported) {
                         continue;
                     }
@@ -251,7 +281,7 @@ impl ChainSearch {
             while expanded_backwards < level_end {
                 let imported = self.backwards[expanded_backwards];
                 expanded_backwards += 1;
-                for importer in view.importers_of(imported) {
+                for importer in view.steps_to(imported) {
                     if excluded_imports.contains(importer, imported) {
                         continue;
                     }
@@ -837,5 +867,193 @@ mod tests {
             names(&graph, view.find_downstream(&targets).iter()),
             ["a.ts", "b.ts", "c.ts", "d.ts"]
         );
+    }
+
+    /// `cmd` imports the package `internal/db`, whose file imports the package
+    /// `internal/cache`, whose file imports the package `internal/log`.
+    fn packages() -> Graph {
+        graph_of(&[
+            ("cmd/main.go", "internal/db/"),
+            ("internal/db/conn.go", "internal/cache/"),
+            ("internal/db/sub/deep.go", "internal/secret/"),
+            ("internal/cache/store.go", "internal/log/"),
+            ("internal/cache/store.go", "node:fmt"),
+            ("internal/secret/key.go", "node:os"),
+        ])
+    }
+
+    #[test]
+    fn chains_go_through_a_chain_of_packages() {
+        let graph = packages();
+        let through = [
+            "cmd/main.go",
+            "internal/db",
+            "internal/db/conn.go",
+            "internal/cache",
+            "internal/cache/store.go",
+        ];
+        let chain = |end: &'static str| [&through[..], &[end]].concat();
+        assert_eq!(
+            shortest(&graph, &["cmd/main.go"], &["internal/log"], &[]).unwrap(),
+            chain("internal/log")
+        );
+
+        // The chain is the same from a whole directory.
+        let view = GraphView::new(&graph);
+        assert_eq!(chains(&view, "cmd", "internal/log"), [chain("internal/log")]);
+        assert_eq!(chains(&view, "cmd", "node:fmt"), [chain("node:fmt")]);
+    }
+
+    #[test]
+    fn a_package_reaches_what_its_files_import_but_not_its_subdirectories() {
+        let graph = packages();
+        // `internal/db/sub/deep.go` is not in the package `internal/db`.
+        assert_eq!(shortest(&graph, &["cmd/main.go"], &["internal/secret"], &[]), None);
+        assert_eq!(shortest(&graph, &["cmd/main.go"], &["node:os"], &[]), None);
+        assert_eq!(
+            shortest(&graph, &["internal/db/sub/deep.go"], &["node:os"], &[]).unwrap(),
+            ["internal/db/sub/deep.go", "internal/secret", "internal/secret/key.go", "node:os"]
+        );
+    }
+
+    #[test]
+    fn a_package_reaches_the_union_of_what_its_files_import() {
+        let graph = graph_of(&[
+            ("a/main.go", "lib/"),
+            ("lib/one.go", "x/"),
+            ("lib/two.go", "y/"),
+            ("lib/three.go", "npm:z"),
+        ]);
+        for target in ["x", "y", "npm:z"] {
+            let chain = shortest(&graph, &["a/main.go"], &[target], &[]).unwrap();
+            assert_eq!(chain.len(), 4, "{chain:?}");
+            assert_eq!((chain[0], chain[1], chain[3]), ("a/main.go", "lib", target));
+            assert!(chain[2].starts_with("lib/"));
+        }
+    }
+
+    #[test]
+    fn a_package_without_files_reaches_nothing() {
+        let graph = graph_of(&[("a.go", "empty/"), ("other/b.go", "c.go")]);
+        assert_eq!(shortest(&graph, &["a.go"], &["c.go"], &[]), None);
+        assert_eq!(shortest(&graph, &["a.go"], &["empty"], &[]).unwrap(), ["a.go", "empty"]);
+    }
+
+    #[test]
+    fn importing_a_package_reaches_the_files_in_it() {
+        let graph = graph_of(&[("a/main.go", "lib/"), ("lib/target.go", "lib/other/")]);
+        assert_eq!(
+            shortest(&graph, &["a/main.go"], &["lib/target.go"], &[]).unwrap(),
+            ["a/main.go", "lib", "lib/target.go"]
+        );
+    }
+
+    #[test]
+    fn no_import_is_in_two_chains_but_the_hops_into_files_are_not_imports() {
+        // Two files import the package, and two of its files import the next.
+        let graph = graph_of(&[
+            ("a/one.go", "lib/"),
+            ("a/two.go", "lib/"),
+            ("lib/x.go", "next/"),
+            ("lib/y.go", "next/"),
+        ]);
+        let view = GraphView::new(&graph);
+        // Each importer gets a chain through a file of its own, though every one
+        // of them goes through the same package.
+        assert_eq!(
+            chains(&view, "a", "next"),
+            [["a/one.go", "lib", "lib/x.go", "next"], ["a/two.go", "lib", "lib/y.go", "next"]]
+        );
+    }
+
+    #[test]
+    fn a_package_does_not_start_a_chain() {
+        let graph = packages();
+        let view = GraphView::new(&graph);
+        let none = NodeSet::new();
+        let (db, cache) = (set(&graph, &["internal/db"]), set(&graph, &["internal/cache"]));
+        // The package alone imports nothing, though its files do.
+        assert_eq!(view.find_shortest_chain(&db, &cache, &none, &EdgeSet::new()), None);
+        assert!(view.find_shortest_chains(&db, &cache, &none).is_empty());
+
+        // As a member of its directory's unit, it does not get in the way of
+        // its files.
+        assert_eq!(
+            chains(&view, "internal/db", "internal/cache"),
+            [["internal/db/conn.go", "internal/cache"]]
+        );
+    }
+
+    #[test]
+    fn a_package_in_the_start_can_still_be_passed_through() {
+        // `main.go` and the package are in `from`, but not the file in the
+        // package that imports `next`.
+        let graph = graph_of(&[("lib/main.go", "lib/sub/"), ("lib/sub/x.go", "next/")]);
+        let view = GraphView::new(&graph);
+        let from = set(&graph, &["lib/main.go", "lib/sub"]);
+        let to = set(&graph, &["next"]);
+        let chain = view.find_shortest_chain(&from, &to, &NodeSet::new(), &EdgeSet::new());
+        assert_eq!(
+            names(&graph, chain.unwrap()),
+            ["lib/main.go", "lib/sub", "lib/sub/x.go", "next"]
+        );
+    }
+
+    #[test]
+    fn excluded_imports_of_a_package_cut_the_chains_through_it() {
+        let graph = packages();
+        let [main, db, conn, cache] =
+            ["cmd/main.go", "internal/db", "internal/db/conn.go", "internal/cache"]
+                .map(|name| id(&graph, name));
+        let log = set(&graph, &["internal/log"]);
+        let from = NodeSet::single(main);
+        for import in [(main, db), (conn, cache)] {
+            let view = GraphView::with_excluded(&graph, [import].into_iter().collect());
+            let chain = view.find_shortest_chain(&from, &log, &NodeSet::new(), &EdgeSet::new());
+            assert_eq!(chain, None);
+        }
+    }
+
+    #[test]
+    fn chains_do_not_pass_through_excluded_nodes_of_a_package() {
+        let graph = packages();
+        let (from, to) = (["cmd/main.go"], ["internal/log"]);
+        assert_eq!(shortest(&graph, &from, &to, &["internal/db/conn.go"]), None);
+        assert_eq!(shortest(&graph, &from, &to, &["internal/cache"]), None);
+        assert_eq!(shortest(&graph, &from, &to, &["internal/db"]), None);
+    }
+
+    #[test]
+    fn what_reaches_a_target_includes_the_packages_on_the_way() {
+        let graph = packages();
+        let view = GraphView::new(&graph);
+        let reaching = view.find_downstream(&set(&graph, &["internal/log"]));
+        assert_eq!(
+            names(&graph, reaching.iter()),
+            [
+                "cmd/main.go",
+                "internal/cache",
+                "internal/cache/store.go",
+                "internal/db",
+                "internal/db/conn.go",
+            ]
+        );
+    }
+
+    #[test]
+    fn imports_into_a_package_are_direct_imports_of_it() {
+        let graph = packages();
+        let view = GraphView::new(&graph);
+        let (cmd, db) = (members(&graph, "cmd"), members(&graph, "internal/db"));
+        let direct: Vec<_> = view
+            .direct_imports(&cmd, &db)
+            .map(|(importer, imported)| (graph.name(importer), graph.name(imported)))
+            .collect();
+        assert_eq!(direct, [("cmd/main.go", "internal/db")]);
+
+        // The package and its files are not imports of each other.
+        assert_eq!(view.direct_imports(&db, &db).count(), 0);
+        assert!(!graph.has_import(id(&graph, "internal/db"), id(&graph, "internal/db/conn.go")));
+        assert!(!graph.has_import(id(&graph, "internal/db/conn.go"), id(&graph, "internal/db")));
     }
 }

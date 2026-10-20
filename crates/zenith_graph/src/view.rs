@@ -160,6 +160,26 @@ impl<'g> GraphView<'g> {
             .copied()
             .filter(move |importer| !self.excluded.contains(*importer, id))
     }
+
+    /// The nodes that a chain of imports can go to from `id`: the nodes that
+    /// it imports in this view, in ascending id order, or, if it is a package,
+    /// the files directly in it.
+    ///
+    /// A chain reaches a package by importing it, then goes on with what its
+    /// files import. The step into a file is not an import: nothing stores or
+    /// excludes it, and a chain doesn't report it.
+    pub(crate) fn steps_from(&self, id: ModuleId) -> impl Iterator<Item = ModuleId> + '_ {
+        // A package imports nothing, so at most one of the two is not empty.
+        self.graph.package_files(id).chain(self.imports_of(id))
+    }
+
+    /// The nodes that a chain of imports can come to `id` from: the package
+    /// that a file is directly in, if its directory is one, then the nodes
+    /// that import it in this view, in ascending id order. The reverse of
+    /// [`Self::steps_from`].
+    pub(crate) fn steps_to(&self, id: ModuleId) -> impl Iterator<Item = ModuleId> + '_ {
+        self.graph.package_of(id).into_iter().chain(self.importers_of(id))
+    }
 }
 
 #[cfg(test)]
@@ -243,5 +263,39 @@ mod tests {
         assert!(!edges.contains(ModuleId::new(1_000), a));
         let collected: EdgeSet = [(a, b)].into_iter().collect();
         assert!(collected.contains(a, b) && !collected.contains(b, c));
+    }
+
+    #[test]
+    fn steps_follow_imports_and_go_from_a_package_into_its_files() {
+        let graph = graph_of(&[
+            ("cmd/main.go", "lib/"),
+            ("lib/a.go", "npm:x"),
+            ("lib/b.go", "util/"),
+            ("lib/sub/c.go", "npm:y"),
+        ]);
+        let [main, lib, a, b, c, util, x] =
+            ["cmd/main.go", "lib", "lib/a.go", "lib/b.go", "lib/sub/c.go", "util", "npm:x"]
+                .map(|name| id(&graph, name));
+        let view = GraphView::new(&graph);
+
+        // The hops between a package and its files are not imports.
+        assert_eq!(view.steps_from(main).collect::<Vec<_>>(), [lib]);
+        assert_eq!(view.steps_from(lib).collect::<Vec<_>>(), [a, b]);
+        assert_eq!(view.steps_from(a).collect::<Vec<_>>(), [x]);
+        assert_eq!(view.steps_to(a).collect::<Vec<_>>(), [lib]);
+        assert_eq!(view.steps_to(lib).collect::<Vec<_>>(), [main]);
+        assert_eq!(view.steps_to(util).collect::<Vec<_>>(), [b]);
+        assert!(view.steps_to(c).next().is_none());
+        assert!(view.imports_of(lib).next().is_none());
+        assert!(view.importers_of(a).next().is_none());
+
+        // A view that leaves out imports still has the hops into files.
+        let excluded = [(main, lib), (b, util)].into_iter().collect();
+        let view = GraphView::with_excluded(&graph, excluded);
+        assert_eq!(view.steps_from(main).count(), 0);
+        assert_eq!(view.steps_from(lib).collect::<Vec<_>>(), [a, b]);
+        assert_eq!(view.steps_to(a).collect::<Vec<_>>(), [lib]);
+        assert_eq!(view.steps_to(lib).count(), 0);
+        assert_eq!(view.steps_to(util).count(), 0);
     }
 }

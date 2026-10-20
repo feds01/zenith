@@ -6,6 +6,14 @@
 //! [`GraphBuilder`] assembles it as files are parsed and their imports
 //! resolved.
 //!
+//! An import usually targets a file, an external package or a builtin, but it
+//! can also target a package: a directory that is imported as a whole, as in
+//! Go, where an import names a directory. The edge is to the directory, from
+//! the file that makes the import, and the directory never imports anything.
+//! What a package reaches is what its direct files reach, which
+//! [`GraphView`]'s searches follow without the graph storing an import for
+//! it.
+//!
 //! The graph is immutable once built. A contract that ignores some imports
 //! checks against a [`GraphView`] that leaves them out, instead of mutating or
 //! copying the graph. [`NodeSet`] and [`KindSet`] are the compact sets that

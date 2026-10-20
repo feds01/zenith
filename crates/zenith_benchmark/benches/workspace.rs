@@ -1,5 +1,5 @@
-//! Benchmarks for finding a project's files and workspace packages, on
-//! synthetic repositories written to disk.
+//! Benchmarks for finding a project's files, on synthetic repositories
+//! written to disk.
 
 use divan::Bencher;
 use zenith_benchmark::{TempRepo, default_walk_settings};
@@ -41,18 +41,4 @@ fn walk(bencher: Bencher, source_files: usize) {
     let bencher = bencher.counter(divan::counter::ItemsCount::new(source_files));
 
     bencher.bench(|| zenith_workspace::walk(&repo.root, &settings));
-}
-
-/// Discovers the workspace packages from the `package.json` files that the
-/// walk found.
-#[divan::bench(args = SIZES)]
-fn discover_packages(bencher: Bencher, source_files: usize) {
-    let repo = TempRepo::shared(source_files);
-    let found = zenith_workspace::walk(&repo.root, &default_walk_settings());
-
-    // CodSpeed has no counters, and warns about each one.
-    #[cfg(not(codspeed))]
-    let bencher = bencher.counter(divan::counter::ItemsCount::new(found.package_jsons.len()));
-
-    bencher.bench(|| zenith_lang_js::discover_packages(&repo.root, &found.package_jsons));
 }

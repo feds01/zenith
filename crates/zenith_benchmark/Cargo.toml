@@ -28,6 +28,10 @@ name = "glob"
 harness = false
 
 [[bench]]
+name = "lang_js"
+harness = false
+
+[[bench]]
 name = "pipeline"
 harness = false
 

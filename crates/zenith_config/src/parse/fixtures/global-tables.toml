@@ -1,0 +1,23 @@
+[files]
+exclude = ["experimental/**", "**/*.gen.ts"]
+respect_gitignore = false
+
+[languages.js]
+include = ["**/*.{ts,tsx}"]
+tsconfig = "config/tsconfig.base.json"
+conditions = ["source", "import"]
+main_fields = ["main"]
+extensions = [".ts", ".js"]
+alias = { "types" = "web/src/types", "~" = "web/src" }
+ignore_unresolved = ["/*", "virtual:*"]
+
+[analysis]
+exclude_kinds = ["type", "dynamic"]
+
+[baseline]
+path = "config/zenith.baseline.toml"
+stale = "warn"
+
+[cache]
+enabled = false
+dir = ".cache/zenith"

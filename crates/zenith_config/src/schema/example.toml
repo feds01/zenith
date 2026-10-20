@@ -3,11 +3,11 @@
 # The example configuration of the docs, with every table and contract type.
 
 [files]
-include = ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"]
 exclude = ["experimental/**", "**/*.gen.ts"]
 respect_gitignore = true
 
-[resolve]
+[languages.js]
+include = ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"]
 tsconfig = "auto"
 conditions = ["types", "source", "import", "module", "require", "node", "default"]
 main_fields = ["module", "main"]
@@ -23,7 +23,7 @@ stale = "error"
 
 [cache]
 enabled = true
-dir = "node_modules/.cache/zenith"
+dir = ".zenith_cache"
 
 [contracts.client-safety]
 type = "forbidden"

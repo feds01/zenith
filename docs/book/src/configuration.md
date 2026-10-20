@@ -9,11 +9,11 @@ which `zenith init` points to with a `#:schema` comment.
 #:schema https://raw.githubusercontent.com/feds01/zenith/main/zenith.schema.json
 
 [files]
-include = ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"]   # the default
 exclude = ["experimental/**", "**/*.gen.ts"]       # added to the defaults below
 respect_gitignore = true                           # the default
 
-[resolve]
+[languages.js]                                     # also accepted as [languages.typescript]
+include = ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"]   # the default
 tsconfig = "auto"          # the nearest tsconfig.json of each file; "off"; or a path
 conditions = ["types", "source", "import", "module", "require", "node", "default"]
 main_fields = ["module", "main"]
@@ -29,12 +29,38 @@ path = "zenith.baseline.toml"
 stale = "error"            # or "warn"
 
 [cache]
-enabled = true                       # the default; `--no-cache` turns it off for one run
-dir = "node_modules/.cache/zenith"   # the default, relative to the root
+enabled = true             # the default; `--no-cache` turns it off for one run
+dir = ".zenith_cache"      # the default, relative to the root
 
 [contracts.<id>]
 # see the contract types
 ```
+
+## Languages
+
+Each language zenith reads has a table of its own in `[languages]`, and a
+language is enabled by writing its table. The table may be empty:
+`[languages.js]` enables JavaScript and TypeScript with their defaults. Without
+a `[languages]` table, JavaScript and TypeScript are enabled. A `[languages]`
+table with no language in it is an error, since there would be nothing to
+scan.
+
+`js` is the name of the JavaScript and TypeScript table, and `typescript` is
+accepted for it too. Giving both is an error.
+
+A language owns its options, and the selector schemes that only its projects
+have: `npm:`, `node:` and `bun:` belong to `js`, so a selector that uses one
+is an error when `js` is not enabled. `pkg:` selects workspace packages and
+belongs to no language.
+
+Each language scans the files that its `include` globs match, which default to
+its own source files: every `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`,
+`.mjs` and `.cjs` file for `js`. The `[files]` table is about what is skipped,
+whatever the language.
+
+A path selector may leave the extension off a file, so `src/types` matches the
+file `src/types.ts` as well as the directory `src/types`. The extensions it
+may leave off are those of the enabled languages.
 
 ## Files
 
@@ -47,8 +73,9 @@ source code.
 
 ## Resolution
 
-Specifiers resolve as TypeScript and Node resolve them, with each file's
-nearest `tsconfig.json` and its `paths`, project references and `extends`.
+JavaScript and TypeScript specifiers resolve as TypeScript and Node resolve
+them, with each file's nearest `tsconfig.json` and its `paths`, project
+references and `extends`; `[languages.js]` configures it.
 Imports of workspace packages resolve to their source, through their
 `exports` maps, whether or not `node_modules` is installed. A bare specifier
 that doesn't resolve still names its package, such as `npm:react`, so
@@ -61,7 +88,7 @@ says so.
 
 Imports that can't be resolved are left out of the graph, and `zenith check`
 warns about them: `--show-unresolved` lists them, and
-`[resolve] ignore_unresolved` silences the expected ones. To see how one
+`[languages.js] ignore_unresolved` silences the expected ones. To see how one
 specifier resolves, and why, run `zenith resolve <file> <specifier>`.
 
 ## Cache
@@ -72,7 +99,7 @@ taken from the cache without being read if its size, times and inode are
 unchanged, or without being parsed if its contents are. The cache never
 changes what a check finds.
 
-The cache is one file in `[cache] dir`. zenith creates the directory, with a
+The cache is one file in `[cache] dir`, `.zenith_cache` by default. zenith creates the directory, with a
 `.gitignore` that ignores everything in it, so it is never committed. A new
 version of zenith, or a configuration that needs more from each file, such as
 `reexports = "transparent"`, starts a new cache; a cache that is corrupt, or

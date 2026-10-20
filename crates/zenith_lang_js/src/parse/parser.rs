@@ -174,7 +174,7 @@ mod tests {
     use std::{fs, ops::Range, thread};
 
     use tempfile::TempDir;
-    use zenith_config::SOURCE_EXTENSIONS;
+    use zenith_config::JS;
     use zenith_diagnostics::{self as diagnostics, Reporter, SourceMap};
 
     use super::*;
@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn every_source_extension_is_a_parser_dialect() {
-        for extension in SOURCE_EXTENSIONS {
+        for extension in JS.source_extensions {
             assert!(SourceType::from_extension(extension).is_ok(), "{extension}");
         }
     }

@@ -1,7 +1,7 @@
 //! The `encapsulation` contract type: the modules may only be imported
 //! through their entry points.
 
-use zenith_config::{EncapsulationConfig, OPTIONAL_EXTENSIONS};
+use zenith_config::EncapsulationConfig;
 use zenith_graph::{GraphView, NodeKind, NodeSet, Unit};
 use zenith_utils::glob::{Glob, escape};
 
@@ -22,6 +22,7 @@ impl Encapsulation {
     /// is not a directory is an error.
     pub(crate) fn compile(config: &EncapsulationConfig, units: &mut UnitResolver) -> Self {
         let graph = units.graph();
+        let extensions = units.extensions();
         let mut modules = Vec::new();
         for (unit, range) in units.located_units(&config.modules) {
             if graph.node(unit.root).kind() != NodeKind::Directory {
@@ -45,7 +46,7 @@ impl Encapsulation {
                 .filter(|member| {
                     let node = graph.node(*member);
                     (node.kind() == NodeKind::File || graph.is_package(*member))
-                        && globs.iter().any(|glob| node.matches_glob(glob, OPTIONAL_EXTENSIONS))
+                        && globs.iter().any(|glob| node.matches_glob(glob, extensions))
                 })
                 .collect();
             modules.push((unit, entries));

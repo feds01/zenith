@@ -1,7 +1,7 @@
 //! The `layers` contract type: higher layers may import lower layers, never
 //! the reverse.
 
-use zenith_config::{LayerMember, LayersConfig, OPTIONAL_EXTENSIONS, SelectorTarget};
+use zenith_config::{LayerMember, LayersConfig, SelectorTarget};
 use zenith_graph::{Architecture, GraphView, LayerRef, Level, ModuleId, NodeKind, NodeSet};
 use zenith_utils::{
     glob::{Glob, escape},
@@ -170,7 +170,7 @@ impl Container {
                     graph.is_in_subtree(**root, *child) || graph.is_in_subtree(*child, **root)
                 });
                 let name = graph.node(*child).base_name();
-                let stem = strip_extension(name, OPTIONAL_EXTENSIONS).unwrap_or(name);
+                let stem = strip_extension(name, units.extensions()).unwrap_or(name);
                 let ignored = config
                     .exhaustive_ignores
                     .iter()
@@ -239,7 +239,12 @@ impl ResolvedMember {
     /// The roots and members of the units that `member` matches in the
     /// project, or `None` if it matches nothing.
     fn find(member: &LayerMember, units: &UnitResolver) -> Option<(Vec<ModuleId>, NodeSet)> {
-        let selection = Selection::resolve(&member.selector, units.graph(), units.workspace());
+        let selection = Selection::resolve(
+            &member.selector,
+            units.graph(),
+            units.workspace(),
+            units.extensions(),
+        );
         let roots = selection.units.iter().map(|unit| unit.root).collect();
         selection.matched.then(|| (roots, selection.members()))
     }
@@ -257,7 +262,7 @@ impl ResolvedMember {
         };
         let glob = Glob::new(&format!("{}/{}", escape(container), glob.as_str())).ok()?;
         let graph = units.graph();
-        let roots = graph.find_paths(&glob, OPTIONAL_EXTENSIONS);
+        let roots = graph.find_paths(&glob, units.extensions());
         let mut members = NodeSet::new();
         for root in &roots {
             members.union_with(&graph.members(*root));

@@ -97,8 +97,10 @@ impl<'g, 'c> ContractView<'g, 'c> {
         for ignore in &config.ignore_imports {
             // Selectors in `ignore_imports` may match nothing: the entry is reported
             // on its own instead.
-            let importers = Selection::resolve(ignore.importer(), graph, workspace).members();
-            let imported = Selection::resolve(ignore.imported(), graph, workspace).members();
+            let extensions = &config.optional_extensions;
+            let importers = Selection::resolve(ignore.importer(), graph, workspace, extensions);
+            let imported = Selection::resolve(ignore.imported(), graph, workspace, extensions);
+            let (importers, imported) = (importers.members(), imported.members());
             let mut matched = false;
             for importer in importers.iter() {
                 for target in graph.imports_of(importer) {

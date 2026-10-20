@@ -7,14 +7,16 @@
 //! |---|---|
 //! | `web/src/domains/*` | internal directories and files, with a path [`Glob`] |
 //! | `pkg:@acme/*` | the directories of matching workspace packages |
-//! | `npm:@aws-sdk/*` | external packages |
-//! | `node:*`, `bun:*` | builtins |
+//! | `npm:@aws-sdk/*` | external packages, of the `js` language |
+//! | `node:*`, `bun:*` | builtins, of the `js` language |
 //!
 //! Package, external and builtin names are matched with a [`NamePattern`],
 //! in which `*` also matches `/`. A selector can also be a table that removes
 //! modules with `except`, or keeps only the files with a `directive`.
 //!
-//! [`Selector::parse`] and [`IgnoreImport::parse`] check the syntax. Which
+//! The schemes other than `pkg:` belong to a language, and need it to be
+//! enabled: see [`LANGUAGES`](crate::LANGUAGES). [`Selector::parse`] and
+//! [`IgnoreImport::parse`] check the syntax. Which
 //! modules a selector matches depends on the project, so the contracts
 //! resolve them.
 
@@ -125,6 +127,17 @@ impl Selector {
     /// What the selector matches.
     pub fn target(&self) -> &SelectorTarget {
         &self.target
+    }
+
+    /// The scheme the selector is written with, without the `:`: `pkg`,
+    /// `npm`, `node` or `bun`. `None` for a path.
+    pub fn scheme(&self) -> Option<&'static str> {
+        match &self.target {
+            SelectorTarget::Path(_) => None,
+            SelectorTarget::Package(_) => Some("pkg"),
+            SelectorTarget::External(_) => Some("npm"),
+            SelectorTarget::Builtin { scheme, .. } => Some(scheme.as_str()),
+        }
     }
 
     /// Selectors whose members are removed from each matched module.

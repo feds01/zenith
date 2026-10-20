@@ -9,10 +9,12 @@
 //! file.
 //!
 //! The parser is split by what it parses: `tables` parses the global tables,
-//! `contracts` the contracts, and `selector` and `layer` the strings that
-//! selectors, ignored imports and layers are written as.
+//! `languages` the languages, `contracts` the contracts, and `selector` and
+//! `layer` the strings that selectors, ignored imports and layers are written
+//! as.
 
 mod contracts;
+mod languages;
 mod layer;
 mod selector;
 mod tables;
@@ -30,6 +32,7 @@ use zenith_utils::{glob::GlobError, location::ByteRange};
 use crate::{
     config::Config,
     error::{ConfigError, ConfigErrorKind, classify},
+    language::Language,
     schema::{ConfigFile, Located},
 };
 
@@ -59,6 +62,14 @@ struct Parser {
 
     /// The id of the contract being parsed, which errors are attributed to.
     contract: Option<String>,
+
+    /// The enabled languages, whose selector schemes the contracts may use.
+    /// Known once `[languages]` is parsed.
+    enabled: Vec<&'static Language>,
+
+    /// The extensions that path selectors may leave off, of the enabled
+    /// languages.
+    optional_extensions: Vec<&'static str>,
 }
 
 impl Parser {
@@ -78,7 +89,7 @@ impl Parser {
         // 2. Take out the known tables, and reject the ones left, which are unknown.
         let tables = document.get_mut();
         let files = tables.remove("files");
-        let resolve = tables.remove("resolve");
+        let languages = tables.remove("languages");
         let analysis = tables.remove("analysis");
         let baseline = tables.remove("baseline");
         let cache = tables.remove("cache");
@@ -90,7 +101,9 @@ impl Parser {
         // 3. Parse each global table on its own. One that isn't written, or is invalid,
         //    has its defaults, so that the rest of the file is still checked.
         let files = self.parse_files(files);
-        let resolve = self.parse_resolve(resolve);
+        let languages = self.parse_languages(languages);
+        self.enabled = languages.enabled().collect();
+        self.optional_extensions = languages.optional_extensions();
         let analysis = self.parse_analysis(analysis);
         let baseline = self.parse_baseline(baseline);
         let cache = self.parse_cache(cache);
@@ -101,7 +114,7 @@ impl Parser {
             None => Vec::new(),
         };
 
-        Some(Config { files, resolve, analysis, baseline, cache, contracts, file: None })
+        Some(Config { files, languages, analysis, baseline, cache, contracts, file: None })
     }
 
     /// Compile globs or name patterns, leaving out the invalid ones.

@@ -1,0 +1,12 @@
+$ zenith check
+exit: 2
+--- stderr
+error: `languages.typescript` is another name for `languages.js`, which is already given
+ --> zenith.toml:5:12
+  |
+5 | [languages.typescript]
+  |            ^^^^^^^^^^
+  |
+  = help: give the language one table
+
+

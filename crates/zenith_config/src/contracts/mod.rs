@@ -56,6 +56,11 @@ pub struct ContractConfig {
     /// Text shown under the violations, e.g. how to fix them.
     pub guidance: Option<String>,
 
+    /// The extensions, without the `.`, that its path selectors may leave off
+    /// a file's path, so `src/types` matches the file `src/types.ts` as well
+    /// as the directory `src/types`: those of the enabled languages.
+    pub optional_extensions: Vec<&'static str>,
+
     /// The contract type and its own options.
     pub kind: ContractKind,
 }

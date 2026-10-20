@@ -1,0 +1,5 @@
+[languages.typescript]
+tsconfig = "off"
+
+[languages.js]
+tsconfig = "auto"

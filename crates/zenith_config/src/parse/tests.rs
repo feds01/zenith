@@ -12,7 +12,8 @@ use zenith_utils::{
 use crate::{
     config::{Config, StaleLevel, Tsconfig},
     contracts::{AlertLevel, CONTRACT_TYPES, ContractKind, Reexports, Severity},
-    error::{ConfigError, ConfigErrorKind, SelectorError},
+    error::{ConfigError, ConfigErrorKind, LoadError, SelectorError},
+    language::JS,
     selector::{BuiltinScheme, Selector, SelectorTarget},
 };
 
@@ -83,75 +84,60 @@ fn every_contract_type_is_parsed() {
 #[test]
 fn an_empty_file_has_the_defaults_of_no_file() {
     let parsed =
-        ["", "[files]\n[resolve]\n[analysis]\n[baseline]\n[cache]\n[contracts]\n"].map(valid);
+        ["", "[files]\n[analysis]\n[baseline]\n[cache]\n[contracts]\n", "[languages.js]\n"]
+            .map(valid);
     for config in [Config::default()].iter().chain(&parsed) {
-        assert_eq!(config.files.include, None);
         assert!(config.files.exclude.is_empty());
         assert!(config.files.respect_gitignore);
-        assert_eq!(config.resolve.tsconfig, Tsconfig::Auto);
-        assert_eq!(config.resolve.conditions, None);
-        assert_eq!(config.resolve.main_fields, None);
-        assert_eq!(config.resolve.extensions, None);
-        assert!(config.resolve.alias.is_empty());
-        assert!(config.resolve.ignore_unresolved.is_empty());
+        let js = config.languages.js.as_ref().expect("js is enabled");
+        assert_eq!(js.include, None);
+        assert_eq!(js.tsconfig, Tsconfig::Auto);
+        assert_eq!(js.conditions, None);
+        assert_eq!(js.main_fields, None);
+        assert_eq!(js.extensions, None);
+        assert!(js.alias.is_empty());
+        assert!(js.ignore_unresolved.is_empty());
         assert!(config.analysis.exclude_kinds.is_empty());
         assert_eq!(config.baseline.path, "zenith.baseline.toml");
         assert_eq!(config.baseline.stale, StaleLevel::Error);
         assert!(config.cache.enabled);
-        assert_eq!(config.cache.dir, "node_modules/.cache/zenith");
+        assert_eq!(config.cache.dir, ".zenith_cache");
         assert!(config.contracts.is_empty());
     }
 }
 
 #[test]
+fn without_a_languages_table_js_is_enabled() {
+    for config in [Config::default(), valid("")] {
+        assert_eq!(config.languages.enabled().collect::<Vec<_>>(), [&JS]);
+        assert!(config.languages.is_enabled(&JS));
+        let scanned = config.languages.scanned();
+        assert!(scanned.globs.is_empty());
+        assert_eq!(scanned.extensions, JS.source_extensions);
+        assert_eq!(config.languages.optional_extensions(), JS.optional_extensions);
+    }
+}
+
+#[test]
 fn parses_the_global_tables() {
-    let config = valid(
-        r#"
-[files]
-include = ["**/*.{ts,tsx}"]
-exclude = ["experimental/**", "**/*.gen.ts"]
-respect_gitignore = false
-
-[resolve]
-tsconfig = "config/tsconfig.base.json"
-conditions = ["source", "import"]
-main_fields = ["main"]
-extensions = [".ts", ".js"]
-alias = { "types" = "web/src/types", "~" = "web/src" }
-ignore_unresolved = ["/*", "virtual:*"]
-
-[analysis]
-exclude_kinds = ["type", "dynamic"]
-
-[baseline]
-path = "config/zenith.baseline.toml"
-stale = "warn"
-
-[cache]
-enabled = false
-dir = ".cache/zenith"
-"#,
-    );
+    let config = valid(include_str!("fixtures/global-tables.toml"));
 
     let globs =
         |patterns: &[&str]| patterns.iter().map(|p| Glob::new(p).unwrap()).collect::<Vec<_>>();
-    assert_eq!(config.files.include, Some(globs(&["**/*.{ts,tsx}"])));
     assert_eq!(config.files.exclude, globs(&["experimental/**", "**/*.gen.ts"]));
     assert!(!config.files.respect_gitignore);
 
-    let resolve = &config.resolve;
-    assert_eq!(resolve.tsconfig, Tsconfig::File("config/tsconfig.base.json".into()));
-    assert_eq!(
-        resolve.conditions.as_deref(),
-        Some(&["source".to_string(), "import".to_string()][..])
-    );
-    assert_eq!(resolve.main_fields.as_deref(), Some(&["main".to_string()][..]));
-    assert_eq!(resolve.extensions.as_deref(), Some(&[".ts".to_string(), ".js".to_string()][..]));
+    let js = config.languages.js.as_ref().unwrap();
+    assert_eq!(js.include, Some(globs(&["**/*.{ts,tsx}"])));
+    assert_eq!(js.tsconfig, Tsconfig::File("config/tsconfig.base.json".into()));
+    assert_eq!(js.conditions.as_deref(), Some(&["source".to_string(), "import".to_string()][..]));
+    assert_eq!(js.main_fields.as_deref(), Some(&["main".to_string()][..]));
+    assert_eq!(js.extensions.as_deref(), Some(&[".ts".to_string(), ".js".to_string()][..]));
     // Aliases keep the order of the file.
-    let alias: Vec<_> = resolve.alias.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let alias: Vec<_> = js.alias.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
     assert_eq!(alias, [("types", "web/src/types"), ("~", "web/src")]);
     assert_eq!(
-        resolve.ignore_unresolved,
+        js.ignore_unresolved,
         [NamePattern::new("/*").unwrap(), NamePattern::new("virtual:*").unwrap()]
     );
 
@@ -160,14 +146,168 @@ dir = ".cache/zenith"
     assert_eq!(config.baseline.stale, StaleLevel::Warn);
     assert!(!config.cache.enabled);
     assert_eq!(config.cache.dir, ".cache/zenith");
+
+    // A language that sets its `include` is scanned by its globs.
+    let scanned = config.languages.scanned();
+    assert_eq!(scanned.globs, globs(&["**/*.{ts,tsx}"]));
+    assert!(scanned.extensions.is_empty());
 }
 
 #[test]
 fn tsconfig_can_be_automatic_or_off() {
     for (value, tsconfig) in [("auto", Tsconfig::Auto), ("off", Tsconfig::Off)] {
-        let config = valid(&format!("[resolve]\ntsconfig = \"{value}\"\n"));
-        assert_eq!(config.resolve.tsconfig, tsconfig);
+        let config = valid(&format!("[languages.js]\ntsconfig = \"{value}\"\n"));
+        assert_eq!(config.languages.js.unwrap().tsconfig, tsconfig);
     }
+}
+
+#[test]
+fn the_js_table_is_also_called_typescript() {
+    let config = valid(include_str!("fixtures/languages-typescript.toml"));
+    let js = config.languages.js.as_ref().expect("`typescript` enables js");
+    assert_eq!(js.include, Some(vec![Glob::new("web/**").unwrap()]));
+    assert_eq!(js.tsconfig, Tsconfig::Off);
+    assert_eq!(js.ignore_unresolved, [NamePattern::new("virtual:*").unwrap()]);
+}
+
+#[test]
+fn giving_a_language_under_two_names_is_an_error() {
+    // The second table is the one reported, in either order.
+    let contents = include_str!("fixtures/languages-both-names.toml");
+    assert_eq!(
+        invalid(contents),
+        [
+            "4:12: `languages.typescript` is another name for `languages.js`, which is already given \
+          [typescript]"
+        ]
+    );
+    let contents = include_str!("fixtures/languages-both-names-reversed.toml");
+    assert_eq!(
+        invalid(contents),
+        [
+            "4:12: `languages.js` is another name for `languages.typescript`, which is already given \
+          [js]"
+        ]
+    );
+    let errors = Config::parse(contents).unwrap_err();
+    let report =
+        LoadError::Invalid { path: "zenith.toml".into(), contents: contents.to_string(), errors };
+    let expected = [
+        "error: `languages.js` is another name for `languages.typescript`, which is already given",
+        " --> zenith.toml:4:12",
+        "  |",
+        "4 | [languages.js]",
+        "  |            ^^",
+        "  |",
+        "  = help: give the language one table",
+    ];
+    assert_eq!(report.to_string(), expected.join("\n"));
+}
+
+#[test]
+fn an_empty_languages_table_enables_no_language() {
+    let contents = include_str!("fixtures/languages-empty.toml");
+    assert_eq!(invalid(contents), ["1:1: no language is enabled [[languages]]"]);
+    let error = &Config::parse(contents).unwrap_err()[0];
+    assert_eq!(error.kind, ConfigErrorKind::NoLanguages);
+    assert_eq!(error.kind.to_string(), "no language is enabled");
+}
+
+#[test]
+fn unknown_languages_are_errors_with_suggestions() {
+    let contents = include_str!("fixtures/languages-unknown.toml");
+    assert_eq!(
+        invalid(contents),
+        [
+            "3:12: unknown language `typescipt`; did you mean `typescript`? [typescipt]",
+            "5:12: unknown language `go`, expected `js` or `typescript` [go]",
+        ]
+    );
+    // The language that is written is still enabled.
+    let errors = Config::parse(contents).unwrap_err();
+    assert_eq!(errors.len(), 2);
+}
+
+#[test]
+fn the_tables_of_the_old_shape_are_unknown_keys() {
+    assert_eq!(
+        invalid(include_str!("fixtures/removed-tables.toml")),
+        [
+            "2:1: unknown key `include`; did you mean `exclude`? [include]",
+            "4:2: unknown key `resolve`, expected one of `files`, `languages`, `analysis`, \
+             `baseline`, `cache`, `contracts` [resolve]",
+        ]
+    );
+}
+
+#[test]
+fn schemes_of_an_enabled_language_are_allowed() {
+    let config = valid(include_str!("fixtures/languages-js-with-schemes.toml"));
+    let ContractKind::Forbidden(forbidden) = &config.contracts[0].kind else {
+        panic!("expected `forbidden`");
+    };
+    let schemes: Vec<_> = forbidden.to.iter().map(Selector::scheme).collect();
+    assert_eq!(schemes, [Some("npm"), Some("node"), Some("bun"), Some("pkg")]);
+}
+
+#[test]
+fn schemes_of_a_disabled_language_are_errors() {
+    let contents = include_str!("fixtures/languages-empty-with-schemes.toml");
+    // Selectors, `ignore_imports` entries and layers are all checked, and
+    // `pkg:` belongs to no language.
+    let errors = invalid(contents);
+    let scheme = |selector: &str, text: &str| {
+        let (name, _) = selector.split_once(':').unwrap();
+        format!(
+            "`{selector}` uses the `{name}:` scheme of the `js` language, which is not enabled \
+             [{text}]"
+        )
+    };
+    assert_eq!(
+        errors,
+        [
+            "1:1: no language is enabled [[languages]]".to_string(),
+            format!("6:7: in contract `no-sharp`: {}", scheme("npm:sharp", "\"npm:sharp\"")),
+            format!("6:20: in contract `no-sharp`: {}", scheme("node:*", "\"node:*\"")),
+            format!(
+                "7:19: in contract `no-sharp`: {}",
+                scheme("bun:sqlite", "\"web/src -> bun:sqlite\"")
+            ),
+            format!(
+                "11:11: in contract `tiers`: {}",
+                scheme("npm:react", "\"web/src | npm:react\"")
+            ),
+        ]
+    );
+
+    // The report says how to enable the language.
+    let errors = Config::parse(contents).unwrap_err();
+    let error =
+        LoadError::Invalid { path: "zenith.toml".into(), contents: contents.into(), errors };
+    let expected = [
+        "error: `npm:sharp` uses the `npm:` scheme of the `js` language, which is not enabled",
+        " --> zenith.toml:6:7",
+        "  |",
+        "6 | to = [\"npm:sharp\", \"node:*\", \"pkg:@acme/server\"]",
+        "  |       ^^^^^^^^^^^",
+        "  |",
+        "  = note: in contract `no-sharp`",
+        "  = help: enable it with a `[languages.js]` table",
+    ];
+    assert!(error.to_string().contains(&expected.join("\n")), "{error}");
+}
+
+#[test]
+fn unknown_schemes_are_errors_with_suggestions() {
+    assert_eq!(
+        invalid(include_str!("fixtures/unknown-scheme.toml")),
+        [
+            "4:7: in contract `a`: invalid selector `npn:react`: unknown scheme `npn:`; did you \
+             mean `npm:`? [\"npn:react\"]",
+            "4:20: in contract `a`: invalid selector `gopkg:fmt`: unknown scheme `gopkg:`, \
+             expected one of `pkg:`, `npm:`, `node:`, `bun:` [\"gopkg:fmt\"]",
+        ]
+    );
 }
 
 #[test]
@@ -442,7 +582,7 @@ fn unknown_keys_are_errors_everywhere() {
         ("[contract.a]\n", "1:2: unknown key `contract`; did you mean `contracts`? [contract]"),
         ("[files]\nexclud = []\n", "2:1: unknown key `exclud`; did you mean `exclude`? [exclud]"),
         (
-            "[resolve]\ntsconfg = \"off\"\n",
+            "[languages.js]\ntsconfg = \"off\"\n",
             "2:1: unknown key `tsconfg`; did you mean `tsconfig`? [tsconfg]",
         ),
         (
@@ -455,9 +595,13 @@ fn unknown_keys_are_errors_everywhere() {
             "2:1: unknown key `enable`; did you mean `enabled`? [enable]",
         ),
         (
-            "[resolve]\nzzz = 1\n",
-            "2:1: unknown key `zzz`, expected one of `tsconfig`, `conditions`, `main_fields`, \
-             `extensions`, `alias`, `ignore_unresolved` [zzz]",
+            "[languages.js]\nzzz = 1\n",
+            "2:1: unknown key `zzz`, expected one of `include`, `tsconfig`, `conditions`, \
+             `main_fields`, `extensions`, `alias`, `ignore_unresolved` [zzz]",
+        ),
+        (
+            "[languages]\njs = {}\ngo = {}\n",
+            "3:1: unknown language `go`, expected `js` or `typescript` [go]",
         ),
     ] {
         assert_eq!(only_error(contents), expected, "{contents}");
@@ -567,7 +711,10 @@ fn values_of_the_wrong_type_are_errors() {
             "[files]\nrespect_gitignore = \"yes\"\n",
             "2:21: invalid type: string \"yes\", expected a boolean [\"yes\"]",
         ),
-        ("[resolve]\nalias = [\"a\"]\n", "2:9: invalid type: array, expected a table [[\"a\"]]"),
+        (
+            "[languages.js]\nalias = [\"a\"]\n",
+            "2:9: invalid type: array, expected a table [[\"a\"]]",
+        ),
         ("contracts = 1\n", "1:13: `contracts` must be a table [1]"),
         ("[contracts]\nc = \"forbidden\"\n", "2:5: `contracts.c` must be a table [\"forbidden\"]"),
         ("[contracts.c]\nfrom = []\n", "1:1: in contract `c`: missing key `type` [[contracts.c]]"),
@@ -671,12 +818,12 @@ fn invalid_selectors_are_errors() {
 fn invalid_globs_and_name_patterns_are_errors() {
     for (contents, expected) in [
         (
-            "[files]\ninclude = [\"/src\"]\n",
+            "[languages.js]\ninclude = [\"/src\"]\n",
             "2:12: invalid pattern `/src`: leading `/`; globs are relative to the project root [\"/src\"]",
         ),
         ("[files]\nexclude = [\"a/\"]\n", "2:12: invalid pattern `a/`: trailing `/` [\"a/\"]"),
         (
-            "[resolve]\nignore_unresolved = [\"virtual:{\"]\n",
+            "[languages.js]\nignore_unresolved = [\"virtual:{\"]\n",
             "2:22: invalid pattern `virtual:{`: unclosed `{` [\"virtual:{\"]",
         ),
         (
@@ -787,7 +934,7 @@ dept = 1
 [contracts.c]
 type = "layer"
 
-[resolve]
+[languages.js]
 tsconfg = "off"
 
 [baseline]

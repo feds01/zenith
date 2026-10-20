@@ -266,7 +266,7 @@ fn imports_that_are_expected_not_to_resolve_are_left_out_quietly() {
         "app.ts",
         b"import 'virtual:icons';\nimport './missing';\nimport 'other:thing';\n",
     )]);
-    let session = project.build("[resolve]\nignore_unresolved = [\"virtual:*\"]\n").unwrap();
+    let session = project.build(include_str!("fixtures/ignore-virtual.toml")).unwrap();
     let specifiers: Vec<_> =
         session.unresolved.iter().map(|import| import.import.specifier.as_str()).collect();
     assert_eq!(specifiers, ["./missing", "other:thing"]);
@@ -347,7 +347,7 @@ fn unresolved_imports_are_reported_where_they_are() {
     assert_eq!(note.message, format!("  app.ts:3:1  `./missing`  ({reason})"));
     assert!(
         project
-            .build("[resolve]\nignore_unresolved = [\"./missing\"]\n")
+            .build(include_str!("fixtures/ignore-missing.toml"))
             .unwrap()
             .unresolved_report(&mut sources, false)
             .is_none()
@@ -373,18 +373,7 @@ fn the_configuration_picks_the_files_and_how_they_resolve() {
         ("web/src/ui/avatar.test.ts", b"import { avatar } from './avatar';\n"),
         ("scripts/build.ts", b"import fs from 'fs';\n"),
     ]);
-    let session = project
-        .build(
-            r#"
-            [files]
-            include = ["web/**"]
-            exclude = ["**/*.test.ts"]
-
-            [resolve]
-            alias = { "types" = "web/src/types" }
-            "#,
-        )
-        .unwrap();
+    let session = project.build(include_str!("fixtures/scoped-web.toml")).unwrap();
     let graph = &session.graph;
     assert_eq!(files(graph), ["web/src/types/user.ts", "web/src/ui/avatar.ts"]);
     assert_eq!(
@@ -397,7 +386,7 @@ fn the_configuration_picks_the_files_and_how_they_resolve() {
 #[test]
 fn a_missing_tsconfig_file_stops_the_pipeline() {
     let project = Project::new(&[("app.ts", b"import './b';\n")]);
-    let mut session = project.session("[resolve]\ntsconfig = \"tsconfig.base.json\"\n");
+    let mut session = project.session(include_str!("fixtures/tsconfig-base.toml"));
     let mut pipeline = Pipeline::standard();
     let error = pipeline.run_until(&mut session, StageKind::Graph).unwrap_err();
     assert_eq!(

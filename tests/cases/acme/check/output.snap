@@ -111,7 +111,7 @@ error[legacy-freeze]: `@acme/ai` must not import `legacy-editor`
 
 warning: 1 import could not be resolved
   |
-  = help: use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
+  = help: use `--show-unresolved` to list them, or `[languages.js] ignore_unresolved` to silence expected ones
 
 Contracts
   ✗ web-layers              layers         broken (2 violations) · 1 suppressed
@@ -166,7 +166,7 @@ error[web-layers]: `web/src/lib` must not import `web/src/domains`
 
 warning: 1 import could not be resolved
   |
-  = help: use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
+  = help: use `--show-unresolved` to list them, or `[languages.js] ignore_unresolved` to silence expected ones
 
 Contracts
   ✗ web-layers      layers     broken (2 violations) · 1 suppressed

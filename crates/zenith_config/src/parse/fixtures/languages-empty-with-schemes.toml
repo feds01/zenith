@@ -1,0 +1,11 @@
+[languages]
+
+[contracts.no-sharp]
+type = "forbidden"
+from = ["web/src"]
+to = ["npm:sharp", "node:*", "pkg:@acme/server"]
+ignore_imports = ["web/src -> bun:sqlite"]
+
+[contracts.tiers]
+type = "layers"
+layers = ["web/src | npm:react"]

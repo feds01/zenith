@@ -9,6 +9,7 @@ use zenith_utils::{
 use super::Parser;
 use crate::{
     error::{ConfigErrorKind, IgnoreImportError, SelectorError},
+    language::Language,
     schema::{Located, SelectorValue},
     selector::{BuiltinScheme, IgnoreImport, Selector, SelectorTarget},
 };
@@ -18,17 +19,20 @@ impl Selector {
     /// trailing `/` are ignored.
     pub fn parse(raw: &str) -> Result<Self, SelectorError> {
         let raw = raw.trim();
-        let target = if let Some(name) = raw.strip_prefix("pkg:") {
-            SelectorTarget::Package(NamePattern::new(name)?)
-        } else if let Some(name) = raw.strip_prefix("npm:") {
-            SelectorTarget::External(NamePattern::new(name)?)
-        } else if let Some(name) = raw.strip_prefix("node:") {
-            SelectorTarget::Builtin {
-                scheme: BuiltinScheme::Node,
-                pattern: NamePattern::new(name)?,
+        let target = if let Some((scheme, name)) = split_scheme(raw) {
+            match scheme {
+                "pkg" => SelectorTarget::Package(NamePattern::new(name)?),
+                "npm" => SelectorTarget::External(NamePattern::new(name)?),
+                "node" => SelectorTarget::Builtin {
+                    scheme: BuiltinScheme::Node,
+                    pattern: NamePattern::new(name)?,
+                },
+                "bun" => SelectorTarget::Builtin {
+                    scheme: BuiltinScheme::Bun,
+                    pattern: NamePattern::new(name)?,
+                },
+                _ => return Err(SelectorError::unknown_scheme(scheme)),
             }
-        } else if let Some(name) = raw.strip_prefix("bun:") {
-            SelectorTarget::Builtin { scheme: BuiltinScheme::Bun, pattern: NamePattern::new(name)? }
         } else {
             let path = raw.strip_suffix('/').unwrap_or(raw);
             if path.split('/').any(|segment| segment == "..") {
@@ -38,6 +42,16 @@ impl Selector {
         };
         Ok(Self::new(raw.to_string(), target))
     }
+}
+
+/// Split a selector into its scheme, such as `npm`, and what follows the `:`.
+/// `None` for a path, whose first segment is not a bare word followed by a
+/// `:`.
+fn split_scheme(raw: &str) -> Option<(&str, &str)> {
+    let (scheme, name) = raw.split_once(':')?;
+    let is_word = !scheme.is_empty()
+        && scheme.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    is_word.then_some((scheme, name))
 }
 
 impl IgnoreImport {
@@ -88,10 +102,31 @@ impl Parser {
     /// Parse the string form of a selector, written at `range`.
     fn parse_string_selector(&mut self, raw: &str, range: ByteRange) -> Option<Selector> {
         let selector = Selector::parse(raw).map(|selector| selector.at(range));
-        self.check(selector, Some(range), |error| ConfigErrorKind::InvalidSelector {
-            selector: raw.to_string(),
-            error,
-        })
+        let selector = self.check(selector, Some(range), |error| {
+            ConfigErrorKind::InvalidSelector { selector: raw.to_string(), error }
+        })?;
+        self.check_scheme(&selector, range).then_some(selector)
+    }
+
+    /// Whether the language that owns the scheme of `selector`, if it has
+    /// one, is enabled. If not, record an error at `range`.
+    pub(super) fn check_scheme(&mut self, selector: &Selector, range: ByteRange) -> bool {
+        let Some(scheme) = selector.scheme() else {
+            return true;
+        };
+        let Some(language) = Language::by_scheme(scheme) else {
+            return true;
+        };
+        if self.enabled.contains(&language) {
+            return true;
+        }
+        let kind = ConfigErrorKind::DisabledScheme {
+            selector: selector.as_str().to_string(),
+            scheme: scheme.to_string(),
+            language: language.name.to_string(),
+        };
+        self.add_error(kind, Some(range));
+        false
     }
 
     /// Parse `ignore_imports` entries, leaving out the invalid ones.
@@ -103,9 +138,12 @@ impl Parser {
             .iter()
             .filter_map(|entry| {
                 let ignore = IgnoreImport::parse(&entry.value).map(|ignore| ignore.at(entry.range));
-                self.check(ignore, Some(entry.range), |error| {
+                let ignore = self.check(ignore, Some(entry.range), |error| {
                     ConfigErrorKind::InvalidIgnoreImport { entry: entry.value.clone(), error }
-                })
+                })?;
+                let importer = self.check_scheme(ignore.importer(), entry.range);
+                let imported = self.check_scheme(ignore.imported(), entry.range);
+                (importer && imported).then_some(ignore)
             })
             .collect()
     }
@@ -116,6 +154,7 @@ mod tests {
     use zenith_utils::glob::GlobError;
 
     use super::*;
+    use crate::language::schemes;
 
     fn target(raw: &str) -> SelectorTarget {
         Selector::parse(raw).unwrap().target().clone()
@@ -179,6 +218,29 @@ mod tests {
             ("web/../../etc", SelectorError::ParentDir),
         ] {
             assert_eq!(Selector::parse(raw), Err(error), "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_schemes() {
+        let error = Selector::parse("npn:react").unwrap_err();
+        assert_eq!(error.to_string(), "unknown scheme `npn:`; did you mean `npm:`?");
+        let error = Selector::parse("gopkg:fmt").unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "unknown scheme `gopkg:`, expected one of `pkg:`, `npm:`, `node:`, `bun:`"
+        );
+        // Only a bare word before the `:` is a scheme.
+        for raw in ["web/src/a:b", "{a,b}:c", ":a", "a b:c"] {
+            assert!(matches!(target(raw), SelectorTarget::Path(_)), "{raw}");
+        }
+    }
+
+    #[test]
+    fn every_scheme_of_the_registry_is_parsed() {
+        for scheme in schemes() {
+            let selector = Selector::parse(&format!("{scheme}:x")).unwrap();
+            assert_eq!(selector.scheme(), Some(scheme));
         }
     }
 

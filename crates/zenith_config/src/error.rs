@@ -6,6 +6,8 @@ use std::{fmt, io, path::PathBuf};
 use zenith_diagnostics::{Report, Reporter, SourceId, SourceMap, Span};
 use zenith_utils::{glob::GlobError, location::ByteRange};
 
+use crate::language::{JS, schemes};
+
 /// An error in a configuration file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigError {
@@ -87,6 +89,43 @@ pub enum ConfigErrorKind {
 
         /// The contract type closest to it, if any is close.
         suggestion: Option<String>,
+    },
+
+    /// A language table in `[languages]` that zenith doesn't know.
+    UnknownLanguage {
+        /// The name as written.
+        name: String,
+
+        /// The names that a language's table goes by.
+        expected: Vec<String>,
+
+        /// The name closest to it, if any is close.
+        suggestion: Option<String>,
+    },
+
+    /// A language's table is given under two of its names, such as `js` and
+    /// `typescript`.
+    DuplicateLanguage {
+        /// The name of the second table, as written.
+        name: String,
+
+        /// The name of the first, as written.
+        first: String,
+    },
+
+    /// `[languages]` has no language, so there is nothing to scan.
+    NoLanguages,
+
+    /// A selector names a scheme of a language that is not enabled.
+    DisabledScheme {
+        /// The selector as written.
+        selector: String,
+
+        /// The scheme it starts with, without the `:`.
+        scheme: String,
+
+        /// The name of the language that owns the scheme.
+        language: String,
     },
 
     /// A value of the wrong type, or out of range, as reported by the TOML
@@ -177,6 +216,14 @@ impl ConfigErrorKind {
             Self::MissingKey { key } => format!("missing key `{key}`"),
             Self::UnknownValue { value, .. } => format!("unknown value `{value}`"),
             Self::UnknownContractType { name, .. } => format!("unknown contract type `{name}`"),
+            Self::UnknownLanguage { name, .. } => format!("unknown language `{name}`"),
+            Self::DuplicateLanguage { name, first } => format!(
+                "`languages.{name}` is another name for `languages.{first}`, which is already given"
+            ),
+            Self::NoLanguages => "no language is enabled".to_string(),
+            Self::DisabledScheme { selector, scheme, language } => format!(
+                "`{selector}` uses the `{scheme}:` scheme of the `{language}` language, which is not enabled"
+            ),
             Self::InvalidValue { message } => message.clone(),
             Self::NotATable { key } => format!("`{key}` must be a table"),
             Self::ContractTypeNotAString => "`type` must be a string".to_string(),
@@ -214,6 +261,7 @@ impl ConfigErrorKind {
         match self {
             Self::UnknownKey { expected, suggestion, .. }
             | Self::UnknownValue { expected, suggestion, .. }
+            | Self::UnknownLanguage { expected, suggestion, .. }
             | Self::UnknownContractType { expected, suggestion, .. } => {
                 Some((expected, suggestion.as_deref()))
             }
@@ -224,6 +272,18 @@ impl ConfigErrorKind {
     /// How to fix an unknown name: the closest allowed name, or else the
     /// allowed names.
     fn help(&self) -> Option<String> {
+        match self {
+            Self::DuplicateLanguage { .. } => {
+                return Some("give the language one table".to_string());
+            }
+            Self::NoLanguages => {
+                return Some(format!("add a table for one, such as `[languages.{}]`", JS.name));
+            }
+            Self::DisabledScheme { language, .. } => {
+                return Some(format!("enable it with a `[languages.{language}]` table"));
+            }
+            _ => {}
+        }
         match self.alternatives()? {
             (_, Some(suggestion)) => Some(format!("did you mean `{suggestion}`?")),
             (expected, None) => expected_names(expected).map(|names| format!("expected {names}")),
@@ -318,10 +378,23 @@ impl fmt::Display for LoadError {
 impl std::error::Error for LoadError {}
 
 /// Why a selector is invalid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SelectorError {
     /// The glob or name pattern is invalid.
     Pattern(GlobError),
+
+    /// The selector starts with a scheme that zenith doesn't know, as in
+    /// `nmp:react`.
+    UnknownScheme {
+        /// The scheme as written, without the `:`.
+        scheme: String,
+
+        /// The schemes that zenith knows, without the `:`.
+        expected: Vec<String>,
+
+        /// The scheme closest to it, if any is close.
+        suggestion: Option<String>,
+    },
 
     /// A path goes up with `..`, out of the project root.
     ParentDir,
@@ -334,6 +407,17 @@ impl fmt::Display for SelectorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Pattern(error) => write!(f, "{error}"),
+            Self::UnknownScheme { scheme, expected, suggestion } => {
+                write!(f, "unknown scheme `{scheme}:`")?;
+                match suggestion {
+                    Some(suggestion) => write!(f, "; did you mean `{suggestion}:`?"),
+                    None => {
+                        let names: Vec<_> =
+                            expected.iter().map(|name| format!("`{name}:`")).collect();
+                        write!(f, ", expected one of {}", names.join(", "))
+                    }
+                }
+            }
             Self::ParentDir => {
                 f.write_str("`..` is not allowed; paths are relative to the project root")
             }
@@ -345,6 +429,15 @@ impl fmt::Display for SelectorError {
 }
 
 impl std::error::Error for SelectorError {}
+
+impl SelectorError {
+    /// The error for a selector that starts with the unknown `scheme`.
+    pub(crate) fn unknown_scheme(scheme: &str) -> Self {
+        let expected: Vec<String> = schemes().map(String::from).collect();
+        let suggestion = suggest(scheme, schemes()).map(String::from);
+        Self::UnknownScheme { scheme: scheme.to_string(), expected, suggestion }
+    }
+}
 
 impl From<GlobError> for SelectorError {
     fn from(error: GlobError) -> Self {

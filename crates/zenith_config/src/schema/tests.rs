@@ -164,13 +164,30 @@ fn the_example_is_valid() {
 }
 
 #[test]
+fn the_schema_accepts_either_name_of_the_js_table() {
+    for name in ["js", "typescript"] {
+        let mut config = example();
+        let table = config["languages"]["js"].take();
+        config["languages"] = json!({ name: table });
+        assert_eq!(schema_errors(&config), Vec::<String>::new(), "{name}");
+        let toml = toml::to_string(&config).expect("the config serialises");
+        assert!(Config::parse(&toml).is_ok(), "{name}");
+    }
+}
+
+#[test]
 fn the_schema_rejects_what_parsing_rejects() {
     /// A change to the example that makes it invalid.
     type Mutation = fn(&mut Value);
 
-    let mutations: [(&str, Mutation); 9] = [
+    let mutations: [(&str, Mutation); 12] = [
         ("an unknown table", |config| config["filez"] = json!({})),
         ("an unknown key in a table", |config| config["files"]["exclud"] = json!([])),
+        ("an unknown language", |config| config["languages"]["go"] = json!({})),
+        ("an unknown key in a language", |config| {
+            config["languages"]["js"]["includ"] = json!([]);
+        }),
+        ("the removed `resolve` table", |config| config["resolve"] = json!({})),
         ("an unknown key in a contract", |config| {
             config["contracts"]["client-safety"]["fromm"] = json!([]);
         }),

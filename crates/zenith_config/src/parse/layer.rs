@@ -81,10 +81,12 @@ impl Parser {
                 None => Ok(layer.at(range)),
             }
         });
-        self.check(layer, Some(range), |error| ConfigErrorKind::InvalidLayer {
+        let layer = self.check(layer, Some(range), |error| ConfigErrorKind::InvalidLayer {
             layer: raw.clone(),
             error,
-        })
+        })?;
+        let on = layer.members.iter().all(|member| self.check_scheme(&member.selector, range));
+        on.then_some(layer)
     }
 }
 

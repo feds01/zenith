@@ -79,15 +79,18 @@ impl<T: JsonSchema> JsonSchema for Located<T> {
 #[schemars(title = "zenith.toml")]
 #[expect(dead_code, reason = "the tables are deserialised on their own")]
 pub(crate) struct ConfigFile {
-    /// Which files to scan for imports.
+    /// Which files to scan for imports, whatever their language.
     #[serde(default)]
     #[schemars(with = "FilesTable")]
     pub(crate) files: IgnoredAny,
 
-    /// How import specifiers are resolved.
+    /// The languages to scan, each in a table of its own. A language is
+    /// enabled when its table is written, even if empty. Without a
+    /// `[languages]` table, `js` is enabled with its defaults; an empty one
+    /// enables nothing, which is an error.
     #[serde(default)]
-    #[schemars(with = "ResolveTable")]
-    pub(crate) resolve: IgnoredAny,
+    #[schemars(with = "LanguagesTable")]
+    pub(crate) languages: IgnoredAny,
 
     /// Defaults that apply to every contract.
     #[serde(default)]
@@ -114,14 +117,10 @@ pub(crate) struct ConfigFile {
     pub(crate) contracts: IgnoredAny,
 }
 
-/// Which files to scan for imports.
+/// Which files to scan for imports, whatever their language.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields, expecting = "a table")]
 pub(crate) struct FilesTable {
-    /// Globs of the files to scan. Defaults to every JavaScript and
-    /// TypeScript file, `**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`.
-    pub(crate) include: Option<Vec<Located<String>>>,
-
     /// Globs of files and directories to skip, on top of the default
     /// excludes, such as `node_modules` and `.next`.
     pub(crate) exclude: Vec<Located<String>>,
@@ -133,14 +132,36 @@ pub(crate) struct FilesTable {
 
 impl Default for FilesTable {
     fn default() -> Self {
-        Self { include: None, exclude: Vec::new(), respect_gitignore: true }
+        Self { exclude: Vec::new(), respect_gitignore: true }
     }
 }
 
-/// How import specifiers are resolved.
+/// The languages to scan, each in a table of its own.
+// Each language's table is deserialised on its own, so that the errors in it
+// keep their location, and so that giving a language twice, under two of its
+// names, can be reported. This struct only describes the tables for the
+// schema.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields, expecting = "a table")]
-pub(crate) struct ResolveTable {
+pub(crate) struct LanguagesTable {
+    /// JavaScript and TypeScript: how their files are found and their
+    /// imports resolved.
+    #[schemars(with = "JsTable")]
+    pub(crate) js: Option<JsTable>,
+
+    /// Another name for `js`. Giving both is an error.
+    #[schemars(with = "JsTable")]
+    pub(crate) typescript: Option<JsTable>,
+}
+
+/// JavaScript and TypeScript.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields, expecting = "a table")]
+pub(crate) struct JsTable {
+    /// Globs of the files to scan. Defaults to every JavaScript and
+    /// TypeScript file, `**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`.
+    pub(crate) include: Option<Vec<Located<String>>>,
+
     /// Which `tsconfig.json` files to use: `"auto"` (the default) uses the
     /// nearest one of each file, `"off"` uses none, and any other value is
     /// the path of the one to use for every file.
@@ -369,7 +390,7 @@ contract_table! {
         from: Vec<Located<SelectorValue>>,
 
         /// The modules that must not be imported. External packages (`npm:`)
-        /// and builtins (`node:`) are allowed.
+        /// and builtins (`node:`, `bun:`) are allowed, with `js` enabled.
         to: Vec<Located<SelectorValue>>,
 
         /// If `true`, only direct imports count, rather than chains of
@@ -501,7 +522,8 @@ fn default_entrypoints() -> Vec<Located<String>> {
 
 /// A selector of modules: a path glob such as `web/src/domains/*`, a
 /// workspace package (`pkg:@acme/*`), an external package (`npm:react`), a
-/// builtin (`node:*` or `bun:*`), or a table that filters one.
+/// builtin (`node:*` or `bun:*`), or a table that filters one. External
+/// packages and builtins belong to the `js` language, which must be enabled.
 #[derive(Debug, JsonSchema)]
 #[serde(untagged)]
 pub(crate) enum SelectorValue {

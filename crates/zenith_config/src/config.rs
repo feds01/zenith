@@ -20,6 +20,7 @@ use zenith_utils::{
 use crate::{
     contracts::{ContractConfig, Reexports, Severity},
     error::{ConfigError, LoadError},
+    language::{LANGUAGES, Language, LanguageId},
     parse,
 };
 
@@ -32,8 +33,8 @@ pub struct Config {
     /// Which files to scan for imports.
     pub files: FilesConfig,
 
-    /// How import specifiers are resolved.
-    pub resolve: ResolveConfig,
+    /// The languages to scan, each with its own options.
+    pub languages: LanguagesConfig,
 
     /// Defaults that apply to every contract.
     pub analysis: AnalysisConfig,
@@ -98,24 +99,9 @@ impl Config {
     }
 }
 
-/// The extensions, without the `.`, of the JavaScript and TypeScript files
-/// that zenith scans when `[files] include` is not set. Declaration files
-/// (`.d.ts`) are `ts` files.
-pub const SOURCE_EXTENSIONS: &[&str] = &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
-
-/// The extensions, without the `.`, that a path selector may leave off a
-/// file's path, so `src/types` matches the file `src/types.ts` as well as the
-/// directory `src/types`.
-pub const OPTIONAL_EXTENSIONS: &[&str] =
-    &["ts", "tsx", "mts", "cts", "d.ts", "js", "jsx", "mjs", "cjs"];
-
-/// Which files to scan for imports.
+/// Which files to scan for imports, whatever their language.
 #[derive(Debug, Clone)]
 pub struct FilesConfig {
-    /// Globs of the files to scan. `None` scans every file with one of the
-    /// [`SOURCE_EXTENSIONS`].
-    pub include: Option<Vec<Glob>>,
-
     /// Globs of files and directories to skip, on top of the default
     /// excludes.
     pub exclude: Vec<Glob>,
@@ -127,14 +113,92 @@ pub struct FilesConfig {
 
 impl Default for FilesConfig {
     fn default() -> Self {
-        Self { include: None, exclude: Vec::new(), respect_gitignore: true }
+        Self { exclude: Vec::new(), respect_gitignore: true }
     }
 }
 
-/// How import specifiers are resolved. `None` options leave the resolver's
+/// The languages to scan. A language is enabled when its table is written;
+/// without a `[languages]` table, JavaScript and TypeScript are.
+#[derive(Debug, Clone)]
+pub struct LanguagesConfig {
+    /// JavaScript and TypeScript, if enabled.
+    pub js: Option<JsConfig>,
+}
+
+impl Default for LanguagesConfig {
+    fn default() -> Self {
+        Self { js: Some(JsConfig::default()) }
+    }
+}
+
+impl LanguagesConfig {
+    /// Whether `language` is enabled.
+    pub fn is_enabled(&self, language: &Language) -> bool {
+        match language.id {
+            LanguageId::Js => self.js.is_some(),
+        }
+    }
+
+    /// The enabled languages, in the order of the registry.
+    pub fn enabled(&self) -> impl Iterator<Item = &'static Language> {
+        LANGUAGES.iter().copied().filter(|language| self.is_enabled(language))
+    }
+
+    /// The extensions, without the `.`, that a path selector may leave off a
+    /// file's path: those of every enabled language.
+    pub fn optional_extensions(&self) -> Vec<&'static str> {
+        union(self.enabled().map(|language| language.optional_extensions))
+    }
+
+    /// Which files to scan: the globs that the enabled languages set as their
+    /// `include`, and the source extensions of those that leave it to the
+    /// default.
+    pub fn scanned(&self) -> Scanned {
+        let mut globs = Vec::new();
+        let mut extensions = Vec::new();
+        for language in self.enabled() {
+            let include = match language.id {
+                LanguageId::Js => self.js.as_ref().and_then(|js| js.include.as_ref()),
+            };
+            match include {
+                Some(include) => globs.extend(include.iter().cloned()),
+                None => extensions.push(language.source_extensions),
+            }
+        }
+        Scanned { globs, extensions: union(extensions) }
+    }
+}
+
+/// Which files the enabled languages scan: those that match one of the
+/// globs, and those with one of the extensions.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Scanned {
+    /// The `include` globs of the languages that set them.
+    pub globs: Vec<Glob>,
+
+    /// The source extensions, without the `.`, of the languages that don't.
+    pub extensions: Vec<&'static str>,
+}
+
+/// The values of `lists`, in order, without repeats.
+fn union<'a>(lists: impl IntoIterator<Item = &'a [&'static str]>) -> Vec<&'static str> {
+    let mut union: Vec<&'static str> = Vec::new();
+    for value in lists.into_iter().flatten() {
+        if !union.contains(value) {
+            union.push(value);
+        }
+    }
+    union
+}
+
+/// The options of JavaScript and TypeScript. `None` options leave the
 /// defaults in place.
 #[derive(Debug, Clone, Default)]
-pub struct ResolveConfig {
+pub struct JsConfig {
+    /// Globs of the files to scan. `None` scans every file with one of the
+    /// [`JS`](crate::JS) source extensions.
+    pub include: Option<Vec<Glob>>,
+
     /// Which `tsconfig.json` files to use.
     pub tsconfig: Tsconfig,
 
@@ -226,9 +290,8 @@ pub struct CacheConfig {
     pub dir: String,
 }
 
-/// The default directory of the cache, where JavaScript tools conventionally
-/// keep theirs.
-pub(crate) const DEFAULT_CACHE_DIR: &str = "node_modules/.cache/zenith";
+/// The default directory of the cache.
+pub(crate) const DEFAULT_CACHE_DIR: &str = ".zenith_cache";
 
 impl Default for CacheConfig {
     fn default() -> Self {
@@ -255,13 +318,6 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-
-    #[test]
-    fn selectors_may_leave_off_every_source_extension() {
-        for extension in SOURCE_EXTENSIONS {
-            assert!(OPTIONAL_EXTENSIONS.contains(extension), "{extension}");
-        }
-    }
 
     #[test]
     fn discovers_the_nearest_config_file() {

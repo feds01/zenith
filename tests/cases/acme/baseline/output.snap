@@ -10,7 +10,7 @@ exit: 0
 --- stdout
 warning: 1 import could not be resolved
   |
-  = help: use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
+  = help: use `--show-unresolved` to list them, or `[languages.js] ignore_unresolved` to silence expected ones
 
 Contracts
   ✓ web-layers              layers         kept · 2 baselined, 1 suppressed

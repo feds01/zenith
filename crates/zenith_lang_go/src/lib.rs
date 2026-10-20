@@ -4,5 +4,3 @@
 pub mod modules;
 pub mod parse;
 pub mod resolve;
-
-mod paths;

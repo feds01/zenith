@@ -5,6 +5,7 @@
 
 use std::{
     cmp::Ordering,
+    iter,
     path::{Component, MAIN_SEPARATOR, MAIN_SEPARATOR_STR, Path, PathBuf, is_separator},
 };
 
@@ -137,6 +138,41 @@ pub fn strip_extension<'p>(path: &'p str, extensions: &[&str]) -> Option<&'p str
         .min_by_key(|stem| stem.len())?;
     let name = stem.rsplit('/').next().unwrap_or(stem);
     (!name.is_empty()).then_some(stem)
+}
+
+/// The relative POSIX directory `dir` and each of its ancestors, nearest
+/// first, ending with the root, `""`.
+pub fn posix_ancestors(dir: &str) -> impl Iterator<Item = &str> {
+    iter::successors(Some(dir), |dir| (!dir.is_empty()).then(|| posix_parent(dir)))
+}
+
+/// Join `path`, a relative path as a user wrote it with either separator,
+/// onto the relative POSIX directory `base`, resolving its `.` and `..`
+/// segments.
+///
+/// `None` if the result is not inside the root: `path` is absolute, starts
+/// with a Windows drive, or climbs out past the root with `..`.
+pub fn join_posix(base: &str, path: &str) -> Option<String> {
+    if path.starts_with(['/', '\\']) || has_windows_drive(path) {
+        return None;
+    }
+    let mut segments: Vec<&str> = base.split('/').filter(|segment| !segment.is_empty()).collect();
+    for segment in path.split(['/', '\\']) {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop()?;
+            }
+            segment => segments.push(segment),
+        }
+    }
+    Some(segments.join("/"))
+}
+
+/// Whether `path` starts with a Windows drive, as in `C:\\work`.
+pub fn has_windows_drive(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
 }
 
 #[cfg(test)]
@@ -295,5 +331,36 @@ mod tests {
             assert_eq!(strip_extension(path, &extensions), stem, "{path}");
         }
         assert_eq!(strip_extension("a/types.ts", &[]), None);
+    }
+
+    #[test]
+    fn posix_directories_list_their_ancestors() {
+        assert_eq!(posix_ancestors("a/b/c").collect::<Vec<_>>(), ["a/b/c", "a/b", "a", ""]);
+        assert_eq!(posix_ancestors("").collect::<Vec<_>>(), [""]);
+    }
+
+    #[test]
+    fn relative_paths_join_onto_a_posix_directory() {
+        assert_eq!(join_posix("", "./a").as_deref(), Some("a"));
+        assert_eq!(join_posix("svc/api", "../shared").as_deref(), Some("svc/shared"));
+        assert_eq!(join_posix("svc/api", "..\\..\\lib/x").as_deref(), Some("lib/x"));
+        assert_eq!(join_posix("svc", "..").as_deref(), Some(""));
+        assert_eq!(join_posix("svc", ".").as_deref(), Some("svc"));
+        assert_eq!(join_posix("a", "b//c/./d/../e").as_deref(), Some("a/b/c/e"));
+    }
+
+    #[test]
+    fn paths_outside_the_root_do_not_join() {
+        assert_eq!(join_posix("", ".."), None);
+        assert_eq!(join_posix("svc", "../.."), None);
+        assert_eq!(join_posix("svc", "/etc"), None);
+        assert_eq!(join_posix("svc", "C:\\x"), None);
+        assert_eq!(join_posix("svc", "\\\\srv\\x"), None);
+    }
+
+    #[test]
+    fn windows_drives_are_recognised() {
+        assert!(has_windows_drive("C:\\work") && has_windows_drive("c:/work"));
+        assert!(!has_windows_drive("c") && !has_windows_drive("./c:") && !has_windows_drive(""));
     }
 }

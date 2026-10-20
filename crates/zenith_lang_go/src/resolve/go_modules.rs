@@ -3,11 +3,10 @@
 
 use std::{borrow::Cow, collections::HashMap};
 
+use zenith_utils::path::{join_posix, posix_ancestors};
+
 use super::{GoResolved, heuristic::guess_module};
-use crate::{
-    modules::{GoMod, GoWork, Replace, ReplaceTarget},
-    paths::{ancestors, is_local_path, join_clean},
-};
+use crate::modules::{GoMod, GoWork, Replace, ReplaceTarget};
 
 /// A module of the project: a directory with a `go.mod`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,7 +126,8 @@ impl GoModules {
         let entries = modules
             .into_iter()
             .map(|module| {
-                let workspace = ancestors(&module.dir).find_map(|dir| workspace_dirs.get(dir));
+                let workspace =
+                    posix_ancestors(&module.dir).find_map(|dir| workspace_dirs.get(dir));
                 let mut visible = module_visible(&module);
                 if let Some(workspace) = workspace {
                     visible.extend(workspace_visible[*workspace].iter().cloned());
@@ -166,7 +166,7 @@ impl GoModules {
     /// or `dir` itself. `None` if `dir` is in no module.
     pub fn module_of(&self, dir: &str) -> Option<&GoModule> {
         let dir = clean_dir(dir)?;
-        ancestors(&dir)
+        posix_ancestors(&dir)
             .find_map(|dir| self.module_dirs.get(dir))
             .map(|index| &self.modules[*index].module)
     }
@@ -226,10 +226,10 @@ impl GoModules {
     /// of the workspace it is in.
     fn scope_of(&self, dir: &str) -> Option<&Scope> {
         let dir = clean_dir(dir)?;
-        if let Some(index) = ancestors(&dir).find_map(|dir| self.module_dirs.get(dir)) {
+        if let Some(index) = posix_ancestors(&dir).find_map(|dir| self.module_dirs.get(dir)) {
             return Some(&self.modules[*index].scope);
         }
-        let index = ancestors(&dir).find_map(|dir| self.workspace_dirs.get(dir))?;
+        let index = posix_ancestors(&dir).find_map(|dir| self.workspace_dirs.get(dir))?;
         Some(&self.workspaces[*index].1)
     }
 }
@@ -241,7 +241,7 @@ fn clean_dir(dir: &str) -> Option<Cow<'_, str>> {
         || dir
             .split('/')
             .all(|segment| !matches!(segment, "" | "." | "..") && !segment.contains('\\'));
-    if clean { Some(Cow::Borrowed(dir)) } else { join_clean("", dir).map(Cow::Owned) }
+    if clean { Some(Cow::Borrowed(dir)) } else { join_posix("", dir).map(Cow::Owned) }
 }
 
 /// Whether `path` is `prefix`, or is under it, on a `/` boundary.
@@ -293,7 +293,7 @@ fn sorted_visible(mut visible: Vec<Visible>) -> Vec<Visible> {
 /// at, if it is a path inside the project.
 fn local_target(replace: &Replace, base: &str) -> Option<String> {
     match &replace.new {
-        ReplaceTarget::Path(path) if is_local_path(path) => join_clean(base, path),
+        ReplaceTarget::Path(path) => join_posix(base, path),
         _ => None,
     }
 }
@@ -328,7 +328,7 @@ fn workspace_visible(
 ) -> Vec<Visible> {
     let mut visible = Vec::new();
     for used in &workspace.work.uses {
-        let Some(dir) = join_clean(&workspace.dir, used) else { continue };
+        let Some(dir) = join_posix(&workspace.dir, used) else { continue };
         let Some(path) =
             module_dirs.get(&dir).and_then(|index| modules[*index].go_mod.module.clone())
         else {

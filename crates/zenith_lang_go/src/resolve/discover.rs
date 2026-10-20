@@ -180,7 +180,10 @@ mod tests {
     #[test]
     fn a_malformed_file_is_reported_and_kept_for_what_it_holds() {
         let files = HashMap::from([
-            ("a/go.mod", "module example.com/a\nrequire broken\nrequire ok v1\n"),
+            (
+                "a/go.mod",
+                "module example.com/a\nrequire (\n\tbroken\n\tfine v1\n)\nrequire ok v1\n",
+            ),
             ("go.work", "use\nuse ./a\n"),
         ]);
         let found = GoModules::discover(["a/go.mod", "go.work"], reader(&files));
@@ -192,11 +195,8 @@ mod tests {
                 DiscoverErrorKind::Read(_) => unreachable!(),
             })
             .collect();
-        assert_eq!(reported, [("a/go.mod", 2), ("go.work", 1)]);
-        assert_eq!(
-            found.errors[0].to_string(),
-            "a/go.mod: line 2: `require` takes 2 operands, found 1"
-        );
+        assert_eq!(reported, [("a/go.mod", 3), ("go.work", 1)]);
+        assert_eq!(found.errors[0].to_string(), "a/go.mod: line 3: invalid syntax");
         assert_eq!(found.modules.modules().next().unwrap().go_mod.requires.len(), 1);
         assert_eq!(
             found.modules.resolve("", "example.com/a/x"),

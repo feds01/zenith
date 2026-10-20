@@ -62,6 +62,7 @@ tempfile = { version = "3.27.0" }
 thin-vec = { version = "0.2.21" }
 tree-sitter = { version = "0.27.1" }
 tree-sitter-go = { version = "0.25.0" }
+tree-sitter-gomod-orchard = { version = "0.5.3" }
 toml = { version = "1.1.7", features = ["preserve_order"] }
 xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
 yaml-rust2 = { version = "0.13.0", default-features = false }

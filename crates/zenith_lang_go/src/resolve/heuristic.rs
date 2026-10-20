@@ -3,19 +3,30 @@
 
 /// The module that `import_path` most likely belongs to.
 ///
-/// Hosts that serve one module per repository give it away: `github.com`,
-/// `gitlab.com` and `bitbucket.org` paths start with the host, an owner and a
-/// repository, `golang.org/x/<name>` with the host, `x` and a name, and
-/// `gopkg.in` paths with `name.vN` or `owner/name.vN`. A major version
-/// element, `/v2` and up, that follows the repository belongs to the module
-/// as well. For any other host the whole path is the guess.
+/// `go` itself finds the module of a path by asking the network, so this
+/// follows the rules it knows without asking:
+///
+/// - `go help importpath`, under "Remote import paths", lists the code hosts
+///   whose paths `go` splits by a fixed pattern, without a lookup (the
+///   `vcsPaths` table of `cmd/go/internal/vcs`). `github.com/owner/repo` and
+///   `bitbucket.org/owner/repo` are the ones still in use, so their module is
+///   the first three elements.
+/// - `gitlab.com` and `golang.org/x` are found through the `?go-get=1` lookup
+///   instead, but their repositories follow the same convention:
+///   `gitlab.com/owner/repo`, and `golang.org/x/<name>`.
+/// - gopkg.in documents its paths as `gopkg.in/pkg.vN` and
+///   `gopkg.in/owner/pkg.vN`, at <https://labix.org/gopkg.in>.
+/// - The Go Modules Reference, under "Major version suffixes", puts a `/vN`
+///   element, `v2` and up, right after the repository in the module path.
+///
+/// For any other host the whole path is the guess.
 pub(crate) fn guess_module(import_path: &str) -> &str {
     let mut elements = import_path.split('/');
     let (Some(host), second) = (elements.next(), elements.next()) else {
         return import_path;
     };
     let count = match host {
-        "github.com" | "gitlab.com" | "bitbucket.org" => 3,
+        "github.com" | "bitbucket.org" | "gitlab.com" => 3,
         "gopkg.in" if second.is_some_and(is_gopkg_version) => 2,
         "gopkg.in" => 3,
         "golang.org" if second == Some("x") => 3,

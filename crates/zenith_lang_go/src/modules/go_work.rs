@@ -1,85 +1,197 @@
-//! The parser for `go.work` files.
+//! Reading `go.work` files: the `use` and `replace` directives, which are all
+//! that zenith needs from them.
+//!
+//! A `go.work` file has the line-based syntax of `go.mod`, but there is no
+//! published tree-sitter grammar for it, and the `go.mod` one can't read
+//! `use`. So this reads the lines itself: a directive is a verb and its
+//! operands on one line, or a verb and `(`, then one statement per line up to
+//! a `)` line. Operands are words or quoted strings, and `//` starts a
+//! comment.
 
-use super::{
-    GoDebug, ModError, Parsed, Replace,
-    lexer::{Directive, directives},
-    shared::{godebug, operands, replace, set_once},
-};
+use zenith_utils::location::ByteRange;
 
-/// What a `go.work` file declares.
+use super::{ModError, Parsed, Replace, ReplaceTarget, is_local_path, unquote};
+
+/// What a `go.work` file says about its workspace.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GoWork {
-    /// The language version from the `go` directive, such as `1.22`.
-    pub go: Option<String>,
-
-    /// The toolchain from the `toolchain` directive, such as `go1.22.3`.
-    pub toolchain: Option<String>,
-
-    /// The directories of the workspace's modules, from the `use` directives,
-    /// as written: relative to the directory of the `go.work` file.
+    /// The directories of the modules that the workspace uses, as written,
+    /// relative to the file's directory, such as `./api`.
     pub uses: Vec<String>,
 
-    /// The `replace` directives, in source order. They apply to every module
-    /// of the workspace.
+    /// The `replace`s, in source order. They apply to every module of the
+    /// workspace.
     pub replaces: Vec<Replace>,
-
-    /// The `godebug` settings, in source order.
-    pub godebug: Vec<GoDebug>,
 }
 
 impl GoWork {
-    /// Read the text of a `go.work` file.
-    ///
-    /// Never fails: a malformed directive is reported in [`Parsed::errors`]
-    /// and left out of the result, and an unknown directive is ignored.
+    /// Read the `go.work` file `source`.
     pub fn parse(source: &str) -> Parsed<GoWork> {
-        // 1. Split the source into statements.
-        let (statements, mut errors) = directives(source);
+        let mut reader = Reader::default();
+        let mut block: Option<(String, Line)> = None;
+        let mut offset = 0;
+        for (index, text) in source.split_inclusive('\n').enumerate() {
+            let line = Line { number: index + 1, start: offset, text };
+            offset += text.len();
+            let Some(words) = reader.words(&line) else { continue };
 
-        // 2. Read each one by its verb.
-        let mut work = GoWork::default();
-        for statement in &statements {
-            work.read(statement, &mut errors);
+            // 1. Inside a block, each line is a statement of its verb, up to `)`.
+            if let Some((verb, _)) = &block {
+                if words == [")"] {
+                    block = None;
+                } else {
+                    let verb = verb.clone();
+                    reader.statement(&verb, &words, &line);
+                }
+                continue;
+            }
+
+            // 2. Otherwise a line is a statement, or the start of a block.
+            match words.as_slice() {
+                [] => {}
+                [verb, open] if open == "(" => block = Some((verb.clone(), line)),
+                [verb, operands @ ..] => reader.statement(verb, operands, &line),
+            }
         }
+        if let Some((verb, line)) = block {
+            reader.error(&line, &format!("the `{verb}` block is never closed"));
+        }
+        Parsed { value: reader.value, errors: reader.errors }
+    }
+}
 
-        // 3. Report the errors in source order, which the two steps interleave.
-        errors.sort_by_key(|error| (error.line, error.range));
-        Parsed { value: work, errors }
+/// One line of the source.
+struct Line<'a> {
+    /// Its number, counting from 1.
+    number: usize,
+
+    /// The offset of its first byte in the source.
+    start: usize,
+
+    /// Its text, with its line ending.
+    text: &'a str,
+}
+
+/// What has been read of one file so far.
+#[derive(Default)]
+struct Reader {
+    /// What has been found so far.
+    value: GoWork,
+
+    /// The malformed lines found so far.
+    errors: Vec<ModError>,
+}
+
+impl Reader {
+    /// The words of `line` up to its comment, with `(`, `)` and `=>` as words
+    /// of their own, and quoted strings unquoted. `None` if a string is never
+    /// closed, or has an escape in it, which has been reported.
+    fn words(&mut self, line: &Line) -> Option<Vec<String>> {
+        let text = line.text.trim_end_matches(['\n', '\r']).trim_start_matches('\u{feff}');
+        let mut words = Vec::new();
+        let mut rest = text.trim_start();
+        while !rest.is_empty() && !rest.starts_with("//") {
+            let length = match rest.as_bytes()[0] {
+                quote @ (b'"' | b'`') => match rest[1..].find(quote as char) {
+                    Some(end) => end + 2,
+                    None => {
+                        self.error(line, "string literal not terminated");
+                        return None;
+                    }
+                },
+                b'(' | b')' => 1,
+                _ if rest.starts_with("=>") => 2,
+                _ => rest
+                    .find(|c: char| c.is_whitespace() || c == '(' || c == ')')
+                    .map_or(rest.len(), |end| rest[..end].find("=>").unwrap_or(end)),
+            };
+            let Some(word) = unquote(&rest[..length]) else {
+                self.error(line, "escapes in module paths are not supported");
+                return None;
+            };
+            words.push(word.to_owned());
+            rest = rest[length..].trim_start();
+        }
+        Some(words)
     }
 
-    /// Fold one statement in.
-    fn read(&mut self, statement: &Directive, errors: &mut Vec<ModError>) {
-        match statement.verb.text.as_str() {
-            "go" => set_once(&mut self.go, statement, errors),
-            "toolchain" => set_once(&mut self.toolchain, statement, errors),
-            "use" => {
-                if let Some([dir]) = operands::<1>(statement, errors) {
-                    self.uses.push(dir.to_owned());
+    /// Read the statement of `verb` with `operands`. A verb other than `use`
+    /// and `replace` is skipped.
+    fn statement(&mut self, verb: &str, operands: &[String], line: &Line) {
+        match (verb, operands) {
+            ("use", [dir]) if !is_punctuation(dir) => self.value.uses.push(dir.clone()),
+            ("use", _) => self.error(line, "`use` takes one directory path"),
+            ("replace", operands) => {
+                if let Some(replace) = self.replace(operands, line) {
+                    self.value.replaces.push(replace);
                 }
             }
-            "replace" => self.replaces.extend(replace(statement, errors)),
-            "godebug" => self.godebug.extend(godebug(statement, errors)),
-            // A directive that this version does not know about.
             _ => {}
         }
     }
+
+    /// Read the operands of a `replace`: a module path and optionally a
+    /// version, `=>`, then either a directory, or a module path and a
+    /// version.
+    fn replace(&mut self, operands: &[String], line: &Line) -> Option<Replace> {
+        let Some(arrow) = operands.iter().position(|word| word == "=>") else {
+            self.error(line, "`replace` needs a `=>`");
+            return None;
+        };
+        let (old, new) = (&operands[..arrow], &operands[arrow + 1..]);
+        if old.iter().chain(new).any(|word| is_punctuation(word)) {
+            self.error(line, "unexpected punctuation in `replace`");
+            return None;
+        }
+        let (old, old_version) = match old {
+            [path] => (path.clone(), None),
+            [path, version] => (path.clone(), Some(version.clone())),
+            _ => {
+                self.error(line, "`replace` needs a module path, and optionally a version");
+                return None;
+            }
+        };
+        let new = match new {
+            [path] if is_local_path(path) => ReplaceTarget::Path(path.clone()),
+            [path, version] if !is_local_path(path) => {
+                ReplaceTarget::Module { path: path.clone(), version: version.clone() }
+            }
+            _ => {
+                let message = "`replace` needs a directory, or a module path and a version";
+                self.error(line, message);
+                return None;
+            }
+        };
+        Some(Replace { old, old_version, new })
+    }
+
+    /// Report that `line` is malformed in the way `message` says.
+    fn error(&mut self, line: &Line, message: &str) {
+        let end = line.start + line.text.trim_end_matches(['\n', '\r']).len();
+        self.errors.push(ModError {
+            line: line.number,
+            range: ByteRange::new(line.start as u32, end as u32),
+            message: message.to_owned(),
+        });
+    }
+}
+
+/// Whether `word` is one of the punctuation words, which no operand is.
+fn is_punctuation(word: &str) -> bool {
+    matches!(word, "(" | ")" | "=>")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::ReplaceTarget;
 
     const FULL: &str = include_str!("fixtures/full.go.work");
 
     #[test]
-    fn a_full_file_is_read_directive_by_directive() {
+    fn a_full_file_is_read() {
         let Parsed { value, errors } = GoWork::parse(FULL);
         assert_eq!(errors, []);
-        assert_eq!(value.go.as_deref(), Some("1.23.0"));
-        assert_eq!(value.toolchain.as_deref(), Some("go1.23.4"));
         assert_eq!(value.uses, ["./api", "./libs/shared", "./tools/gen"]);
-        assert_eq!(value.godebug, [GoDebug { key: "default".into(), value: "go1.22".into() }]);
         assert_eq!(value.replaces.len(), 2);
         assert_eq!(value.replaces[0].new, ReplaceTarget::Path("./third_party/sync".into()));
         assert_eq!(value.replaces[1].old_version.as_deref(), Some("v1.0.0"));
@@ -97,21 +209,31 @@ mod tests {
     }
 
     #[test]
-    fn module_directives_are_not_workspace_directives() {
-        let parsed = GoWork::parse("module m\nrequire a v1\nuse ./a\n");
+    fn other_directives_are_skipped() {
+        let parsed = GoWork::parse("go 1.22\nmodule m\nrequire a v1\nfuture (\n\tx\n)\nuse ./a\n");
         assert_eq!(parsed.errors, []);
         assert_eq!(parsed.value.uses, ["./a"]);
     }
 
     #[test]
+    fn words_split_at_punctuation_and_comments() {
+        let parsed = GoWork::parse("replace a=>./b // why\nuse \"./c d\" // quoted\r\n");
+        assert_eq!(parsed.errors, []);
+        assert_eq!(parsed.value.uses, ["./c d"]);
+        assert_eq!(parsed.value.replaces[0].new, ReplaceTarget::Path("./b".into()));
+    }
+
+    #[test]
     fn malformed_lines_are_located_errors() {
-        let source = "use\nuse a b\nreplace a\ngodebug x\ngo 1.22\nuse (\n\t./ok\n";
+        let source = "use\nuse a b\nreplace a\nreplace a => b\nuse \"open\nuse (\n\t./ok\n";
         let Parsed { value, errors } = GoWork::parse(source);
-        assert_eq!(value.go.as_deref(), Some("1.22"));
         assert_eq!(value.uses, ["./ok"]);
         let lines: Vec<_> = errors.iter().map(|error| error.line).collect();
-        // The last error is the block that is never closed, on the last line.
-        assert_eq!(lines, [1, 2, 3, 4, 8]);
+        // The last error is the block that is never closed, at the line that opens it.
+        assert_eq!(lines, [1, 2, 3, 4, 5, 6]);
+        let error = &errors[1];
+        let (start, end) = (error.range.start() as usize, error.range.end() as usize);
+        assert_eq!(&source[start..end], "use a b");
     }
 
     #[test]
@@ -119,7 +241,7 @@ mod tests {
         for end in (0..FULL.len()).filter(|end| FULL.is_char_boundary(*end)) {
             let _ = GoWork::parse(&FULL[..end]);
         }
-        for source in ["use (", "use )", "use \"", "replace (\n=>", "\u{1F600}"] {
+        for source in ["use (", "use )", "use \"", "replace (\n=>", "\u{1F600}", "=", "=>=>"] {
             let _ = GoWork::parse(source);
         }
     }

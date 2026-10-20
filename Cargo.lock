@@ -2068,6 +2068,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "zenith_lang"
+version = "0.2.0"
+
+[[package]]
+name = "zenith_lang_go"
+version = "0.2.0"
+
+[[package]]
+name = "zenith_lang_js"
+version = "0.2.0"
+
+[[package]]
 name = "zenith_parse"
 version = "0.2.0"
 dependencies = [

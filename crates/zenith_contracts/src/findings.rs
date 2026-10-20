@@ -108,8 +108,11 @@ impl Chain {
         let packages = graph.has_packages();
         let imports =
             path.windows(2).filter(|pair| !packages || !graph.is_package_member(pair[0], pair[1]));
-        let links = imports.map(|pair| Link::new(view, statements, pair[0], pair[1]));
-        Self { links: links.collect(), extra_heads: Vec::new(), extra_tails: Vec::new() }
+        // The filter hides how many links there are, which `collect` would then
+        // guess, and over-allocate for the short chains that most are.
+        let mut links = Vec::with_capacity(path.len().saturating_sub(1));
+        links.extend(imports.map(|pair| Link::new(view, statements, pair[0], pair[1])));
+        Self { links, extra_heads: Vec::new(), extra_tails: Vec::new() }
     }
 
     /// The chain of a route between two layers: through its first head, its
@@ -130,9 +133,11 @@ impl Chain {
         let packages = graph.has_packages();
         let imported =
             tails[1..].iter().filter(|tail| !packages || !graph.is_package_member(*last, **tail));
+        let mut extra_tails = Vec::with_capacity(tails.len() - 1);
+        extra_tails.extend(imported.map(|tail| link(*last, *tail)));
         Self {
             extra_heads: heads[1..].iter().map(|head| link(*head, *first)).collect(),
-            extra_tails: imported.map(|tail| link(*last, *tail)).collect(),
+            extra_tails,
             ..Self::from_path(view, statements, &path)
         }
     }

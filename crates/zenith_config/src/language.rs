@@ -1,26 +1,24 @@
-//! The languages that zenith reads, and what each one owns in the
-//! configuration.
+//! What the configuration needs from each language that zenith reads.
 //!
 //! Each language has a table of its own in `[languages]`, and is enabled by
-//! writing it. The registry says, for each language, the names that its table
-//! goes by, which files it scans by default, which extensions a path selector
-//! may leave off its files, and which selector schemes, such as `npm:`, only
-//! make sense with it. Everything that varies between languages is here, so
-//! that the rest of the configuration doesn't need to know them.
+//! writing it. A [`Language`] says the names that its table goes by, which
+//! files it scans by default, which extensions a path selector may leave off
+//! its files, which selector schemes, such as `npm:`, only make sense with
+//! it, and how to parse and describe its table. The languages themselves are
+//! defined in their own crates, and given to [`Config::parse`] as
+//! [`Languages`], so this crate knows none of them.
+//!
+//! [`Config::parse`]: crate::Config::parse
 
-/// Which language, for code that treats each differently.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LanguageId {
-    /// JavaScript and TypeScript.
-    Js,
-}
+use std::{any::Any, fmt, sync::Arc};
+
+use schemars::{Schema, SchemaGenerator};
+use zenith_utils::glob::Glob;
+
+use crate::parse::LanguageTable;
 
 /// A language that zenith reads.
-#[derive(Debug, PartialEq, Eq)]
 pub struct Language {
-    /// Which language it is.
-    pub id: LanguageId,
-
     /// The name used in the docs and in errors, which is also the first of
     /// its [`table_names`](Self::table_names).
     pub name: &'static str,
@@ -28,6 +26,14 @@ pub struct Language {
     /// The names that its table in `[languages]` goes by. Giving its table
     /// under more than one of them is an error.
     pub table_names: &'static [&'static str],
+
+    /// What the language is, for the description of its table in the
+    /// schema.
+    pub description: &'static str,
+
+    /// Whether it is enabled when the configuration has no `[languages]`
+    /// table.
+    pub enabled_by_default: bool,
 
     /// The globs of the files that it scans when its `include` is not set.
     pub include: &'static [&'static str],
@@ -46,105 +52,81 @@ pub struct Language {
     /// projects have, so selectors that use them need the language to be
     /// enabled.
     pub schemes: &'static [&'static str],
+
+    /// Parse its table into its options. An invalid table has the defaults,
+    /// so that the language is still enabled.
+    pub parse: fn(&mut LanguageTable<'_, '_>) -> Arc<dyn LanguageOptions>,
+
+    /// Its options when it is enabled without a table.
+    pub defaults: fn() -> Arc<dyn LanguageOptions>,
+
+    /// The JSON Schema of its table.
+    pub schema: fn(&mut SchemaGenerator) -> Schema,
 }
 
-/// JavaScript and TypeScript.
-pub const JS: Language = Language {
-    id: LanguageId::Js,
-    name: "js",
-    table_names: &["js", "typescript"],
-    include: &["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"],
-    // Declaration files (`.d.ts`) are `ts` files.
-    source_extensions: &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"],
-    optional_extensions: &["ts", "tsx", "mts", "cts", "d.ts", "js", "jsx", "mjs", "cjs"],
-    schemes: &["npm", "node", "bun"],
-};
+/// Languages are told apart by name, which is unique.
+impl PartialEq for Language {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
 
-/// Every language, in the order that the docs list them.
-pub const LANGUAGES: &[&Language] = &[&JS];
+impl Eq for Language {}
+
+impl fmt::Debug for Language {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Language").field(&self.name).finish()
+    }
+}
+
+/// The options of a language, parsed from its table.
+pub trait LanguageOptions: Any + fmt::Debug + Send + Sync {
+    /// Globs of the files to scan, or `None` for every file with one of the
+    /// language's [source extensions](Language::source_extensions).
+    fn include(&self) -> Option<&[Glob]>;
+}
+
+/// The languages that a configuration may enable, in the order that the
+/// docs list them.
+#[derive(Debug, Clone, Copy)]
+pub struct Languages(&'static [&'static Language]);
 
 /// The selector schemes that don't belong to a language: `pkg:` selects
 /// workspace packages, which any language's projects may have.
 pub const NEUTRAL_SCHEMES: &[&str] = &["pkg"];
 
-impl Language {
+impl Languages {
+    /// The languages in `languages`.
+    pub const fn new(languages: &'static [&'static Language]) -> Self {
+        Self(languages)
+    }
+
+    /// Each language.
+    pub fn iter(self) -> impl Iterator<Item = &'static Language> {
+        self.0.iter().copied()
+    }
+
     /// The language whose table in `[languages]` goes by `name`.
-    pub fn by_table_name(name: &str) -> Option<&'static Language> {
-        LANGUAGES.iter().copied().find(|language| language.table_names.contains(&name))
+    pub fn by_table_name(self, name: &str) -> Option<&'static Language> {
+        self.iter().find(|language| language.table_names.contains(&name))
     }
 
     /// The language that owns the selector scheme `scheme`, without the `:`.
     /// `None` for a scheme that no language owns, whether it is unknown or
     /// [neutral](NEUTRAL_SCHEMES).
-    pub fn by_scheme(scheme: &str) -> Option<&'static Language> {
-        LANGUAGES.iter().copied().find(|language| language.schemes.contains(&scheme))
-    }
-}
-
-/// Every selector scheme, without the `:`: the neutral ones, then each
-/// language's.
-pub fn schemes() -> impl Iterator<Item = &'static str> {
-    let owned = LANGUAGES.iter().flat_map(|language| language.schemes.iter());
-    NEUTRAL_SCHEMES.iter().chain(owned).copied()
-}
-
-#[cfg(test)]
-mod tests {
-    use zenith_utils::glob::Glob;
-
-    use super::*;
-
-    #[test]
-    fn every_language_is_named_by_its_first_table_name() {
-        for language in LANGUAGES {
-            assert_eq!(language.table_names.first(), Some(&language.name));
-            for name in language.table_names {
-                assert_eq!(Language::by_table_name(name), Some(*language), "{name}");
-            }
-        }
-        assert_eq!(Language::by_table_name("go"), None);
+    pub fn by_scheme(self, scheme: &str) -> Option<&'static Language> {
+        self.iter().find(|language| language.schemes.contains(&scheme))
     }
 
-    #[test]
-    fn table_names_belong_to_one_language() {
-        let mut names: Vec<_> =
-            LANGUAGES.iter().flat_map(|language| language.table_names).collect();
-        let count = names.len();
-        names.sort();
-        names.dedup();
-        assert_eq!(names.len(), count);
+    /// Every name that a language's table goes by.
+    pub fn table_names(self) -> impl Iterator<Item = &'static str> {
+        self.iter().flat_map(|language| language.table_names.iter().copied())
     }
 
-    #[test]
-    fn schemes_belong_to_one_owner() {
-        let mut all: Vec<_> = schemes().collect();
-        let count = all.len();
-        all.sort();
-        all.dedup();
-        assert_eq!(all.len(), count);
-        assert_eq!(Language::by_scheme("npm"), Some(&JS));
-        assert_eq!(Language::by_scheme("pkg"), None);
-    }
-
-    #[test]
-    fn the_source_extensions_are_what_the_default_include_matches() {
-        for language in LANGUAGES {
-            let globs: Vec<_> =
-                language.include.iter().map(|glob| Glob::new(glob).unwrap()).collect();
-            for extension in language.source_extensions {
-                let path = format!("src/a.{extension}");
-                assert!(globs.iter().any(|glob| glob.is_match(&path)), "{path}");
-            }
-            assert!(!globs.iter().any(|glob| glob.is_match("src/a.txt")));
-        }
-    }
-
-    #[test]
-    fn selectors_may_leave_off_every_source_extension() {
-        for language in LANGUAGES {
-            for extension in language.source_extensions {
-                assert!(language.optional_extensions.contains(extension), "{extension}");
-            }
-        }
+    /// Every selector scheme, without the `:`: the neutral ones, then each
+    /// language's.
+    pub fn schemes(self) -> impl Iterator<Item = &'static str> {
+        let owned = self.iter().flat_map(|language| language.schemes.iter().copied());
+        NEUTRAL_SCHEMES.iter().copied().chain(owned)
     }
 }

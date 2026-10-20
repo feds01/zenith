@@ -8,7 +8,7 @@
     },
     "languages": {
       "$ref": "#/$defs/LanguagesTable",
-      "description": "The languages to scan, each in a table of its own. A language is\nenabled when its table is written, even if empty. Without a\n`[languages]` table, `js` is enabled with its defaults; an empty one\nenables nothing, which is an error."
+      "description": "The languages to scan, each in a table of its own. A language is\nenabled when its table is written, even if empty. Without a\n`[languages]` table, the default languages are enabled with their\ndefaults; an empty one enables nothing, which is an error."
     },
     "analysis": {
       "$ref": "#/$defs/AnalysisTable",
@@ -34,41 +34,6 @@
   "description": "The configuration of a zenith project. It lives at the project root, which\nall of its paths are relative to.",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
-    "FilesTable": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "exclude": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Globs of files and directories to skip, on top of the default\nexcludes, such as `node_modules` and `.next`.",
-          "default": []
-        },
-        "respect_gitignore": {
-          "type": "boolean",
-          "description": "Whether to skip the files that `.gitignore`, `.ignore` and the global\ngit excludes ignore.",
-          "default": true
-        }
-      },
-      "description": "Which files to scan for imports, whatever their language."
-    },
-    "LanguagesTable": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "js": {
-          "$ref": "#/$defs/JsTable",
-          "description": "JavaScript and TypeScript: how their files are found and their\nimports resolved."
-        },
-        "typescript": {
-          "$ref": "#/$defs/JsTable",
-          "description": "Another name for `js`. Giving both is an error."
-        }
-      },
-      "description": "The languages to scan, each in a table of its own."
-    },
     "JsTable": {
       "type": "object",
       "additionalProperties": false,
@@ -123,6 +88,41 @@
         }
       },
       "description": "JavaScript and TypeScript."
+    },
+    "FilesTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Globs of files and directories to skip, on top of the default\nexcludes, such as `node_modules` and `.next`.",
+          "default": []
+        },
+        "respect_gitignore": {
+          "type": "boolean",
+          "description": "Whether to skip the files that `.gitignore`, `.ignore` and the global\ngit excludes ignore.",
+          "default": true
+        }
+      },
+      "description": "Which files to scan for imports, whatever their language."
+    },
+    "LanguagesTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The languages to scan, each in a table of its own.",
+      "properties": {
+        "js": {
+          "$ref": "#/$defs/JsTable",
+          "description": "JavaScript and TypeScript: how their files are found and their imports resolved."
+        },
+        "typescript": {
+          "$ref": "#/$defs/JsTable",
+          "description": "Another name for `js`. Giving both is an error."
+        }
+      }
     },
     "AnalysisTable": {
       "type": "object",

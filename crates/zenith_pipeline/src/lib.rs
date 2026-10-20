@@ -1,5 +1,5 @@
 //! The zenith pipeline: the stages that turn a project into its import graph,
-//! and the session they share.
+//! the session they share, and the [`LANGUAGES`] they read.
 //!
 //! A [`Session`] holds one project: its root and configuration, and what each
 //! stage has found in it so far. A [`Pipeline`] runs its registered
@@ -24,6 +24,7 @@
 //! [`Session::cache`] to use one.
 
 mod error;
+mod languages;
 mod pipeline;
 mod schema;
 mod scope;
@@ -33,6 +34,7 @@ mod stages;
 mod tests;
 
 pub use error::{FileError, FileErrorKind, PipelineError, UnresolvedImport};
+pub use languages::LANGUAGES;
 pub use pipeline::{Pipeline, Stage, StageKind};
 pub use schema::{FileProblemJson, UnresolvedJson};
 pub use scope::Scope;

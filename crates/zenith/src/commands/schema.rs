@@ -3,6 +3,7 @@
 use std::io::{self, Write};
 
 use anyhow::Result;
+use zenith_pipeline::LANGUAGES;
 
 use crate::ExitStatus;
 
@@ -15,7 +16,7 @@ pub fn schema() -> Result<ExitStatus> {
 /// The JSON Schema of `zenith.toml`, pretty-printed, as committed in
 /// `zenith.schema.json`.
 fn render() -> serde_json::Result<String> {
-    Ok(serde_json::to_string_pretty(&zenith_config::json_schema())? + "\n")
+    Ok(serde_json::to_string_pretty(&zenith_config::json_schema(LANGUAGES))? + "\n")
 }
 
 #[cfg(test)]

@@ -1,7 +1,0 @@
-[languages.js]
-
-[contracts.no-sharp]
-type = "forbidden"
-from = ["web/src"]
-to = ["npm:sharp", { path = "node:*", except = ["node:fs"] }, "bun:sqlite", "pkg:@acme/server"]
-ignore_imports = ["web/src -> npm:sharp"]

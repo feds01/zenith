@@ -8,7 +8,7 @@ use log::{debug, info, log_enabled, warn};
 use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
 use zenith_contracts::Contract;
 use zenith_diagnostics::SourceMap;
-use zenith_pipeline::{FileError, FileErrorKind, Pipeline, Session, StageKind};
+use zenith_pipeline::{FileError, FileErrorKind, LANGUAGES, Pipeline, Session, StageKind};
 use zenith_utils::{path::adjust_canonicalisation, printing::plural};
 
 use crate::{Reported, cli::GlobalArgs, reporting, version::version};
@@ -57,7 +57,7 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
         }
         None => {
             debug!("no `{CONFIG_FILE_NAME}` found; using the defaults");
-            Config::default()
+            Config::defaults(LANGUAGES)
         }
     };
 
@@ -142,7 +142,7 @@ pub(crate) fn compile_contracts<'s>(
 /// Load the configuration file at `path`. An invalid file is reported, with
 /// its path relative to the project `root` if it is inside it.
 fn load(path: &Path, root: &Path) -> Result<Config> {
-    match Config::load(path) {
+    match Config::load(path, LANGUAGES) {
         Ok(config) => Ok(config),
         Err(LoadError::Invalid { path, contents, errors }) => {
             let mut sources = SourceMap::with_root(root);

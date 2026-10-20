@@ -2081,6 +2081,7 @@ dependencies = [
  "zenith_diagnostics",
  "zenith_graph",
  "zenith_lang",
+ "zenith_lang_js",
  "zenith_pipeline",
  "zenith_reporting",
  "zenith_utils",
@@ -2140,6 +2141,7 @@ name = "zenith_lang_js"
 version = "0.2.0"
 dependencies = [
  "compact_str",
+ "indexmap",
  "log",
  "oxc_allocator",
  "oxc_ast",
@@ -2149,6 +2151,8 @@ dependencies = [
  "oxc_resolver",
  "oxc_span",
  "rustc-hash",
+ "schemars",
+ "serde",
  "serde_json",
  "tempfile",
  "thin-vec",

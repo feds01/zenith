@@ -16,7 +16,7 @@ use zenith_lang::{ParsedFile, UnresolvedReason};
 use zenith_lang_js::ResolverError;
 use zenith_utils::path::adjust_canonicalisation;
 
-use crate::{FileErrorKind, Pipeline, PipelineError, Session, StageKind};
+use crate::{FileErrorKind, LANGUAGES, Pipeline, PipelineError, Session, StageKind};
 
 /// A project in a temporary directory.
 struct Project {
@@ -42,7 +42,7 @@ impl Project {
 
     /// A session for the project, configured by `toml`.
     fn session(&self, toml: &str) -> Session {
-        Session::new(self.root.clone(), Config::parse(toml).unwrap())
+        Session::new(self.root.clone(), Config::parse(toml, LANGUAGES).unwrap())
     }
 
     /// Run the standard pipeline on the project, configured by `toml`.

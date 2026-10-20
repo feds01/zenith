@@ -21,6 +21,7 @@ mod tables;
 #[cfg(test)]
 mod tests;
 
+pub use languages::LanguageTable;
 use serde::Deserialize;
 use toml::{
     Spanned,
@@ -32,7 +33,7 @@ use zenith_utils::{glob::GlobError, location::ByteRange};
 use crate::{
     config::Config,
     error::{ConfigError, ConfigErrorKind, classify},
-    language::Language,
+    language::{Language, Languages},
     schema::{ConfigFile, Located},
 };
 
@@ -41,8 +42,14 @@ type TomlValue<'de> = Spanned<DeValue<'de>>;
 
 /// Parse and validate the contents of a configuration file, as
 /// [`Config::parse`] does.
-pub(crate) fn parse(contents: &str) -> Result<Config, Vec<ConfigError>> {
-    let mut parser = Parser::default();
+pub(crate) fn parse(contents: &str, languages: Languages) -> Result<Config, Vec<ConfigError>> {
+    let mut parser = Parser {
+        diagnostics: DiagnosticStore::default(),
+        contract: None,
+        languages,
+        enabled: Vec::new(),
+        optional_extensions: Vec::new(),
+    };
     let config = parser.parse_config(contents);
     let (mut errors, _) = parser.diagnostics.into_parts();
     match config {
@@ -55,13 +62,15 @@ pub(crate) fn parse(contents: &str) -> Result<Config, Vec<ConfigError>> {
 }
 
 /// Parses a configuration file, collecting its errors.
-#[derive(Default)]
 struct Parser {
     /// The errors found so far.
     diagnostics: DiagnosticStore<ConfigError>,
 
     /// The id of the contract being parsed, which errors are attributed to.
     contract: Option<String>,
+
+    /// The languages that the file may enable.
+    languages: Languages,
 
     /// The enabled languages, whose selector schemes the contracts may use.
     /// Known once `[languages]` is parsed.

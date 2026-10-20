@@ -1,5 +1,5 @@
-[languages.js]
-tsconfig = "off"
+[languages.test]
+names = ["a"]
 
-[languages.typescript]
-tsconfig = "auto"
+[languages.testing]
+names = ["b"]

@@ -4,11 +4,13 @@ use std::path::{Path, PathBuf};
 
 use thin_vec::ThinVec;
 use zenith_cache::CacheSettings;
-use zenith_config::{Config, ContractConfig, Reexports, Tsconfig};
+use zenith_config::{Config, ContractConfig, Reexports};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_lang::{ParsedFile, Resolved, Suppression, Workspace};
-use zenith_lang_js::{ParseOptions, Resolver, ResolverError, ResolverSettings, TsconfigMode};
+use zenith_lang_js::{
+    JsConfig, ParseOptions, Resolver, ResolverError, ResolverSettings, Tsconfig, TsconfigMode,
+};
 use zenith_utils::{
     location::Located,
     path::{absolute_path, adjust_canonicalisation, relative_posix},
@@ -313,7 +315,7 @@ impl Session {
     pub fn resolver_settings(&self) -> ResolverSettings {
         // Without JavaScript and TypeScript, nothing is resolved, so the defaults
         // stand in.
-        let js = self.config.languages.js.clone().unwrap_or_default();
+        let js = self.config.languages.options::<JsConfig>().cloned().unwrap_or_default();
         let mut settings = ResolverSettings::new(self.root.clone());
         settings.tsconfig = match &js.tsconfig {
             Tsconfig::Auto => TsconfigMode::Auto,
@@ -370,14 +372,15 @@ impl Session {
 mod tests {
     use std::path::Path;
 
-    use zenith_config::JS;
     use zenith_lang::WorkspacePackage;
+    use zenith_lang_js::JS;
 
     use super::*;
+    use crate::LANGUAGES;
 
     /// A session for a project at `/repo` with the configuration `toml`.
     fn session(toml: &str) -> Session {
-        Session::new(PathBuf::from("/repo"), Config::parse(toml).unwrap())
+        Session::new(PathBuf::from("/repo"), Config::parse(toml, LANGUAGES).unwrap())
     }
 
     #[test]

@@ -5,22 +5,25 @@
 //! and selectors, globs, layers and ignored imports are checked and compiled.
 //! Resolving selectors against the project is left to the contracts.
 
-use std::path::{Path, PathBuf};
+use std::{
+    any::Any,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
-use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use zenith_diagnostics::ReportKind;
 use zenith_graph::KindSet;
 use zenith_utils::{
     fs::{find_in_ancestors, read_text},
-    glob::{Glob, NamePattern},
+    glob::Glob,
 };
 
 use crate::{
     contracts::{ContractConfig, Reexports, Severity},
     error::{ConfigError, LoadError},
-    language::{LANGUAGES, Language, LanguageId},
+    language::{Language, LanguageOptions, Languages},
     parse,
 };
 
@@ -28,7 +31,7 @@ use crate::{
 pub const CONFIG_FILE_NAME: &str = "zenith.toml";
 
 /// The configuration of a zenith project.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Config {
     /// Which files to scan for imports.
     pub files: FilesConfig,
@@ -65,6 +68,20 @@ pub struct ConfigFile {
 }
 
 impl Config {
+    /// The configuration of a project without a configuration file, which
+    /// enables the `languages` that are enabled by default.
+    pub fn defaults(languages: Languages) -> Self {
+        Self {
+            files: FilesConfig::default(),
+            languages: LanguagesConfig::defaults(languages),
+            analysis: AnalysisConfig::default(),
+            baseline: BaselineConfig::default(),
+            cache: CacheConfig::default(),
+            contracts: Vec::new(),
+            file: None,
+        }
+    }
+
     /// Find the nearest configuration file in `start` or one of its
     /// ancestors. A relative `start` is taken from the current directory.
     pub fn discover(start: &Path) -> Option<PathBuf> {
@@ -73,10 +90,10 @@ impl Config {
 
     /// Read a configuration file and parse it with [`Config::parse`]. The
     /// configuration keeps the file, in [`Config::file`].
-    pub fn load(path: &Path) -> Result<Self, LoadError> {
+    pub fn load(path: &Path, languages: Languages) -> Result<Self, LoadError> {
         let contents =
             read_text(path).map_err(|error| LoadError::Read { path: path.to_path_buf(), error })?;
-        match Self::parse(&contents) {
+        match Self::parse(&contents, languages) {
             Ok(config) => {
                 let file = ConfigFile { path: path.to_path_buf(), contents };
                 Ok(Self { file: Some(file), ..config })
@@ -88,9 +105,10 @@ impl Config {
     /// Parse and validate the contents of a configuration file. On failure,
     /// returns the errors, in the order of the file: the first error in the
     /// structure of each table and contract, such as an unknown key, and
-    /// every invalid value, such as a selector.
-    pub fn parse(contents: &str) -> Result<Self, Vec<ConfigError>> {
-        parse::parse(contents)
+    /// every invalid value, such as a selector. The file may enable any of
+    /// the `languages`.
+    pub fn parse(contents: &str, languages: Languages) -> Result<Self, Vec<ConfigError>> {
+        parse::parse(contents, languages)
     }
 
     /// The contract with the given id.
@@ -117,31 +135,42 @@ impl Default for FilesConfig {
     }
 }
 
-/// The languages to scan. A language is enabled when its table is written;
-/// without a `[languages]` table, JavaScript and TypeScript are.
+/// The languages to scan, each with its options. A language is enabled when
+/// its table is written; without a `[languages]` table, those that are
+/// enabled by default are.
 #[derive(Debug, Clone)]
 pub struct LanguagesConfig {
-    /// JavaScript and TypeScript, if enabled.
-    pub js: Option<JsConfig>,
-}
-
-impl Default for LanguagesConfig {
-    fn default() -> Self {
-        Self { js: Some(JsConfig::default()) }
-    }
+    /// The enabled languages, in the order of the registry, with their
+    /// options.
+    enabled: Vec<(&'static Language, Arc<dyn LanguageOptions>)>,
 }
 
 impl LanguagesConfig {
+    /// The `languages` that are enabled by default, with their defaults.
+    pub fn defaults(languages: Languages) -> Self {
+        let enabled = languages.iter().filter(|language| language.enabled_by_default);
+        Self { enabled: enabled.map(|language| (language, (language.defaults)())).collect() }
+    }
+
+    /// The `enabled` languages, with their options.
+    pub(crate) fn new(enabled: Vec<(&'static Language, Arc<dyn LanguageOptions>)>) -> Self {
+        Self { enabled }
+    }
+
     /// Whether `language` is enabled.
     pub fn is_enabled(&self, language: &Language) -> bool {
-        match language.id {
-            LanguageId::Js => self.js.is_some(),
-        }
+        self.enabled().any(|enabled| enabled == language)
     }
 
     /// The enabled languages, in the order of the registry.
     pub fn enabled(&self) -> impl Iterator<Item = &'static Language> {
-        LANGUAGES.iter().copied().filter(|language| self.is_enabled(language))
+        self.enabled.iter().map(|(language, _)| *language)
+    }
+
+    /// The options of the enabled language whose options are a `T`, or
+    /// `None` if it isn't enabled.
+    pub fn options<T: LanguageOptions>(&self) -> Option<&T> {
+        self.enabled.iter().find_map(|(_, options)| (options.as_ref() as &dyn Any).downcast_ref())
     }
 
     /// The extensions, without the `.`, that a path selector may leave off a
@@ -156,11 +185,8 @@ impl LanguagesConfig {
     pub fn scanned(&self) -> Scanned {
         let mut globs = Vec::new();
         let mut extensions = Vec::new();
-        for language in self.enabled() {
-            let include = match language.id {
-                LanguageId::Js => self.js.as_ref().and_then(|js| js.include.as_ref()),
-            };
-            match include {
+        for (language, options) in &self.enabled {
+            match options.include() {
                 Some(include) => globs.extend(include.iter().cloned()),
                 None => extensions.push(language.source_extensions),
             }
@@ -189,53 +215,6 @@ fn union<'a>(lists: impl IntoIterator<Item = &'a [&'static str]>) -> Vec<&'stati
         }
     }
     union
-}
-
-/// The options of JavaScript and TypeScript. `None` options leave the
-/// defaults in place.
-#[derive(Debug, Clone, Default)]
-pub struct JsConfig {
-    /// Globs of the files to scan. `None` scans every file with one of the
-    /// [`JS`](crate::JS) source extensions.
-    pub include: Option<Vec<Glob>>,
-
-    /// Which `tsconfig.json` files to use.
-    pub tsconfig: Tsconfig,
-
-    /// The condition names to match in `exports` maps, replacing the
-    /// defaults.
-    pub conditions: Option<Vec<String>>,
-
-    /// The `package.json` fields that point at a package's entry point,
-    /// replacing the defaults.
-    pub main_fields: Option<Vec<String>>,
-
-    /// The extensions to try when a specifier has none, in order, replacing
-    /// the defaults.
-    pub extensions: Option<Vec<String>>,
-
-    /// Bundler-only aliases, in the order of the file: a specifier prefix,
-    /// and the path relative to the project root that it maps to.
-    pub alias: IndexMap<String, String>,
-
-    /// Patterns of specifiers that are expected not to resolve, so are not
-    /// reported as unresolved.
-    pub ignore_unresolved: Vec<NamePattern>,
-}
-
-/// Which `tsconfig.json` files the resolver uses.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub enum Tsconfig {
-    /// Each file uses its nearest `tsconfig.json`.
-    #[default]
-    Auto,
-
-    /// No `tsconfig.json` is used.
-    Off,
-
-    /// Every file uses this `tsconfig.json`, a path relative to the project
-    /// root.
-    File(String),
 }
 
 /// Defaults that apply to every contract.
@@ -318,6 +297,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::testing::LANGUAGES;
 
     #[test]
     fn discovers_the_nearest_config_file() {
@@ -334,9 +314,9 @@ mod tests {
         let path = dir.path().join(CONFIG_FILE_NAME);
         let contents = "[baseline]\nstale = \"warn\"\n";
         fs::write(&path, contents).unwrap();
-        let file = Config::load(&path).unwrap().file.unwrap();
+        let file = Config::load(&path, LANGUAGES).unwrap().file.unwrap();
         assert_eq!(file, ConfigFile { path, contents: contents.to_string() });
-        assert!(Config::parse(contents).unwrap().file.is_none());
+        assert!(Config::parse(contents, LANGUAGES).unwrap().file.is_none());
     }
 
     #[test]
@@ -344,20 +324,20 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join(CONFIG_FILE_NAME);
         fs::write(&path, "\u{feff}[baseline]\nstale = \"warn\"\n").unwrap();
-        assert_eq!(Config::load(&path).unwrap().baseline.stale, StaleLevel::Warn);
+        assert_eq!(Config::load(&path, LANGUAGES).unwrap().baseline.stale, StaleLevel::Warn);
     }
 
     #[test]
     fn tells_unreadable_from_invalid_configs() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join(CONFIG_FILE_NAME);
-        let error = Config::load(&path).unwrap_err();
+        let error = Config::load(&path, LANGUAGES).unwrap_err();
         assert!(matches!(&error, LoadError::Read { path: p, .. } if *p == path), "{error:?}");
         assert!(error.to_string().starts_with("could not read `"), "{error}");
 
         let contents = "[files]\nexclud = []\n\n[contracts.a]\ntype = \"layer\"\n";
         fs::write(&path, contents).unwrap();
-        let error = Config::load(&path).unwrap_err();
+        let error = Config::load(&path, LANGUAGES).unwrap_err();
         let LoadError::Invalid { contents: read, errors, .. } = &error else {
             panic!("expected an invalid config, got {error:?}");
         };

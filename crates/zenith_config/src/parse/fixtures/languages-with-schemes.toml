@@ -1,0 +1,7 @@
+[languages.test]
+
+[contracts.no-sharp]
+type = "forbidden"
+from = ["web/src"]
+to = ["ext:sharp", { path = "core:*", except = ["core:fs"] }, "sys:sqlite", "pkg:@acme/server"]
+ignore_imports = ["web/src -> ext:sharp"]

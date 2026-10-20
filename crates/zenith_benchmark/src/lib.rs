@@ -14,14 +14,16 @@ pub use synthetic_repo::{
     SyntheticPackage, SyntheticRepo,
 };
 pub use temp_repo::{RemoveShared, TempRepo};
-use zenith_config::{FilesConfig, LanguagesConfig};
+use zenith_config::{FilesConfig, Languages, LanguagesConfig};
 pub use zenith_graph::ImportKind;
+use zenith_lang_js::JS;
 use zenith_workspace::WalkSettings;
 
-/// The walk settings of a project without a `[files]` or `[languages]` table.
+/// The walk settings of a JavaScript project without a `[files]` or
+/// `[languages]` table.
 pub fn default_walk_settings() -> WalkSettings {
     let FilesConfig { exclude, respect_gitignore } = FilesConfig::default();
-    let scanned = LanguagesConfig::default().scanned();
+    let scanned = LanguagesConfig::defaults(Languages::new(&[&JS])).scanned();
     WalkSettings {
         include: scanned.globs,
         exclude,

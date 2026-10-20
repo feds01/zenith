@@ -6,7 +6,7 @@ use std::{fmt, io, path::PathBuf};
 use zenith_diagnostics::{Report, Reporter, SourceId, SourceMap, Span};
 use zenith_utils::{glob::GlobError, location::ByteRange};
 
-use crate::language::{JS, schemes};
+use crate::language::Languages;
 
 /// An error in a configuration file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,7 +114,10 @@ pub enum ConfigErrorKind {
     },
 
     /// `[languages]` has no language, so there is nothing to scan.
-    NoLanguages,
+    NoLanguages {
+        /// The name of a language to suggest, if there is one.
+        example: Option<String>,
+    },
 
     /// A selector names a scheme of a language that is not enabled.
     DisabledScheme {
@@ -220,7 +223,7 @@ impl ConfigErrorKind {
             Self::DuplicateLanguage { name, first } => format!(
                 "`languages.{name}` is another name for `languages.{first}`, which is already given"
             ),
-            Self::NoLanguages => "no language is enabled".to_string(),
+            Self::NoLanguages { .. } => "no language is enabled".to_string(),
             Self::DisabledScheme { selector, scheme, language } => format!(
                 "`{selector}` uses the `{scheme}:` scheme of the `{language}` language, which is not enabled"
             ),
@@ -276,8 +279,9 @@ impl ConfigErrorKind {
             Self::DuplicateLanguage { .. } => {
                 return Some("give the language one table".to_string());
             }
-            Self::NoLanguages => {
-                return Some(format!("add a table for one, such as `[languages.{}]`", JS.name));
+            Self::NoLanguages { example } => {
+                let example = example.as_ref()?;
+                return Some(format!("add a table for one, such as `[languages.{example}]`"));
             }
             Self::DisabledScheme { language, .. } => {
                 return Some(format!("enable it with a `[languages.{language}]` table"));
@@ -431,10 +435,11 @@ impl fmt::Display for SelectorError {
 impl std::error::Error for SelectorError {}
 
 impl SelectorError {
-    /// The error for a selector that starts with the unknown `scheme`.
-    pub(crate) fn unknown_scheme(scheme: &str) -> Self {
-        let expected: Vec<String> = schemes().map(String::from).collect();
-        let suggestion = suggest(scheme, schemes()).map(String::from);
+    /// The error for a selector that starts with `scheme`, which none of the
+    /// `languages` knows.
+    pub(crate) fn unknown_scheme(scheme: &str, languages: Languages) -> Self {
+        let expected: Vec<String> = languages.schemes().map(String::from).collect();
+        let suggestion = suggest(scheme, languages.schemes()).map(String::from);
         Self::UnknownScheme { scheme: scheme.to_string(), expected, suggestion }
     }
 }

@@ -3,9 +3,9 @@
 [contracts.no-sharp]
 type = "forbidden"
 from = ["web/src"]
-to = ["npm:sharp", "node:*", "pkg:@acme/server"]
-ignore_imports = ["web/src -> bun:sqlite"]
+to = ["ext:sharp", "core:*", "pkg:@acme/server"]
+ignore_imports = ["web/src -> sys:sqlite"]
 
 [contracts.tiers]
 type = "layers"
-layers = ["web/src | npm:react"]
+layers = ["web/src | ext:react"]

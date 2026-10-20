@@ -16,24 +16,25 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{self, IgnoredAny, MapAccess, Visitor, value::MapAccessDeserializer},
 };
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 use zenith_graph::ImportKind;
 use zenith_utils::location::ByteRange;
 
 use crate::{
     config::{DEFAULT_BASELINE_PATH, DEFAULT_CACHE_DIR, StaleLevel},
     contracts::{AlertLevel, Reexports, Severity},
+    language::Languages,
 };
 
 /// A value with the byte range that it was written at.
 #[derive(Debug, Default)]
-pub(crate) struct Located<T> {
+pub struct Located<T> {
     /// The value.
-    pub(crate) value: T,
+    pub value: T,
 
     /// Its byte range in the file. A default, which was not written, has an
     /// empty range.
-    pub(crate) range: ByteRange,
+    pub range: ByteRange,
 }
 
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for Located<T> {
@@ -86,8 +87,8 @@ pub(crate) struct ConfigFile {
 
     /// The languages to scan, each in a table of its own. A language is
     /// enabled when its table is written, even if empty. Without a
-    /// `[languages]` table, `js` is enabled with its defaults; an empty one
-    /// enables nothing, which is an error.
+    /// `[languages]` table, the default languages are enabled with their
+    /// defaults; an empty one enables nothing, which is an error.
     #[serde(default)]
     #[schemars(with = "LanguagesTable")]
     pub(crate) languages: IgnoredAny,
@@ -137,60 +138,13 @@ impl Default for FilesTable {
 }
 
 /// The languages to scan, each in a table of its own.
-// Each language's table is deserialised on its own, so that the errors in it
-// keep their location, and so that giving a language twice, under two of its
-// names, can be reported. This struct only describes the tables for the
-// schema.
+// Each language parses its own table, so that the errors in it keep their
+// location, and so that giving a language twice, under two of its names, can
+// be reported. The tables are those of the languages that zenith is given,
+// which [`json_schema`] adds to the schema of this struct.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields, expecting = "a table")]
-pub(crate) struct LanguagesTable {
-    /// JavaScript and TypeScript: how their files are found and their
-    /// imports resolved.
-    #[schemars(with = "JsTable")]
-    pub(crate) js: Option<JsTable>,
-
-    /// Another name for `js`. Giving both is an error.
-    #[schemars(with = "JsTable")]
-    pub(crate) typescript: Option<JsTable>,
-}
-
-/// JavaScript and TypeScript.
-#[derive(Debug, Default, Deserialize, JsonSchema)]
-#[serde(default, deny_unknown_fields, expecting = "a table")]
-pub(crate) struct JsTable {
-    /// Globs of the files to scan. Defaults to every JavaScript and
-    /// TypeScript file, `**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`.
-    pub(crate) include: Option<Vec<Located<String>>>,
-
-    /// Which `tsconfig.json` files to use: `"auto"` (the default) uses the
-    /// nearest one of each file, `"off"` uses none, and any other value is
-    /// the path of the one to use for every file.
-    pub(crate) tsconfig: Option<String>,
-
-    /// The condition names to match in `exports` maps, replacing the
-    /// defaults: `types`, `source`, `import`, `module`, `require`, `node`
-    /// and `default`. Conditions are matched in the order that each package
-    /// lists them.
-    pub(crate) conditions: Option<Vec<String>>,
-
-    /// The `package.json` fields that point at a package's entry point,
-    /// replacing the defaults: `module`, then `main`.
-    pub(crate) main_fields: Option<Vec<String>>,
-
-    /// The extensions to try, in order, when a specifier has none, replacing
-    /// the defaults: `.ts`, `.tsx`, `.d.ts`, `.mts`, `.cts`, `.js`, `.jsx`,
-    /// `.mjs`, `.cjs` and `.json`.
-    pub(crate) extensions: Option<Vec<String>>,
-
-    /// Bundler-only aliases: a specifier prefix, and the path that it maps
-    /// to.
-    pub(crate) alias: IndexMap<String, String>,
-
-    /// Name patterns of specifiers that are expected not to resolve, so are
-    /// not reported as unresolved, e.g. `"/*"` for files served from a public
-    /// directory, or `"virtual:*"`.
-    pub(crate) ignore_unresolved: Vec<Located<String>>,
-}
+pub(crate) struct LanguagesTable {}
 
 /// Defaults that apply to every contract.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -627,13 +581,32 @@ impl<'de, T: Deserialize<'de>, V> Visitor<'de> for StringOrTable<T, V> {
 }
 
 /// The JSON Schema of the configuration file, which editors use to complete
-/// and check it.
-pub fn json_schema() -> Value {
-    SchemaSettings::draft2020_12()
+/// and check it, with a table for each of the `languages`.
+pub fn json_schema(languages: Languages) -> Value {
+    let mut generator = SchemaSettings::draft2020_12()
         .with_transform(RecursiveTransform(remove_null))
-        .into_generator()
-        .into_root_schema_for::<ConfigFile>()
-        .to_value()
+        .into_generator();
+
+    // 1. Describe the table of each language under each of its names, which adds
+    //    its definition to those of the schema.
+    let mut tables = Map::new();
+    for language in languages.iter() {
+        let mut table = (language.schema)(&mut generator).to_value();
+        for (index, name) in language.table_names.iter().enumerate() {
+            table["description"] = match index {
+                0 => json!(language.description),
+                _ => {
+                    json!(format!("Another name for `{}`. Giving both is an error.", language.name))
+                }
+            };
+            tables.insert(name.to_string(), table.clone());
+        }
+    }
+
+    // 2. Describe the file, and give `[languages]` the tables.
+    let mut schema = generator.into_root_schema_for::<ConfigFile>().to_value();
+    schema["$defs"]["LanguagesTable"]["properties"] = Value::Object(tables);
+    schema
 }
 
 /// Remove `null` from a schema. schemars allows it in every `Option`, with no

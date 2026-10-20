@@ -174,10 +174,10 @@ mod tests {
     use std::{fs, ops::Range, thread};
 
     use tempfile::TempDir;
-    use zenith_config::JS;
     use zenith_diagnostics::{self as diagnostics, Reporter, SourceMap};
 
     use super::*;
+    use crate::JS;
 
     /// Parse `source` as the file at `path`, with a parser of its own.
     fn parse(path: &str, source: &str) -> ParsedFile {

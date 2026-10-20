@@ -25,6 +25,8 @@ serde_json = { workspace = true }
 toml = { workspace = true }
 
 [dev-dependencies]
+zenith_lang_js = { workspace = true }
+
 tempfile = { workspace = true }
 thin-vec = { workspace = true }
 

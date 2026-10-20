@@ -16,7 +16,7 @@ use zenith_benchmark::TempRepo;
 use zenith_cache::CacheSettings;
 use zenith_config::Config;
 use zenith_lang::ParsedFile;
-use zenith_pipeline::{BuildGraph, Parse, Pipeline, Resolve, Session, Stage, StageKind};
+use zenith_pipeline::{BuildGraph, LANGUAGES, Parse, Pipeline, Resolve, Session, Stage, StageKind};
 
 // The allocator of the `zenith` binary. CodSpeed measures the allocations
 // itself, in its memory mode.
@@ -48,7 +48,7 @@ fn main() {
 /// standard stages up to `last` run, if any.
 fn session(source_files: usize, last: Option<StageKind>) -> Session {
     let repo = TempRepo::shared(source_files);
-    let mut session = Session::new(repo.root.clone(), Config::default());
+    let mut session = Session::new(repo.root.clone(), Config::defaults(LANGUAGES));
     if let Some(last) = last {
         Pipeline::standard().run_until(&mut session, last).unwrap();
     }

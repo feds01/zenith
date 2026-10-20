@@ -1,0 +1,6 @@
+[languages.js]
+
+[contracts.no-sharp]
+type = "forbidden"
+from = ["web/src"]
+to = ["npm:sharp", "node:*", "bun:sqlite", "pkg:@acme/server"]

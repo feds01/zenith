@@ -51,12 +51,13 @@ a new kind of responsibility, not for each feature:
 - `zenith_diagnostics`: reports with source excerpts, and how they render.
 - `zenith_graph`: the module tree and import graph, views of it, and the
   algorithms that run on them.
-- `zenith_lang`: the language-neutral types that every language shares, such
-  as what an import resolves to and a project's workspace packages. It
+- `zenith_lang`: the interface that each supported language implements, and
+  the types they share: what a file imports, its suppressions and syntax
+  errors, what an import resolves to, and a project's workspace packages. It
   depends on no parser or resolver.
-- `zenith_lang_js`: JavaScript and TypeScript support: specifier resolution
-  with `oxc_resolver` and workspace package discovery from `package.json`.
-- `zenith_parse`: what each source file imports and exports, read with oxc.
+- `zenith_lang_js`: JavaScript and TypeScript support: parsing with oxc,
+  specifier resolution with `oxc_resolver`, and workspace package discovery
+  from `package.json`.
 - `zenith_pipeline`: the stages that turn a project into its import graph,
   and the session they share.
 - `zenith_reporting`: the output formats of `zenith check`.

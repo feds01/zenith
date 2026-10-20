@@ -9,7 +9,9 @@ use oxc_ast_visit::{Visit, walk};
 use oxc_span::Span;
 use thin_vec::ThinVec;
 use zenith_graph::{ImportDetail, ImportKind, ImportedName, ImportedNames};
-use zenith_utils::location::{ByteRange, Located};
+use zenith_utils::location::Located;
+
+use super::convert::IntoLang;
 
 /// Collects the imports of one file as it walks the syntax tree.
 #[derive(Default)]
@@ -53,7 +55,7 @@ impl ImportVisitor {
     /// takes the `names` of the module.
     fn import(&mut self, specifier: &str, kind: ImportKind, span: Span, names: ImportedNames) {
         self.imports.push(ImportDetail {
-            range: ByteRange::new(span.start, span.end),
+            range: span.into_lang(),
             specifier: specifier.into(),
             kind,
             names,
@@ -75,8 +77,7 @@ impl ImportVisitor {
             // How the module is used can't be told from the call.
             Some(specifier) => self.import(specifier, kind, span, ImportedNames::All),
             None => {
-                self.non_literal_imports
-                    .push(Located::new(ByteRange::new(span.start, span.end), kind));
+                self.non_literal_imports.push(Located::new(span.into_lang(), kind));
             }
         }
     }

@@ -12,9 +12,8 @@ use zenith_cache::CacheSettings;
 use zenith_config::{Config, ConfigFile};
 use zenith_diagnostics::{ReportElement, Reporter};
 use zenith_graph::{Graph, ImportKind, ModuleId, NodeKind};
-use zenith_lang::UnresolvedReason;
+use zenith_lang::{ParsedFile, UnresolvedReason};
 use zenith_lang_js::ResolverError;
-use zenith_parse::ParsedFile;
 use zenith_utils::path::adjust_canonicalisation;
 
 use crate::{FileErrorKind, Pipeline, PipelineError, Session, StageKind};

@@ -7,9 +7,8 @@ use zenith_cache::CacheSettings;
 use zenith_config::{Config, ContractConfig, Reexports, SOURCE_EXTENSIONS, Tsconfig};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
-use zenith_lang::{Resolved, Workspace};
-use zenith_lang_js::{Resolver, ResolverError, ResolverSettings, TsconfigMode};
-use zenith_parse::{ParseOptions, ParsedFile, Suppression};
+use zenith_lang::{ParsedFile, Resolved, Suppression, Workspace};
+use zenith_lang_js::{ParseOptions, Resolver, ResolverError, ResolverSettings, TsconfigMode};
 use zenith_utils::{
     location::Located,
     path::{absolute_path, adjust_canonicalisation, relative_posix},

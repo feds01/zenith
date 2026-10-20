@@ -10,7 +10,7 @@ use zenith_utils::location::Located;
 use crate::{ParsedFile, Suppression, SyntaxError};
 
 /// Everything the parser finds in a file, which depends only on its
-/// contents and the [`ParseOptions`](crate::ParseOptions) it parsed with.
+/// contents and the options it parsed with.
 impl Cached for ParsedFile {
     const FILE: &'static str = "parse.bin";
 
@@ -137,45 +137,86 @@ fn decode_exports(decoder: &mut Decoder<'_>) -> Option<Exports<u32>> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use zenith_utils::location::ByteRange;
 
     use super::*;
-    use crate::{ParseOptions, Parser};
 
-    /// A file with every kind of thing that the parser finds in one.
-    const SOURCE: &str = "'use client';
-'use strict';
-// zenith-ignore a, b: legacy
-import type { A } from './a';
-import b from '@acme/b'; // zenith-ignore c
-export * from \"./é\";
-export { type E as F, g } from './e';
-export const h = 1;
-const c = require('c');
-import(name);
-const d;
-";
+    /// A file with something in every list and every kind of import.
+    fn parsed_file() -> ParsedFile {
+        let range = |start, end| ByteRange::new(start, end);
+        let imports = ImportKind::ALL
+            .into_iter()
+            .enumerate()
+            .map(|(i, kind)| ImportDetail {
+                range: range(i as u32, i as u32 + 1),
+                specifier: format!("./{i}é").into(),
+                kind,
+                names: match i % 2 {
+                    0 => ImportedNames::All,
+                    _ => ImportedNames::Names(
+                        [ImportedName::new("a", false), ImportedName::new("b", true)].into(),
+                    ),
+                },
+            })
+            .collect();
+        let exports = Exports {
+            pass_through: true,
+            names: [ImportedName::new("h", false)].into(),
+            reexports: [
+                ReExport {
+                    name: "F".into(),
+                    source: 1,
+                    imported: Some("E".into()),
+                    type_only: true,
+                },
+                ReExport { name: "g".into(), source: 2, imported: None, type_only: false },
+            ]
+            .into(),
+            stars: [(0, false), (3, true)].into(),
+        };
+        ParsedFile {
+            imports,
+            exports,
+            non_literal_imports: [
+                Located::new(range(40, 50), ImportKind::Dynamic),
+                Located::new(range(60, 70), ImportKind::Require),
+            ]
+            .into(),
+            directives: ["use client".to_string(), "use strict".to_string()].into(),
+            suppressions: [Located::new(
+                range(0, 20),
+                Suppression {
+                    contracts: vec!["a".to_string(), "b".to_string()],
+                    reason: Some("legacy".to_string()),
+                    target: range(20, 40),
+                },
+            )]
+            .into(),
+            errors: [Located::new(
+                range(5, 6),
+                SyntaxError { message: Cow::Borrowed("Missing initializer") },
+            )]
+            .into(),
+        }
+    }
 
     #[test]
     fn decodes_what_it_encodes() {
-        let options = ParseOptions { names: true };
-        let parsed = Parser::with_options(options).parse_source(Path::new("a.ts"), SOURCE);
-        // The source has something in every list.
-        assert!(!parsed.imports.is_empty() && !parsed.non_literal_imports.is_empty());
-        assert!(!parsed.directives.is_empty() && !parsed.suppressions.is_empty());
-        assert!(!parsed.errors.is_empty());
-        assert!(matches!(parsed.imports[0].names, ImportedNames::Names(_)));
-        let Exports { names, reexports, stars, .. } = &parsed.exports;
-        assert!(!names.is_empty() && !reexports.is_empty() && !stars.is_empty());
-
+        let parsed = parsed_file();
         let mut encoder = Encoder::default();
         parsed.encode(&mut encoder);
         let bytes = encoder.into_bytes();
         let mut decoder = Decoder::new(&bytes);
         assert_eq!(ParsedFile::decode(&mut decoder), Some(parsed));
         assert!(decoder.is_empty());
+    }
+
+    #[test]
+    fn decodes_an_empty_file() {
+        let mut encoder = Encoder::default();
+        ParsedFile::default().encode(&mut encoder);
+        let bytes = encoder.into_bytes();
+        assert_eq!(ParsedFile::decode(&mut Decoder::new(&bytes)), Some(ParsedFile::default()));
     }
 
     #[test]

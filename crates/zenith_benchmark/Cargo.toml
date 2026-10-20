@@ -28,6 +28,10 @@ name = "glob"
 harness = false
 
 [[bench]]
+name = "lang_js"
+harness = false
+
+[[bench]]
 name = "pipeline"
 harness = false
 
@@ -38,8 +42,8 @@ harness = false
 [dependencies]
 zenith_config = { workspace = true }
 zenith_graph = { workspace = true }
-zenith_utils = { workspace = true }
 zenith_lang_js = { workspace = true }
+zenith_utils = { workspace = true }
 zenith_workspace = { workspace = true }
 
 fastrand = { workspace = true }
@@ -49,7 +53,7 @@ tempfile = { workspace = true }
 [dev-dependencies]
 zenith_cache = { workspace = true }
 zenith_contracts = { workspace = true }
-zenith_parse = { workspace = true }
+zenith_lang = { workspace = true }
 zenith_pipeline = { workspace = true }
 
 divan = { workspace = true }

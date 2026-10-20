@@ -3,8 +3,7 @@
 use thin_vec::{ThinVec, thin_vec};
 use zenith_config::Config;
 use zenith_graph::{Graph, GraphBuilder, ImportDetail, ImportKind, ImportedNames, NodeHandle};
-use zenith_lang::Workspace;
-use zenith_parse::Suppression;
+use zenith_lang::{Suppression, Workspace};
 use zenith_pipeline::FileSuppressions;
 use zenith_utils::location::{ByteRange, Located};
 

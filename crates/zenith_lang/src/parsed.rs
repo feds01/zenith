@@ -1,30 +1,17 @@
-//! Import extraction for JavaScript and TypeScript files.
-//!
-//! A [`Parser`] parses source text with [oxc](https://oxc.rs), then walks the
-//! syntax tree for every form that imports a module, classifying each by its
-//! [`ImportKind`]. Alongside the imports, the [`ParsedFile`] holds the file's
-//! directive prologue (e.g. `"use client"`), its `zenith-ignore` suppression
-//! comments, the dynamic imports and `require` calls whose specifier is not a
-//! literal, and any syntax errors. Everything is [`Located`] by its byte
-//! range in the file. A parser that records names also finds the names that
-//! each import takes, what the file exports, and whether it only passes
-//! re-exports through.
+//! What zenith learns from one source file.
 
-mod cache;
-mod error;
-mod exports;
-mod parser;
-mod suppressions;
-mod visitor;
-
-pub use error::SyntaxError;
-pub use parser::{ParseOptions, Parser};
-pub use suppressions::Suppression;
 use thin_vec::ThinVec;
 use zenith_graph::{Exports, ImportDetail, ImportKind};
 use zenith_utils::location::Located;
 
+use crate::{Suppression, SyntaxError};
+
 /// What zenith learns from one source file.
+///
+/// A language's parser produces it: the imports of the file, its directive
+/// prologue (e.g. `"use client"`), its `zenith-ignore` suppression comments,
+/// the imports whose specifier is not a literal, and any syntax errors.
+/// Everything is [`Located`] by its byte range in the file.
 ///
 /// Every list but the imports is empty in most files, so those are
 /// [`ThinVec`]s, which take one pointer each rather than three.
@@ -35,7 +22,7 @@ pub struct ParsedFile {
 
     /// What the file exports, with the source of each re-export as the index
     /// of its import in [`imports`](Self::imports). Nothing, unless the
-    /// parser records names (see [`ParseOptions::names`]).
+    /// parser records names.
     pub exports: Exports<u32>,
 
     /// The dynamic imports and `require` calls whose specifier is not a

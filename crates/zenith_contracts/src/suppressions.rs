@@ -3,7 +3,7 @@
 use rustc_hash::FxHashSet;
 use zenith_config::Config;
 use zenith_diagnostics::{Report, Source, SourceMap, Span};
-use zenith_parse::Suppression;
+use zenith_lang::Suppression;
 use zenith_utils::location::Located;
 
 use crate::{ContractReport, Exemptions};

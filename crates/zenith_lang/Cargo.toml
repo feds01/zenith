@@ -9,7 +9,12 @@ repository = { workspace = true }
 publish = { workspace = true }
 
 [dependencies]
+zenith_cache = { workspace = true }
+zenith_diagnostics = { workspace = true }
+zenith_graph = { workspace = true }
 zenith_utils = { workspace = true }
+
+thin-vec = { workspace = true }
 
 [lints]
 workspace = true

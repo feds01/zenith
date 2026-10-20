@@ -15,7 +15,7 @@ use tempfile::TempDir;
 use zenith_benchmark::TempRepo;
 use zenith_cache::CacheSettings;
 use zenith_config::Config;
-use zenith_parse::ParsedFile;
+use zenith_lang::ParsedFile;
 use zenith_pipeline::{BuildGraph, Parse, Pipeline, Resolve, Session, Stage, StageKind};
 
 // The allocator of the `zenith` binary. CodSpeed measures the allocations

@@ -9,10 +9,13 @@ use oxc_parser::ParseOptions as OxcParseOptions;
 use oxc_span::SourceType;
 use thin_vec::ThinVec;
 use zenith_graph::Exports;
+use zenith_lang::{ParsedFile, Suppression};
 use zenith_utils::fs::read_text;
 
-use crate::{
-    ParsedFile, Suppression, SyntaxError, exports::ProgramHelpers, visitor::ImportVisitor,
+use super::{
+    convert::{comment, syntax_error},
+    exports::ProgramHelpers,
+    visitor::ImportVisitor,
 };
 
 /// Parses JavaScript and TypeScript files with [oxc](https://oxc.rs) into
@@ -27,7 +30,7 @@ use crate::{
 /// ```
 /// # use std::path::Path;
 /// # use zenith_graph::ImportKind;
-/// # use zenith_parse::Parser;
+/// # use zenith_lang_js::Parser;
 /// let mut parser = Parser::new();
 /// let page = parser
 ///     .parse_source(Path::new("page.tsx"), "'use client';\nimport type { A } from './a';\n");
@@ -127,7 +130,7 @@ impl Parser {
             .diagnostics
             .into_iter()
             .map(|mut diagnostic| {
-                SyntaxError::located(mem::take(&mut diagnostic.message), &diagnostic.labels)
+                syntax_error(mem::take(&mut diagnostic.message), &diagnostic.labels)
             })
             .collect();
         errors.sort_by_key(|error| error.range);
@@ -147,7 +150,8 @@ impl Parser {
             .iter()
             .map(|directive| directive.directive.as_str().to_owned())
             .collect();
-        let suppressions = Suppression::collect(source, &parsed.program.comments);
+        let suppressions =
+            Suppression::collect(source, parsed.program.comments.iter().map(comment));
 
         // 5. Read what the file exports from its top-level statements.
         let exports = match self.options.names {

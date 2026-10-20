@@ -9,15 +9,27 @@ repository = { workspace = true }
 publish = { workspace = true }
 
 [dependencies]
-log = { workspace = true }
-oxc_resolver = { workspace = true }
-rustc-hash = { workspace = true }
-serde_json = { workspace = true, features = ["preserve_order"] }
-yaml-rust2 = { workspace = true }
+zenith_graph = { workspace = true }
 zenith_lang = { workspace = true }
 zenith_utils = { workspace = true }
 
+compact_str = { workspace = true }
+log = { workspace = true }
+oxc_allocator = { workspace = true }
+oxc_ast = { workspace = true }
+oxc_ast_visit = { workspace = true }
+oxc_parser = { workspace = true }
+oxc_resolver = { workspace = true }
+oxc_span = { workspace = true }
+rustc-hash = { workspace = true }
+serde_json = { workspace = true, features = ["preserve_order"] }
+thin-vec = { workspace = true }
+yaml-rust2 = { workspace = true }
+
 [dev-dependencies]
+zenith_config = { workspace = true }
+zenith_diagnostics = { workspace = true }
+
 tempfile = { workspace = true }
 
 [lints]

@@ -5,11 +5,12 @@ use std::{io, mem, time::SystemTime};
 use log::{debug, info};
 use rayon::prelude::*;
 use zenith_cache::{Cache, Lookup, Origin};
-use zenith_parse::{ParseOptions, ParsedFile, Parser};
+use zenith_lang::ParsedFile;
+use zenith_lang_js::{ParseOptions, Parser};
 
 use crate::{FileError, FileErrorKind, PipelineError, Session, SourceFile, Stage, StageKind};
 
-/// Parses the source files with `zenith_parse`, in parallel on the current
+/// Parses the source files with `zenith_lang_js`, in parallel on the current
 /// rayon thread pool. Each worker keeps a parser, so that its arena is reused
 /// from file to file. The parser recurses into nested code, so the pool's
 /// threads need a deep stack (see [`Parser`]).

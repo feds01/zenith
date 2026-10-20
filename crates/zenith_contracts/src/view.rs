@@ -3,8 +3,8 @@
 use rustc_hash::FxHashSet;
 use zenith_config::{ContractConfig, IgnoreImport};
 use zenith_graph::{EdgeSet, Graph, GraphView, ImportDetail, KindSet, ModuleId, NodeSet};
+use zenith_lang::Workspace;
 use zenith_pipeline::FileSuppressions;
-use zenith_workspace::Workspace;
 
 use crate::{Exemptions, Selection, baseline};
 

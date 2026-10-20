@@ -54,5 +54,5 @@ fn discover_packages(bencher: Bencher, source_files: usize) {
     #[cfg(not(codspeed))]
     let bencher = bencher.counter(divan::counter::ItemsCount::new(found.package_jsons.len()));
 
-    bencher.bench(|| zenith_workspace::discover_packages(&repo.root, &found.package_jsons));
+    bencher.bench(|| zenith_lang_js::discover_packages(&repo.root, &found.package_jsons));
 }

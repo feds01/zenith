@@ -1,4 +1,4 @@
-//! The settings of a [`Resolver`](crate::Resolver), and their defaults.
+//! The settings of a [`Resolver`](super::Resolver), and their defaults.
 
 use std::path::PathBuf;
 
@@ -33,7 +33,7 @@ pub enum TsconfigMode {
     File(PathBuf),
 }
 
-/// The settings for a [`Resolver`](crate::Resolver).
+/// The settings for a [`Resolver`](super::Resolver).
 #[derive(Debug, Clone)]
 pub struct ResolverSettings {
     /// The canonical project root. A file inside it, and not under
@@ -69,8 +69,8 @@ pub struct ResolverSettings {
     pub workspace_packages: Vec<(String, PathBuf)>,
 
     /// Patterns of specifiers that are expected not to resolve, such as
-    /// `virtual:*`. They are [`Ignored`](crate::Resolved::Ignored) instead of
-    /// [`Unresolved`](crate::Resolved::Unresolved).
+    /// `virtual:*`. They are [`Ignored`](zenith_lang::Resolved::Ignored)
+    /// instead of [`Unresolved`](zenith_lang::Resolved::Unresolved).
     pub ignore_unresolved: Vec<NamePattern>,
 }
 

@@ -13,6 +13,7 @@ use oxc_resolver::{
 };
 use rustc_hash::FxHashMap;
 use serde_json::Value;
+use zenith_lang::{ResolveFailure, Resolved, UnresolvedReason};
 use zenith_utils::{
     fs::read_json,
     glob::NamePattern,
@@ -20,7 +21,7 @@ use zenith_utils::{
     specifier::{package_from_path, package_name, split_query, split_scheme, squash_builtin},
 };
 
-use crate::{
+use super::{
     exports,
     settings::{ResolverSettings, TsconfigMode},
 };
@@ -34,120 +35,31 @@ const EXTENSION_ALIASES: [(&str, &[&str]); 4] = [
     (".cjs", &[".cts", ".d.cts", ".cjs"]),
 ];
 
-/// What a specifier resolves to.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Resolved {
-    /// A file inside the project, as a POSIX path relative to the root, e.g.
-    /// `web/src/app.ts`.
-    Internal(String),
-
-    /// An external package: one under `node_modules` or outside the root.
-    External {
-        /// The package name, without any subpath, e.g. `@tanstack/react-query`.
-        package: String,
-
-        /// Whether the specifier resolved to a file. When it didn't (because
-        /// `node_modules` is not installed, say), the package is named from
-        /// the specifier alone.
-        found: bool,
-    },
-
-    /// A runtime builtin without its subpath, e.g. `node:fs` or `bun:sqlite`.
-    /// Node builtins always have the `node:` prefix.
-    Builtin(String),
-
-    /// The specifier could not be resolved.
-    Unresolved(Box<UnresolvedReason>),
-
-    /// The specifier could not be resolved, and it matches one of the
-    /// `ignore_unresolved` patterns, so that is expected.
-    Ignored(Box<UnresolvedReason>),
+/// Classify an error from `oxc_resolver` as the reason a specifier is
+/// unresolved.
+fn failed(error: ResolveError) -> Resolved {
+    Resolved::unresolved(UnresolvedReason::Failed(failure(&error)))
 }
 
-impl Resolved {
-    /// An unresolved specifier, for this reason.
-    fn unresolved(reason: UnresolvedReason) -> Self {
-        Self::Unresolved(Box::new(reason))
-    }
-
-    /// An unresolved specifier, for a resolver error.
-    fn failed(failure: ResolveFailure) -> Self {
-        Self::unresolved(UnresolvedReason::Failed(failure))
+/// The error from `oxc_resolver`, without its type: only its message is part of
+/// the shared API.
+fn failure(error: &ResolveError) -> ResolveFailure {
+    if is_tsconfig_error(error) {
+        ResolveFailure::config_error(error.to_string())
+    } else {
+        ResolveFailure::new(error.to_string())
     }
 }
 
-// A `Resolved` is made for every import, so it is kept small: the reason of an
-// unresolved import, the rare case, is boxed.
-#[cfg(target_pointer_width = "64")]
-const _: () = assert!(size_of::<Resolved>() == 32);
-
-/// Why a specifier could not be resolved.
-#[derive(Debug, Clone, PartialEq)]
-pub enum UnresolvedReason {
-    /// The resolver could not resolve it.
-    Failed(ResolveFailure),
-
-    /// A workspace package's `exports` map doesn't export the subpath.
-    NotExported {
-        /// The package name.
-        package: String,
-
-        /// The subpath, as an `exports` key, e.g. `./src/internal`.
-        subpath: String,
-    },
-
-    /// It resolved to a file outside the project root that is in no package.
-    OutsideRoot(PathBuf),
-
-    /// It has a URL scheme other than `node:` and `bun:`, such as `virtual:`.
-    UnsupportedScheme(String),
-}
-
-impl UnresolvedReason {
-    /// Whether the importing file's `tsconfig.json` couldn't be loaded, so the
-    /// `paths` that the specifier may have needed were missing.
-    pub fn is_tsconfig_error(&self) -> bool {
-        matches!(self, Self::Failed(failure) if failure.is_tsconfig_error())
-    }
-}
-
-impl fmt::Display for UnresolvedReason {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Failed(failure) => write!(f, "{failure}"),
-            Self::NotExported { package, subpath } => {
-                write!(f, "`{subpath}` is not exported by `{package}`")
-            }
-            Self::OutsideRoot(path) => {
-                write!(f, "resolved to `{}`, outside the project and in no package", path.display())
-            }
-            Self::UnsupportedScheme(scheme) => write!(f, "unsupported `{scheme}:` specifier"),
-        }
-    }
-}
-
-/// An error from `oxc_resolver`, the resolver that zenith uses. Only its
-/// message is part of this crate's API.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ResolveFailure(ResolveError);
-
-impl ResolveFailure {
-    /// Whether the resolver failed to load a `tsconfig.json`.
-    fn is_tsconfig_error(&self) -> bool {
-        matches!(
-            self.0,
-            ResolveError::TsconfigNotFound(_)
-                | ResolveError::TsconfigLoadFailed { .. }
-                | ResolveError::TsconfigCircularExtend(_)
-                | ResolveError::TsconfigSelfReference(_)
-        )
-    }
-}
-
-impl fmt::Display for ResolveFailure {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
+/// Whether the resolver failed to load a `tsconfig.json`.
+fn is_tsconfig_error(error: &ResolveError) -> bool {
+    matches!(
+        error,
+        ResolveError::TsconfigNotFound(_)
+            | ResolveError::TsconfigLoadFailed { .. }
+            | ResolveError::TsconfigCircularExtend(_)
+            | ResolveError::TsconfigSelfReference(_)
+    )
 }
 
 /// Why a [`Resolver`] can't be created from its settings.
@@ -187,7 +99,7 @@ pub struct Resolver {
     without_tsconfig: oxc_resolver::Resolver,
 
     /// The files whose `tsconfig.json` couldn't be loaded, and why.
-    tsconfig_errors: Mutex<FxHashMap<PathBuf, ResolveFailure>>,
+    tsconfig_errors: Mutex<FxHashMap<PathBuf, ResolveError>>,
 
     /// The canonical project root.
     root: PathBuf,
@@ -318,13 +230,13 @@ impl Resolver {
 
         let error = match self.resolve_file(file, specifier) {
             Ok(resolution) => return self.classify(specifier, resolution.path()),
-            Err(ResolveFailure(ResolveError::Builtin { mut resolved, .. })) => {
+            Err(ResolveError::Builtin { mut resolved, .. }) => {
                 resolved.truncate(squash_builtin(&resolved).len());
                 return Resolved::Builtin(resolved);
             }
             // An alias matched, so the specifier doesn't name a package.
-            Err(error @ ResolveFailure(ResolveError::MatchedAliasNotFound(..))) => {
-                return Resolved::failed(error);
+            Err(error @ ResolveError::MatchedAliasNotFound(..)) => {
+                return failed(error);
             }
             Err(error) => error,
         };
@@ -341,9 +253,9 @@ impl Resolver {
             // Blame the `tsconfig.json` if it couldn't be loaded, since it may
             // have had the `paths` that a non-relative specifier needs.
             None if !specifier.starts_with(['.', '/']) => {
-                Resolved::failed(self.tsconfig_error(file).unwrap_or(error))
+                failed(self.tsconfig_error(file).unwrap_or(error))
             }
-            None => Resolved::failed(error),
+            None => failed(error),
         }
     }
 
@@ -353,23 +265,23 @@ impl Resolver {
     /// kept for [`Self::tsconfig_error`]. Since the two resolvers share their
     /// caches, `oxc_resolver` then remembers that the file has no
     /// `tsconfig.json`, instead of failing to load it again for every import.
-    fn resolve_file(&self, file: &Path, specifier: &str) -> Result<Resolution, ResolveFailure> {
-        match self.inner.resolve_file(file, specifier).map_err(ResolveFailure) {
-            Err(error) if error.is_tsconfig_error() => {
+    fn resolve_file(&self, file: &Path, specifier: &str) -> Result<Resolution, ResolveError> {
+        match self.inner.resolve_file(file, specifier) {
+            Err(error) if is_tsconfig_error(&error) => {
                 let mut errors =
                     self.tsconfig_errors.lock().unwrap_or_else(PoisonError::into_inner);
                 if !errors.contains_key(file) {
                     errors.insert(file.to_path_buf(), error);
                 }
                 drop(errors);
-                self.without_tsconfig.resolve_file(file, specifier).map_err(ResolveFailure)
+                self.without_tsconfig.resolve_file(file, specifier)
             }
             result => result,
         }
     }
 
     /// Why the `tsconfig.json` of `file` couldn't be loaded, if it couldn't.
-    fn tsconfig_error(&self, file: &Path) -> Option<ResolveFailure> {
+    fn tsconfig_error(&self, file: &Path) -> Option<ResolveError> {
         self.tsconfig_errors.lock().unwrap_or_else(PoisonError::into_inner).get(file).cloned()
     }
 
@@ -406,7 +318,7 @@ impl Resolver {
         };
         match self.resolve_file(&entry.manifest, &request) {
             Ok(resolution) => self.classify(specifier, resolution.path()),
-            Err(error) => Resolved::failed(error),
+            Err(error) => failed(error),
         }
     }
 
@@ -545,7 +457,7 @@ mod tests {
 
         assert!(matches!(
             unresolved_reason(&resolve("./missing")),
-            Some(UnresolvedReason::Failed(ResolveFailure(ResolveError::NotFound(_))))
+            Some(UnresolvedReason::Failed(failure)) if !failure.is_config_error()
         ));
         assert!(is_unresolved(&resolve("./missing.js")));
     }
@@ -638,9 +550,7 @@ mod tests {
             assert!(
                 matches!(
                     unresolved_reason(&resolved),
-                    Some(UnresolvedReason::Failed(ResolveFailure(ResolveError::TsconfigNotFound(
-                        _
-                    ))))
+                    Some(reason) if reason.is_config_error()
                 ),
                 "{resolved:?}"
             );

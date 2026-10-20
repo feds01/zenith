@@ -7,14 +7,15 @@ use zenith_cache::CacheSettings;
 use zenith_config::{Config, ContractConfig, Reexports, SOURCE_EXTENSIONS, Tsconfig};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
+use zenith_lang::{Resolved, Workspace};
+use zenith_lang_js::{Resolver, ResolverError, ResolverSettings, TsconfigMode};
 use zenith_parse::{ParseOptions, ParsedFile, Suppression};
-use zenith_resolve::{Resolved, Resolver, ResolverError, ResolverSettings, TsconfigMode};
 use zenith_utils::{
     location::Located,
     path::{absolute_path, adjust_canonicalisation, relative_posix},
     printing::plural,
 };
-use zenith_workspace::{WalkSettings, Workspace};
+use zenith_workspace::WalkSettings;
 
 use crate::{FileError, PipelineError, Scope, UnresolvedImport};
 
@@ -239,7 +240,7 @@ impl Session {
         // A `tsconfig.json` that extends one from a package can't be loaded until
         // the package is installed, and then none of its `paths` resolve.
         let in_tsconfig_errors =
-            self.unresolved.iter().filter(|import| import.reason.is_tsconfig_error()).count();
+            self.unresolved.iter().filter(|import| import.reason.is_config_error()).count();
         if in_tsconfig_errors > 0 {
             let which = match (in_tsconfig_errors, self.unresolved.len()) {
                 (1, 1) => "it is in a file".to_string(),
@@ -370,7 +371,7 @@ impl Session {
 mod tests {
     use std::path::Path;
 
-    use zenith_workspace::WorkspacePackage;
+    use zenith_lang::WorkspacePackage;
 
     use super::*;
 

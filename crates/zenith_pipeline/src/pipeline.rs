@@ -133,7 +133,7 @@ mod tests {
     use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
     use zenith_config::Config;
-    use zenith_resolve::ResolverError;
+    use zenith_lang_js::ResolverError;
 
     use super::*;
 

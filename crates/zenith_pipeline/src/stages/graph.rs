@@ -3,7 +3,7 @@
 use std::mem;
 
 use zenith_graph::{Exports, GraphBuilder, ModuleExports, NodeHandle};
-use zenith_resolve::Resolved;
+use zenith_lang::Resolved;
 
 use crate::{
     FileSuppressions, PipelineError, ResolvedImport, Session, SourceFile, Stage, StageKind,

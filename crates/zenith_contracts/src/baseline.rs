@@ -28,12 +28,13 @@ use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use toml::Spanned;
 use zenith_graph::{EdgeSet, Graph, ModuleId};
+use zenith_lang::Workspace;
 use zenith_pipeline::Graphs;
 use zenith_utils::{
     location::{ByteRange, LineIndex},
     text::comment_out_conflict_markers,
 };
-use zenith_workspace::{Renames, Workspace};
+use zenith_workspace::Renames;
 
 use crate::{Contract, Exemptions};
 

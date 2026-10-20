@@ -1,0 +1,15 @@
+[package]
+name = "zenith_lang"
+version = { workspace = true }
+description = "The interface that every language zenith supports implements"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = { workspace = true }
+
+[dependencies]
+zenith_utils = { workspace = true }
+
+[lints]
+workspace = true

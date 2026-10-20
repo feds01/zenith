@@ -5,9 +5,9 @@ use std::time::{Duration, Instant};
 use rayon::prelude::*;
 use zenith_config::{AlertLevel, ContractConfig, IgnoreImport, Selector};
 use zenith_graph::{Graph, ModuleId, NodeSet, Unit};
+use zenith_lang::Workspace;
 use zenith_pipeline::{FileSuppressions, Graphs, Scope};
 use zenith_utils::location::ByteRange;
-use zenith_workspace::Workspace;
 
 use crate::{
     Baseline, ContractError, ContractErrorKind, Selection, Violation, rules::Rule,

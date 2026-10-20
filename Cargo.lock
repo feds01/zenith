@@ -1986,6 +1986,7 @@ dependencies = [
  "zenith_config",
  "zenith_contracts",
  "zenith_graph",
+ "zenith_lang_js",
  "zenith_parse",
  "zenith_pipeline",
  "zenith_utils",
@@ -2033,6 +2034,7 @@ dependencies = [
  "zenith_config",
  "zenith_diagnostics",
  "zenith_graph",
+ "zenith_lang",
  "zenith_parse",
  "zenith_pipeline",
  "zenith_reporting",
@@ -2070,6 +2072,9 @@ dependencies = [
 [[package]]
 name = "zenith_lang"
 version = "0.2.0"
+dependencies = [
+ "zenith_utils",
+]
 
 [[package]]
 name = "zenith_lang_go"
@@ -2079,10 +2084,12 @@ version = "0.2.0"
 name = "zenith_lang_js"
 version = "0.2.0"
 dependencies = [
+ "log",
  "oxc_resolver",
  "rustc-hash",
  "serde_json",
  "tempfile",
+ "yaml-rust2",
  "zenith_lang",
  "zenith_utils",
 ]
@@ -2155,9 +2162,7 @@ dependencies = [
  "ignore",
  "log",
  "rustc-hash",
- "serde_json",
  "tempfile",
- "yaml-rust2",
  "zenith_utils",
 ]
 

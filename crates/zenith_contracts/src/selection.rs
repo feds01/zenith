@@ -17,7 +17,7 @@ use std::fmt;
 
 use zenith_config::{OPTIONAL_EXTENSIONS, Selector, SelectorTarget};
 use zenith_graph::{Graph, NodeSet, Unit};
-use zenith_workspace::Workspace;
+use zenith_lang::Workspace;
 
 /// The units that a selector resolves to in a project.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -145,7 +145,7 @@ mod tests {
     use thin_vec::thin_vec;
     use zenith_config::{Config, ContractKind};
     use zenith_graph::{GraphBuilder, ModuleId};
-    use zenith_workspace::WorkspacePackage;
+    use zenith_lang::WorkspacePackage;
 
     use super::*;
 

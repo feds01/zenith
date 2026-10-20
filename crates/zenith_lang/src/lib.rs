@@ -3,5 +3,7 @@
 //! and syntax errors, and where each import resolves to.
 
 mod resolved;
+mod workspace;
 
 pub use resolved::{ResolveFailure, Resolved, UnresolvedReason};
+pub use workspace::{Workspace, WorkspacePackage};

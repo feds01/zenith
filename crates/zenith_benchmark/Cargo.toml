@@ -39,6 +39,7 @@ harness = false
 zenith_config = { workspace = true }
 zenith_graph = { workspace = true }
 zenith_utils = { workspace = true }
+zenith_lang_js = { workspace = true }
 zenith_workspace = { workspace = true }
 
 fastrand = { workspace = true }

@@ -7,7 +7,7 @@ use zenith_cache::CacheSettings;
 use zenith_config::{Config, ContractConfig, Reexports, SOURCE_EXTENSIONS, Tsconfig};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
-use zenith_lang::Resolved;
+use zenith_lang::{Resolved, Workspace};
 use zenith_lang_js::{Resolver, ResolverError, ResolverSettings, TsconfigMode};
 use zenith_parse::{ParseOptions, ParsedFile, Suppression};
 use zenith_utils::{
@@ -15,7 +15,7 @@ use zenith_utils::{
     path::{absolute_path, adjust_canonicalisation, relative_posix},
     printing::plural,
 };
-use zenith_workspace::{WalkSettings, Workspace};
+use zenith_workspace::WalkSettings;
 
 use crate::{FileError, PipelineError, Scope, UnresolvedImport};
 
@@ -371,7 +371,7 @@ impl Session {
 mod tests {
     use std::path::Path;
 
-    use zenith_workspace::WorkspacePackage;
+    use zenith_lang::WorkspacePackage;
 
     use super::*;
 

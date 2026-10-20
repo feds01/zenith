@@ -101,8 +101,9 @@ impl Drop for RemoveShared {
 mod tests {
     use std::{collections::BTreeSet, fs, path::Path};
 
+    use zenith_lang_js::discover_packages;
     use zenith_utils::path::relative_posix;
-    use zenith_workspace::{WalkSettings, discover_packages, walk};
+    use zenith_workspace::{WalkSettings, walk};
 
     use super::*;
     use crate::{FileKind, default_walk_settings};

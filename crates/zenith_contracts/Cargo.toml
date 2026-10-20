@@ -16,6 +16,7 @@ zenith_parse = { workspace = true }
 zenith_pipeline = { workspace = true }
 zenith_reporting = { workspace = true }
 zenith_utils = { workspace = true }
+zenith_lang = { workspace = true }
 zenith_workspace = { workspace = true }
 
 rayon = { workspace = true }

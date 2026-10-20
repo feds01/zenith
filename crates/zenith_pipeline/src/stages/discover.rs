@@ -1,7 +1,8 @@
 //! The [`Discover`] stage.
 
+use zenith_lang_js::discover_packages;
 use zenith_utils::path::relative_posix;
-use zenith_workspace::{Git, discover_packages, walk};
+use zenith_workspace::{Git, walk};
 
 use crate::{PipelineError, Session, SourceFile, Stage, StageKind};
 

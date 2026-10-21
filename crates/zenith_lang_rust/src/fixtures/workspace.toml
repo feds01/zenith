@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/*"]
+resolver = "2"
 
 [workspace.dependencies]
 core-lib = { path = "crates/core-lib" }

@@ -12,7 +12,7 @@ use zenith_config::{Language, LanguageOptions, LanguageTable, Located};
 use zenith_lang::{Backend, BackendSettings};
 use zenith_utils::glob::Glob;
 
-use crate::backend::RustBackend;
+use crate::{backend::RustBackend, crates::Discovery};
 
 /// Rust.
 pub const RUST: Language = Language {
@@ -56,7 +56,7 @@ impl LanguageOptions for RustConfig {
     }
 
     fn backend(&self, settings: BackendSettings<'_>) -> Box<dyn Backend> {
-        Box::new(RustBackend::new(settings.root))
+        Box::new(RustBackend::new(settings.root, Discovery::Cargo))
     }
 }
 

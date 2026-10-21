@@ -1,12 +1,21 @@
 [package]
 name = "app"
 version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "extra"
+path = "tools/extra.rs"
+
+[[test]]
+name = "custom"
+path = "checks/custom.rs"
 
 [dependencies]
 core-lib = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 json = { package = "serde_json", version = "1" }
-util = { path = "../util" }
+util = { path = "../util", package = "util-kit" }
 serde-yaml = "0.9"
 
 [dev-dependencies]

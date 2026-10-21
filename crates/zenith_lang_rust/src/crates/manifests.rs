@@ -1,0 +1,38 @@
+//! Finding the crates by reading the `Cargo.toml` files, for when Cargo can't
+//! say.
+
+use std::path::Path;
+
+use rustc_hash::FxHashMap;
+
+use super::{Crates, Found};
+use crate::{crates::TargetKind, manifest::Manifest};
+
+impl Crates {
+    /// The crates of the packages in `manifests`, each with its directory.
+    pub(super) fn from_manifests(manifests: &[(&Path, Manifest)]) -> Self {
+        // The workspaces declare the dependencies that their members share.
+        let workspaces: FxHashMap<&Path, &Manifest> = manifests
+            .iter()
+            .filter(|(_, manifest)| manifest.workspace.is_some())
+            .map(|(dir, manifest)| (*dir, manifest))
+            .collect();
+        let found = manifests
+            .iter()
+            .filter_map(|(dir, manifest)| {
+                let package = manifest.package.as_ref()?;
+                let workspace = dir.ancestors().find_map(|dir| Some((dir, *workspaces.get(dir)?)));
+                let targets = manifest.targets(dir);
+                let has_library = targets.iter().any(|target| target.kind == TargetKind::Lib);
+                Some(Found {
+                    name: package.name.clone(),
+                    dir: dir.to_path_buf(),
+                    library: has_library.then(|| manifest.library_name()),
+                    targets,
+                    dependencies: manifest.declared(dir, workspace),
+                })
+            })
+            .collect();
+        Self::new(found)
+    }
+}

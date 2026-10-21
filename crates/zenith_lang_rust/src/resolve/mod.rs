@@ -13,12 +13,12 @@ mod tests;
 
 use std::path::Path;
 
-use zenith_lang::{ResolveFailure, Resolved, UnresolvedReason};
+use zenith_lang::{Resolved, UnresolvedReason};
 use zenith_utils::path::relative_posix;
 
 use crate::{
-    crates::{Crate, Crates, Dependency, STANDARD_CRATES},
-    modules::{Position, Root},
+    crates::{Crate, Crates, Dependency, STANDARD_CRATES, Target},
+    modules::Position,
 };
 
 /// Resolves the imports of the Rust files of a project, with the `crates`
@@ -42,7 +42,7 @@ impl<'a> Resolver<'a> {
     pub(crate) fn resolve(&self, path: &Path, specifier: &str) -> Resolved {
         // 1. Find the package of the importing file.
         let Some(krate) = self.crates.containing(path) else {
-            return failed("the file is in no Cargo package");
+            return Resolved::failed("the file is in no Cargo package");
         };
 
         // 2. Split the path. One that starts with `::` names a crate, never a module.
@@ -62,8 +62,8 @@ impl<'a> Resolver<'a> {
     /// What `segments`, which start with `crate`, `self` or `super`, refer to
     /// when they are imported by the file at `path`, in `krate`.
     fn relative(&self, krate: &Crate, path: &Path, segments: &[&str]) -> Resolved {
-        let Some(Position { root, modules }) = krate.locate(path) else {
-            return failed(format!("the file is in no module tree of `{}`", krate.name));
+        let Some(Position { target, modules }) = krate.locate(path) else {
+            return Resolved::failed(format!("the file is in no module tree of `{}`", krate.name));
         };
 
         // 1. Start at the root for `crate`, and at the file's module otherwise.
@@ -75,13 +75,13 @@ impl<'a> Resolver<'a> {
         // 2. Each `self` stays, and each `super` leaves the module.
         while let Some((&step @ ("self" | "super"), tail)) = rest.split_first() {
             if step == "super" && modules.pop().is_none() {
-                return failed("`super` goes above the crate root");
+                return Resolved::failed("`super` goes above the crate root");
             }
             rest = tail;
         }
 
         modules.extend(rest);
-        self.module(&root, &modules, path)
+        self.module(target, &modules, path)
     }
 
     /// What `rest`, the segments after the first, refer to when `name`, the
@@ -98,7 +98,11 @@ impl<'a> Resolver<'a> {
         // 1. A crate: a dependency, the crate's own library, or the standard library.
         match krate.dependencies.get(name) {
             Some(Dependency::Internal(index)) => {
-                return self.module(&self.crates.get(*index).library(), rest, path);
+                let krate = self.crates.get(*index);
+                return match krate.library() {
+                    Some(library) => self.module(library, rest, path),
+                    None => Resolved::failed(format!("`{}` has no library", krate.name)),
+                };
             }
             Some(Dependency::External(package)) => {
                 return Resolved::External { package: package.clone(), found: true };
@@ -113,50 +117,36 @@ impl<'a> Resolver<'a> {
         //    name that starts with a capital is a type in scope, such as an enum whose
         //    variants are imported.
         if name.starts_with(char::is_uppercase) {
-            return ignored("a type in scope, not a crate or module");
+            return Resolved::ignored("a type in scope, not a crate or module");
         }
-        if !rooted && let Some(Position { root, modules }) = krate.locate(path) {
+        if !rooted && let Some(Position { target, modules }) = krate.locate(path) {
             let mut all: Vec<&str> = modules.iter().map(String::as_str).collect();
             let own = all.len();
             all.push(name);
             all.extend(rest);
-            if let Some((file, depth)) = root.module_file(&all)
-                && depth > own
-            {
+            let (file, depth) = target.module_file(&all);
+            if depth > own {
                 return self.file(&file, path);
             }
         }
-        failed(format!("`{name}` is not a crate, or a module here"))
+        Resolved::failed(format!("`{name}` is not a crate, or a module here"))
     }
 
-    /// The file of the module that `modules` name in the tree of `root`, for
-    /// an import in the file at `importer`.
-    fn module(&self, root: &Root, modules: &[&str], importer: &Path) -> Resolved {
-        match root.module_file(modules) {
-            Some((file, _)) => self.file(&file, importer),
-            None => failed("the root module of the crate is not a file"),
-        }
+    /// The file of the module that `modules` name in the tree of `target`,
+    /// for an import in the file at `importer`.
+    fn module(&self, target: &Target, modules: &[&str], importer: &Path) -> Resolved {
+        self.file(&target.module_file(modules).0, importer)
     }
 
     /// `file`, imported by the file at `importer`, as it is named in the
     /// project. A file does not import itself.
     fn file(&self, file: &Path, importer: &Path) -> Resolved {
         if file == importer {
-            return ignored("the path is in the importing file");
+            return Resolved::ignored("the path is in the importing file");
         }
         match relative_posix(self.root, file) {
             Some(name) => Resolved::Internal(name),
             None => Resolved::unresolved(UnresolvedReason::OutsideRoot(file.to_path_buf())),
         }
     }
-}
-
-/// A path that can't be resolved, for this reason.
-fn failed(reason: impl Into<String>) -> Resolved {
-    Resolved::unresolved(UnresolvedReason::Failed(ResolveFailure::new(reason)))
-}
-
-/// A path that is left out, for this reason.
-fn ignored(reason: &'static str) -> Resolved {
-    Resolved::Ignored(Box::new(UnresolvedReason::Failed(ResolveFailure::new(reason))))
 }

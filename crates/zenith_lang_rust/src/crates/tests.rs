@@ -1,9 +1,12 @@
-//! Tests of discovery: the crates of a project, their names, and what they
-//! depend on.
+//! Tests of discovery: the crates of a project, their targets, and what they
+//! depend on, whether Cargo or the manifests say so.
 
 use zenith_lang::WorkspacePackage;
 
-use super::*;
+use super::{
+    cargo::{CargoError, asked},
+    *,
+};
 use crate::testing::Project;
 
 /// The crate named `name` of `crates`.
@@ -24,6 +27,20 @@ fn dependencies(krate: &Crate) -> Vec<(&str, &Dependency)> {
     dependencies
 }
 
+/// The crates of `project` as Cargo says they are, or `None` if it isn't
+/// installed, which is said.
+fn from_cargo(project: &Project) -> Option<Crates> {
+    let manifests = Manifest::read_all(project.manifests());
+    match Crates::from_cargo(project.root(), &manifests) {
+        Ok(crates) => Some(crates),
+        Err(CargoError::NotFound) => {
+            eprintln!("skipping the comparison with Cargo: `cargo` is not installed");
+            None
+        }
+        Err(error) => panic!("`cargo metadata` failed: {error}"),
+    }
+}
+
 #[test]
 fn every_manifest_with_a_package_is_a_crate() {
     let project = Project::workspace();
@@ -41,10 +58,7 @@ fn every_manifest_with_a_package_is_a_crate() {
 
 #[test]
 fn a_package_in_the_root_is_the_root_package() {
-    let project = Project::new(&[
-        ("Cargo.toml", include_str!("../fixtures/root-package.toml")),
-        ("member/Cargo.toml", include_str!("../fixtures/member.toml")),
-    ]);
+    let project = Project::root_package();
     let workspace = project.crates().workspace(project.root());
     let root = WorkspacePackage {
         name: "root-app".into(),
@@ -68,11 +82,38 @@ fn a_manifest_that_cannot_be_read_is_skipped() {
 }
 
 #[test]
-fn a_crate_is_named_for_its_package_unless_its_library_says_otherwise() {
-    let crates = Project::workspace().crates();
-    let (lib, util) = (krate(&crates, "core-lib"), krate(&crates, "util-kit"));
-    assert_eq!((&lib.lib_name[..], &lib.lib_path[..]), ("core_lib", "src/lib.rs"));
-    assert_eq!((&util.lib_name[..], &util.lib_path[..]), ("kit", "lib/lib.rs"));
+fn a_crate_has_the_targets_that_cargo_finds_and_those_that_the_manifest_gives() {
+    let project = Project::workspace();
+    let crates = project.crates();
+    let targets = |name: &str| -> Vec<(TargetKind, String)> {
+        let dir = &krate(&crates, name).dir;
+        (krate(&crates, name).targets.iter())
+            .map(|target| {
+                let root = target.root.strip_prefix(dir).unwrap();
+                (target.kind, root.to_string_lossy().replace('\\', "/"))
+            })
+            .collect()
+    };
+    let target = |kind, root: &str| (kind, root.to_string());
+    assert_eq!(
+        targets("app"),
+        [
+            target(TargetKind::Lib, "src/lib.rs"),
+            // `src/bin/*.rs` and `src/bin/*/main.rs`, `src/main.rs`, and `[[bin]]`.
+            target(TargetKind::Bin, "src/bin/multi/main.rs"),
+            target(TargetKind::Bin, "src/bin/tool.rs"),
+            target(TargetKind::Bin, "src/main.rs"),
+            target(TargetKind::Bin, "tools/extra.rs"),
+            // `tests/*.rs`, and `[[test]]`.
+            target(TargetKind::Test, "checks/custom.rs"),
+            target(TargetKind::Test, "tests/it.rs"),
+            target(TargetKind::Bench, "benches/speed.rs"),
+            target(TargetKind::Example, "examples/demo.rs"),
+            target(TargetKind::Build, "build.rs"),
+        ]
+    );
+    // The library may be anywhere.
+    assert_eq!(targets("util-kit"), [target(TargetKind::Lib, "lib/lib.rs")]);
 }
 
 #[test]
@@ -98,21 +139,18 @@ fn dependencies_are_named_as_the_code_uses_them() {
             ("serde_yaml", &external("serde-yaml")),
             // The dev-dependencies.
             ("tempfile", &external("tempfile")),
-            // A path to a crate of the project, whose library is called `kit`.
+            // A path to a crate of the project, which the code may name as it likes.
             ("util", &internal("util-kit")),
         ]
     );
+    // The library of `util-kit` is `kit` for its own targets.
     let util = krate(&crates, "util-kit");
     assert_eq!(dependencies(util), [("kit", &internal("util-kit"))]);
 }
 
 #[test]
 fn workspace_dependencies_are_relative_to_the_workspace_root() {
-    let project = Project::new(&[
-        ("Cargo.toml", include_str!("../fixtures/root-package.toml")),
-        ("member/Cargo.toml", include_str!("../fixtures/member.toml")),
-    ]);
-    let crates = project.crates();
+    let crates = Project::root_package().crates();
     let root = krate(&crates, "root-app");
     assert_eq!(root.dependencies["member"], Dependency::Internal(index(&crates, "member")));
     assert_eq!(root.dependencies["root_app"], Dependency::Internal(index(&crates, "root-app")));
@@ -130,4 +168,45 @@ fn a_file_is_in_the_nearest_crate_above_it() {
     assert_eq!(name("crates/util/lib/lib.rs"), Some("util-kit"));
     assert_eq!(name("crates/other/lib.rs"), None);
     assert_eq!(name("build.rs"), None);
+}
+
+#[test]
+fn cargo_and_the_manifests_find_the_same_crates() {
+    // A virtual workspace, renames, `workspace = true`, and every kind of target in
+    // one; and a workspace with a package in its root.
+    for project in [Project::workspace(), Project::root_package()] {
+        if let Some(from_cargo) = from_cargo(&project) {
+            assert_eq!(from_cargo, project.crates());
+        }
+    }
+}
+
+#[test]
+fn a_workspace_is_asked_about_once() {
+    let ask = |project: &Project| -> Vec<String> {
+        let manifests = Manifest::read_all(project.manifests());
+        let asked = asked(&manifests);
+        asked
+            .map(|dir| dir.strip_prefix(project.root()).unwrap().to_string_lossy().into())
+            .collect()
+    };
+    // The members of a workspace are covered by its manifest, which is always
+    // asked.
+    assert_eq!(ask(&Project::workspace()), [""]);
+    assert_eq!(ask(&Project::root_package()), [""]);
+    // Packages that no workspace covers are asked about one by one.
+    let separate = Project::new(&[
+        ("a/Cargo.toml", include_str!("../fixtures/core-lib.toml")),
+        ("b/Cargo.toml", include_str!("../fixtures/core-lib.toml")),
+    ]);
+    assert_eq!(ask(&separate), ["a", "b"]);
+}
+
+#[test]
+fn the_manifests_are_read_when_cargo_fails() {
+    // Cargo finds no target in a package without a file, and says so.
+    let project = Project::new(&[("Cargo.toml", include_str!("../fixtures/core-lib.toml"))]);
+    let found = Crates::discover(project.root(), project.manifests(), Discovery::Cargo);
+    assert_eq!(found, project.crates());
+    assert_eq!(found.crates.len(), 1);
 }

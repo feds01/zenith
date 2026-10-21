@@ -160,6 +160,9 @@ fn tests_benchmarks_examples_and_binaries_use_the_library_by_its_name() {
         "crates/app/src/bin/tool.rs",
         "crates/app/src/bin/multi/main.rs",
         "crates/app/build.rs",
+        // Targets that the manifest gives a path.
+        "crates/app/tools/extra.rs",
+        "crates/app/checks/custom.rs",
     ] {
         assert_eq!(fixture.file(from, "app::a::b::Thing"), AB, "{from}");
         assert_eq!(fixture.file(from, "core_lib::model"), "crates/core-lib/src/model.rs", "{from}");
@@ -176,13 +179,10 @@ fn each_test_and_binary_is_a_crate_of_its_own() {
     assert_eq!(fixture.file(it, "common::helper"), common);
     assert_eq!(fixture.file(part, "crate::Thing"), "crates/app/src/bin/multi/main.rs");
     assert_eq!(fixture.file(part, "super::Thing"), "crates/app/src/bin/multi/main.rs");
-    // They are not the modules of the library, so `a::b` is an item of the test. A
-    // module of a test could be in any of them, so it has no root.
+    // They are not the modules of the library, so `a::b` is an item of the test.
     assert_eq!(fixture.failure(it, "crate::a::b"), "the path is in the importing file");
-    assert_eq!(
-        fixture.failure(common, "super::Thing"),
-        "the root module of the crate is not a file"
-    );
+    // A file next to a test is a module of whichever test comes first.
+    assert_eq!(fixture.file(common, "super::Thing"), it);
 }
 
 #[test]
@@ -240,10 +240,15 @@ fn a_file_outside_every_module_tree_has_only_crates_to_import() {
 }
 
 #[test]
-fn a_library_that_is_not_a_file_does_not_resolve() {
-    let project = Project::new(&[("Cargo.toml", include_str!("../fixtures/core-lib.toml"))]);
+fn a_crate_without_a_library_does_not_resolve() {
+    let project = Project::new(&[
+        ("bin/Cargo.toml", include_str!("../fixtures/bin-only.toml")),
+        ("bin/src/main.rs", ""),
+        ("user/Cargo.toml", include_str!("../fixtures/uses-bin-only.toml")),
+        ("user/src/lib.rs", ""),
+    ]);
     let crates = project.crates();
-    let resolver = Resolver::new(project.root(), &crates);
-    let resolved = resolver.resolve(&project.path("src/lib.rs"), "core_lib::a");
-    assert_eq!(resolved, failed("the root module of the crate is not a file"));
+    let resolved = Resolver::new(project.root(), &crates)
+        .resolve(&project.path("user/src/lib.rs"), "bin_only::a");
+    assert_eq!(resolved, Resolved::failed("`bin-only` has no library"));
 }

@@ -2190,6 +2190,7 @@ dependencies = [
  "rustc-hash",
  "schemars",
  "serde",
+ "serde_json",
  "tempfile",
  "thin-vec",
  "toml",

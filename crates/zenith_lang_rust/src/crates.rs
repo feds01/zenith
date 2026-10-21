@@ -1,26 +1,37 @@
-//! The crates of a project: found from its `Cargo.toml` files, each with the
-//! crates it depends on.
+//! The crates of a project, each with its targets and the crates it depends
+//! on. Cargo can say what they are, and failing that, the `Cargo.toml` files
+//! can.
 
+mod cargo;
+mod manifests;
 #[cfg(test)]
 mod tests;
 
 use std::path::{Path, PathBuf};
 
-use log::warn;
 use rustc_hash::FxHashMap;
 use zenith_lang::{Workspace, WorkspacePackage};
-use zenith_utils::{
-    fs::read_text,
-    path::{normalize_path, relative_posix},
-};
+use zenith_utils::path::relative_posix;
 
-use crate::manifest::{Dependency as Declared, Manifest};
+use crate::manifest::Manifest;
 
 /// The crates of the standard library, which every crate may use.
 pub(crate) const STANDARD_CRATES: &[&str] = &["std", "core", "alloc", "proc_macro", "test"];
 
+/// How the crates of a project are found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Discovery {
+    /// Ask Cargo, and read the manifests if it can't say.
+    Cargo,
+
+    /// Read the manifests. Only the tests ask for it, as a run falls back to it
+    /// by itself.
+    #[cfg_attr(not(test), expect(dead_code))]
+    Manifests,
+}
+
 /// The crates of a project.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct Crates {
     /// Every crate, sorted by directory.
     crates: Vec<Crate>,
@@ -30,7 +41,7 @@ pub(crate) struct Crates {
 }
 
 /// A crate of the project: a Cargo package.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Crate {
     /// The name of the package.
     pub(crate) name: String,
@@ -38,14 +49,44 @@ pub(crate) struct Crate {
     /// Its directory, as an absolute path.
     pub(crate) dir: PathBuf,
 
-    /// The name that code uses for its library.
-    pub(crate) lib_name: String,
-
-    /// The root of its library, as a POSIX path relative to its directory.
-    pub(crate) lib_path: String,
+    /// Its targets, sorted by kind, then by root.
+    pub(crate) targets: Vec<Target>,
 
     /// The crates that it uses, by the name that its code uses for each.
     pub(crate) dependencies: FxHashMap<String, Dependency>,
+}
+
+/// A target of a crate: a library, a binary, a test, and so on, which is the
+/// root of a tree of modules.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct Target {
+    /// What the target is.
+    pub(crate) kind: TargetKind,
+
+    /// The file of its root module, as an absolute path.
+    pub(crate) root: PathBuf,
+}
+
+/// What a [`Target`] is. They are ordered so that the library comes first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum TargetKind {
+    /// The library, which the other targets and other crates use.
+    Lib,
+
+    /// A binary.
+    Bin,
+
+    /// An integration test.
+    Test,
+
+    /// A benchmark.
+    Bench,
+
+    /// An example.
+    Example,
+
+    /// The build script.
+    Build,
 }
 
 /// A crate that another crate depends on.
@@ -58,98 +99,85 @@ pub(crate) enum Dependency {
     External(String),
 }
 
+/// A package, as Cargo or its manifest says, before its dependencies are
+/// told apart as those of the project and those from outside.
+pub(crate) struct Found {
+    /// The name of the package.
+    pub(crate) name: String,
+
+    /// Its directory, as an absolute path.
+    pub(crate) dir: PathBuf,
+
+    /// The name that code uses for its library, if it has one.
+    pub(crate) library: Option<String>,
+
+    /// Its targets.
+    pub(crate) targets: Vec<Target>,
+
+    /// Its dependencies.
+    pub(crate) dependencies: Vec<Declared>,
+}
+
+/// A dependency of a package, as declared.
+pub(crate) struct Declared {
+    /// The name that the code of the package uses for it.
+    pub(crate) name: String,
+
+    /// The name of the package that it is.
+    pub(crate) package: String,
+
+    /// Its directory, if it is a path, as an absolute path.
+    pub(crate) path: Option<PathBuf>,
+}
+
 impl Crates {
-    /// The crates of a project, which are the packages of the `manifests`
+    /// The crates of the project at `root`, which must be canonical, found
+    /// the way that `discovery` says, in the packages of the `manifests`
     /// that the walk found.
-    pub(crate) fn discover(manifests: &[PathBuf]) -> Self {
-        // 1. Read the manifests.
-        let manifests: Vec<(&Path, Manifest)> = manifests
-            .iter()
-            .filter_map(|path| {
-                let manifest =
-                    read_text(path).map_err(|error| error.to_string()).and_then(|text| {
-                        Manifest::parse(&text).map_err(|error| error.message().to_string())
-                    });
-                match manifest {
-                    Ok(manifest) => Some((path.parent()?, manifest)),
-                    Err(error) => {
-                        warn!("could not read `{}`: {error}", path.display());
-                        None
-                    }
-                }
-            })
-            .collect();
-
-        // 2. Every manifest with a package is a crate.
-        let mut members: Vec<_> =
-            manifests.iter().filter(|(_, manifest)| manifest.package.is_some()).collect();
-        members.sort_by_key(|(dir, _)| *dir);
-        let crates: Vec<_> =
-            members.iter().map(|(dir, manifest)| Crate::new(dir, manifest)).collect();
-        let by_dir = (0..).zip(&crates).map(|(index, krate)| (krate.dir.clone(), index)).collect();
-        let mut crates = Self { crates, by_dir };
-
-        // 3. Find what each one depends on, now that every crate is known.
-        let workspaces: FxHashMap<&Path, &Manifest> = manifests
-            .iter()
-            .filter(|(_, manifest)| manifest.workspace.is_some())
-            .map(|(dir, manifest)| (*dir, manifest))
-            .collect();
-        let dependencies: Vec<_> = members
-            .iter()
-            .map(|(dir, manifest)| {
-                let workspace = dir.ancestors().find_map(|dir| Some((dir, *workspaces.get(dir)?)));
-                crates.dependencies(dir, manifest, workspace)
-            })
-            .collect();
-        for (index, (krate, mut dependencies)) in
-            crates.crates.iter_mut().zip(dependencies).enumerate()
-        {
-            // A crate is known to its own tests and examples by its name.
-            dependencies.entry(krate.lib_name.clone()).or_insert(Dependency::Internal(index));
-            krate.dependencies = dependencies;
+    pub(crate) fn discover(root: &Path, manifests: &[PathBuf], discovery: Discovery) -> Self {
+        let manifests = Manifest::read_all(manifests);
+        if discovery == Discovery::Cargo {
+            match Self::from_cargo(root, &manifests) {
+                Ok(crates) => return crates,
+                Err(error) => error.log(),
+            }
         }
-        crates
+        Self::from_manifests(&manifests)
     }
 
-    /// The dependencies of the crate in `dir`, whose manifest is `manifest`,
-    /// as its code names them. `workspace` is the directory and manifest of
-    /// the workspace that the crate is in, which declares the dependencies
-    /// that `workspace = true` takes.
-    fn dependencies(
-        &self,
-        dir: &Path,
-        manifest: &Manifest,
-        workspace: Option<(&Path, &Manifest)>,
-    ) -> FxHashMap<String, Dependency> {
-        manifest
-            .dependencies()
-            .map(|(name, declared)| {
-                // 1. A dependency of the workspace is declared in its manifest, where paths are
-                //    relative to it.
-                let shared = workspace.and_then(|(workspace_dir, manifest)| {
-                    let shared = manifest.workspace.as_ref()?.dependencies.get(name)?;
-                    Some((workspace_dir, shared))
-                });
-                let (base, declared) = match declared {
-                    Declared::Table(table) if table.workspace => shared.unwrap_or((dir, declared)),
-                    _ => (dir, declared),
-                };
-
-                // 2. A path to a crate of the project is that crate. Any other is external.
-                let (path, package) = match declared {
-                    Declared::Version(_) => (None, None),
-                    Declared::Table(table) => (table.path.as_deref(), table.package.as_deref()),
-                };
-                let internal =
-                    path.and_then(|path| self.by_dir.get(&normalize_path(base.join(path))));
-                let dependency = match internal {
-                    Some(&index) => Dependency::Internal(index),
-                    None => Dependency::External(package.unwrap_or(name).to_owned()),
-                };
-                (name.replace('-', "_"), dependency)
+    /// The crates of `found`, which may be in any order.
+    fn new(mut found: Vec<Found>) -> Self {
+        found.sort_by(|a, b| a.dir.cmp(&b.dir));
+        let by_dir: FxHashMap<_, _> =
+            found.iter().enumerate().map(|(index, found)| (found.dir.clone(), index)).collect();
+        let crates = found
+            .into_iter()
+            .enumerate()
+            .map(|(index, found)| {
+                // A dependency is internal if its path is the directory of a crate.
+                let mut dependencies: FxHashMap<_, _> = (found.dependencies.into_iter())
+                    .map(|declared| {
+                        let internal = declared.path.and_then(|path| by_dir.get(&path).copied());
+                        (
+                            declared.name,
+                            match internal {
+                                Some(index) => Dependency::Internal(index),
+                                None => Dependency::External(declared.package),
+                            },
+                        )
+                    })
+                    .collect();
+                // The other targets of a crate use its library by its name.
+                if let Some(library) = found.library {
+                    dependencies.entry(library).or_insert(Dependency::Internal(index));
+                }
+                let mut targets = found.targets;
+                targets.sort();
+                targets.dedup();
+                Crate { name: found.name, dir: found.dir, targets, dependencies }
             })
-            .collect()
+            .collect();
+        Self { crates, by_dir }
     }
 
     /// The crate at `index`.
@@ -179,22 +207,5 @@ impl Crates {
         }
         workspace.packages.sort_by(|a, b| a.dir.cmp(&b.dir));
         workspace
-    }
-}
-
-impl Crate {
-    /// The crate of the package in `dir`, which has a `[package]`.
-    fn new(dir: &Path, manifest: &Manifest) -> Self {
-        let name =
-            manifest.package.as_ref().map(|package| package.name.clone()).unwrap_or_default();
-        let lib = manifest.lib.as_ref();
-        Self {
-            lib_name: (lib.and_then(|lib| lib.name.clone()))
-                .unwrap_or_else(|| name.replace('-', "_")),
-            lib_path: (lib.and_then(|lib| lib.path.clone())).unwrap_or_else(|| "src/lib.rs".into()),
-            name,
-            dir: dir.to_path_buf(),
-            dependencies: FxHashMap::default(),
-        }
     }
 }

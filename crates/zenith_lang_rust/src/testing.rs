@@ -7,7 +7,7 @@ use std::{
 
 use tempfile::TempDir;
 
-use crate::crates::Crates;
+use crate::crates::{Crates, Discovery};
 
 /// A project in a temporary directory.
 pub(crate) struct Project {
@@ -62,6 +62,8 @@ impl Project {
             ("crates/app/tests/common/mod.rs", ""),
             ("crates/app/benches/speed.rs", ""),
             ("crates/app/examples/demo.rs", ""),
+            ("crates/app/tools/extra.rs", ""),
+            ("crates/app/checks/custom.rs", ""),
             ("crates/core-lib/Cargo.toml", include_str!("fixtures/core-lib.toml")),
             ("crates/core-lib/src/lib.rs", ""),
             ("crates/core-lib/src/model.rs", ""),
@@ -69,6 +71,18 @@ impl Project {
             ("crates/util/Cargo.toml", include_str!("fixtures/util.toml")),
             ("crates/util/lib/lib.rs", ""),
             ("crates/util/lib/helper.rs", ""),
+        ])
+    }
+
+    /// A workspace of two crates that depend on each other, whose root has a
+    /// package of its own: `root-app`, which uses `member` through its
+    /// workspace, and `member`.
+    pub(crate) fn root_package() -> Self {
+        Self::new(&[
+            ("Cargo.toml", include_str!("fixtures/root-package.toml")),
+            ("src/lib.rs", ""),
+            ("member/Cargo.toml", include_str!("fixtures/member.toml")),
+            ("member/src/lib.rs", ""),
         ])
     }
 
@@ -82,8 +96,13 @@ impl Project {
         self.root.join(name)
     }
 
-    /// The crates of the project.
+    /// The `Cargo.toml` files of the project, sorted.
+    pub(crate) fn manifests(&self) -> &[PathBuf] {
+        &self.manifests
+    }
+
+    /// The crates of the project, found by reading its manifests.
     pub(crate) fn crates(&self) -> Crates {
-        Crates::discover(&self.manifests)
+        Crates::discover(&self.root, &self.manifests, Discovery::Manifests)
     }
 }

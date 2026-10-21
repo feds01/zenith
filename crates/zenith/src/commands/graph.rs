@@ -26,8 +26,7 @@ pub fn graph(global: &GlobalArgs, args: GraphCommand) -> Result<ExitStatus> {
     let roots: Vec<ModuleId> = match &args.selector {
         None => vec![ModuleId::ROOT],
         Some(selector) => {
-            let extensions = session.config.languages.optional_extensions();
-            let selection = Selection::resolve(selector, graph, &session.workspace, &extensions);
+            let selection = Selection::resolve(selector, graph, &session.workspace);
             if selection.units.is_empty() {
                 bail!("`{selector}` does not match anything");
             }

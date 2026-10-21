@@ -166,7 +166,6 @@ impl Parser {
             ignore_imports,
             unmatched_ignore_imports: shared.unmatched_ignore_imports,
             guidance: shared.guidance.map(String::from),
-            optional_extensions: self.optional_extensions.clone(),
             kind,
         }
     }

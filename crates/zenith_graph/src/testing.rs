@@ -13,7 +13,16 @@ use crate::{
 /// directory, and anything else is a file. Each import is a value import on
 /// its own line.
 pub(crate) fn graph_of(imports: &[(&str, &str)]) -> Graph {
+    graph_with_extensions(&[], imports)
+}
+
+/// [`graph_of`], with paths that may leave off `extensions`.
+pub(crate) fn graph_with_extensions(
+    extensions: &[&'static str],
+    imports: &[(&str, &str)],
+) -> Graph {
     let mut builder = GraphBuilder::new();
+    builder.set_optional_extensions(extensions.to_vec());
     for (index, (importer, imported)) in imports.iter().enumerate() {
         let importer = builder.add_file(importer).unwrap();
         let line = u32::try_from(index).unwrap() + 1;

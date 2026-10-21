@@ -151,6 +151,9 @@ pub struct GraphBuilder {
 
     /// Every import, in insertion order.
     imports: Vec<PendingImport>,
+
+    /// The extensions that a path glob may leave off a file's path.
+    optional_extensions: Vec<&'static str>,
 }
 
 impl Default for GraphBuilder {
@@ -170,7 +173,14 @@ impl GraphBuilder {
         };
         let nodes = index_vec![root];
         let handles = FxHashMap::from_iter([(String::new(), NodeHandle::new(0))]);
-        Self { handles, nodes, imports: Vec::new() }
+        Self { handles, nodes, imports: Vec::new(), optional_extensions: Vec::new() }
+    }
+
+    /// Let path globs leave `extensions` (each without its `.`) off a file's
+    /// path, so `src/types` matches `src/types.ts` as well as the directory
+    /// `src/types`. None by default.
+    pub fn set_optional_extensions(&mut self, extensions: Vec<&'static str>) {
+        self.optional_extensions = extensions;
     }
 
     /// Add a file by its POSIX path relative to the root, e.g.
@@ -254,7 +264,7 @@ impl GraphBuilder {
 
     /// Finish building: assign ids in name order, and sort every list.
     pub fn finish(self) -> Graph {
-        let GraphBuilder { handles, mut nodes, imports } = self;
+        let GraphBuilder { handles, mut nodes, imports, optional_extensions } = self;
 
         let mut names: IndexVec<NodeHandle, String> = index_vec![String::new(); nodes.len()];
         for (name, handle) in handles {
@@ -291,7 +301,7 @@ impl GraphBuilder {
         imports.sort_unstable();
         imports.dedup();
 
-        Graph::from_parts(parts, imports)
+        Graph::from_parts(parts, imports, optional_extensions)
     }
 
     /// Add an external package or builtin.

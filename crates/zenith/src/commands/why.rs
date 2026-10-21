@@ -35,9 +35,8 @@ pub fn why(global: &GlobalArgs, args: WhyCommand) -> Result<ExitStatus> {
     let graph = &session.graph;
 
     // 2. Find the files on either end of the chains.
-    let extensions = session.config.languages.optional_extensions();
-    let from = Selection::try_resolve(&args.from, graph, &session.workspace, &extensions)?;
-    let to = Selection::try_resolve(&args.to, graph, &session.workspace, &extensions)?;
+    let from = Selection::try_resolve(&args.from, graph, &session.workspace)?;
+    let to = Selection::try_resolve(&args.to, graph, &session.workspace)?;
     let (from, to) = (from.members(), to.members());
     if from.intersects(&to) {
         bail!("`{}` and `{}` overlap, so there is no import between them", args.from, args.to);

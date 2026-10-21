@@ -4,13 +4,16 @@
 #[cfg(test)]
 mod tests;
 
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use zenith_config::{Language, LanguageOptions, LanguageTable, Located};
+use zenith_lang::Workspace;
 use zenith_utils::glob::{Glob, NamePattern};
+
+use crate::{ResolverSettings, TsconfigMode};
 
 /// JavaScript and TypeScript.
 pub const JS: Language = Language {
@@ -96,6 +99,38 @@ impl JsConfig {
             alias: parsed.alias,
             ignore_unresolved: table.patterns(&parsed.ignore_unresolved, NamePattern::new),
         }
+    }
+}
+
+impl JsConfig {
+    /// How to resolve specifiers in the project at `root`, which must be
+    /// canonical, as these options say, with its `workspace` packages. Paths
+    /// in the options are relative to the root.
+    pub fn resolver_settings(&self, root: &Path, workspace: &Workspace) -> ResolverSettings {
+        let mut settings = ResolverSettings::new(root.to_path_buf());
+        settings.tsconfig = match &self.tsconfig {
+            Tsconfig::Auto => TsconfigMode::Auto,
+            Tsconfig::Off => TsconfigMode::Off,
+            Tsconfig::File(path) => TsconfigMode::File(root.join(path)),
+        };
+        if let Some(conditions) = &self.conditions {
+            settings.conditions = conditions.clone();
+        }
+        if let Some(main_fields) = &self.main_fields {
+            settings.main_fields = main_fields.clone();
+        }
+        if let Some(extensions) = &self.extensions {
+            settings.extensions = extensions.clone();
+        }
+        settings.aliases =
+            self.alias.iter().map(|(alias, path)| (alias.clone(), root.join(path))).collect();
+        settings.workspace_packages = workspace
+            .packages
+            .iter()
+            .map(|package| (package.name.clone(), package.path.clone()))
+            .collect();
+        settings.ignore_unresolved = self.ignore_unresolved.clone();
+        settings
     }
 }
 

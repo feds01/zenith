@@ -2081,7 +2081,6 @@ dependencies = [
  "zenith_diagnostics",
  "zenith_graph",
  "zenith_lang",
- "zenith_lang_js",
  "zenith_pipeline",
  "zenith_reporting",
  "zenith_utils",

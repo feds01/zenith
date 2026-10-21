@@ -22,7 +22,6 @@ impl Encapsulation {
     /// is not a directory is an error.
     pub(crate) fn compile(config: &EncapsulationConfig, units: &mut UnitResolver) -> Self {
         let graph = units.graph();
-        let extensions = units.extensions();
         let mut modules = Vec::new();
         for (unit, range) in units.located_units(&config.modules) {
             if graph.node(unit.root).kind() != NodeKind::Directory {
@@ -46,7 +45,7 @@ impl Encapsulation {
                 .filter(|member| {
                     let node = graph.node(*member);
                     (node.kind() == NodeKind::File || graph.is_package(*member))
-                        && globs.iter().any(|glob| node.matches_glob(glob, extensions))
+                        && globs.iter().any(|glob| graph.matches_glob(*member, glob))
                 })
                 .collect();
             modules.push((unit, entries));

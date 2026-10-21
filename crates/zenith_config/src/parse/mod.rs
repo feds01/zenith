@@ -48,7 +48,6 @@ pub(crate) fn parse(contents: &str, languages: Languages) -> Result<Config, Vec<
         contract: None,
         languages,
         enabled: Vec::new(),
-        optional_extensions: Vec::new(),
     };
     let config = parser.parse_config(contents);
     let (mut errors, _) = parser.diagnostics.into_parts();
@@ -75,10 +74,6 @@ struct Parser {
     /// The enabled languages, whose selector schemes the contracts may use.
     /// Known once `[languages]` is parsed.
     enabled: Vec<&'static Language>,
-
-    /// The extensions that path selectors may leave off, of the enabled
-    /// languages.
-    optional_extensions: Vec<&'static str>,
 }
 
 impl Parser {
@@ -112,7 +107,6 @@ impl Parser {
         let files = self.parse_files(files);
         let languages = self.parse_languages(languages);
         self.enabled = languages.enabled().collect();
-        self.optional_extensions = languages.optional_extensions();
         let analysis = self.parse_analysis(analysis);
         let baseline = self.parse_baseline(baseline);
         let cache = self.parse_cache(cache);

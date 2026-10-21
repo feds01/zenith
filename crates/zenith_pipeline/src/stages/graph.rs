@@ -32,6 +32,7 @@ impl Stage for BuildGraph {
         // The builder sorts what it is given, so the order of the files
         // doesn't matter.
         let mut builder = GraphBuilder::new();
+        builder.set_optional_extensions(session.config.languages.optional_extensions());
         // Every source file is a node, which the imports that resolved to it find
         // by its index.
         let handles = session

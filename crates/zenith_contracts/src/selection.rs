@@ -36,20 +36,14 @@ pub struct Selection {
 
 impl Selection {
     /// Resolve `selector` against a project's `graph` and the `workspace`
-    /// packages that `pkg:` selectors match. A path may leave off the
-    /// `extensions` of its file.
-    pub fn resolve(
-        selector: &Selector,
-        graph: &Graph,
-        workspace: &Workspace,
-        extensions: &[&str],
-    ) -> Self {
+    /// packages that `pkg:` selectors match.
+    pub fn resolve(selector: &Selector, graph: &Graph, workspace: &Workspace) -> Self {
         let mut units: Vec<Unit> = match selector.target() {
             // `web/src/*`: one unit per outermost match, e.g. the directory
             // `web/src/app` with its files, and the file `web/src/config.ts`.
             // `web/src/types` matches `web/src/types.ts` too.
             SelectorTarget::Path(glob) => {
-                let found = graph.find_paths(glob, extensions);
+                let found = graph.find_paths(glob);
                 found.into_iter().map(|id| graph.unit(id)).collect()
             }
             // `pkg:@acme/*`: one unit per matching workspace package, e.g. the
@@ -75,7 +69,7 @@ impl Selection {
         if !selector.except().is_empty() {
             let mut excluded = NodeSet::new();
             for except in selector.except() {
-                excluded.union_with(&Self::resolve(except, graph, workspace, extensions).members());
+                excluded.union_with(&Self::resolve(except, graph, workspace).members());
             }
             for unit in &mut units {
                 unit.members.difference_with(&excluded);
@@ -104,9 +98,8 @@ impl Selection {
         selector: &Selector,
         graph: &Graph,
         workspace: &Workspace,
-        extensions: &[&str],
     ) -> Result<Self, UnmatchedSelector> {
-        let selection = Self::resolve(selector, graph, workspace, extensions);
+        let selection = Self::resolve(selector, graph, workspace);
         if !selection.matched && selector.must_match() {
             return Err(UnmatchedSelector { selector: selector.to_string() });
         }
@@ -147,7 +140,6 @@ mod tests {
     use zenith_config::{Config, ContractKind};
     use zenith_graph::{GraphBuilder, ImportDetail, ImportKind, ImportedNames, ModuleId};
     use zenith_lang::WorkspacePackage;
-    use zenith_lang_js::JS;
     use zenith_pipeline::LANGUAGES;
     use zenith_utils::location::ByteRange;
 
@@ -165,7 +157,7 @@ mod tests {
     impl Project {
         /// Resolve `selector` in the project.
         fn select(&self, selector: &Selector) -> Selection {
-            Selection::resolve(selector, &self.graph, &self.workspace, JS.optional_extensions)
+            Selection::resolve(selector, &self.graph, &self.workspace)
         }
     }
 
@@ -173,6 +165,8 @@ mod tests {
     /// packages and builtins.
     fn project() -> Project {
         let mut builder = GraphBuilder::new();
+        builder
+            .set_optional_extensions(Config::defaults(LANGUAGES).languages.optional_extensions());
         for file in [
             "web/src/app/layout.tsx",
             "web/src/env.d.ts",
@@ -461,14 +455,9 @@ mod tests {
     fn only_path_and_package_selectors_must_match() {
         let project = project();
         let try_resolve = |raw: &str| {
-            Selection::try_resolve(
-                &selector(raw),
-                &project.graph,
-                &project.workspace,
-                JS.optional_extensions,
-            )
-            .map(|selection| selection.units.len())
-            .map_err(|error| error.to_string())
+            Selection::try_resolve(&selector(raw), &project.graph, &project.workspace)
+                .map(|selection| selection.units.len())
+                .map_err(|error| error.to_string())
         };
         assert_eq!(try_resolve("web/src/lib"), Ok(1));
         assert_eq!(try_resolve("web/nope"), Err("`web/nope` does not match anything".into()));

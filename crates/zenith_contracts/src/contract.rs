@@ -40,13 +40,7 @@ impl<'c> Contract<'c> {
         graph: &Graph,
         workspace: &Workspace,
     ) -> Result<Self, Vec<ContractError>> {
-        let mut units = UnitResolver {
-            contract: &config.id,
-            graph,
-            workspace,
-            extensions: &config.optional_extensions,
-            errors: Vec::new(),
-        };
+        let mut units = UnitResolver { contract: &config.id, graph, workspace, errors: Vec::new() };
         let rule = Rule::compile(&config.kind, &mut units);
         let boundaries = units.members(config.kind.boundaries());
         if units.errors.is_empty() {
@@ -230,9 +224,6 @@ pub(crate) struct UnitResolver<'a> {
     /// The project's workspace packages.
     workspace: &'a Workspace,
 
-    /// The extensions that path selectors may leave off a file's path.
-    extensions: &'a [&'static str],
-
     /// The errors so far.
     errors: Vec<ContractError>,
 }
@@ -246,11 +237,6 @@ impl<'a> UnitResolver<'a> {
     /// The project's workspace packages.
     pub(crate) fn workspace(&self) -> &'a Workspace {
         self.workspace
-    }
-
-    /// The extensions that path selectors may leave off a file's path.
-    pub(crate) fn extensions(&self) -> &'a [&'static str] {
-        self.extensions
     }
 
     /// The units of `selectors`, in order, each unit once even if several
@@ -278,7 +264,7 @@ impl<'a> UnitResolver<'a> {
     ) -> Vec<(Unit, Option<ByteRange>)> {
         let mut units: Vec<(Unit, Option<ByteRange>)> = Vec::new();
         for selector in selectors {
-            match Selection::try_resolve(selector, self.graph, self.workspace, self.extensions) {
+            match Selection::try_resolve(selector, self.graph, self.workspace) {
                 Ok(selection) => {
                     for unit in selection.units {
                         if !units.iter().any(|(existing, _)| existing.root == unit.root) {

@@ -8,9 +8,7 @@ use zenith_config::{Config, ContractConfig, Reexports};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_lang::{ParsedFile, Resolved, Suppression, Workspace};
-use zenith_lang_js::{
-    JsConfig, ParseOptions, Resolver, ResolverError, ResolverSettings, Tsconfig, TsconfigMode,
-};
+use zenith_lang_js::{JsConfig, ParseOptions, Resolver, ResolverError, ResolverSettings};
 use zenith_utils::{
     location::Located,
     path::{absolute_path, adjust_canonicalisation, relative_posix},
@@ -310,37 +308,12 @@ impl Session {
     }
 
     /// How to resolve specifiers, as the configuration says, with the
-    /// workspace packages found so far. Paths in the configuration are
-    /// relative to the root.
+    /// workspace packages found so far.
     pub fn resolver_settings(&self) -> ResolverSettings {
         // Without JavaScript and TypeScript, nothing is resolved, so the defaults
         // stand in.
         let js = self.config.languages.options::<JsConfig>().cloned().unwrap_or_default();
-        let mut settings = ResolverSettings::new(self.root.clone());
-        settings.tsconfig = match &js.tsconfig {
-            Tsconfig::Auto => TsconfigMode::Auto,
-            Tsconfig::Off => TsconfigMode::Off,
-            Tsconfig::File(path) => TsconfigMode::File(self.root.join(path)),
-        };
-        if let Some(conditions) = &js.conditions {
-            settings.conditions = conditions.clone();
-        }
-        if let Some(main_fields) = &js.main_fields {
-            settings.main_fields = main_fields.clone();
-        }
-        if let Some(extensions) = &js.extensions {
-            settings.extensions = extensions.clone();
-        }
-        settings.aliases =
-            js.alias.iter().map(|(alias, path)| (alias.clone(), self.root.join(path))).collect();
-        settings.workspace_packages = self
-            .workspace
-            .packages
-            .iter()
-            .map(|package| (package.name.clone(), package.path.clone()))
-            .collect();
-        settings.ignore_unresolved = js.ignore_unresolved.clone();
-        settings
+        js.resolver_settings(&self.root, &self.workspace)
     }
 
     /// Where to keep the parse cache, as the configuration says, for
@@ -373,7 +346,7 @@ mod tests {
     use std::path::Path;
 
     use zenith_lang::WorkspacePackage;
-    use zenith_lang_js::JS;
+    use zenith_lang_js::{JS, TsconfigMode};
 
     use super::*;
     use crate::LANGUAGES;

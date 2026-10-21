@@ -6,7 +6,6 @@ use zenith_graph::{Architecture, GraphView, LayerRef, Level, ModuleId, NodeKind,
 use zenith_utils::{
     glob::{Glob, escape},
     location::ByteRange,
-    path::strip_extension,
 };
 
 use crate::{
@@ -170,7 +169,7 @@ impl Container {
                     graph.is_in_subtree(**root, *child) || graph.is_in_subtree(*child, **root)
                 });
                 let name = graph.node(*child).base_name();
-                let stem = strip_extension(name, units.extensions()).unwrap_or(name);
+                let stem = graph.base_stem(*child);
                 let ignored = config
                     .exhaustive_ignores
                     .iter()
@@ -239,12 +238,7 @@ impl ResolvedMember {
     /// The roots and members of the units that `member` matches in the
     /// project, or `None` if it matches nothing.
     fn find(member: &LayerMember, units: &UnitResolver) -> Option<(Vec<ModuleId>, NodeSet)> {
-        let selection = Selection::resolve(
-            &member.selector,
-            units.graph(),
-            units.workspace(),
-            units.extensions(),
-        );
+        let selection = Selection::resolve(&member.selector, units.graph(), units.workspace());
         let roots = selection.units.iter().map(|unit| unit.root).collect();
         selection.matched.then(|| (roots, selection.members()))
     }
@@ -262,7 +256,7 @@ impl ResolvedMember {
         };
         let glob = Glob::new(&format!("{}/{}", escape(container), glob.as_str())).ok()?;
         let graph = units.graph();
-        let roots = graph.find_paths(&glob, units.extensions());
+        let roots = graph.find_paths(&glob);
         let mut members = NodeSet::new();
         for root in &roots {
             members.union_with(&graph.members(*root));

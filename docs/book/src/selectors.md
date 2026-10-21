@@ -9,7 +9,7 @@ table for the advanced forms.
 |---|---|---|
 | path glob | directories and files in the project | `web/src/domains/*`, `packages/ai/src/**/server.ts` |
 | `pkg:<name>` | the directory of each matching package, of any language | `pkg:@acme/*`, `pkg:example.com/api` |
-| `<scheme>:<name>` | the external packages or builtins of a language | `npm:sharp`, `node:*`, `gomod:github.com/pkg/*`, `go:net/http` |
+| `<scheme>:<name>` | the external packages or builtins of a language | `npm:sharp`, `node:*`, `gomod:github.com/pkg/*`, `crate:serde` |
 
 Each scheme belongs to a [language](languages.md), whose page lists its
 schemes, so using one while its language is not enabled is an error, as is any

@@ -1,6 +1,6 @@
 # Languages
 
-zenith reads JavaScript and TypeScript, and Go. Contracts, selectors, the
+zenith reads JavaScript and TypeScript, Go, and Rust. Contracts, selectors, the
 baseline and the output work the same in every language: each language only
 decides which files it reads, which packages a project has, and what each
 import refers to. Each has a page of its own:
@@ -9,6 +9,7 @@ import refers to. Each has a page of its own:
 |---|---|---|---|---|---|
 | [JavaScript and TypeScript](languages/javascript.md) | `[languages.js]` | `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs` | workspace packages | `npm:react` | `node:fs`, `bun:sqlite` |
 | [Go](languages/go.md) | `[languages.go]` | `.go` | modules | `gomod:github.com/pkg/errors` | `go:net/http` |
+| [Rust](languages/rust.md) | `[languages.rust]` | `.rs` | crates | `crate:serde` | `rust:std` |
 
 ## Enabling languages
 
@@ -19,6 +20,7 @@ one:
 ```toml
 [languages.js]
 [languages.go]
+[languages.rust]
 ```
 
 Without a `[languages]` table, JavaScript and TypeScript are enabled. A

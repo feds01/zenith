@@ -1,0 +1,6 @@
+[languages.go]
+
+[contracts.no-http]
+type = "forbidden"
+from = ["internal"]
+to = ["go:net/http", "gomod:github.com/pkg/*", "pkg:example.com/api"]

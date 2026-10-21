@@ -1,0 +1,56 @@
+$ zenith check
+exit: 1
+--- stdout
+error[orders-not-store]: `internal/orders` must not import `internal/store`
+ --> internal/orders/orders.go:6:2
+  |
+6 |     "example.com/shop/internal/store"
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `internal/store`
+
+error[store-has-no-http]: `internal/store` must not import `go:net/http`
+ --> internal/store/store.go:4:2
+  |
+4 |     "net/http"
+  |     ^^^^^^^^^^ imports `go:net/http`
+
+error[shop-has-no-pkg-modules]: `example.com/shop` must not import `gomod:github.com/pkg/errors`
+ --> internal/orders/orders.go:4:2
+  |
+4 |     "github.com/pkg/errors"
+  |     ^^^^^^^^^^^^^^^^^^^^^^^ imports `gomod:github.com/pkg/errors`
+
+Contracts
+  ✗ orders-not-store         forbidden  broken (1 violation) · 1 suppressed
+  ✗ store-has-no-http        forbidden  broken (1 violation)
+  ✗ shop-has-no-pkg-modules  forbidden  broken (1 violation)
+
+0 kept, 3 broken · 4 files, 8 imports
+
+$ zenith graph
+exit: 0
+--- stdout
+. (4 files)
+├─cmd/ (1 file)
+│ └─shop/ (1 file)
+└─internal/ (3 files)
+  ├─orders/ (2 files)
+  └─store/ (1 file)
+
+dependencies between the children of `.`:
+  cmd -> internal (1 import)
+
+$ zenith resolve cmd/shop/main.go example.com/shop/internal/orders
+exit: 0
+--- stdout
+package: internal/orders
+
+$ zenith resolve cmd/shop/main.go net/http
+exit: 0
+--- stdout
+builtin: go:net/http
+
+$ zenith resolve cmd/shop/main.go github.com/pkg/errors
+exit: 0
+--- stdout
+external: gomod:github.com/pkg/errors
+

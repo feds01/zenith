@@ -1,0 +1,6 @@
+check
+graph
+# A package in the project, the standard library and a dependency.
+resolve cmd/shop/main.go example.com/shop/internal/orders
+resolve cmd/shop/main.go net/http
+resolve cmd/shop/main.go github.com/pkg/errors

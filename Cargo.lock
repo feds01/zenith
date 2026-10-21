@@ -2130,9 +2130,16 @@ dependencies = [
 name = "zenith_lang_go"
 version = "0.2.0"
 dependencies = [
+ "log",
+ "schemars",
+ "serde",
+ "tempfile",
  "tree-sitter",
  "tree-sitter-go",
  "tree-sitter-gomod-orchard",
+ "zenith_config",
+ "zenith_graph",
+ "zenith_lang",
  "zenith_utils",
 ]
 
@@ -2179,6 +2186,7 @@ dependencies = [
  "zenith_diagnostics",
  "zenith_graph",
  "zenith_lang",
+ "zenith_lang_go",
  "zenith_lang_js",
  "zenith_utils",
  "zenith_workspace",

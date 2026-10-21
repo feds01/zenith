@@ -89,6 +89,20 @@
       },
       "description": "JavaScript and TypeScript."
     },
+    "GoTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Globs of the files to scan. Defaults to every Go file, `**/*.go`."
+        }
+      },
+      "description": "Go."
+    },
     "FilesTable": {
       "type": "object",
       "additionalProperties": false,
@@ -121,6 +135,10 @@
         "typescript": {
           "$ref": "#/$defs/JsTable",
           "description": "Another name for `js`. Giving both is an error."
+        },
+        "go": {
+          "$ref": "#/$defs/GoTable",
+          "description": "Go: how its files are found and their imports resolved."
         }
       }
     },

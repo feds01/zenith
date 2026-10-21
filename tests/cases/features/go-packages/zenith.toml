@@ -1,0 +1,22 @@
+# Go is off unless it has a table. A package that a file imports is one node of
+# the graph, so `example.com/shop/internal/store` is the directory
+# `internal/store`. The standard library is `go:net/http`, and a dependency is
+# `gomod:github.com/pkg/errors`.
+[languages.go]
+
+# `orders.go` imports the store. The import in `orders_test.go` is suppressed.
+[contracts.orders-not-store]
+type = "forbidden"
+from = ["internal/orders"]
+to = ["internal/store"]
+
+[contracts.store-has-no-http]
+type = "forbidden"
+from = ["internal/store"]
+to = ["go:net/http"]
+
+# `pkg:` selects a module by its module path.
+[contracts.shop-has-no-pkg-modules]
+type = "forbidden"
+from = ["pkg:example.com/shop"]
+to = ["gomod:github.com/pkg/*"]

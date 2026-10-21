@@ -13,6 +13,7 @@
 use std::{any::Any, fmt, sync::Arc};
 
 use schemars::{Schema, SchemaGenerator};
+use zenith_lang::{Backend, BackendSettings};
 use zenith_utils::glob::Glob;
 
 use crate::parse::LanguageTable;
@@ -84,6 +85,9 @@ pub trait LanguageOptions: Any + fmt::Debug + Send + Sync {
     /// Globs of the files to scan, or `None` for every file with one of the
     /// language's [source extensions](Language::source_extensions).
     fn include(&self) -> Option<&[Glob]>;
+
+    /// The language, set up by these options for the pipeline to run.
+    fn backend(&self, settings: BackendSettings<'_>) -> Box<dyn Backend>;
 }
 
 /// The languages that a configuration may enable, in the order that the

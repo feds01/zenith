@@ -38,7 +38,7 @@ fn discover_packages(bencher: Bencher, source_files: usize) {
 
     // CodSpeed has no counters, and warns about each one.
     #[cfg(not(codspeed))]
-    let bencher = bencher.counter(divan::counter::ItemsCount::new(found.package_jsons.len()));
+    let bencher = bencher.counter(divan::counter::ItemsCount::new(found.manifests.len()));
 
-    bencher.bench(|| zenith_lang_js::discover_packages(&repo.root, &found.package_jsons));
+    bencher.bench(|| zenith_lang_js::discover_packages(&repo.root, &found.manifests));
 }

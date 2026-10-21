@@ -12,7 +12,7 @@ use zenith_cache::CacheSettings;
 use zenith_config::{Config, ConfigFile};
 use zenith_diagnostics::{ReportElement, Reporter};
 use zenith_graph::{Graph, ImportKind, ModuleId, NodeKind};
-use zenith_lang::{ParsedFile, UnresolvedReason};
+use zenith_lang::{ParsedFile, ResolveFailure, UnresolvedReason};
 use zenith_lang_js::ResolverError;
 use zenith_utils::path::adjust_canonicalisation;
 
@@ -391,8 +391,8 @@ fn a_missing_tsconfig_file_stops_the_pipeline() {
     let error = pipeline.run_until(&mut session, StageKind::Graph).unwrap_err();
     assert_eq!(
         error,
-        PipelineError::Resolver(ResolverError::TsconfigNotFound(
-            project.root.join("tsconfig.base.json")
+        PipelineError::Resolver(ResolveFailure::new(
+            ResolverError::TsconfigNotFound(project.root.join("tsconfig.base.json")).to_string()
         ))
     );
     // The graph was never built.

@@ -153,7 +153,7 @@ mod tests {
 
         assert_eq!(relative(&temp.root, &found.source_files), expected);
         assert_eq!(
-            relative(&temp.root, &found.package_jsons),
+            relative(&temp.root, &found.manifests),
             paths_of(&temp.repo, FileKind::Manifest)
         );
     }
@@ -179,7 +179,7 @@ mod tests {
     fn discovers_every_package() {
         let temp = TempRepo::new(1_000).unwrap();
         let found = walk(&temp.root, &without_ignore_files());
-        let workspace = discover_packages(&temp.root, &found.package_jsons);
+        let workspace = discover_packages(&temp.root, &found.manifests);
 
         let discovered: Vec<(&str, &str)> = workspace
             .packages

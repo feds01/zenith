@@ -29,5 +29,6 @@ pub fn default_walk_settings() -> WalkSettings {
         exclude,
         respect_gitignore,
         source_extensions: scanned.extensions,
+        manifests: vec!["package.json"],
     }
 }

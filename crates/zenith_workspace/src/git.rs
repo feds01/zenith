@@ -190,7 +190,7 @@ impl WalkResult {
     /// aren't scanned, and untracked packages aren't found.
     pub fn retain_tracked(&mut self, tracked: &TrackedFiles) {
         self.source_files.retain(|path| tracked.contains(path));
-        self.package_jsons.retain(|path| tracked.contains(path));
+        self.manifests.retain(|path| tracked.contains(path));
     }
 }
 
@@ -289,11 +289,11 @@ mod tests {
 
         let mut result = WalkResult {
             source_files: ["src/a.ts", "src/b.ts", "scratch.ts"].map(|file| root.join(file)).into(),
-            package_jsons: ["package.json", "new/package.json"].map(|file| root.join(file)).into(),
+            manifests: ["package.json", "new/package.json"].map(|file| root.join(file)).into(),
         };
         result.retain_tracked(&tracked);
         assert_eq!(result.source_files, [root.join("src/a.ts")]);
-        assert_eq!(result.package_jsons, [root.join("package.json")]);
+        assert_eq!(result.manifests, [root.join("package.json")]);
     }
 
     #[test]

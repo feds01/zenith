@@ -18,18 +18,6 @@ use crate::manifest::Manifest;
 /// The crates of the standard library, which every crate may use.
 pub(crate) const STANDARD_CRATES: &[&str] = &["std", "core", "alloc", "proc_macro", "test"];
 
-/// How the crates of a project are found.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Discovery {
-    /// Ask Cargo, and read the manifests if it can't say.
-    Cargo,
-
-    /// Read the manifests. Only the tests ask for it, as a run falls back to it
-    /// by itself.
-    #[cfg_attr(not(test), expect(dead_code))]
-    Manifests,
-}
-
 /// The crates of a project.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct Crates {
@@ -131,18 +119,15 @@ pub(crate) struct Declared {
 }
 
 impl Crates {
-    /// The crates of the project at `root`, which must be canonical, found
-    /// the way that `discovery` says, in the packages of the `manifests`
-    /// that the walk found.
-    pub(crate) fn discover(root: &Path, manifests: &[PathBuf], discovery: Discovery) -> Self {
+    /// The crates of the project at `root`, which must be canonical, in the
+    /// packages of the `manifests` that the walk found. Cargo says what they
+    /// are, or, if it can't, the manifests do.
+    pub(crate) fn discover(root: &Path, manifests: &[PathBuf]) -> Self {
         let manifests = Manifest::read_all(manifests);
-        if discovery == Discovery::Cargo {
-            match Self::from_cargo(root, &manifests) {
-                Ok(crates) => return crates,
-                Err(error) => error.log(),
-            }
-        }
-        Self::from_manifests(&manifests)
+        Self::from_cargo(root, &manifests).unwrap_or_else(|error| {
+            error.log();
+            Self::from_manifests(&manifests)
+        })
     }
 
     /// The crates of `found`, which may be in any order.

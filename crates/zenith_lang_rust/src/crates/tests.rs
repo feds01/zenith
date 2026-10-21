@@ -206,7 +206,7 @@ fn a_workspace_is_asked_about_once() {
 fn the_manifests_are_read_when_cargo_fails() {
     // Cargo finds no target in a package without a file, and says so.
     let project = Project::new(&[("Cargo.toml", include_str!("../fixtures/core-lib.toml"))]);
-    let found = Crates::discover(project.root(), project.manifests(), Discovery::Cargo);
+    let found = Crates::discover(project.root(), project.manifests());
     assert_eq!(found, project.crates());
     assert_eq!(found.crates.len(), 1);
 }

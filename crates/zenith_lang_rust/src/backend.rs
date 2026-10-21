@@ -7,29 +7,21 @@ use zenith_lang::{
     Backend, ImportResolver, ParsedFile, ResolveFailure, Resolved, SourceParser, Workspace,
 };
 
-use crate::{
-    crates::{Crates, Discovery},
-    parse::Parser,
-    resolve::Resolver,
-};
+use crate::{crates::Crates, parse::Parser, resolve::Resolver};
 
 /// Rust, set up for one project.
 pub(crate) struct RustBackend {
     /// The canonical project root.
     root: PathBuf,
 
-    /// How the crates of the project are found.
-    discovery: Discovery,
-
     /// The crates of the project, once they are discovered.
     crates: Crates,
 }
 
 impl RustBackend {
-    /// The backend of the project at `root`, which must be canonical, which
-    /// finds its crates the way that `discovery` says.
-    pub(crate) fn new(root: &Path, discovery: Discovery) -> Self {
-        Self { root: root.to_path_buf(), discovery, crates: Crates::default() }
+    /// The backend of the project at `root`, which must be canonical.
+    pub(crate) fn new(root: &Path) -> Self {
+        Self { root: root.to_path_buf(), crates: Crates::default() }
     }
 }
 
@@ -43,7 +35,7 @@ impl Backend for RustBackend {
     }
 
     fn discover(&mut self, manifests: &[PathBuf]) -> Workspace {
-        self.crates = Crates::discover(&self.root, manifests, self.discovery);
+        self.crates = Crates::discover(&self.root, manifests);
         self.crates.workspace(&self.root)
     }
 

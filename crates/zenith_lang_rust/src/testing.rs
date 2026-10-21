@@ -7,7 +7,7 @@ use std::{
 
 use tempfile::TempDir;
 
-use crate::crates::{Crates, Discovery};
+use crate::{crates::Crates, manifest::Manifest};
 
 /// A project in a temporary directory.
 pub(crate) struct Project {
@@ -103,6 +103,6 @@ impl Project {
 
     /// The crates of the project, found by reading its manifests.
     pub(crate) fn crates(&self) -> Crates {
-        Crates::discover(&self.root, &self.manifests, Discovery::Manifests)
+        Crates::from_manifests(&Manifest::read_all(&self.manifests))
     }
 }

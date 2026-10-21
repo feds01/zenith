@@ -10,7 +10,7 @@ use crate::{crates::TargetKind, manifest::Manifest};
 
 impl Crates {
     /// The crates of the packages in `manifests`, each with its directory.
-    pub(super) fn from_manifests(manifests: &[(&Path, Manifest)]) -> Self {
+    pub(crate) fn from_manifests(manifests: &[(&Path, Manifest)]) -> Self {
         // The workspaces declare the dependencies that their members share.
         let workspaces: FxHashMap<&Path, &Manifest> = manifests
             .iter()

@@ -115,6 +115,12 @@ impl Config {
     pub fn contract(&self, id: &str) -> Option<&ContractConfig> {
         self.contracts.iter().find(|contract| contract.id == id)
     }
+
+    /// Whether any contract sees through re-exports, so needs the graph
+    /// through them.
+    pub fn needs_graph_through_reexports(&self) -> bool {
+        self.contracts.iter().any(|contract| contract.reexports == Reexports::Transparent)
+    }
 }
 
 /// Which files to scan for imports, whatever their language.
@@ -165,6 +171,26 @@ impl LanguagesConfig {
     /// The enabled languages, in the order of the registry.
     pub fn enabled(&self) -> impl Iterator<Item = &'static Language> {
         self.enabled.iter().map(|(language, _)| *language)
+    }
+
+    /// The enabled languages with their options, in the order of the
+    /// registry.
+    pub fn iter(&self) -> impl Iterator<Item = (&'static Language, &dyn LanguageOptions)> {
+        self.enabled.iter().map(|(language, options)| (*language, options.as_ref()))
+    }
+
+    /// The position, among the [enabled](Self::enabled) languages, of the
+    /// language whose source file `name` is: the first whose `include`
+    /// matches it, or that scans by extension and has its extension. `None`
+    /// for a file of no enabled language.
+    pub fn language_of(&self, name: &str) -> Option<usize> {
+        let extension = name.rsplit_once('.').map(|(_, extension)| extension);
+        self.iter().position(|(language, options)| match options.include() {
+            Some(include) => include.iter().any(|glob| glob.is_match(name)),
+            None => {
+                extension.is_some_and(|extension| language.source_extensions.contains(&extension))
+            }
+        })
     }
 
     /// The options of the enabled language whose options are a `T`, or

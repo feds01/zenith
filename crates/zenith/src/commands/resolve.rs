@@ -2,8 +2,8 @@
 
 use anyhow::{Result, bail};
 use zenith_lang::Resolved;
-use zenith_pipeline::StageKind;
-use zenith_utils::path::adjust_canonicalisation;
+use zenith_pipeline::{PipelineError, StageKind};
+use zenith_utils::path::{adjust_canonicalisation, relative_posix};
 
 use crate::{
     ExitStatus,
@@ -21,9 +21,17 @@ pub fn resolve(global: &GlobalArgs, args: ResolveCommand) -> Result<ExitStatus> 
         bail!("`{}` is not a file", args.file.display());
     }
 
-    // 2. Find the workspace packages, which resolve without `node_modules`.
+    // 2. Find the file's language, and the workspace packages, which resolve
+    //    without `node_modules`.
+    let language = relative_posix(&session.root, &file)
+        .and_then(|name| session.config.languages.language_of(&name));
+    let Some(language) = language else {
+        bail!("`{}` is not a source file of an enabled language", args.file.display());
+    };
     project::run_until(&mut session, StageKind::Discover)?;
-    let resolver = session.resolver()?;
+    let backend = session.backends.get(language);
+    let resolver = backend.resolver().map_err(PipelineError::from)?;
+    let scheme = backend.external_scheme();
 
     // 3. Resolve the specifier, and show what it resolves to.
     let resolved = resolver.resolve(&file, &args.specifier);
@@ -33,9 +41,10 @@ pub fn resolve(global: &GlobalArgs, args: ResolveCommand) -> Result<ExitStatus> 
     };
     let (kind, target) = match resolved {
         Resolved::Internal(path) => ("internal", path),
-        Resolved::External { package, found: true } => ("external", format!("npm:{package}")),
+        Resolved::Package(dir) => ("package", dir),
+        Resolved::External { package, found: true } => ("external", format!("{scheme}:{package}")),
         Resolved::External { package, found: false } => {
-            ("external", format!("npm:{package} (not installed, so named from the specifier)"))
+            ("external", format!("{scheme}:{package} (not installed, so named from the specifier)"))
         }
         Resolved::Builtin(name) => ("builtin", name),
         Resolved::Unresolved(reason) => ("unresolved", reason.to_string()),

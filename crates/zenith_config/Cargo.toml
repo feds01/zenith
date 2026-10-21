@@ -11,6 +11,7 @@ publish = { workspace = true }
 [dependencies]
 zenith_diagnostics = { workspace = true }
 zenith_graph = { workspace = true }
+zenith_lang = { workspace = true }
 zenith_utils = { workspace = true }
 
 indexmap = { workspace = true }

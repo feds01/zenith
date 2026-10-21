@@ -23,6 +23,7 @@
 //! run neither reads nor parses the files that haven't changed. Set
 //! [`Session::cache`] to use one.
 
+mod backends;
 mod error;
 mod languages;
 mod pipeline;
@@ -33,6 +34,7 @@ mod stages;
 #[cfg(test)]
 mod tests;
 
+pub use backends::Backends;
 pub use error::{FileError, FileErrorKind, PipelineError, UnresolvedImport};
 pub use languages::LANGUAGES;
 pub use pipeline::{Pipeline, Stage, StageKind};

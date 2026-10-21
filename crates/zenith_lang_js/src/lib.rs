@@ -2,6 +2,7 @@
 //! exports with oxc, resolving its specifiers, and the `[languages.js]` table
 //! of the configuration.
 
+mod backend;
 mod config;
 mod packages;
 mod parse;

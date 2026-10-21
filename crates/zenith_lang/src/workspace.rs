@@ -30,6 +30,14 @@ pub struct Workspace {
 }
 
 impl Workspace {
+    /// Add the packages of `other`, another language's, keeping the packages
+    /// sorted by directory. The first root package found stays.
+    pub fn merge(&mut self, other: Workspace) {
+        self.packages.extend(other.packages);
+        self.packages.sort_by(|a, b| a.dir.cmp(&b.dir));
+        self.root_package = self.root_package.take().or(other.root_package);
+    }
+
     /// Look up a package by name, including the root package.
     pub fn package(&self, name: &str) -> Option<&WorkspacePackage> {
         self.packages.iter().chain(&self.root_package).find(|package| package.name == name)

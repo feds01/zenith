@@ -133,7 +133,7 @@ mod tests {
     use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
     use zenith_config::Config;
-    use zenith_lang_js::ResolverError;
+    use zenith_lang::ResolveFailure;
 
     use super::*;
 
@@ -157,7 +157,7 @@ mod tests {
         fn run(&self, _session: &mut Session) -> Result<(), PipelineError> {
             self.ran.borrow_mut().push(self.kind);
             if self.fails {
-                return Err(PipelineError::Resolver(ResolverError::InvalidExtension("ts".into())));
+                return Err(PipelineError::Resolver(ResolveFailure::new("invalid")));
             }
             Ok(())
         }
@@ -205,7 +205,7 @@ mod tests {
         use StageKind::*;
         let (mut pipeline, ran) = marks(&[Discover, Resolve, Graph], &[Resolve]);
         let error = pipeline.run_until(&mut session(), Graph).unwrap_err();
-        assert_eq!(error, PipelineError::Resolver(ResolverError::InvalidExtension("ts".into())));
+        assert_eq!(error, PipelineError::Resolver(ResolveFailure::new("invalid")));
         assert_eq!(*ran.borrow(), [Discover, Resolve]);
         // The failed stage is timed too.
         assert_eq!(pipeline.timings().len(), 2);

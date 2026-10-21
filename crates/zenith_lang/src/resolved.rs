@@ -9,7 +9,13 @@ pub enum Resolved {
     /// `web/src/app.ts`.
     Internal(String),
 
-    /// An external package: one under `node_modules` or outside the root.
+    /// A directory inside the project that is imported as a whole, as Go
+    /// imports a package, as a POSIX path relative to the root, e.g.
+    /// `services/api/store`. The root is `""`.
+    Package(String),
+
+    /// An external package, such as one under `node_modules`. Its node id has
+    /// the [external scheme](crate::Backend::external_scheme) of its language.
     External {
         /// The package name, without any subpath, e.g. `@tanstack/react-query`.
         package: String,

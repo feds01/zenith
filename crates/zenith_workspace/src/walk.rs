@@ -59,6 +59,10 @@ pub struct WalkSettings {
     /// those that match one of the `include` globs. Checking an extension is
     /// cheaper than matching globs.
     pub source_extensions: Vec<&'static str>,
+
+    /// The names of the manifest files to collect, such as `package.json`,
+    /// from which the languages find the project's packages.
+    pub manifests: Vec<&'static str>,
 }
 
 /// The files found by [`walk`], as absolute paths, sorted.
@@ -67,15 +71,15 @@ pub struct WalkResult {
     /// The source files to scan.
     pub source_files: Vec<PathBuf>,
 
-    /// Every `package.json` that isn't excluded, for workspace package
-    /// discovery.
-    pub package_jsons: Vec<PathBuf>,
+    /// Every manifest file, as [`WalkSettings::manifests`] names them, that
+    /// isn't excluded, for finding the project's packages.
+    pub manifests: Vec<PathBuf>,
 }
 
 /// Walk the project rooted at `root`, which must be canonical.
 ///
 /// Excluded paths are invisible: their files aren't scanned, and a package
-/// whose directory or `package.json` is excluded isn't found. Symlinks are
+/// whose directory or manifest is excluded isn't found. Symlinks are
 /// never followed, and symlinked files are skipped, so each file is found once,
 /// at its real path.
 pub fn walk(root: &Path, settings: &WalkSettings) -> WalkResult {
@@ -106,7 +110,7 @@ fn walk_with(root: &Path, settings: &WalkSettings, git_global: bool) -> WalkResu
     // Each path is found once, and comparing them by components would cost more
     // than the rest of the walk's own work.
     result.source_files.sort_unstable_by(|a, b| compare_paths(a, b));
-    result.package_jsons.sort_unstable_by(|a, b| compare_paths(a, b));
+    result.manifests.sort_unstable_by(|a, b| compare_paths(a, b));
     result
 }
 
@@ -167,7 +171,7 @@ impl Drop for Visitor<'_> {
         let local = mem::take(&mut self.local);
         let mut result = self.result.lock().unwrap_or_else(PoisonError::into_inner);
         result.source_files.extend(local.source_files);
-        result.package_jsons.extend(local.package_jsons);
+        result.manifests.extend(local.manifests);
     }
 }
 
@@ -207,8 +211,8 @@ impl ParallelVisitor for Visitor<'_> {
             return WalkState::Continue;
         }
 
-        if name == "package.json" {
-            self.local.package_jsons.push(path.to_path_buf());
+        if self.settings.manifests.contains(&name.as_ref()) {
+            self.local.manifests.push(path.to_path_buf());
         }
 
         let has_source_extension = path
@@ -256,6 +260,7 @@ mod tests {
             exclude: exclude.iter().map(|glob| Glob::new(glob).unwrap()).collect(),
             respect_gitignore: true,
             source_extensions: vec!["ts", "tsx", "js", "cjs", "mjs"],
+            manifests: vec!["package.json"],
         }
     }
 
@@ -267,7 +272,7 @@ mod tests {
         let relative = |paths: &[PathBuf]| -> Vec<String> {
             paths.iter().map(|path| relative_posix(root, path).unwrap()).collect()
         };
-        (relative(&result.source_files), relative(&result.package_jsons))
+        (relative(&result.source_files), relative(&result.manifests))
     }
 
     #[test]

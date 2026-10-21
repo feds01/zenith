@@ -25,7 +25,7 @@ impl Stage for BuildGraph {
     fn run(&self, session: &mut Session) -> Result<(), PipelineError> {
         let parsed = mem::take(&mut session.parsed);
         let resolved = mem::take(&mut session.resolved);
-        let through_reexports = session.needs_graph_through_reexports();
+        let through_reexports = session.config.needs_graph_through_reexports();
         let stats = &mut session.stats;
         let mut file_exports = Vec::new();
 
@@ -52,19 +52,24 @@ impl Stage for BuildGraph {
                     .push(FileSuppressions { file: file.name.clone(), suppressions });
             }
 
+            let scheme = session.backends.of(file).external_scheme();
             let mut targets = Vec::new();
             for (import, resolved) in parsed.imports.into_iter().zip(resolved) {
                 if through_reexports {
-                    targets.push(target_name(&session.files, &resolved));
+                    targets.push(target_name(&session.files, scheme, &resolved));
                 }
                 let target: NodeHandle = match resolved {
                     ResolvedImport::File(index) => handles[index as usize].into(),
                     ResolvedImport::Other(Resolved::Internal(target)) => {
                         builder.add_file(&target)?.into()
                     }
+                    ResolvedImport::Other(Resolved::Package(dir)) => {
+                        builder.add_package_import(handle, &dir, import)?;
+                        continue;
+                    }
                     ResolvedImport::Other(Resolved::External { package, found }) => {
                         stats.missing_packages += usize::from(!found);
-                        builder.add_external(&format!("npm:{package}"))?
+                        builder.add_external(&format!("{scheme}:{package}"))?
                     }
                     ResolvedImport::Other(Resolved::Builtin(name)) => builder.add_builtin(&name)?,
                     ResolvedImport::Other(Resolved::Unresolved(reason)) => {
@@ -110,12 +115,17 @@ impl Stage for BuildGraph {
 }
 
 /// The name of the node that an import resolved to, given the session's
-/// `files`, or `None` if it isn't in the graph.
-fn target_name(files: &[SourceFile], resolved: &ResolvedImport) -> Option<String> {
+/// `files` and the `scheme` of external packages, or `None` if it isn't in the
+/// graph.
+fn target_name(files: &[SourceFile], scheme: &str, resolved: &ResolvedImport) -> Option<String> {
     match resolved {
         ResolvedImport::File(index) => Some(files[*index as usize].name.clone()),
-        ResolvedImport::Other(Resolved::Internal(name)) => Some(name.clone()),
-        ResolvedImport::Other(Resolved::External { package, .. }) => Some(format!("npm:{package}")),
+        ResolvedImport::Other(Resolved::Internal(name) | Resolved::Package(name)) => {
+            Some(name.clone())
+        }
+        ResolvedImport::Other(Resolved::External { package, .. }) => {
+            Some(format!("{scheme}:{package}"))
+        }
         ResolvedImport::Other(Resolved::Builtin(name)) => Some(name.clone()),
         ResolvedImport::Other(Resolved::Unresolved(_) | Resolved::Ignored(_)) => None,
     }

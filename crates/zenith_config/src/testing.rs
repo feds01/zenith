@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use schemars::JsonSchema;
 use serde::Deserialize;
+use zenith_lang::{Backend, BackendSettings};
 use zenith_utils::glob::{Glob, NamePattern};
 
 use crate::{
@@ -74,6 +75,10 @@ impl LanguageOptions for TestOptions {
     fn include(&self) -> Option<&[Glob]> {
         self.include.as_deref()
     }
+
+    fn backend(&self, _: BackendSettings<'_>) -> Box<dyn Backend> {
+        unreachable!("the tests of the configuration don't run the pipeline")
+    }
 }
 
 /// The test language.
@@ -107,6 +112,10 @@ impl OtherOptions {
 impl LanguageOptions for OtherOptions {
     fn include(&self) -> Option<&[Glob]> {
         self.include.as_deref()
+    }
+
+    fn backend(&self, _: BackendSettings<'_>) -> Box<dyn Backend> {
+        unreachable!("the tests of the configuration don't run the pipeline")
     }
 }
 

@@ -6,16 +6,15 @@ use std::{fmt, io, path::PathBuf};
 use thin_vec::ThinVec;
 use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span};
 use zenith_graph::{GraphError, ImportDetail};
-use zenith_lang::{SyntaxError, UnresolvedReason};
-use zenith_lang_js::ResolverError;
+use zenith_lang::{ResolveFailure, SyntaxError, UnresolvedReason};
 use zenith_utils::{location::Located, printing::plural};
 use zenith_workspace::GitError;
 
 /// Why a stage failed, which stops the pipeline.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PipelineError {
-    /// The resolver could not be created from its settings.
-    Resolver(ResolverError),
+    /// A language's resolver could not be set up.
+    Resolver(ResolveFailure),
 
     /// A file could not be added to the graph.
     Graph(GraphError),
@@ -44,8 +43,8 @@ impl fmt::Display for PipelineError {
 /// reporters that show the chain of causes would show it twice.
 impl std::error::Error for PipelineError {}
 
-impl From<ResolverError> for PipelineError {
-    fn from(error: ResolverError) -> Self {
+impl From<ResolveFailure> for PipelineError {
+    fn from(error: ResolveFailure) -> Self {
         Self::Resolver(error)
     }
 }

@@ -10,10 +10,10 @@ use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use zenith_config::{Language, LanguageOptions, LanguageTable, Located};
-use zenith_lang::Workspace;
+use zenith_lang::{Backend, BackendSettings, Workspace};
 use zenith_utils::glob::{Glob, NamePattern};
 
-use crate::{ResolverSettings, TsconfigMode};
+use crate::{ParseOptions, ResolverSettings, TsconfigMode, backend::JsBackend};
 
 /// JavaScript and TypeScript.
 pub const JS: Language = Language {
@@ -137,6 +137,15 @@ impl JsConfig {
 impl LanguageOptions for JsConfig {
     fn include(&self) -> Option<&[Glob]> {
         self.include.as_deref()
+    }
+
+    fn backend(&self, settings: BackendSettings<'_>) -> Box<dyn Backend> {
+        Box::new(JsBackend {
+            config: self.clone(),
+            root: settings.root.to_path_buf(),
+            parse: ParseOptions { names: settings.record_exports },
+            workspace: Workspace::default(),
+        })
     }
 }
 

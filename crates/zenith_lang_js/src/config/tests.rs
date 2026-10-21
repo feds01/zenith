@@ -1,7 +1,10 @@
 //! Parsing the `[languages.js]` table: its options, its defaults, its other
 //! name, its errors, and the selector schemes it enables.
 
+use std::path::PathBuf;
+
 use zenith_config::{Config, ContractKind, Languages, Selector};
+use zenith_lang::WorkspacePackage;
 use zenith_utils::glob::{Glob, NamePattern};
 
 use super::*;
@@ -93,4 +96,61 @@ fn js_enables_the_npm_node_and_bun_schemes() {
     };
     let schemes: Vec<_> = forbidden.to.iter().map(Selector::scheme).collect();
     assert_eq!(schemes, [Some("npm"), Some("node"), Some("bun"), Some("pkg")]);
+}
+
+/// The resolver settings of `js` for a project at `/repo` with the
+/// `workspace` packages.
+fn settings(js: &JsConfig, workspace: &Workspace) -> ResolverSettings {
+    js.resolver_settings(Path::new("/repo"), workspace)
+}
+
+#[test]
+fn the_defaults_resolve_like_typescript() {
+    let settings = settings(&js(""), &Workspace::default());
+    let defaults = ResolverSettings::new(PathBuf::from("/repo"));
+    assert_eq!(settings.root, Path::new("/repo"));
+    assert_eq!(settings.tsconfig, TsconfigMode::Auto);
+    assert_eq!(settings.conditions, defaults.conditions);
+    assert_eq!(settings.main_fields, defaults.main_fields);
+    assert_eq!(settings.extensions, defaults.extensions);
+    assert!(settings.aliases.is_empty() && settings.ignore_unresolved.is_empty());
+    assert!(settings.workspace_packages.is_empty());
+}
+
+#[test]
+fn the_js_table_replaces_the_resolver_defaults() {
+    let options =
+        settings(&js(include_str!("fixtures/resolver-options.toml")), &Workspace::default());
+    assert_eq!(options.tsconfig, TsconfigMode::File(PathBuf::from("/repo/web/tsconfig.json")));
+    assert_eq!(options.conditions, ["browser", "import"]);
+    assert_eq!(options.main_fields, ["main"]);
+    assert_eq!(options.extensions, [".ts", ".js"]);
+    // Aliases keep the order of the file, and point into the root.
+    assert_eq!(
+        options.aliases,
+        [
+            ("types".to_string(), PathBuf::from("/repo/web/src/types")),
+            ("~".to_string(), PathBuf::from("/repo/web")),
+        ]
+    );
+    let patterns: Vec<_> =
+        options.ignore_unresolved.iter().map(|pattern| pattern.as_str()).collect();
+    assert_eq!(patterns, ["virtual:*"]);
+
+    let off = settings(&js(include_str!("fixtures/tsconfig-off.toml")), &Workspace::default());
+    assert_eq!(off.tsconfig, TsconfigMode::Off);
+}
+
+#[test]
+fn the_resolver_knows_the_workspace_packages() {
+    let package = WorkspacePackage {
+        name: "@acme/ui".to_string(),
+        dir: "packages/ui".to_string(),
+        path: PathBuf::from("/repo/packages/ui"),
+    };
+    let workspace = Workspace { packages: vec![package], root_package: None };
+    assert_eq!(
+        settings(&js(""), &workspace).workspace_packages,
+        [("@acme/ui".to_string(), PathBuf::from("/repo/packages/ui"))]
+    );
 }

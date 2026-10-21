@@ -8,7 +8,6 @@ use zenith_config::{Config, ContractConfig, Reexports};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_lang::{ParsedFile, Resolved, Suppression, Workspace};
-use zenith_lang_js::{JsConfig, ParseOptions, Resolver, ResolverError, ResolverSettings};
 use zenith_utils::{
     location::Located,
     path::{absolute_path, adjust_canonicalisation, relative_posix},
@@ -16,7 +15,7 @@ use zenith_utils::{
 };
 use zenith_workspace::WalkSettings;
 
-use crate::{FileError, PipelineError, Scope, UnresolvedImport};
+use crate::{Backends, FileError, PipelineError, Scope, UnresolvedImport};
 
 /// A project, and what the stages of the pipeline have found in it so far.
 ///
@@ -29,6 +28,9 @@ pub struct Session {
 
     /// The project's configuration.
     pub config: Config,
+
+    /// The backend of each enabled language, which the stages run.
+    pub backends: Backends,
 
     /// Whether to scan only the files that git tracks, leaving out untracked
     /// ones, as in a pre-commit hook.
@@ -141,6 +143,9 @@ pub enum ResolvedImport {
 pub struct SourceFile {
     /// Its POSIX path relative to the root, which is its name in the graph.
     pub name: String,
+
+    /// Its language, as the position of its backend in [`Session::backends`].
+    pub language: u8,
 }
 
 impl SourceFile {
@@ -182,6 +187,7 @@ impl Session {
     /// configured by `config`. Nothing has been found in it yet.
     pub fn new(root: PathBuf, config: Config) -> Self {
         Self {
+            backends: Backends::new(&config, &root),
             root,
             config,
             tracked_only: false,
@@ -282,19 +288,6 @@ impl Session {
         Graphs { graph: &self.graph, through_reexports: self.graph_through_reexports.as_ref() }
     }
 
-    /// Whether any contract sees through re-exports, so needs the graph through
-    /// them.
-    pub fn needs_graph_through_reexports(&self) -> bool {
-        self.config.contracts.iter().any(|contract| contract.reexports == Reexports::Transparent)
-    }
-
-    /// What to parse each file for, as the configuration says: the names
-    /// that imports take and what each file exports, only if a contract
-    /// follows imports through re-exports.
-    pub fn parse_options(&self) -> ParseOptions {
-        ParseOptions { names: self.needs_graph_through_reexports() }
-    }
-
     /// Which files to scan, as the configuration says.
     pub fn walk_settings(&self) -> WalkSettings {
         let files = &self.config.files;
@@ -304,16 +297,8 @@ impl Session {
             exclude: files.exclude.clone(),
             respect_gitignore: files.respect_gitignore,
             source_extensions: scanned.extensions,
+            manifests: self.backends.manifests(),
         }
-    }
-
-    /// How to resolve specifiers, as the configuration says, with the
-    /// workspace packages found so far.
-    pub fn resolver_settings(&self) -> ResolverSettings {
-        // Without JavaScript and TypeScript, nothing is resolved, so the defaults
-        // stand in.
-        let js = self.config.languages.options::<JsConfig>().cloned().unwrap_or_default();
-        js.resolver_settings(&self.root, &self.workspace)
     }
 
     /// Where to keep the parse cache, as the configuration says, for
@@ -332,21 +317,13 @@ impl Session {
     pub fn baseline_path(&self) -> PathBuf {
         self.root.join(&self.config.baseline.path)
     }
-
-    /// A resolver configured by [`Session::resolver_settings`]. Run the
-    /// [`Discover`](crate::StageKind::Discover) stage first, so that workspace
-    /// packages resolve without `node_modules`.
-    pub fn resolver(&self) -> Result<Resolver, ResolverError> {
-        Resolver::new(self.resolver_settings())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::Path;
 
-    use zenith_lang::WorkspacePackage;
-    use zenith_lang_js::{JS, TsconfigMode};
+    use zenith_lang_js::JS;
 
     use super::*;
     use crate::LANGUAGES;
@@ -367,22 +344,13 @@ mod tests {
     }
 
     #[test]
-    fn defaults_scan_every_source_file_and_resolve_like_typescript() {
+    fn defaults_scan_every_source_file() {
         let session = session("");
         let walk = session.walk_settings();
         assert!(walk.include.is_empty() && walk.exclude.is_empty());
         assert!(walk.respect_gitignore);
         assert_eq!(walk.source_extensions, JS.source_extensions);
-
-        let defaults = ResolverSettings::new(PathBuf::from("/repo"));
-        let settings = session.resolver_settings();
-        assert_eq!(settings.root, Path::new("/repo"));
-        assert_eq!(settings.tsconfig, TsconfigMode::Auto);
-        assert_eq!(settings.conditions, defaults.conditions);
-        assert_eq!(settings.main_fields, defaults.main_fields);
-        assert_eq!(settings.extensions, defaults.extensions);
-        assert!(settings.aliases.is_empty() && settings.ignore_unresolved.is_empty());
-        assert!(settings.workspace_packages.is_empty());
+        assert_eq!(walk.manifests, ["package.json"]);
         assert_eq!(session.baseline_path(), Path::new("/repo/zenith.baseline.toml"));
         assert_eq!(
             session.cache_settings("1.0.0"),
@@ -409,47 +377,10 @@ mod tests {
         assert!(walk.source_extensions.is_empty());
         assert_eq!(globs(&walk.exclude), ["**/*.test.ts"]);
         assert!(!walk.respect_gitignore);
-
-        let settings = session.resolver_settings();
-        assert_eq!(settings.tsconfig, TsconfigMode::File(PathBuf::from("/repo/web/tsconfig.json")));
-        assert_eq!(settings.conditions, ["browser", "import"]);
-        assert_eq!(settings.main_fields, ["main"]);
-        assert_eq!(settings.extensions, [".ts", ".js"]);
-        // Aliases keep the order of the file, and point into the root.
-        assert_eq!(
-            settings.aliases,
-            [
-                ("types".to_string(), PathBuf::from("/repo/web/src/types")),
-                ("~".to_string(), PathBuf::from("/repo/web")),
-            ]
-        );
-        let patterns: Vec<_> =
-            settings.ignore_unresolved.iter().map(|pattern| pattern.as_str()).collect();
-        assert_eq!(patterns, ["virtual:*"]);
     }
 
     #[test]
     fn the_cache_can_be_turned_off() {
         assert_eq!(session("[cache]\nenabled = false\n").cache_settings("1.0.0"), None);
-    }
-
-    #[test]
-    fn tsconfig_files_can_be_turned_off() {
-        let settings = session(include_str!("fixtures/tsconfig-off.toml")).resolver_settings();
-        assert_eq!(settings.tsconfig, TsconfigMode::Off);
-    }
-
-    #[test]
-    fn the_resolver_knows_the_workspace_packages() {
-        let mut session = session("");
-        session.workspace.packages.push(WorkspacePackage {
-            name: "@acme/ui".to_string(),
-            dir: "packages/ui".to_string(),
-            path: PathBuf::from("/repo/packages/ui"),
-        });
-        assert_eq!(
-            session.resolver_settings().workspace_packages,
-            [("@acme/ui".to_string(), PathBuf::from("/repo/packages/ui"))]
-        );
     }
 }

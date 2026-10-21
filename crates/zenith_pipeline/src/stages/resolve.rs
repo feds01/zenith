@@ -6,8 +6,9 @@ use zenith_lang::Resolved;
 
 use crate::{PipelineError, ResolvedImport, Session, Stage, StageKind};
 
-/// Resolves the specifier of every parsed import with `zenith_lang_js`, in
-/// parallel, sharing one resolver and its caches between the workers.
+/// Resolves the specifier of every parsed import with the backend of its
+/// file's language, in parallel, sharing one resolver of each language and its
+/// caches between the workers.
 pub struct Resolve;
 
 impl Stage for Resolve {
@@ -16,7 +17,7 @@ impl Stage for Resolve {
     }
 
     fn run(&self, session: &mut Session) -> Result<(), PipelineError> {
-        let resolver = session.resolver()?;
+        let resolvers = session.backends.resolvers()?;
         let root = &session.root;
         // Most imports resolve to a source file, which is kept by its index, so that
         // their names don't pile up until the graph is built.
@@ -27,6 +28,7 @@ impl Stage for Resolve {
             .par_iter()
             .zip(&session.parsed)
             .map(|(file, parsed)| {
+                let resolver = &resolvers[usize::from(file.language)];
                 let imports = parsed.imports.iter();
                 let path = file.path(root);
                 imports

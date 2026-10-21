@@ -1,0 +1,7 @@
+[languages.js]
+tsconfig = "web/tsconfig.json"
+conditions = ["browser", "import"]
+main_fields = ["main"]
+extensions = [".ts", ".js"]
+alias = { "types" = "web/src/types", "~" = "web" }
+ignore_unresolved = ["virtual:*"]

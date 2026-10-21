@@ -31,6 +31,7 @@
 //! file is recorded in [`GoFile::errors`], and the imports around it are still
 //! read.
 
+mod lang;
 mod reader;
 
 #[cfg(test)]

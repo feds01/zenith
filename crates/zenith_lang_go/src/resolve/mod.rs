@@ -7,6 +7,7 @@ mod heuristic;
 
 pub use discover::{DiscoverError, DiscoverErrorKind, Discovered};
 pub use go_modules::{GoModule, GoModules, GoWorkspace};
+use zenith_lang::Resolved;
 
 /// What a Go import path refers to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,4 +38,20 @@ pub enum GoResolved {
 
     /// The pseudo-package `"C"`, which gives access to C code with cgo.
     Cgo,
+}
+
+impl From<GoResolved> for Resolved {
+    /// A package of the project is imported as a whole, and the standard
+    /// library and cgo are builtins of the `go:` scheme. A dependency is named
+    /// by its module, and is found when the `go.mod` requires it.
+    fn from(resolved: GoResolved) -> Self {
+        match resolved {
+            GoResolved::Internal { dir } => Resolved::Package(dir),
+            GoResolved::Std { package } => Resolved::Builtin(format!("go:{package}")),
+            GoResolved::External { module, required } => {
+                Resolved::External { package: module, found: required }
+            }
+            GoResolved::Cgo => Resolved::Builtin("go:C".to_owned()),
+        }
+    }
 }

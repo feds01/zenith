@@ -3,7 +3,7 @@
 use zenith_config::Languages;
 
 /// Every language, in the order that the docs list them.
-pub const LANGUAGES: Languages = Languages::new(&[&zenith_lang_js::JS]);
+pub const LANGUAGES: Languages = Languages::new(&[&zenith_lang_js::JS, &zenith_lang_go::GO]);
 
 #[cfg(test)]
 mod tests {

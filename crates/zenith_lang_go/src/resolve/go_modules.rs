@@ -1,8 +1,9 @@
 //! The set of Go modules in a project, and the classification of an import
 //! path against it.
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, path::Path};
 
+use zenith_lang::{Workspace, WorkspacePackage};
 use zenith_utils::path::{join_posix, posix_ancestors};
 
 use super::{GoResolved, heuristic::guess_module};
@@ -154,6 +155,27 @@ impl GoModules {
     /// The modules, ordered by directory.
     pub fn modules(&self) -> impl Iterator<Item = &GoModule> {
         self.modules.iter().map(|entry| &entry.module)
+    }
+
+    /// The modules as the packages of a project at `root`, named by their
+    /// module paths. The module in the root directory is the root package. A
+    /// `go.mod` without a `module` directive is left out.
+    pub fn workspace(&self, root: &Path) -> Workspace {
+        let mut workspace = Workspace::default();
+        for module in self.modules() {
+            let Some(name) = module.go_mod.module.clone() else {
+                continue;
+            };
+            let dir = module.dir.clone();
+            if dir.is_empty() {
+                let path = root.to_path_buf();
+                workspace.root_package = Some(WorkspacePackage { name, dir, path });
+            } else {
+                let path = root.join(&dir);
+                workspace.packages.push(WorkspacePackage { name, dir, path });
+            }
+        }
+        workspace
     }
 
     /// Whether the set has no modules and no workspaces.

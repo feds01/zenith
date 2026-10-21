@@ -1,0 +1,2 @@
+[languages.go]
+include = ["cmd/**", "internal/**/*.go"]

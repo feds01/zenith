@@ -14,6 +14,7 @@ zenith_config = { workspace = true }
 zenith_diagnostics = { workspace = true }
 zenith_graph = { workspace = true }
 zenith_lang = { workspace = true }
+zenith_lang_go = { workspace = true }
 zenith_lang_js = { workspace = true }
 zenith_utils = { workspace = true }
 zenith_workspace = { workspace = true }

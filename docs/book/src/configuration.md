@@ -20,6 +20,9 @@ main_fields = ["module", "main"]
 alias = { "types" = "web/src/types" }              # aliases only a bundler knows
 ignore_unresolved = ["/*", "virtual:*"]            # specifiers not to warn about
 
+[languages.go]                                     # off unless the table is written
+include = ["**/*.go"]                              # the default
+
 [analysis]
 exclude_kinds = []         # the import kinds that every contract leaves out
 reexports = "opaque"         # or "transparent": how contracts see pass-through modules
@@ -40,22 +43,23 @@ dir = ".zenith_cache"      # the default, relative to the root
 
 Each language zenith reads has a table of its own in `[languages]`, and a
 language is enabled by writing its table. The table may be empty:
-`[languages.js]` enables JavaScript and TypeScript with their defaults. Without
-a `[languages]` table, JavaScript and TypeScript are enabled. A `[languages]`
-table with no language in it is an error, since there would be nothing to
-scan.
+`[languages.js]` enables JavaScript and TypeScript with their defaults, and
+`[languages.go]` enables Go. Without a `[languages]` table, JavaScript and
+TypeScript are enabled. A `[languages]` table with no language in it is an
+error, since there would be nothing to scan.
 
 `js` is the name of the JavaScript and TypeScript table, and `typescript` is
 accepted for it too. Giving both is an error.
 
 A language owns its options, and the selector schemes that only its projects
-have: `npm:`, `node:` and `bun:` belong to `js`, so a selector that uses one
-is an error when `js` is not enabled. `pkg:` selects workspace packages and
+have: `npm:`, `node:` and `bun:` belong to `js`, and `go:` and `gomod:` belong
+to `go`, so a selector that uses one is an error when its language is not
+enabled. `pkg:` selects workspace packages and
 belongs to no language.
 
 Each language scans the files that its `include` globs match, which default to
 its own source files: every `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`,
-`.mjs` and `.cjs` file for `js`. The `[files]` table is about what is skipped,
+`.mjs` and `.cjs` file for `js`, and every `.go` file for `go`. The `[files]` table is about what is skipped,
 whatever the language.
 
 A path selector may leave the extension off a file, so `src/types` matches the
@@ -90,6 +94,16 @@ Imports that can't be resolved are left out of the graph, and `zenith check`
 warns about them: `--show-unresolved` lists them, and
 `[languages.js] ignore_unresolved` silences the expected ones. To see how one
 specifier resolves, and why, run `zenith resolve <file> <specifier>`.
+
+Go import paths resolve against the modules that the project's `go.mod` and
+`go.work` files declare. Each module is a workspace package named by its module
+path, so `pkg:example.com/api` selects a module. An import of a package in the
+project is an import of its directory, which is one node of the graph, so a
+contract names `internal/store` and not the files in it. An import of the
+standard library is a `go:` builtin, such as `go:net/http`, and one of any other
+module is a `gomod:` package, named by the module that provides it, such as
+`gomod:github.com/pkg/errors`. A module that no `go.mod` requires is named from
+the import path alone.
 
 ## Cache
 

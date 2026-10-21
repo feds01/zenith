@@ -4,17 +4,17 @@
 
 # Zenith
 
-zenith is an architecture linter for TypeScript and JavaScript monorepos.
+zenith is an architecture linter for monorepos in JavaScript, TypeScript and
+Go.
 
-You
-write down how the parts of your codebase may depend on each other, as
+You write down how the parts of your codebase may depend on each other, as
 **contracts** in a `zenith.toml`, and `zenith check` reports every import, or
 chain of imports, that breaks one. A check of a monorepo with thousands of
 files takes well under a second.
 
 If you have used [import-linter](https://import-linter.readthedocs.io/) in
 Python, the contracts will feel familiar: zenith brings the same ideas to
-JavaScript projects.
+JavaScript, TypeScript and Go projects.
 
 <figure class="diagram">
 {{#include diagrams/how-it-works.svg}}
@@ -79,8 +79,10 @@ Contracts
   [`independence`](contracts/independence.md), [`layers`](contracts/layers.md),
   [`protected`](contracts/protected.md), [`acyclic`](contracts/acyclic.md) and
   [`encapsulation`](contracts/encapsulation.md).
-- **Monorepo aware:** workspace packages are found automatically, and can be
-  named in contracts with `pkg:` selectors.
+- **Several languages:** JavaScript and TypeScript, and Go, in one
+  [import graph](languages.md), with the same contracts for each.
+- **Monorepo aware:** workspace packages and Go modules are found
+  automatically, and can be named in contracts with `pkg:` selectors.
 - **Built for adoption:** a [baseline](baseline.md) records the violations a
   codebase already has, so only new ones fail, and
   [suppressions](suppressions.md) exempt single imports.

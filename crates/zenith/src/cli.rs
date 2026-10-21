@@ -50,7 +50,7 @@ fn classify_arg(arg: impl AsRef<OsStr>) -> Argument {
 #[command(
     author,
     name = "zenith",
-    about = "Zenith: an architecture linter for TypeScript and JavaScript codebases",
+    about = "Zenith: an architecture linter for monorepos",
     after_help = "For help with a specific command, see: `zenith help <command>`."
 )]
 #[command(version)]

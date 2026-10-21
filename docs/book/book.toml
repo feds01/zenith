@@ -1,6 +1,6 @@
 [book]
 title = "zenith"
-description = "An architecture linter for TypeScript and JavaScript monorepos"
+description = "An architecture linter for monorepos"
 authors = ["Alexander Fedotov"]
 language = "en"
 src = "src"

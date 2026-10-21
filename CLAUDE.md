@@ -1,9 +1,9 @@
 # Zenith: guide for contributors and agents
 
-Zenith is an architecture linter for TypeScript/JavaScript monorepos, written
-in Rust. The user guide in [docs/book](docs/book/src/SUMMARY.md) describes its
-behaviour: when a change alters what users see, update the guide in the same
-change.
+Zenith is an architecture linter for monorepos in JavaScript, TypeScript and
+Go, written in Rust. The user guide in [docs/book](docs/book/src/SUMMARY.md)
+describes its behaviour: when a change alters what users see, update the guide
+in the same change.
 
 ## How the work lands
 

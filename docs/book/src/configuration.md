@@ -41,10 +41,10 @@ dir = ".zenith_cache"      # the default, relative to the root
 
 ## Languages
 
-Each language zenith reads has a table of its own in `[languages]`, and a
-language is enabled by writing its table. The table may be empty:
-`[languages.js]` enables JavaScript and TypeScript with their defaults, and
-`[languages.go]` enables Go. Without a `[languages]` table, JavaScript and
+Each [language](languages.md) zenith reads has a table of its own in
+`[languages]`, and a language is enabled by writing its table, even an empty
+one: `[languages.js]` enables JavaScript and TypeScript with their defaults,
+and `[languages.go]` enables Go. Without a `[languages]` table, JavaScript and
 TypeScript are enabled. A `[languages]` table with no language in it is an
 error, since there would be nothing to scan.
 
@@ -54,13 +54,12 @@ accepted for it too. Giving both is an error.
 A language owns its options, and the selector schemes that only its projects
 have: `npm:`, `node:` and `bun:` belong to `js`, and `go:` and `gomod:` belong
 to `go`, so a selector that uses one is an error when its language is not
-enabled. `pkg:` selects workspace packages and
-belongs to no language.
+enabled. `pkg:` selects workspace packages and belongs to no language.
 
 Each language scans the files that its `include` globs match, which default to
 its own source files: every `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`,
-`.mjs` and `.cjs` file for `js`, and every `.go` file for `go`. The `[files]` table is about what is skipped,
-whatever the language.
+`.mjs` and `.cjs` file for `js`, and every `.go` file for `go`. The `[files]`
+table is about what is skipped, whatever the language.
 
 A path selector may leave the extension off a file, so `src/types` matches the
 file `src/types.ts` as well as the directory `src/types`. The extensions it
@@ -77,33 +76,12 @@ source code.
 
 ## Resolution
 
-JavaScript and TypeScript specifiers resolve as TypeScript and Node resolve
-them, with each file's nearest `tsconfig.json` and its `paths`, project
-references and `extends`; `[languages.js]` configures it.
-Imports of workspace packages resolve to their source, through their
-`exports` maps, whether or not `node_modules` is installed. A bare specifier
-that doesn't resolve still names its package, such as `npm:react`, so
-`npm:` contracts work in CI without installing dependencies.
-
-A `tsconfig.json` that extends one from a package, even a workspace package,
-can only be loaded once the package is installed. Until then, its files
-resolve without it, so their path aliases don't resolve, and `zenith check`
-says so.
-
-Imports that can't be resolved are left out of the graph, and `zenith check`
-warns about them: `--show-unresolved` lists them, and
-`[languages.js] ignore_unresolved` silences the expected ones. To see how one
-specifier resolves, and why, run `zenith resolve <file> <specifier>`.
-
-Go import paths resolve against the modules that the project's `go.mod` and
-`go.work` files declare. Each module is a workspace package named by its module
-path, so `pkg:example.com/api` selects a module. An import of a package in the
-project is an import of its directory, which is one node of the graph, so a
-contract names `internal/store` and not the files in it. An import of the
-standard library is a `go:` builtin, such as `go:net/http`, and one of any other
-module is a `gomod:` package, named by the module that provides it, such as
-`gomod:github.com/pkg/errors`. A module that no `go.mod` requires is named from
-the import path alone.
+Each language resolves its imports its own way, which the
+[languages](languages.md) page describes. Imports that can't be resolved are
+left out of the graph, and `zenith check` warns about them: `--show-unresolved`
+lists them, and `[languages.js] ignore_unresolved` silences the expected ones
+in JavaScript and TypeScript. To see how one import resolves, and why, run
+`zenith resolve <file> <specifier>`.
 
 ## Cache
 

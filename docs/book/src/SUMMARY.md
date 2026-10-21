@@ -7,6 +7,7 @@
 - [Installation](installation.md)
 - [Getting started](getting-started.md)
 - [Concepts](concepts.md)
+- [Languages](languages.md)
 - [Selectors](selectors.md)
 
 # Contracts

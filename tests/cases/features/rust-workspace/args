@@ -1,0 +1,9 @@
+check
+graph crates --depth 1
+graph crates/cli --depth 2
+resolve crates/cli/src/commands.rs crate::Config
+resolve crates/cli/src/commands.rs super::run
+resolve crates/cli/src/commands.rs lang_js::parse::Parser
+resolve crates/cli/src/commands.rs serde::Serialize
+resolve crates/cli/src/commands.rs std::fs
+resolve crates/cli/src/commands.rs missing::thing

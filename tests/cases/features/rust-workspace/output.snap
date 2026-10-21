@@ -1,0 +1,70 @@
+$ zenith check
+exit: 1
+--- stdout
+error[languages-are-internal]: `lang_js` may only be imported by its allowed importers
+  --> crates/cli/src/commands.rs:3:5
+   |
+ 3 | use lang_js::parse::Parser;
+   |     ^^^^^^^^^^^^^^^^^^^^^^ imports `crates/lang_js/src/parse.rs`
+   |
+  ::: crates/cli/src/main.rs:12:20
+   |
+12 |     let language = lang_js::JS;
+   |                    ^^^^^^^^^^^ imports `crates/lang_js/src/lib.rs`
+
+Contracts
+  ✗ languages-are-internal  protected  broken (2 violations)
+
+0 kept, 1 broken · 6 files, 11 imports
+
+$ zenith graph crates --depth 1
+exit: 0
+--- stdout
+crates/ (6 files)
+├─cli/ (2 files)
+├─lang_js/ (2 files)
+└─pipeline/ (2 files)
+
+dependencies between the children of `crates`:
+  crates/cli -> crates/lang_js (2 imports)
+  crates/cli -> crates/pipeline (1 import)
+  crates/pipeline -> crates/lang_js (2 imports)
+
+$ zenith graph crates/cli --depth 2
+exit: 0
+--- stdout
+crates/cli/ (2 files)
+└─src/ (2 files)
+  ├─commands.rs
+  └─main.rs
+
+$ zenith resolve crates/cli/src/commands.rs crate::Config
+exit: 0
+--- stdout
+internal: crates/cli/src/main.rs
+
+$ zenith resolve crates/cli/src/commands.rs super::run
+exit: 0
+--- stdout
+internal: crates/cli/src/main.rs
+
+$ zenith resolve crates/cli/src/commands.rs lang_js::parse::Parser
+exit: 0
+--- stdout
+internal: crates/lang_js/src/parse.rs
+
+$ zenith resolve crates/cli/src/commands.rs serde::Serialize
+exit: 0
+--- stdout
+external: crate:serde
+
+$ zenith resolve crates/cli/src/commands.rs std::fs
+exit: 0
+--- stdout
+builtin: rust:std
+
+$ zenith resolve crates/cli/src/commands.rs missing::thing
+exit: 1
+--- stdout
+unresolved: `missing` is not a crate, or a module here
+

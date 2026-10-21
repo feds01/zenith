@@ -1,0 +1,19 @@
+[package]
+name = "app"
+version = "0.1.0"
+
+[dependencies]
+core-lib = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+json = { package = "serde_json", version = "1" }
+util = { path = "../util" }
+serde-yaml = "0.9"
+
+[dev-dependencies]
+tempfile = "3"
+
+[build-dependencies]
+cc = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

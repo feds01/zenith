@@ -1,0 +1,6 @@
+[languages.rust]
+
+[contracts.no-serde]
+type = "forbidden"
+from = ["crates/core"]
+to = ["crate:serde", "rust:std", "pkg:app"]

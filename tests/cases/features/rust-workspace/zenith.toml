@@ -1,0 +1,8 @@
+# Rust is enabled by its table. Only the pipeline may import the language
+# crate. `crates/cli` does, with a `use` and with a path in code.
+[languages.rust]
+
+[contracts.languages-are-internal]
+type = "protected"
+modules = ["pkg:lang_js"]
+allowed_importers = ["pkg:pipeline"]

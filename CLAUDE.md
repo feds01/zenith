@@ -28,6 +28,9 @@ just corpus <path> <config>  # a release build on a local checkout, with a confi
 just book     # serve the user guide in docs/book (mdBook)
 ```
 
+zenith checks its own architecture: `just run check` runs the contracts in
+the root `zenith.toml`, and so does CI.
+
 The toolchain is pinned nightly (`rust-toolchain.toml`). This is needed for the
 `rustfmt.toml` options `imports_granularity` and `group_imports`. Run
 `just lint` before committing; CI runs fmt, clippy, tests on

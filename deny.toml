@@ -33,14 +33,6 @@ multiple-versions = "allow"
 wildcards = "deny"
 # Workspace crates use path dependencies without versions.
 allow-wildcard-paths = true
-# Only the pipeline, and the benchmarks that measure it, may depend on a
-# language crate. Everything else reaches the languages through the interfaces
-# in `zenith_config` and `zenith_lang`.
-deny = [
-  { crate = "zenith_lang_go", wrappers = ["zenith_pipeline", "zenith_benchmark"] },
-  { crate = "zenith_lang_js", wrappers = ["zenith_pipeline", "zenith_benchmark"] },
-  { crate = "zenith_lang_rust", wrappers = ["zenith_pipeline"] },
-]
 
 [sources]
 unknown-registry = "deny"

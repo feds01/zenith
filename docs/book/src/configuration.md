@@ -12,16 +12,7 @@ which `zenith init` points to with a `#:schema` comment.
 exclude = ["experimental/**", "**/*.gen.ts"]       # added to the defaults below
 respect_gitignore = true                           # the default
 
-[languages.js]                                     # also accepted as [languages.typescript]
-include = ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"]   # the default
-tsconfig = "auto"          # the nearest tsconfig.json of each file; "off"; or a path
-conditions = ["types", "source", "import", "module", "require", "node", "default"]
-main_fields = ["module", "main"]
-alias = { "types" = "web/src/types" }              # aliases only a bundler knows
-ignore_unresolved = ["/*", "virtual:*"]            # specifiers not to warn about
-
-[languages.go]                                     # off unless the table is written
-include = ["**/*.go"]                              # the default
+[languages.js]             # a table per language, with the options on its page
 
 [analysis]
 exclude_kinds = []         # the import kinds that every contract leaves out
@@ -41,29 +32,9 @@ dir = ".zenith_cache"      # the default, relative to the root
 
 ## Languages
 
-Each [language](languages.md) zenith reads has a table of its own in
-`[languages]`, and a language is enabled by writing its table, even an empty
-one: `[languages.js]` enables JavaScript and TypeScript with their defaults,
-and `[languages.go]` enables Go. Without a `[languages]` table, JavaScript and
-TypeScript are enabled. A `[languages]` table with no language in it is an
-error, since there would be nothing to scan.
-
-`js` is the name of the JavaScript and TypeScript table, and `typescript` is
-accepted for it too. Giving both is an error.
-
-A language owns its options, and the selector schemes that only its projects
-have: `npm:`, `node:` and `bun:` belong to `js`, and `go:` and `gomod:` belong
-to `go`, so a selector that uses one is an error when its language is not
-enabled. `pkg:` selects workspace packages and belongs to no language.
-
-Each language scans the files that its `include` globs match, which default to
-its own source files: every `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`,
-`.mjs` and `.cjs` file for `js`, and every `.go` file for `go`. The `[files]`
-table is about what is skipped, whatever the language.
-
-A path selector may leave the extension off a file, so `src/types` matches the
-file `src/types.ts` as well as the directory `src/types`. The extensions it
-may leave off are those of the enabled languages.
+`[languages]` has a table for each language to read, which enables it, with
+the options that the language's page lists. Without a `[languages]` table,
+JavaScript and TypeScript are enabled. See [languages](languages.md).
 
 ## Files
 
@@ -76,11 +47,10 @@ source code.
 
 ## Resolution
 
-Each language resolves its imports its own way, which the
-[languages](languages.md) page describes. Imports that can't be resolved are
-left out of the graph, and `zenith check` warns about them: `--show-unresolved`
-lists them, and `[languages.js] ignore_unresolved` silences the expected ones
-in JavaScript and TypeScript. To see how one import resolves, and why, run
+Each language resolves its imports its own way, which its
+[page](languages.md) describes. Imports that can't be resolved are left out of
+the graph, and `zenith check` warns about them: `--show-unresolved` lists them.
+To see how one import resolves, and why, run
 `zenith resolve <file> <specifier>`.
 
 ## Cache

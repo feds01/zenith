@@ -8,16 +8,12 @@ table for the advanced forms.
 | Form | Matches | Example |
 |---|---|---|
 | path glob | directories and files in the project | `web/src/domains/*`, `packages/ai/src/**/server.ts` |
-| `pkg:<name>` | the directory of each matching workspace package | `pkg:@acme/*`, `pkg:web` |
-| `npm:<name>` | external packages | `npm:sharp`, `npm:@aws-sdk/*` |
-| `node:<name>`, `bun:<name>` | builtins | `node:*`, `node:fs` |
-| `gomod:<module>` | Go modules that are not in the project | `gomod:github.com/pkg/*` |
-| `go:<package>` | Go standard library packages | `go:net/http`, `go:os/*` |
+| `pkg:<name>` | the directory of each matching package, of any language | `pkg:@acme/*`, `pkg:example.com/api` |
+| `<scheme>:<name>` | the external packages or builtins of a language | `npm:sharp`, `node:*`, `gomod:github.com/pkg/*`, `go:net/http` |
 
-`npm:`, `node:` and `bun:` belong to the `js` language, and `go:` and `gomod:`
-to `go`, so using one while its language is not
-[enabled](configuration.md#languages) is an error, as is any other scheme that
-zenith doesn't know.
+Each scheme belongs to a [language](languages.md), whose page lists its
+schemes, so using one while its language is not enabled is an error, as is any
+other scheme that zenith doesn't know.
 
 `pkg:*` never matches the root package, which would contain everything.
 
@@ -61,7 +57,8 @@ zenith's glob dialect needs no escaping for Next.js and TanStack file names:
 ## Selectors that match nothing
 
 A path or `pkg:` selector that matches nothing is a configuration error, since
-it is most likely a typo or a rename. `npm:`, `node:`, `go:` and `gomod:`
-selectors may match nothing: it only means that nothing imports the package. The check is made
+it is most likely a typo or a rename. The selectors of a language's scheme, such
+as `npm:sharp`, may match nothing: it only means that nothing imports the
+package. The check is made
 before `except` and `directive` filter the units, and never for
 `ignore_imports` entries.

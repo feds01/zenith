@@ -4,10 +4,9 @@
 use serde_json::{Value, json};
 
 use super::json_schema;
-use crate::{config::Config, contracts::CONTRACT_TYPES};
+use crate::{config::Config, contracts::CONTRACT_TYPES, testing::LANGUAGES};
 
-/// The example configuration of the docs, with every table and contract
-/// type.
+/// An example configuration, with every table and contract type.
 const EXAMPLE: &str = include_str!("example.toml");
 
 /// The keywords that [`validate`] understands. The schema must not use any
@@ -122,7 +121,7 @@ fn validate(root: &Value, schema: &Value, value: &Value, path: &str, errors: &mu
 /// What is wrong with a configuration, given as JSON, according to the
 /// schema.
 fn schema_errors(config: &Value) -> Vec<String> {
-    let schema = json_schema();
+    let schema = json_schema(LANGUAGES);
     let mut errors = Vec::new();
     validate(&schema, &schema, config, "", &mut errors);
     errors
@@ -154,7 +153,7 @@ fn subschemas(schema: &Value) -> Vec<&Value> {
 
 #[test]
 fn the_example_is_valid() {
-    let config = Config::parse(EXAMPLE).expect("the example parses");
+    let config = Config::parse(EXAMPLE, LANGUAGES).expect("the example parses");
     let types: Vec<_> = config.contracts.iter().map(|contract| contract.kind.type_name()).collect();
     assert_eq!(
         types,
@@ -164,13 +163,30 @@ fn the_example_is_valid() {
 }
 
 #[test]
+fn the_schema_accepts_any_name_of_a_language_table() {
+    for name in ["test", "testing"] {
+        let mut config = example();
+        let table = config["languages"]["test"].take();
+        config["languages"] = json!({ name: table });
+        assert_eq!(schema_errors(&config), Vec::<String>::new(), "{name}");
+        let toml = toml::to_string(&config).expect("the config serialises");
+        assert!(Config::parse(&toml, LANGUAGES).is_ok(), "{name}");
+    }
+}
+
+#[test]
 fn the_schema_rejects_what_parsing_rejects() {
     /// A change to the example that makes it invalid.
     type Mutation = fn(&mut Value);
 
-    let mutations: [(&str, Mutation); 9] = [
+    let mutations: [(&str, Mutation); 12] = [
         ("an unknown table", |config| config["filez"] = json!({})),
         ("an unknown key in a table", |config| config["files"]["exclud"] = json!([])),
+        ("an unknown language", |config| config["languages"]["go"] = json!({})),
+        ("an unknown key in a language", |config| {
+            config["languages"]["test"]["includ"] = json!([]);
+        }),
+        ("the removed `resolve` table", |config| config["resolve"] = json!({})),
         ("an unknown key in a contract", |config| {
             config["contracts"]["client-safety"]["fromm"] = json!([]);
         }),
@@ -201,13 +217,13 @@ fn the_schema_rejects_what_parsing_rejects() {
         mutate(&mut config);
         assert!(!schema_errors(&config).is_empty(), "the schema accepts {what}");
         let toml = toml::to_string(&config).expect("the config serialises");
-        assert!(Config::parse(&toml).is_err(), "parsing accepts {what}");
+        assert!(Config::parse(&toml, LANGUAGES).is_err(), "parsing accepts {what}");
     }
 }
 
 #[test]
 fn the_schema_lists_every_contract_type() {
-    let schema = json_schema();
+    let schema = json_schema(LANGUAGES);
     let types: Vec<_> = schema["$defs"]["ContractTable"]["oneOf"]
         .as_array()
         .into_iter()
@@ -219,7 +235,7 @@ fn the_schema_lists_every_contract_type() {
 
 #[test]
 fn every_table_rejects_unknown_keys() {
-    let schema = json_schema();
+    let schema = json_schema(LANGUAGES);
     for subschema in subschemas(&schema) {
         if subschema.get("properties").is_some() {
             assert_eq!(subschema.get("additionalProperties"), Some(&json!(false)), "{subschema:#}");
@@ -229,7 +245,7 @@ fn every_table_rejects_unknown_keys() {
 
 #[test]
 fn every_key_is_described() {
-    let schema = json_schema();
+    let schema = json_schema(LANGUAGES);
     for subschema in subschemas(&schema) {
         let Some(properties) = subschema.get("properties").and_then(Value::as_object) else {
             continue;
@@ -246,6 +262,6 @@ fn every_key_is_described() {
 #[test]
 fn the_schema_has_no_null() {
     // TOML has no null: an optional key is left out instead.
-    let schema = json_schema().to_string();
+    let schema = json_schema(LANGUAGES).to_string();
     assert!(!schema.contains("null"), "{schema}");
 }

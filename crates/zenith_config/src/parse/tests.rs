@@ -10,15 +10,16 @@ use zenith_utils::{
 };
 
 use crate::{
-    config::{Config, StaleLevel, Tsconfig},
+    config::{Config, StaleLevel},
     contracts::{AlertLevel, CONTRACT_TYPES, ContractKind, Reexports, Severity},
-    error::{ConfigError, ConfigErrorKind, SelectorError},
-    selector::{BuiltinScheme, Selector, SelectorTarget},
+    error::{ConfigError, ConfigErrorKind, LoadError, SelectorError},
+    selector::{Selector, SelectorTarget},
+    testing::{LANGUAGES, OTHER, TEST, TestOptions},
 };
 
 /// Parse a configuration that must be valid.
 fn valid(contents: &str) -> Config {
-    match Config::parse(contents) {
+    match Config::parse(contents, LANGUAGES) {
         Ok(config) => config,
         Err(errors) => panic!("unexpected errors: {}", render(contents, &errors).join("\n")),
     }
@@ -27,7 +28,7 @@ fn valid(contents: &str) -> Config {
 /// Parse a configuration that must be invalid, and render its errors as
 /// `line:column: message [the offending text]`.
 fn invalid(contents: &str) -> Vec<String> {
-    match Config::parse(contents) {
+    match Config::parse(contents, LANGUAGES) {
         Ok(config) => panic!("expected errors, got {config:?}"),
         Err(errors) => render(contents, &errors),
     }
@@ -83,75 +84,58 @@ fn every_contract_type_is_parsed() {
 #[test]
 fn an_empty_file_has_the_defaults_of_no_file() {
     let parsed =
-        ["", "[files]\n[resolve]\n[analysis]\n[baseline]\n[cache]\n[contracts]\n"].map(valid);
-    for config in [Config::default()].iter().chain(&parsed) {
-        assert_eq!(config.files.include, None);
+        ["", "[files]\n[analysis]\n[baseline]\n[cache]\n[contracts]\n", "[languages.test]\n"]
+            .map(valid);
+    for config in [Config::defaults(LANGUAGES)].iter().chain(&parsed) {
         assert!(config.files.exclude.is_empty());
         assert!(config.files.respect_gitignore);
-        assert_eq!(config.resolve.tsconfig, Tsconfig::Auto);
-        assert_eq!(config.resolve.conditions, None);
-        assert_eq!(config.resolve.main_fields, None);
-        assert_eq!(config.resolve.extensions, None);
-        assert!(config.resolve.alias.is_empty());
-        assert!(config.resolve.ignore_unresolved.is_empty());
+        let test = config.languages.options::<TestOptions>().expect("test is enabled");
+        assert_eq!(test.include, None);
+        assert!(test.names.is_empty());
         assert!(config.analysis.exclude_kinds.is_empty());
         assert_eq!(config.baseline.path, "zenith.baseline.toml");
         assert_eq!(config.baseline.stale, StaleLevel::Error);
         assert!(config.cache.enabled);
-        assert_eq!(config.cache.dir, "node_modules/.cache/zenith");
+        assert_eq!(config.cache.dir, ".zenith_cache");
         assert!(config.contracts.is_empty());
     }
 }
 
 #[test]
+fn without_a_languages_table_the_default_languages_are_enabled() {
+    for config in [Config::defaults(LANGUAGES), valid("")] {
+        assert_eq!(config.languages.enabled().collect::<Vec<_>>(), [&TEST]);
+        assert!(config.languages.is_enabled(&TEST));
+        assert!(!config.languages.is_enabled(&OTHER));
+        let scanned = config.languages.scanned();
+        assert!(scanned.globs.is_empty());
+        assert_eq!(scanned.extensions, TEST.source_extensions);
+        assert_eq!(config.languages.optional_extensions(), TEST.optional_extensions);
+    }
+}
+
+#[test]
+fn the_enabled_languages_are_in_the_order_of_the_registry() {
+    let config = valid(include_str!("fixtures/languages-reversed.toml"));
+    assert_eq!(config.languages.enabled().collect::<Vec<_>>(), [&TEST, &OTHER]);
+    // The extensions of each are scanned, and may be left off selectors.
+    assert_eq!(config.languages.scanned().extensions, ["tst", "oth"]);
+    assert_eq!(config.languages.optional_extensions(), ["tst", "d.tst", "oth"]);
+}
+
+#[test]
 fn parses_the_global_tables() {
-    let config = valid(
-        r#"
-[files]
-include = ["**/*.{ts,tsx}"]
-exclude = ["experimental/**", "**/*.gen.ts"]
-respect_gitignore = false
-
-[resolve]
-tsconfig = "config/tsconfig.base.json"
-conditions = ["source", "import"]
-main_fields = ["main"]
-extensions = [".ts", ".js"]
-alias = { "types" = "web/src/types", "~" = "web/src" }
-ignore_unresolved = ["/*", "virtual:*"]
-
-[analysis]
-exclude_kinds = ["type", "dynamic"]
-
-[baseline]
-path = "config/zenith.baseline.toml"
-stale = "warn"
-
-[cache]
-enabled = false
-dir = ".cache/zenith"
-"#,
-    );
+    let config = valid(include_str!("fixtures/global-tables.toml"));
 
     let globs =
         |patterns: &[&str]| patterns.iter().map(|p| Glob::new(p).unwrap()).collect::<Vec<_>>();
-    assert_eq!(config.files.include, Some(globs(&["**/*.{ts,tsx}"])));
     assert_eq!(config.files.exclude, globs(&["experimental/**", "**/*.gen.ts"]));
     assert!(!config.files.respect_gitignore);
 
-    let resolve = &config.resolve;
-    assert_eq!(resolve.tsconfig, Tsconfig::File("config/tsconfig.base.json".into()));
+    let test = config.languages.options::<TestOptions>().unwrap();
+    assert_eq!(test.include, Some(globs(&["**/*.tst"])));
     assert_eq!(
-        resolve.conditions.as_deref(),
-        Some(&["source".to_string(), "import".to_string()][..])
-    );
-    assert_eq!(resolve.main_fields.as_deref(), Some(&["main".to_string()][..]));
-    assert_eq!(resolve.extensions.as_deref(), Some(&[".ts".to_string(), ".js".to_string()][..]));
-    // Aliases keep the order of the file.
-    let alias: Vec<_> = resolve.alias.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-    assert_eq!(alias, [("types", "web/src/types"), ("~", "web/src")]);
-    assert_eq!(
-        resolve.ignore_unresolved,
+        test.names,
         [NamePattern::new("/*").unwrap(), NamePattern::new("virtual:*").unwrap()]
     );
 
@@ -160,14 +144,155 @@ dir = ".cache/zenith"
     assert_eq!(config.baseline.stale, StaleLevel::Warn);
     assert!(!config.cache.enabled);
     assert_eq!(config.cache.dir, ".cache/zenith");
+
+    // A language that sets its `include` is scanned by its globs.
+    let scanned = config.languages.scanned();
+    assert_eq!(scanned.globs, globs(&["**/*.tst"]));
+    assert!(scanned.extensions.is_empty());
 }
 
 #[test]
-fn tsconfig_can_be_automatic_or_off() {
-    for (value, tsconfig) in [("auto", Tsconfig::Auto), ("off", Tsconfig::Off)] {
-        let config = valid(&format!("[resolve]\ntsconfig = \"{value}\"\n"));
-        assert_eq!(config.resolve.tsconfig, tsconfig);
-    }
+fn a_language_table_goes_by_any_of_its_names() {
+    let config = valid(include_str!("fixtures/languages-other-name.toml"));
+    let test = config.languages.options::<TestOptions>().expect("`testing` enables test");
+    assert_eq!(test.include, Some(vec![Glob::new("web/**").unwrap()]));
+    assert_eq!(test.names, [NamePattern::new("virtual:*").unwrap()]);
+}
+
+#[test]
+fn giving_a_language_under_two_names_is_an_error() {
+    // The second table is the one reported, in either order.
+    let contents = include_str!("fixtures/languages-both-names.toml");
+    assert_eq!(
+        invalid(contents),
+        ["4:12: `languages.testing` is another name for `languages.test`, which is already given \
+          [testing]"]
+    );
+    let contents = include_str!("fixtures/languages-both-names-reversed.toml");
+    assert_eq!(
+        invalid(contents),
+        ["4:12: `languages.test` is another name for `languages.testing`, which is already given \
+          [test]"]
+    );
+    let errors = Config::parse(contents, LANGUAGES).unwrap_err();
+    let report =
+        LoadError::Invalid { path: "zenith.toml".into(), contents: contents.to_string(), errors };
+    let expected = [
+        "error: `languages.test` is another name for `languages.testing`, which is already given",
+        " --> zenith.toml:4:12",
+        "  |",
+        "4 | [languages.test]",
+        "  |            ^^^^",
+        "  |",
+        "  = help: give the language one table",
+    ];
+    assert_eq!(report.to_string(), expected.join("\n"));
+}
+
+#[test]
+fn an_empty_languages_table_enables_no_language() {
+    let contents = include_str!("fixtures/languages-empty.toml");
+    assert_eq!(invalid(contents), ["1:1: no language is enabled [[languages]]"]);
+    let error = &Config::parse(contents, LANGUAGES).unwrap_err()[0];
+    assert_eq!(error.kind, ConfigErrorKind::NoLanguages { example: Some("test".into()) });
+    assert_eq!(error.kind.to_string(), "no language is enabled");
+}
+
+#[test]
+fn unknown_languages_are_errors_with_suggestions() {
+    let contents = include_str!("fixtures/languages-unknown.toml");
+    assert_eq!(
+        invalid(contents),
+        [
+            "3:12: unknown language `testng`; did you mean `testing`? [testng]",
+            "5:12: unknown language `go`, expected one of `test`, `testing`, `other` [go]",
+        ]
+    );
+    // The language that is written is still enabled.
+    let errors = Config::parse(contents, LANGUAGES).unwrap_err();
+    assert_eq!(errors.len(), 2);
+}
+
+#[test]
+fn the_tables_of_the_old_shape_are_unknown_keys() {
+    assert_eq!(
+        invalid(include_str!("fixtures/removed-tables.toml")),
+        [
+            "2:1: unknown key `include`; did you mean `exclude`? [include]",
+            "4:2: unknown key `resolve`, expected one of `files`, `languages`, `analysis`, \
+             `baseline`, `cache`, `contracts` [resolve]",
+        ]
+    );
+}
+
+#[test]
+fn schemes_of_an_enabled_language_are_allowed() {
+    let config = valid(include_str!("fixtures/languages-with-schemes.toml"));
+    let ContractKind::Forbidden(forbidden) = &config.contracts[0].kind else {
+        panic!("expected `forbidden`");
+    };
+    let schemes: Vec<_> = forbidden.to.iter().map(Selector::scheme).collect();
+    assert_eq!(schemes, [Some("ext"), Some("core"), Some("sys"), Some("pkg")]);
+}
+
+#[test]
+fn schemes_of_a_disabled_language_are_errors() {
+    let contents = include_str!("fixtures/languages-empty-with-schemes.toml");
+    // Selectors, `ignore_imports` entries and layers are all checked, and
+    // `pkg:` belongs to no language.
+    let errors = invalid(contents);
+    let scheme = |selector: &str, text: &str| {
+        let (name, _) = selector.split_once(':').unwrap();
+        format!(
+            "`{selector}` uses the `{name}:` scheme of the `test` language, which is not enabled \
+             [{text}]"
+        )
+    };
+    assert_eq!(
+        errors,
+        [
+            "1:1: no language is enabled [[languages]]".to_string(),
+            format!("6:7: in contract `no-sharp`: {}", scheme("ext:sharp", "\"ext:sharp\"")),
+            format!("6:20: in contract `no-sharp`: {}", scheme("core:*", "\"core:*\"")),
+            format!(
+                "7:19: in contract `no-sharp`: {}",
+                scheme("sys:sqlite", "\"web/src -> sys:sqlite\"")
+            ),
+            format!(
+                "11:11: in contract `tiers`: {}",
+                scheme("ext:react", "\"web/src | ext:react\"")
+            ),
+        ]
+    );
+
+    // The report says how to enable the language.
+    let errors = Config::parse(contents, LANGUAGES).unwrap_err();
+    let error =
+        LoadError::Invalid { path: "zenith.toml".into(), contents: contents.into(), errors };
+    let expected = [
+        "error: `ext:sharp` uses the `ext:` scheme of the `test` language, which is not enabled",
+        " --> zenith.toml:6:7",
+        "  |",
+        "6 | to = [\"ext:sharp\", \"core:*\", \"pkg:@acme/server\"]",
+        "  |       ^^^^^^^^^^^",
+        "  |",
+        "  = note: in contract `no-sharp`",
+        "  = help: enable it with a `[languages.test]` table",
+    ];
+    assert!(error.to_string().contains(&expected.join("\n")), "{error}");
+}
+
+#[test]
+fn unknown_schemes_are_errors_with_suggestions() {
+    assert_eq!(
+        invalid(include_str!("fixtures/unknown-scheme.toml")),
+        [
+            "4:7: in contract `a`: invalid selector `exy:react`: unknown scheme `exy:`; did you \
+             mean `ext:`? [\"exy:react\"]",
+            "4:20: in contract `a`: invalid selector `gopkg:fmt`: unknown scheme `gopkg:`, \
+             expected one of `pkg:`, `ext:`, `core:`, `sys:`, `oth:` [\"gopkg:fmt\"]",
+        ]
+    );
 }
 
 #[test]
@@ -178,11 +303,11 @@ fn parses_a_forbidden_contract() {
 type = "forbidden"
 name = "Client components never reach server-only code"
 from = [{ path = "web/src/**", directive = "use client", except = ["web/src/legacy"] }]
-to = ["npm:sharp", "node:*", "bun:sqlite", "pkg:@acme/server"]
+to = ["ext:sharp", "core:*", "sys:sqlite", "pkg:@acme/server"]
 allow_indirect_imports = true
 severity = "warn"
 exclude_kinds = ["type"]
-ignore_imports = ["web/src/lib/** -> npm:sharp"]
+ignore_imports = ["web/src/lib/** -> ext:sharp"]
 unmatched_ignore_imports = "warn"
 guidance = "Keep server-only modules out of client bundles."
 "#,
@@ -195,7 +320,7 @@ guidance = "Keep server-only modules out of client bundles."
     assert_eq!(contract.exclude_kinds, KindSet::TYPE);
     assert_eq!(contract.ignore_imports.len(), 1);
     assert_eq!(contract.ignore_imports[0].importer().as_str(), "web/src/lib/**");
-    assert_eq!(contract.ignore_imports[0].imported().as_str(), "npm:sharp");
+    assert_eq!(contract.ignore_imports[0].imported().as_str(), "ext:sharp");
     assert_eq!(contract.unmatched_ignore_imports, AlertLevel::Warn);
     assert_eq!(
         contract.guidance.as_deref(),
@@ -209,12 +334,9 @@ guidance = "Keep server-only modules out of client bundles."
     assert_eq!(from.as_str(), "web/src/**");
     assert_eq!(from.directive(), Some("use client"));
     assert_eq!(selectors(from.except()), ["web/src/legacy"]);
-    assert_eq!(selectors(&forbidden.to), ["npm:sharp", "node:*", "bun:sqlite", "pkg:@acme/server"]);
-    assert!(matches!(forbidden.to[0].target(), SelectorTarget::External(_)));
-    assert!(matches!(
-        forbidden.to[2].target(),
-        SelectorTarget::Builtin { scheme: BuiltinScheme::Bun, .. }
-    ));
+    assert_eq!(selectors(&forbidden.to), ["ext:sharp", "core:*", "sys:sqlite", "pkg:@acme/server"]);
+    assert!(matches!(forbidden.to[0].target(), SelectorTarget::Scheme { scheme: "ext", .. }));
+    assert!(matches!(forbidden.to[2].target(), SelectorTarget::Scheme { scheme: "sys", .. }));
     assert!(matches!(forbidden.to[3].target(), SelectorTarget::Package(_)));
 }
 
@@ -441,10 +563,7 @@ fn unknown_keys_are_errors_everywhere() {
         ("filez = 1\n", "1:1: unknown key `filez`; did you mean `files`? [filez]"),
         ("[contract.a]\n", "1:2: unknown key `contract`; did you mean `contracts`? [contract]"),
         ("[files]\nexclud = []\n", "2:1: unknown key `exclud`; did you mean `exclude`? [exclud]"),
-        (
-            "[resolve]\ntsconfg = \"off\"\n",
-            "2:1: unknown key `tsconfg`; did you mean `tsconfig`? [tsconfg]",
-        ),
+        ("[languages.test]\nname = []\n", "2:1: unknown key `name`; did you mean `names`? [name]"),
         (
             "[analysis]\nexclude_kind = []\n",
             "2:1: unknown key `exclude_kind`; did you mean `exclude_kinds`? [exclude_kind]",
@@ -455,9 +574,12 @@ fn unknown_keys_are_errors_everywhere() {
             "2:1: unknown key `enable`; did you mean `enabled`? [enable]",
         ),
         (
-            "[resolve]\nzzz = 1\n",
-            "2:1: unknown key `zzz`, expected one of `tsconfig`, `conditions`, `main_fields`, \
-             `extensions`, `alias`, `ignore_unresolved` [zzz]",
+            "[languages.test]\nzzz = 1\n",
+            "2:1: unknown key `zzz`, expected `include` or `names` [zzz]",
+        ),
+        (
+            "[languages]\ntest = {}\ngo = {}\n",
+            "3:1: unknown language `go`, expected one of `test`, `testing`, `other` [go]",
         ),
     ] {
         assert_eq!(only_error(contents), expected, "{contents}");
@@ -567,7 +689,10 @@ fn values_of_the_wrong_type_are_errors() {
             "[files]\nrespect_gitignore = \"yes\"\n",
             "2:21: invalid type: string \"yes\", expected a boolean [\"yes\"]",
         ),
-        ("[resolve]\nalias = [\"a\"]\n", "2:9: invalid type: array, expected a table [[\"a\"]]"),
+        (
+            "[languages.test]\nnames = \"a\"\n",
+            "2:9: invalid type: string \"a\", expected an array [\"a\"]",
+        ),
         ("contracts = 1\n", "1:13: `contracts` must be a table [1]"),
         ("[contracts]\nc = \"forbidden\"\n", "2:5: `contracts.c` must be a table [\"forbidden\"]"),
         ("[contracts.c]\nfrom = []\n", "1:1: in contract `c`: missing key `type` [[contracts.c]]"),
@@ -601,7 +726,7 @@ fn values_of_the_wrong_type_are_errors() {
 fn syntax_errors_have_a_location() {
     assert_eq!(only_error("[files\n"), "1:7: invalid TOML: unclosed table, expected `]` []");
     let contents = "[files]\n[files]\n";
-    let errors = Config::parse(contents).unwrap_err();
+    let errors = Config::parse(contents, LANGUAGES).unwrap_err();
     assert!(matches!(errors[0].kind, ConfigErrorKind::Syntax { .. }), "{errors:?}");
     assert_eq!(errors[0].range.map(|range| line_column(contents, range).0), Some(2));
 }
@@ -611,7 +736,7 @@ fn contract_ids_may_only_have_letters_digits_dashes_and_underscores() {
     valid("[contracts.Web_Layers-2]\ntype = \"acyclic\"\nmodules = [\"a\"]\n");
     for id in ["web layers", "web.layers", "", "é"] {
         let contents = format!("[contracts.\"{id}\"]\ntype = \"acyclic\"\nmodules = [\"a\"]\n");
-        let errors = Config::parse(&contents).unwrap_err();
+        let errors = Config::parse(&contents, LANGUAGES).unwrap_err();
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].kind, ConfigErrorKind::InvalidContractId { id: id.to_string() });
         assert_eq!(errors[0].contract, None);
@@ -627,8 +752,8 @@ fn invalid_selectors_are_errors() {
              project root [\"/web\"]",
         ),
         (
-            "type = \"forbidden\"\nfrom = []\nto = [\"npm:\"]",
-            "4:7: in contract `c`: invalid selector `npm:`: the pattern is empty [\"npm:\"]",
+            "type = \"forbidden\"\nfrom = []\nto = [\"ext:\"]",
+            "4:7: in contract `c`: invalid selector `ext:`: the pattern is empty [\"ext:\"]",
         ),
         (
             "type = \"independence\"\nmodules = [\"web/../api\"]",
@@ -644,8 +769,8 @@ fn invalid_selectors_are_errors() {
             "3:36: in contract `c`: invalid selector `a//b`: empty path segment [\"a//b\"]",
         ),
         (
-            "type = \"forbidden\"\nfrom = [{ path = \"npm:react\", directive = \"use client\" }]\nto = []",
-            "3:43: in contract `c`: invalid selector `npm:react`: `directive` only applies to path \
+            "type = \"forbidden\"\nfrom = [{ path = \"ext:react\", directive = \"use client\" }]\nto = []",
+            "3:43: in contract `c`: invalid selector `ext:react`: `directive` only applies to path \
              and `pkg:` selectors, which match files [\"use client\"]",
         ),
         (
@@ -671,13 +796,13 @@ fn invalid_selectors_are_errors() {
 fn invalid_globs_and_name_patterns_are_errors() {
     for (contents, expected) in [
         (
-            "[files]\ninclude = [\"/src\"]\n",
+            "[languages.test]\ninclude = [\"/src\"]\n",
             "2:12: invalid pattern `/src`: leading `/`; globs are relative to the project root [\"/src\"]",
         ),
         ("[files]\nexclude = [\"a/\"]\n", "2:12: invalid pattern `a/`: trailing `/` [\"a/\"]"),
         (
-            "[resolve]\nignore_unresolved = [\"virtual:{\"]\n",
-            "2:22: invalid pattern `virtual:{`: unclosed `{` [\"virtual:{\"]",
+            "[languages.test]\nnames = [\"virtual:{\"]\n",
+            "2:10: invalid pattern `virtual:{`: unclosed `{` [\"virtual:{\"]",
         ),
         (
             "[contracts.c]\ntype = \"layers\"\nlayers = [\"a\"]\ncontainers = [\"x\"]\nexhaustive = true\nexhaustive_ignores = [\"\\\\\"]\n",
@@ -743,7 +868,7 @@ fn boundaries_without_chains_are_an_error() {
 
 #[test]
 fn reexports_default_to_the_analysis_and_encapsulation_never_sees_through_them() {
-    assert_eq!(Config::default().analysis.reexports, Reexports::Opaque);
+    assert_eq!(Config::defaults(LANGUAGES).analysis.reexports, Reexports::Opaque);
     let config = valid(include_str!("fixtures/reexports.toml"));
     let reexports: Vec<_> = config
         .contracts
@@ -773,7 +898,7 @@ fn every_error_is_reported_in_the_order_of_the_file() {
 [contracts.b]
 type = "forbidden"
 from = ["/a", "web/src"]
-to = ["npm:"]
+to = ["ext:"]
 ignore_imports = ["oops"]
 
 [files]
@@ -787,8 +912,8 @@ dept = 1
 [contracts.c]
 type = "layer"
 
-[resolve]
-tsconfg = "off"
+[languages.test]
+name = []
 
 [baseline]
 stale = "warning"
@@ -800,13 +925,13 @@ stale = "warning"
         [
             "4:9: in contract `b`: invalid selector `/a`: leading `/`; globs are relative to the \
              project root [\"/a\"]",
-            "5:7: in contract `b`: invalid selector `npm:`: the pattern is empty [\"npm:\"]",
+            "5:7: in contract `b`: invalid selector `ext:`: the pattern is empty [\"ext:\"]",
             "6:19: in contract `b`: invalid `ignore_imports` entry `oops`: expected `<importer> -> \
              <imported>` [\"oops\"]",
             "9:12: invalid pattern `a//b`: empty path segment [\"a//b\"]",
             "14:1: in contract `a`: unknown key `dept`; did you mean `depth`? [dept]",
             "17:8: in contract `c`: unknown contract type `layer`; did you mean `layers`? [\"layer\"]",
-            "20:1: unknown key `tsconfg`; did you mean `tsconfig`? [tsconfg]",
+            "20:1: unknown key `name`; did you mean `names`? [name]",
             "23:9: unknown value `warning`; did you mean `warn`? [\"warning\"]",
             "25:2: unknown key `filez`; did you mean `files`? [filez]",
         ]
@@ -815,8 +940,9 @@ stale = "warning"
 
 #[test]
 fn errors_are_structured() {
-    let errors = Config::parse("[contracts.c]\ntype = \"forbidden\"\nfrom = [\"/a\"]\nto = []\n")
-        .unwrap_err();
+    let errors =
+        Config::parse("[contracts.c]\ntype = \"forbidden\"\nfrom = [\"/a\"]\nto = []\n", LANGUAGES)
+            .unwrap_err();
     assert_eq!(
         errors,
         [ConfigError {
@@ -862,5 +988,5 @@ ignore_imports = ["ui -> api"]
     assert_eq!(ignore.imported().range(), ignore.range());
 
     // Selectors from elsewhere, such as the command line, have none.
-    assert_eq!(Selector::parse("ui").map(|selector| selector.range()), Ok(None));
+    assert_eq!(Selector::parse("ui", LANGUAGES).map(|selector| selector.range()), Ok(None));
 }

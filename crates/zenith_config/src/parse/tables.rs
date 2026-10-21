@@ -1,14 +1,14 @@
-//! Parsing the global tables: `[files]`, `[resolve]`, `[analysis]`,
-//! `[baseline]` and `[cache]`.
+//! Parsing the global tables: `[files]`, `[analysis]`, `[baseline]` and
+//! `[cache]`. `[languages]` has a module of its own.
 
 use serde::Deserialize;
 use toml::de::ValueDeserializer;
-use zenith_utils::glob::{Glob, NamePattern};
+use zenith_utils::glob::Glob;
 
 use super::{Parser, TomlValue};
 use crate::{
-    config::{AnalysisConfig, BaselineConfig, CacheConfig, FilesConfig, ResolveConfig, Tsconfig},
-    schema::{AnalysisTable, BaselineTable, CacheTable, FilesTable, ResolveTable},
+    config::{AnalysisConfig, BaselineConfig, CacheConfig, FilesConfig},
+    schema::{AnalysisTable, BaselineTable, CacheTable, FilesTable},
 };
 
 impl Parser {
@@ -18,29 +18,8 @@ impl Parser {
             return FilesConfig::default();
         };
         FilesConfig {
-            include: table.include.map(|include| self.parse_patterns(&include, Glob::new)),
             exclude: self.parse_patterns(&table.exclude, Glob::new),
             respect_gitignore: table.respect_gitignore,
-        }
-    }
-
-    /// Parse `[resolve]`.
-    pub(super) fn parse_resolve(&mut self, value: Option<TomlValue<'_>>) -> ResolveConfig {
-        let Some(table) = self.parse_table::<ResolveTable>(value) else {
-            return ResolveConfig::default();
-        };
-        let tsconfig = match table.tsconfig.as_deref() {
-            None | Some("auto") => Tsconfig::Auto,
-            Some("off") => Tsconfig::Off,
-            Some(path) => Tsconfig::File(path.to_string()),
-        };
-        ResolveConfig {
-            tsconfig,
-            conditions: table.conditions,
-            main_fields: table.main_fields,
-            extensions: table.extensions,
-            alias: table.alias,
-            ignore_unresolved: self.parse_patterns(&table.ignore_unresolved, NamePattern::new),
         }
     }
 
@@ -73,7 +52,7 @@ impl Parser {
 
     /// Deserialise a global table, or its defaults when it isn't written.
     /// Returns `None` if it is invalid.
-    fn parse_table<'de, T: Deserialize<'de> + Default>(
+    pub(super) fn parse_table<'de, T: Deserialize<'de> + Default>(
         &mut self,
         value: Option<TomlValue<'de>>,
     ) -> Option<T> {

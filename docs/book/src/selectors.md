@@ -12,6 +12,10 @@ table for the advanced forms.
 | `npm:<name>` | external packages | `npm:sharp`, `npm:@aws-sdk/*` |
 | `node:<name>`, `bun:<name>` | builtins | `node:*`, `node:fs` |
 
+`npm:`, `node:` and `bun:` belong to the `js` language, so using one while
+`js` is not [enabled](configuration.md#languages) is an error, as is any
+other scheme that zenith doesn't know.
+
 `pkg:*` never matches the root package, which would contain everything.
 
 Package, external and builtin names are matched with name patterns, in which
@@ -34,9 +38,9 @@ zenith's glob dialect needs no escaping for Next.js and TanStack file names:
   next character.
 - `[`, `]`, `(`, `)`, `$`, `@` and `+` are literal, so
   `web/src/app/(dashboard)/[id]/page.tsx` matches that file.
-- Files match with or without their JavaScript or TypeScript extension, so
-  `src/types` matches both the directory `src/types` and the file
-  `src/types.ts`.
+- Files match with or without the extension of an enabled language, such as
+  `.ts` for `js`, so `src/types` matches both the directory `src/types` and the
+  file `src/types.ts`.
 
 ## The table form
 

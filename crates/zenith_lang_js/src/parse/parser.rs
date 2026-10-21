@@ -174,10 +174,10 @@ mod tests {
     use std::{fs, ops::Range, thread};
 
     use tempfile::TempDir;
-    use zenith_config::SOURCE_EXTENSIONS;
     use zenith_diagnostics::{self as diagnostics, Reporter, SourceMap};
 
     use super::*;
+    use crate::JS;
 
     /// Parse `source` as the file at `path`, with a parser of its own.
     fn parse(path: &str, source: &str) -> ParsedFile {
@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn every_source_extension_is_a_parser_dialect() {
-        for extension in SOURCE_EXTENSIONS {
+        for extension in JS.source_extensions {
             assert!(SourceType::from_extension(extension).is_ok(), "{extension}");
         }
     }

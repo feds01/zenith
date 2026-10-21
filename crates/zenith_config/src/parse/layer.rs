@@ -5,13 +5,15 @@ use super::Parser;
 use crate::{
     contracts::{Layer, LayerMember},
     error::{ConfigErrorKind, LayerError},
+    language::Languages,
     schema::{LayerValue, Located},
     selector::{Selector, SelectorTarget},
 };
 
 impl Layer {
-    /// Parse the string form of a layer.
-    pub fn parse(raw: &str, closed: bool) -> Result<Self, LayerError> {
+    /// Parse the string form of a layer, whose members may use the scheme of
+    /// any of the `languages`.
+    pub fn parse(raw: &str, closed: bool, languages: Languages) -> Result<Self, LayerError> {
         let colon_parts = split_spaced_colons(raw);
         let has_pipe = raw.contains('|');
         let has_colon = colon_parts.len() > 1;
@@ -32,7 +34,7 @@ impl Layer {
                         Some(inner) => (inner.trim(), true),
                         None => (part, false),
                     };
-                let selector = Selector::parse(member)
+                let selector = Selector::parse(member, languages)
                     .map_err(|error| LayerError::Selector { member: member.to_string(), error })?;
                 Ok(LayerMember { selector, optional })
             })
@@ -70,7 +72,7 @@ impl Parser {
             LayerValue::String(raw) => (raw, value.range, false),
             LayerValue::Table(table) => (&table.layer.value, table.layer.range, table.closed),
         };
-        let layer = Layer::parse(raw, closed).and_then(|layer| {
+        let layer = Layer::parse(raw, closed, self.languages).and_then(|layer| {
             let not_relative = layer.members.iter().find(|member| {
                 relative && !matches!(member.selector.target(), SelectorTarget::Path(_))
             });
@@ -81,10 +83,12 @@ impl Parser {
                 None => Ok(layer.at(range)),
             }
         });
-        self.check(layer, Some(range), |error| ConfigErrorKind::InvalidLayer {
+        let layer = self.check(layer, Some(range), |error| ConfigErrorKind::InvalidLayer {
             layer: raw.clone(),
             error,
-        })
+        })?;
+        let on = layer.members.iter().all(|member| self.check_scheme(&member.selector, range));
+        on.then_some(layer)
     }
 }
 
@@ -93,7 +97,7 @@ mod tests {
     use zenith_utils::glob::GlobError;
 
     use super::*;
-    use crate::error::SelectorError;
+    use crate::{error::SelectorError, testing::LANGUAGES};
 
     /// The members of a layer as `(selector, optional)` pairs.
     fn members(layer: &Layer) -> Vec<(&str, bool)> {
@@ -102,16 +106,17 @@ mod tests {
 
     #[test]
     fn parses_a_single_layer() {
-        let layer = Layer::parse("apps/*", false).unwrap();
+        let layer = Layer::parse("apps/*", false, LANGUAGES).unwrap();
         assert_eq!(members(&layer), [("apps/*", false)]);
         assert!(layer.independent);
         assert!(!layer.closed);
-        assert!(Layer::parse("pkg:@acme/api", true).unwrap().closed);
+        assert!(Layer::parse("pkg:@acme/api", true, LANGUAGES).unwrap().closed);
     }
 
     #[test]
     fn parses_independent_siblings() {
-        let layer = Layer::parse("pkg:web | pkg:sdk|apps/* | (services/*)", false).unwrap();
+        let layer =
+            Layer::parse("pkg:web | pkg:sdk|apps/* | (services/*)", false, LANGUAGES).unwrap();
         assert_eq!(
             members(&layer),
             [("pkg:web", false), ("pkg:sdk", false), ("apps/*", false), ("services/*", true)]
@@ -122,35 +127,36 @@ mod tests {
     #[test]
     fn parses_siblings_that_may_import_each_other() {
         let layer =
-            Layer::parse("pkg:@acme/types : pkg:@acme/config\t:\t(npm:zod)", false).unwrap();
+            Layer::parse("pkg:@acme/types : pkg:@acme/config\t:\t(ext:zod)", false, LANGUAGES)
+                .unwrap();
         assert_eq!(
             members(&layer),
-            [("pkg:@acme/types", false), ("pkg:@acme/config", false), ("npm:zod", true)]
+            [("pkg:@acme/types", false), ("pkg:@acme/config", false), ("ext:zod", true)]
         );
         assert!(!layer.independent);
     }
 
     #[test]
     fn colons_without_spaces_belong_to_the_selector() {
-        let layer = Layer::parse("pkg:web: npm:a :b", false).unwrap();
-        assert_eq!(members(&layer), [("pkg:web: npm:a :b", false)]);
+        let layer = Layer::parse("pkg:web: ext:a :b", false, LANGUAGES).unwrap();
+        assert_eq!(members(&layer), [("pkg:web: ext:a :b", false)]);
     }
 
     #[test]
     fn rejects_invalid_layers() {
-        assert_eq!(Layer::parse("a | b : c", false), Err(LayerError::MixedSeparators));
-        assert_eq!(Layer::parse("a | ", false), Err(LayerError::EmptyMember));
-        assert_eq!(Layer::parse(" : a", false), Err(LayerError::EmptyMember));
-        assert_eq!(Layer::parse("", false), Err(LayerError::EmptyMember));
+        assert_eq!(Layer::parse("a | b : c", false, LANGUAGES), Err(LayerError::MixedSeparators));
+        assert_eq!(Layer::parse("a | ", false, LANGUAGES), Err(LayerError::EmptyMember));
+        assert_eq!(Layer::parse(" : a", false, LANGUAGES), Err(LayerError::EmptyMember));
+        assert_eq!(Layer::parse("", false, LANGUAGES), Err(LayerError::EmptyMember));
         assert_eq!(
-            Layer::parse("a | /b", false),
+            Layer::parse("a | /b", false, LANGUAGES),
             Err(LayerError::Selector {
                 member: "/b".into(),
                 error: SelectorError::Pattern(GlobError::LeadingSlash)
             })
         );
         assert_eq!(
-            Layer::parse("a | ()", false).unwrap_err().to_string(),
+            Layer::parse("a | ()", false, LANGUAGES).unwrap_err().to_string(),
             "invalid selector ``: the pattern is empty"
         );
     }

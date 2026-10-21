@@ -180,7 +180,7 @@ mod tests {
     }
 
     fn session() -> Session {
-        Session::new(PathBuf::from("/repo"), Config::default())
+        Session::new(PathBuf::from("/repo"), Config::defaults(crate::LANGUAGES))
     }
 
     #[test]

@@ -1,0 +1,20 @@
+$ zenith check
+exit: 2
+--- stderr
+error: unknown key `include`
+ --> zenith.toml:4:1
+  |
+4 | include = ["**/*.ts"]
+  | ^^^^^^^
+  |
+  = help: did you mean `exclude`?
+
+error: unknown key `resolve`
+ --> zenith.toml:6:2
+  |
+6 | [resolve]
+  |  ^^^^^^^
+  |
+  = help: expected one of `files`, `languages`, `analysis`, `baseline`, `cache`, `contracts`
+
+

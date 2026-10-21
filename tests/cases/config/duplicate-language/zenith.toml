@@ -1,0 +1,6 @@
+# `typescript` is another name for `js`, so giving both is an error.
+[languages.js]
+tsconfig = "off"
+
+[languages.typescript]
+tsconfig = "auto"

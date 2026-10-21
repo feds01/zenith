@@ -5,7 +5,7 @@ use divan::Bencher;
 use zenith_benchmark::TempRepo;
 use zenith_config::Config;
 use zenith_contracts::{Baseline, Contract, Exemptions};
-use zenith_pipeline::{Pipeline, Session, StageKind};
+use zenith_pipeline::{LANGUAGES, Pipeline, Session, StageKind};
 
 // The allocator of the `zenith` binary. CodSpeed measures the allocations
 // itself, in its memory mode.
@@ -42,7 +42,7 @@ fn main() {
 #[divan::bench(args = SIZES, sample_count = 10)]
 fn record(bencher: Bencher, source_files: usize) {
     let repo = TempRepo::shared(source_files);
-    let mut session = Session::new(repo.root.clone(), Config::parse(CONTRACTS).unwrap());
+    let mut session = Session::new(repo.root.clone(), Config::parse(CONTRACTS, LANGUAGES).unwrap());
     Pipeline::standard().run_until(&mut session, StageKind::Graph).unwrap();
     let contracts =
         Contract::compile_all(&session.config.contracts, &session.graph, &session.workspace)

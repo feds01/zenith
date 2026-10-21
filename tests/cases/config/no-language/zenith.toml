@@ -1,0 +1,8 @@
+# A `[languages]` table without a language scans nothing, and `npm:` belongs
+# to the `js` language.
+[languages]
+
+[contracts.no-sharp]
+type = "forbidden"
+from = ["src"]
+to = ["npm:sharp"]

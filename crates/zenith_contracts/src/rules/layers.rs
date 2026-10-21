@@ -1,12 +1,11 @@
 //! The `layers` contract type: higher layers may import lower layers, never
 //! the reverse.
 
-use zenith_config::{LayerMember, LayersConfig, OPTIONAL_EXTENSIONS, SelectorTarget};
+use zenith_config::{LayerMember, LayersConfig, SelectorTarget};
 use zenith_graph::{Architecture, GraphView, LayerRef, Level, ModuleId, NodeKind, NodeSet};
 use zenith_utils::{
     glob::{Glob, escape},
     location::ByteRange,
-    path::strip_extension,
 };
 
 use crate::{
@@ -170,7 +169,7 @@ impl Container {
                     graph.is_in_subtree(**root, *child) || graph.is_in_subtree(*child, **root)
                 });
                 let name = graph.node(*child).base_name();
-                let stem = strip_extension(name, OPTIONAL_EXTENSIONS).unwrap_or(name);
+                let stem = graph.base_stem(*child);
                 let ignored = config
                     .exhaustive_ignores
                     .iter()
@@ -257,7 +256,7 @@ impl ResolvedMember {
         };
         let glob = Glob::new(&format!("{}/{}", escape(container), glob.as_str())).ok()?;
         let graph = units.graph();
-        let roots = graph.find_paths(&glob, OPTIONAL_EXTENSIONS);
+        let roots = graph.find_paths(&glob);
         let mut members = NodeSet::new();
         for root in &roots {
             members.union_with(&graph.members(*root));

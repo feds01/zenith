@@ -4,7 +4,7 @@ use thin_vec::{ThinVec, thin_vec};
 use zenith_config::Config;
 use zenith_graph::{Graph, GraphBuilder, ImportDetail, ImportKind, ImportedNames, NodeHandle};
 use zenith_lang::{Suppression, Workspace};
-use zenith_pipeline::FileSuppressions;
+use zenith_pipeline::{FileSuppressions, LANGUAGES};
 use zenith_utils::location::{ByteRange, Located};
 
 use crate::{
@@ -54,7 +54,9 @@ impl Project {
         directives: &[(&str, &str)],
         toml: &str,
     ) -> Self {
+        let config = Config::parse(toml, LANGUAGES).unwrap_or_else(|errors| panic!("{errors:?}"));
         let mut builder = GraphBuilder::new();
+        builder.set_optional_extensions(config.languages.optional_extensions());
         for (line, (importer, imported, kind)) in (1..).zip(imports) {
             let importer = builder.add_file(importer).unwrap();
             let range = ByteRange::new(line * 100, line * 100 + 10);
@@ -80,7 +82,6 @@ impl Project {
             let file = builder.add_file(file).unwrap();
             builder.set_directives(file, thin_vec![(*directive).to_string()]);
         }
-        let config = Config::parse(toml).unwrap_or_else(|errors| panic!("{errors:?}"));
         let workspace = Workspace::default();
         let (suppressions, baseline) = (Vec::new(), Baseline::default());
         Self { graph: builder.finish(), workspace, config, suppressions, baseline }

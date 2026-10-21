@@ -1,18 +1,14 @@
 #:schema https://raw.githubusercontent.com/feds01/zenith/main/zenith.schema.json
 
-# The example configuration of the docs, with every table and contract type.
+# An example configuration, with every table and contract type, of the test language.
 
 [files]
-include = ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"]
 exclude = ["experimental/**", "**/*.gen.ts"]
 respect_gitignore = true
 
-[resolve]
-tsconfig = "auto"
-conditions = ["types", "source", "import", "module", "require", "node", "default"]
-main_fields = ["module", "main"]
-alias = { "types" = "web/src/types" }
-ignore_unresolved = ["/*", "virtual:*"]
+[languages.test]
+include = ["**/*.tst"]
+names = ["/*", "virtual:*"]
 
 [analysis]
 exclude_kinds = []
@@ -23,13 +19,13 @@ stale = "error"
 
 [cache]
 enabled = true
-dir = "node_modules/.cache/zenith"
+dir = ".zenith_cache"
 
 [contracts.client-safety]
 type = "forbidden"
 name = "Client components never reach server-only code"
 from = [{ path = "web/src/**", directive = "use client" }]
-to = ["npm:sharp", "node:*", "npm:server-only"]
+to = ["ext:sharp", "core:*", "ext:server-only"]
 boundaries = [{ path = "web/src/**", directive = "use server" }]
 guidance = "Keep server-only modules out of client bundles."
 

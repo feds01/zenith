@@ -1,0 +1,5 @@
+[languages.test]
+names = ["a"]
+
+[languages.testing]
+names = ["b"]

@@ -1,7 +1,7 @@
 //! The `encapsulation` contract type: the modules may only be imported
 //! through their entry points.
 
-use zenith_config::{EncapsulationConfig, OPTIONAL_EXTENSIONS};
+use zenith_config::EncapsulationConfig;
 use zenith_graph::{GraphView, NodeKind, NodeSet, Unit};
 use zenith_utils::glob::{Glob, escape};
 
@@ -45,7 +45,7 @@ impl Encapsulation {
                 .filter(|member| {
                     let node = graph.node(*member);
                     (node.kind() == NodeKind::File || graph.is_package(*member))
-                        && globs.iter().any(|glob| node.matches_glob(glob, OPTIONAL_EXTENSIONS))
+                        && globs.iter().any(|glob| graph.matches_glob(*member, glob))
                 })
                 .collect();
             modules.push((unit, entries));

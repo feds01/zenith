@@ -9,26 +9,24 @@ use zenith_utils::{
 use super::Parser;
 use crate::{
     error::{ConfigErrorKind, IgnoreImportError, SelectorError},
+    language::Languages,
     schema::{Located, SelectorValue},
-    selector::{BuiltinScheme, IgnoreImport, Selector, SelectorTarget},
+    selector::{IgnoreImport, Selector, SelectorTarget},
 };
 
 impl Selector {
-    /// Parse the string form of a selector. Surrounding whitespace and a
-    /// trailing `/` are ignored.
-    pub fn parse(raw: &str) -> Result<Self, SelectorError> {
+    /// Parse the string form of a selector, which may use the scheme of any
+    /// of the `languages`. Surrounding whitespace and a trailing `/` are
+    /// ignored.
+    pub fn parse(raw: &str, languages: Languages) -> Result<Self, SelectorError> {
         let raw = raw.trim();
-        let target = if let Some(name) = raw.strip_prefix("pkg:") {
-            SelectorTarget::Package(NamePattern::new(name)?)
-        } else if let Some(name) = raw.strip_prefix("npm:") {
-            SelectorTarget::External(NamePattern::new(name)?)
-        } else if let Some(name) = raw.strip_prefix("node:") {
-            SelectorTarget::Builtin {
-                scheme: BuiltinScheme::Node,
-                pattern: NamePattern::new(name)?,
+        let target = if let Some((scheme, name)) = split_scheme(raw) {
+            let pattern = || NamePattern::new(name);
+            match languages.schemes().find(|known| *known == scheme) {
+                Some("pkg") => SelectorTarget::Package(pattern()?),
+                Some(scheme) => SelectorTarget::Scheme { scheme, pattern: pattern()? },
+                None => return Err(SelectorError::unknown_scheme(scheme, languages)),
             }
-        } else if let Some(name) = raw.strip_prefix("bun:") {
-            SelectorTarget::Builtin { scheme: BuiltinScheme::Bun, pattern: NamePattern::new(name)? }
         } else {
             let path = raw.strip_suffix('/').unwrap_or(raw);
             if path.split('/').any(|segment| segment == "..") {
@@ -40,9 +38,20 @@ impl Selector {
     }
 }
 
+/// Split a selector into its scheme, such as `npm`, and what follows the `:`.
+/// `None` for a path, whose first segment is not a bare word followed by a
+/// `:`.
+fn split_scheme(raw: &str) -> Option<(&str, &str)> {
+    let (scheme, name) = raw.split_once(':')?;
+    let is_word = !scheme.is_empty()
+        && scheme.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    is_word.then_some((scheme, name))
+}
+
 impl IgnoreImport {
-    /// Parse an `ignore_imports` entry, `"<importer> -> <imported>"`.
-    pub fn parse(raw: &str) -> Result<Self, IgnoreImportError> {
+    /// Parse an `ignore_imports` entry, `"<importer> -> <imported>"`, whose
+    /// selectors may use the scheme of any of the `languages`.
+    pub fn parse(raw: &str, languages: Languages) -> Result<Self, IgnoreImportError> {
         let raw = raw.trim();
         let mut sides = raw.split("->");
         let (Some(importer), Some(imported), None) = (sides.next(), sides.next(), sides.next())
@@ -50,7 +59,7 @@ impl IgnoreImport {
             return Err(IgnoreImportError::Arrow);
         };
         let parse = |side: &str| {
-            Selector::parse(side).map_err(|error| IgnoreImportError::Selector {
+            Selector::parse(side, languages).map_err(|error| IgnoreImportError::Selector {
                 selector: side.trim().to_string(),
                 error,
             })
@@ -87,11 +96,32 @@ impl Parser {
 
     /// Parse the string form of a selector, written at `range`.
     fn parse_string_selector(&mut self, raw: &str, range: ByteRange) -> Option<Selector> {
-        let selector = Selector::parse(raw).map(|selector| selector.at(range));
-        self.check(selector, Some(range), |error| ConfigErrorKind::InvalidSelector {
-            selector: raw.to_string(),
-            error,
-        })
+        let selector = Selector::parse(raw, self.languages).map(|selector| selector.at(range));
+        let selector = self.check(selector, Some(range), |error| {
+            ConfigErrorKind::InvalidSelector { selector: raw.to_string(), error }
+        })?;
+        self.check_scheme(&selector, range).then_some(selector)
+    }
+
+    /// Whether the language that owns the scheme of `selector`, if it has
+    /// one, is enabled. If not, record an error at `range`.
+    pub(super) fn check_scheme(&mut self, selector: &Selector, range: ByteRange) -> bool {
+        let Some(scheme) = selector.scheme() else {
+            return true;
+        };
+        let Some(language) = self.languages.by_scheme(scheme) else {
+            return true;
+        };
+        if self.enabled.contains(&language) {
+            return true;
+        }
+        let kind = ConfigErrorKind::DisabledScheme {
+            selector: selector.as_str().to_string(),
+            scheme: scheme.to_string(),
+            language: language.name.to_string(),
+        };
+        self.add_error(kind, Some(range));
+        false
     }
 
     /// Parse `ignore_imports` entries, leaving out the invalid ones.
@@ -102,10 +132,14 @@ impl Parser {
         entries
             .iter()
             .filter_map(|entry| {
-                let ignore = IgnoreImport::parse(&entry.value).map(|ignore| ignore.at(entry.range));
-                self.check(ignore, Some(entry.range), |error| {
+                let ignore = IgnoreImport::parse(&entry.value, self.languages)
+                    .map(|ignore| ignore.at(entry.range));
+                let ignore = self.check(ignore, Some(entry.range), |error| {
                     ConfigErrorKind::InvalidIgnoreImport { entry: entry.value.clone(), error }
-                })
+                })?;
+                let importer = self.check_scheme(ignore.importer(), entry.range);
+                let imported = self.check_scheme(ignore.imported(), entry.range);
+                (importer && imported).then_some(ignore)
             })
             .collect()
     }
@@ -116,9 +150,18 @@ mod tests {
     use zenith_utils::glob::GlobError;
 
     use super::*;
+    use crate::testing::LANGUAGES;
+
+    fn parse(raw: &str) -> Result<Selector, SelectorError> {
+        Selector::parse(raw, LANGUAGES)
+    }
 
     fn target(raw: &str) -> SelectorTarget {
-        Selector::parse(raw).unwrap().target().clone()
+        parse(raw).unwrap().target().clone()
+    }
+
+    fn parse_ignore(raw: &str) -> Result<IgnoreImport, IgnoreImportError> {
+        IgnoreImport::parse(raw, LANGUAGES)
     }
 
     #[test]
@@ -132,22 +175,15 @@ mod tests {
             SelectorTarget::Package(NamePattern::new("@acme/*").unwrap())
         );
         assert_eq!(
-            target("npm:@aws-sdk/*"),
-            SelectorTarget::External(NamePattern::new("@aws-sdk/*").unwrap())
-        );
-        assert_eq!(
-            target("node:fs"),
-            SelectorTarget::Builtin {
-                scheme: BuiltinScheme::Node,
-                pattern: NamePattern::new("fs").unwrap()
+            target("ext:@aws-sdk/*"),
+            SelectorTarget::Scheme {
+                scheme: "ext",
+                pattern: NamePattern::new("@aws-sdk/*").unwrap()
             }
         );
         assert_eq!(
-            target("bun:*"),
-            SelectorTarget::Builtin {
-                scheme: BuiltinScheme::Bun,
-                pattern: NamePattern::new("*").unwrap()
-            }
+            target("oth:*"),
+            SelectorTarget::Scheme { scheme: "oth", pattern: NamePattern::new("*").unwrap() }
         );
         // Next.js and TanStack file names need no escaping.
         assert!(matches!(
@@ -158,7 +194,7 @@ mod tests {
 
     #[test]
     fn ignores_surrounding_whitespace_and_a_trailing_slash() {
-        let selector = Selector::parse("  web/src/ ").unwrap();
+        let selector = parse("  web/src/ ").unwrap();
         assert_eq!(selector.as_str(), "web/src/");
         assert_eq!(selector.target(), &SelectorTarget::Path(Glob::new("web/src").unwrap()));
         assert_eq!(selector.to_string(), "web/src/");
@@ -169,41 +205,64 @@ mod tests {
         for (raw, error) in [
             ("", SelectorError::Pattern(GlobError::Empty)),
             ("pkg:", SelectorError::Pattern(GlobError::Empty)),
-            ("npm:", SelectorError::Pattern(GlobError::Empty)),
+            ("ext:", SelectorError::Pattern(GlobError::Empty)),
             ("/abs", SelectorError::Pattern(GlobError::LeadingSlash)),
             ("web//src", SelectorError::Pattern(GlobError::EmptySegment)),
             ("web/src**", SelectorError::Pattern(GlobError::DoubleStar)),
             ("web/{a,b", SelectorError::Pattern(GlobError::UnclosedBrace)),
-            ("npm:@acme/{a", SelectorError::Pattern(GlobError::UnclosedBrace)),
+            ("ext:@acme/{a", SelectorError::Pattern(GlobError::UnclosedBrace)),
             ("../up", SelectorError::ParentDir),
             ("web/../../etc", SelectorError::ParentDir),
         ] {
-            assert_eq!(Selector::parse(raw), Err(error), "{raw:?}");
+            assert_eq!(parse(raw), Err(error), "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_schemes() {
+        let error = parse("exy:react").unwrap_err();
+        assert_eq!(error.to_string(), "unknown scheme `exy:`; did you mean `ext:`?");
+        let error = parse("gopkg:fmt").unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "unknown scheme `gopkg:`, expected one of `pkg:`, `ext:`, `core:`, `sys:`, `oth:`"
+        );
+        // Only a bare word before the `:` is a scheme.
+        for raw in ["web/src/a:b", "{a,b}:c", ":a", "a b:c"] {
+            assert!(matches!(target(raw), SelectorTarget::Path(_)), "{raw}");
+        }
+    }
+
+    #[test]
+    fn every_scheme_of_the_registry_is_parsed() {
+        for scheme in LANGUAGES.schemes() {
+            let selector = parse(&format!("{scheme}:x")).unwrap();
+            assert_eq!(selector.scheme(), Some(scheme));
         }
     }
 
     #[test]
     fn parses_ignored_imports() {
-        let ignore = IgnoreImport::parse(" web/src/features/* -> pkg:@acme/shared ").unwrap();
+        let ignore = parse_ignore(" web/src/features/* -> pkg:@acme/shared ").unwrap();
         assert_eq!(ignore.as_str(), "web/src/features/* -> pkg:@acme/shared");
         assert_eq!(ignore.importer().as_str(), "web/src/features/*");
         assert_eq!(ignore.imported().as_str(), "pkg:@acme/shared");
-        assert!(IgnoreImport::parse("web/src->npm:react").is_ok());
+        assert!(parse_ignore("web/src->ext:react").is_ok());
     }
 
     #[test]
     fn rejects_invalid_ignored_imports() {
-        assert_eq!(IgnoreImport::parse("web/src"), Err(IgnoreImportError::Arrow));
-        assert_eq!(IgnoreImport::parse("a -> b -> c"), Err(IgnoreImportError::Arrow));
+        assert_eq!(parse_ignore("web/src"), Err(IgnoreImportError::Arrow));
+        assert_eq!(parse_ignore("a -> b -> c"), Err(IgnoreImportError::Arrow));
         assert_eq!(
-            IgnoreImport::parse("web/src -> /abs"),
+            parse_ignore("web/src -> /abs"),
             Err(IgnoreImportError::Selector {
                 selector: "/abs".into(),
                 error: SelectorError::Pattern(GlobError::LeadingSlash)
             })
         );
         assert_eq!(
-            IgnoreImport::parse(" -> web").unwrap_err().to_string(),
+            parse_ignore(" -> web").unwrap_err().to_string(),
             "invalid selector ``: the pattern is empty"
         );
     }

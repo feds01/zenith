@@ -1,0 +1,6 @@
+[files]
+exclude = ["**/*.test.ts"]
+
+[languages.js]
+include = ["web/**"]
+alias = { "types" = "web/src/types" }

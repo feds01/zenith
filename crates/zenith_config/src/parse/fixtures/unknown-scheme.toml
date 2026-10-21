@@ -1,0 +1,4 @@
+[contracts.a]
+type = "forbidden"
+from = ["web/src"]
+to = ["exy:react", "gopkg:fmt"]

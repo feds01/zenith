@@ -6,16 +6,14 @@ use zenith_utils::{
     path::{posix_parent, strip_extension},
 };
 
-use crate::{Graph, ModuleId, Node, NodeKind};
+use crate::{Graph, ModuleId, NodeKind};
 
 impl Graph {
-    /// The outermost internal nodes that `glob` matches, in tree order. A
-    /// file matches if its path does, or its path without one of
-    /// `extensions` (each without its `.`), so `src/types` matches
-    /// `src/types.ts` as well as the directory `src/types`. A matched node's
-    /// descendants are left out, since it already stands for them.
-    pub fn find_paths(&self, glob: &Glob, extensions: &[&str]) -> Vec<ModuleId> {
-        let matches = |id: ModuleId| self.node(id).matches_glob(glob, extensions);
+    /// The outermost internal nodes that `glob` matches, in tree order, as
+    /// [`Graph::matches_glob`] matches them. A matched node's descendants are
+    /// left out, since it already stands for them.
+    pub fn find_paths(&self, glob: &Glob) -> Vec<ModuleId> {
+        let matches = |id: ModuleId| self.matches_glob(id, glob);
         let prefix = glob.literal_prefix();
 
         // A literal glob names one path, which may be a file's without its
@@ -45,6 +43,37 @@ impl Graph {
         found
     }
 
+    /// Whether `glob` matches the node `id`, as path selectors match: an
+    /// internal node by its path, and a file also by its path without one of
+    /// the [optional extensions](crate::GraphBuilder::set_optional_extensions),
+    /// so `src/types` matches `src/types.ts` as well as the directory
+    /// `src/types`. External packages and builtins have no path, so they never
+    /// match.
+    pub fn matches_glob(&self, id: ModuleId, glob: &Glob) -> bool {
+        let node = self.node(id);
+        match node.kind() {
+            NodeKind::Directory => glob.is_match(node.name()),
+            NodeKind::File => {
+                glob.is_match(node.name())
+                    || self.strip_extension(node.name()).is_some_and(|stem| glob.is_match(stem))
+            }
+            NodeKind::External | NodeKind::Builtin => false,
+        }
+    }
+
+    /// The base name of the node `id`, without one of the optional
+    /// extensions if it ends with one, e.g. `button` for `ui/button.tsx`.
+    pub fn base_stem(&self, id: ModuleId) -> &str {
+        let name = self.node(id).base_name();
+        self.strip_extension(name).unwrap_or(name)
+    }
+
+    /// `path` without one of the optional extensions, or `None` if it ends
+    /// with none of them.
+    fn strip_extension<'p>(&self, path: &'p str) -> Option<&'p str> {
+        strip_extension(path, &self.optional_extensions)
+    }
+
     /// The external packages or builtins named `<scheme>:<name>`, e.g.
     /// `npm:react`, whose name matches `pattern`, in name order.
     pub fn find_leaves(&self, scheme: &str, pattern: &NamePattern) -> Vec<ModuleId> {
@@ -58,50 +87,34 @@ impl Graph {
     }
 }
 
-impl Node {
-    /// Whether `glob` matches this node, as path selectors match: an internal
-    /// node by its path, and a file also by its path without one of
-    /// `extensions` (each without its `.`). External packages and builtins
-    /// have no path, so they never match.
-    pub fn matches_glob(&self, glob: &Glob, extensions: &[&str]) -> bool {
-        match self.kind() {
-            NodeKind::Directory => glob.is_match(self.name()),
-            NodeKind::File => {
-                glob.is_match(self.name())
-                    || strip_extension(self.name(), extensions)
-                        .is_some_and(|stem| glob.is_match(stem))
-            }
-            NodeKind::External | NodeKind::Builtin => false,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         GraphBuilder,
-        testing::{graph_of, names},
+        testing::{graph_with_extensions, names},
     };
 
-    const EXTENSIONS: &[&str] = &["ts", "d.ts", "tsx"];
-
-    /// A graph of web sources, external packages and builtins.
+    /// A graph of web sources, external packages and builtins, whose paths
+    /// may leave off `ts`, `d.ts` and `tsx`.
     fn graph() -> Graph {
-        graph_of(&[
-            ("web/src/app/page.tsx", "web/src/types.ts"),
-            ("web/src/app/page.tsx", "web/src/types/user.ts"),
-            ("web/src/lib/format.ts", "web/src/env.d.ts"),
-            ("web/src/lib/format.test.ts", "web/src/lib/format.ts"),
-            ("web/src/lib/format.ts", "npm:react"),
-            ("web/src/lib/format.ts", "npm:@acme/legacy"),
-            ("web/src/lib/format.ts", "node:fs"),
-            ("web/README.md", "web/src/app/page.tsx"),
-        ])
+        graph_with_extensions(
+            &["ts", "d.ts", "tsx"],
+            &[
+                ("web/src/app/page.tsx", "web/src/types.ts"),
+                ("web/src/app/page.tsx", "web/src/types/user.ts"),
+                ("web/src/lib/format.ts", "web/src/env.d.ts"),
+                ("web/src/lib/format.test.ts", "web/src/lib/format.ts"),
+                ("web/src/lib/format.ts", "npm:react"),
+                ("web/src/lib/format.ts", "npm:@acme/legacy"),
+                ("web/src/lib/format.ts", "node:fs"),
+                ("web/README.md", "web/src/app/page.tsx"),
+            ],
+        )
     }
 
     fn find(graph: &Graph, glob: &str) -> Vec<String> {
-        let found = graph.find_paths(&Glob::new(glob).unwrap(), EXTENSIONS);
+        let found = graph.find_paths(&Glob::new(glob).unwrap());
         names(graph, found).into_iter().map(String::from).collect()
     }
 
@@ -138,7 +151,7 @@ mod tests {
     fn nodes_match_globs_by_path() {
         let graph = graph();
         let matches = |name: &str, glob: &str| {
-            graph.node(graph.id(name).unwrap()).matches_glob(&Glob::new(glob).unwrap(), EXTENSIONS)
+            graph.matches_glob(graph.id(name).unwrap(), &Glob::new(glob).unwrap())
         };
         assert!(matches("web/src", "web/*"));
         assert!(matches("web/src/types.ts", "web/src/types.ts"));

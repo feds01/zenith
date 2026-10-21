@@ -11,8 +11,9 @@ use std::{
 use argfile::{Argument, PREFIX};
 use clap::{ArgAction, Parser, ValueEnum};
 use log::LevelFilter;
-use zenith_config::Selector;
+use zenith_config::{Selector, SelectorError};
 use zenith_graph::{ImportKind, KindSet};
+use zenith_pipeline::LANGUAGES;
 
 /// Expand `@path` argfiles in `args`. An `@` argument that doesn't name an
 /// existing file is kept as-is.
@@ -211,7 +212,7 @@ pub struct BaselineCommand {
 pub struct GraphCommand {
     /// The selector to show, e.g. `web/src` or `pkg:@acme/api`. Defaults to
     /// the whole project.
-    #[arg(value_parser = Selector::parse)]
+    #[arg(value_parser = parse_selector)]
     pub selector: Option<Selector>,
 
     /// How many levels of the tree to show.
@@ -231,11 +232,11 @@ pub struct GraphCommand {
 #[derive(Clone, Debug, clap::Args)]
 pub struct WhyCommand {
     /// The importing selector.
-    #[arg(value_parser = Selector::parse)]
+    #[arg(value_parser = parse_selector)]
     pub from: Selector,
 
     /// The imported selector.
-    #[arg(value_parser = Selector::parse)]
+    #[arg(value_parser = parse_selector)]
     pub to: Selector,
 
     /// The imports to leave out of the chains.
@@ -326,6 +327,11 @@ impl From<ImportKindArg> for ImportKind {
             ImportKindArg::Require => ImportKind::Require,
         }
     }
+}
+
+/// Parse a selector argument, which may use the scheme of any language.
+fn parse_selector(raw: &str) -> Result<Selector, SelectorError> {
+    Selector::parse(raw, LANGUAGES)
 }
 
 #[cfg(test)]
@@ -427,7 +433,7 @@ mod tests {
         let cli = parse("zenith graph web/src --exclude-kind type --exclude-kind require -v");
         assert_eq!(cli.global.log_level(), LevelFilter::Info);
         let Command::Graph(graph) = cli.command else { panic!("expected `graph`") };
-        assert_eq!(graph.selector, Some(Selector::parse("web/src").unwrap()));
+        assert_eq!(graph.selector, Some(parse_selector("web/src").unwrap()));
         assert_eq!(graph.kinds.excluded(), KindSet::TYPE | KindSet::REQUIRE);
     }
 

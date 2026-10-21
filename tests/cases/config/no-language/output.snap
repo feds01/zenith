@@ -1,0 +1,21 @@
+$ zenith check
+exit: 2
+--- stderr
+error: no language is enabled
+ --> zenith.toml:3:1
+  |
+3 | [languages]
+  | ^^^^^^^^^^^
+  |
+  = help: add a table for one, such as `[languages.js]`
+
+error: `npm:sharp` uses the `npm:` scheme of the `js` language, which is not enabled
+ --> zenith.toml:8:7
+  |
+8 | to = ["npm:sharp"]
+  |       ^^^^^^^^^^^
+  |
+  = note: in contract `no-sharp`
+  = help: enable it with a `[languages.js]` table
+
+

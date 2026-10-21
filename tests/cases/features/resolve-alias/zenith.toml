@@ -1,7 +1,7 @@
-# `types/...` is a bundler-only alias (no tsconfig): without `[resolve] alias`
+# `types/...` is a bundler-only alias (no tsconfig): without `[languages.js] alias`
 # it would be the npm package `types`. `/logo.svg` is served from `public/`
 # and is expected not to resolve; `./missing` is a real mistake.
-[resolve]
+[languages.js]
 alias = { "types" = "src/types" }
 ignore_unresolved = ["/*"]
 

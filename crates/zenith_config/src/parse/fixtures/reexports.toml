@@ -4,12 +4,12 @@ reexports = "transparent"
 [contracts.a]
 type = "forbidden"
 from = ["web"]
-to = ["node:*"]
+to = ["core:*"]
 
 [contracts.b]
 type = "forbidden"
 from = ["web"]
-to = ["node:*"]
+to = ["core:*"]
 reexports = "opaque"
 
 [contracts.c]

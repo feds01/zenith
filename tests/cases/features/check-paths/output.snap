@@ -34,7 +34,7 @@ error[web-not-api]: `src/web` must not import `src/api`
 
 warning: 1 import could not be resolved
   |
-  = help: use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones
+  = help: use `--show-unresolved` to list them, or `[languages.js] ignore_unresolved` to silence expected ones
 
 Contracts
   ✗ web-not-api  forbidden  broken (2 violations)

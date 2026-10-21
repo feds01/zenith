@@ -4,7 +4,7 @@ use std::{env, fs};
 
 use anyhow::{Context, Result, bail};
 use zenith_config::{CONFIG_FILE_NAME, Config};
-use zenith_pipeline::{Session, StageKind};
+use zenith_pipeline::{LANGUAGES, Session, StageKind};
 use zenith_utils::{path::adjust_canonicalisation, printing::plural};
 
 use crate::{
@@ -37,7 +37,7 @@ pub fn init(global: &GlobalArgs, args: InitCommand) -> Result<ExitStatus> {
 
     // 2. Find the source files and workspace packages, as the default configuration
     //    does.
-    let mut session = Session::new(root, Config::default());
+    let mut session = Session::new(root, Config::defaults(LANGUAGES));
     session.tracked_only = global.tracked;
     project::run_until(&mut session, StageKind::Discover)?;
 

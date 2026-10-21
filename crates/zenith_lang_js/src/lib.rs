@@ -1,10 +1,13 @@
 //! JavaScript and TypeScript support: reading what each file imports and
-//! exports with oxc, and resolving its specifiers.
+//! exports with oxc, resolving its specifiers, and the `[languages.js]` table
+//! of the configuration.
 
+mod config;
 mod packages;
 mod parse;
 mod resolve;
 
+pub use config::{JS, JsConfig, Tsconfig};
 pub use packages::discover_packages;
 pub use parse::{ParseOptions, Parser};
 pub use resolve::{

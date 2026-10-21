@@ -1,0 +1,7 @@
+# `[resolve]` and `[files] include` are options of a language, so they are
+# in `[languages.js]`.
+[files]
+include = ["**/*.ts"]
+
+[resolve]
+tsconfig = "off"

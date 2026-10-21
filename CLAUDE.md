@@ -45,7 +45,9 @@ a new kind of responsibility, not for each feature:
 - `zenith_benchmark`: the benchmarks, and the synthetic monorepo they run on.
 - `zenith_cache`: the cache of what zenith found in each file between runs,
   and its file format.
-- `zenith_config`: the `zenith.toml` types, schema, discovery and validation.
+- `zenith_config`: the `zenith.toml` types, schema, discovery and validation,
+  and the interface through which each language owns its `[languages]` table.
+  It knows no language.
 - `zenith_contracts`: selectors, the contract types and the violations they
   find, suppressions, the baseline, and the JSON output of `zenith check`.
 - `zenith_diagnostics`: reports with source excerpts, and how they render.
@@ -58,10 +60,10 @@ a new kind of responsibility, not for each feature:
 - `zenith_lang_go`: Go support: parsing with tree-sitter, and resolving
   import paths against the project's Go modules.
 - `zenith_lang_js`: JavaScript and TypeScript support: parsing with oxc,
-  specifier resolution with `oxc_resolver`, and workspace package discovery
-  from `package.json`.
+  specifier resolution with `oxc_resolver`, workspace package discovery
+  from `package.json`, and the `[languages.js]` table.
 - `zenith_pipeline`: the stages that turn a project into its import graph,
-  and the session they share.
+  the session they share, and the registry of the languages zenith reads.
 - `zenith_reporting`: the output formats of `zenith check`.
 - `zenith_utils`: shared helpers: files, paths, globs, locations, terminal
   output and the thread pool.

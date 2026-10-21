@@ -44,9 +44,9 @@ const PACKAGE_OUTPUT_DIRS: &[&str] = &["dist", "build", "out"];
 /// Settings for [`walk`].
 #[derive(Debug, Clone)]
 pub struct WalkSettings {
-    /// Globs of the files to scan. `None` scans every file with one of the
+    /// Globs of the files to scan, besides those with one of the
     /// `source_extensions`.
-    pub include: Option<Vec<Glob>>,
+    pub include: Vec<Glob>,
 
     /// Globs of the files and directories to skip.
     pub exclude: Vec<Glob>,
@@ -55,9 +55,10 @@ pub struct WalkSettings {
     /// repository excludes.
     pub respect_gitignore: bool,
 
-    /// The extensions of source files, without the `.`, used when `include`
-    /// is `None`.
-    pub source_extensions: &'static [&'static str],
+    /// The extensions, without the `.`, of the source files to scan, besides
+    /// those that match one of the `include` globs. Checking an extension is
+    /// cheaper than matching globs.
+    pub source_extensions: Vec<&'static str>,
 }
 
 /// The files found by [`walk`], as absolute paths, sorted.
@@ -210,13 +211,12 @@ impl ParallelVisitor for Visitor<'_> {
             self.local.package_jsons.push(path.to_path_buf());
         }
 
-        let included = match &self.settings.include {
-            Some(include) => include.iter().any(|glob| glob.is_match(&relative)),
-            None => path
-                .extension()
-                .and_then(|extension| extension.to_str())
-                .is_some_and(|extension| self.settings.source_extensions.contains(&extension)),
-        };
+        let has_source_extension = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| self.settings.source_extensions.contains(&extension));
+        let included = has_source_extension
+            || self.settings.include.iter().any(|glob| glob.is_match(&relative));
         if included {
             self.local.source_files.push(path.to_path_buf());
         }
@@ -252,10 +252,10 @@ mod tests {
 
     fn settings(exclude: &[&str]) -> WalkSettings {
         WalkSettings {
-            include: None,
+            include: Vec::new(),
             exclude: exclude.iter().map(|glob| Glob::new(glob).unwrap()).collect(),
             respect_gitignore: true,
-            source_extensions: &["ts", "tsx", "js", "cjs", "mjs"],
+            source_extensions: vec!["ts", "tsx", "js", "cjs", "mjs"],
         }
     }
 
@@ -342,12 +342,18 @@ mod tests {
     }
 
     #[test]
-    fn include_globs_replace_the_extensions() {
+    fn include_globs_select_files_without_the_extensions() {
         let (_dir, root) = project(&["src/a.ts", "src/b.vue", "scripts/c.ts"]);
 
-        let include = Some(vec![Glob::new("src/**").unwrap()]);
-        let (files, _) = found(&root, &WalkSettings { include, ..settings(&[]) });
+        let include = vec![Glob::new("src/**").unwrap()];
+        let globs_only = WalkSettings { include, source_extensions: Vec::new(), ..settings(&[]) };
+        let (files, _) = found(&root, &globs_only);
         assert_eq!(files, ["src/a.ts", "src/b.vue"]);
+
+        // With the extensions too, the files of either kind are scanned.
+        let both = WalkSettings { include: globs_only.include, ..settings(&[]) };
+        let (files, _) = found(&root, &both);
+        assert_eq!(files, ["scripts/c.ts", "src/a.ts", "src/b.vue"]);
     }
 
     #[cfg(unix)]
@@ -360,8 +366,9 @@ mod tests {
         symlink(root.join("shared"), root.join("src/linked_dir")).unwrap();
         symlink(root.join("missing.ts"), root.join("src/broken.ts")).unwrap();
 
-        let include = Some(vec![Glob::new("**").unwrap()]);
-        let (files, _) = found(&root, &WalkSettings { include, ..settings(&[]) });
+        let include = vec![Glob::new("**").unwrap()];
+        let all = WalkSettings { include, source_extensions: Vec::new(), ..settings(&[]) };
+        let (files, _) = found(&root, &all);
         assert_eq!(files, ["shared/x.ts", "src/a.ts"]);
     }
 }

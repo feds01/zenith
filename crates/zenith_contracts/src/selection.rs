@@ -15,7 +15,7 @@
 
 use std::fmt;
 
-use zenith_config::{OPTIONAL_EXTENSIONS, Selector, SelectorTarget};
+use zenith_config::{Selector, SelectorTarget};
 use zenith_graph::{Graph, NodeSet, Unit};
 use zenith_lang::Workspace;
 
@@ -43,7 +43,7 @@ impl Selection {
             // `web/src/app` with its files, and the file `web/src/config.ts`.
             // `web/src/types` matches `web/src/types.ts` too.
             SelectorTarget::Path(glob) => {
-                let found = graph.find_paths(glob, OPTIONAL_EXTENSIONS);
+                let found = graph.find_paths(glob);
                 found.into_iter().map(|id| graph.unit(id)).collect()
             }
             // `pkg:@acme/*`: one unit per matching workspace package, e.g. the
@@ -56,16 +56,10 @@ impl Selection {
                     Some(Unit { label: package.name.clone(), ..graph.unit(id) })
                 })
                 .collect(),
-            // `npm:@aws-sdk/*`: one unit per matching external package, e.g.
-            // `npm:@aws-sdk/client-s3`.
-            SelectorTarget::External(pattern) => {
-                graph.find_leaves("npm", pattern).into_iter().map(|id| graph.unit(id)).collect()
-            }
-            // `node:*` or `bun:sqlite`: one unit per matching builtin, e.g.
-            // `node:fs`.
-            SelectorTarget::Builtin { scheme, pattern } => {
-                let found = graph.find_leaves(scheme.as_str(), pattern);
-                found.into_iter().map(|id| graph.unit(id)).collect()
+            // `npm:@aws-sdk/*` or `node:*`: one unit per matching external package
+            // or builtin, e.g. `npm:@aws-sdk/client-s3` or `node:fs`.
+            SelectorTarget::Scheme { scheme, pattern } => {
+                graph.find_leaves(scheme, pattern).into_iter().map(|id| graph.unit(id)).collect()
             }
         };
         let matched = !units.is_empty();
@@ -146,6 +140,7 @@ mod tests {
     use zenith_config::{Config, ContractKind};
     use zenith_graph::{GraphBuilder, ImportDetail, ImportKind, ImportedNames, ModuleId};
     use zenith_lang::WorkspacePackage;
+    use zenith_pipeline::LANGUAGES;
     use zenith_utils::location::ByteRange;
 
     use super::*;
@@ -170,6 +165,8 @@ mod tests {
     /// packages and builtins.
     fn project() -> Project {
         let mut builder = GraphBuilder::new();
+        builder
+            .set_optional_extensions(Config::defaults(LANGUAGES).languages.optional_extensions());
         for file in [
             "web/src/app/layout.tsx",
             "web/src/env.d.ts",
@@ -216,14 +213,15 @@ mod tests {
 
     /// A selector in its string form.
     fn selector(raw: &str) -> Selector {
-        Selector::parse(raw).unwrap()
+        Selector::parse(raw, LANGUAGES).unwrap()
     }
 
     /// A selector in its table form, e.g. `{ path = "web", except = [...] }`.
     fn table(toml: &str) -> Selector {
-        let config = Config::parse(&format!(
-            "[contracts.a]\ntype = \"forbidden\"\nfrom = [{toml}]\nto = [\"npm:x\"]\n"
-        ))
+        let config = Config::parse(
+            &format!("[contracts.a]\ntype = \"forbidden\"\nfrom = [{toml}]\nto = [\"npm:x\"]\n"),
+            LANGUAGES,
+        )
         .unwrap();
         let ContractKind::Forbidden(forbidden) = &config.contracts[0].kind else {
             panic!("expected a forbidden contract");

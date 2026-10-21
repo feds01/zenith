@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 
 use thin_vec::ThinVec;
 use zenith_cache::CacheSettings;
-use zenith_config::{Config, ContractConfig, Reexports, SOURCE_EXTENSIONS, Tsconfig};
+use zenith_config::{Config, ContractConfig, Reexports};
 use zenith_diagnostics::{Report, SourceId, SourceMap};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_lang::{ParsedFile, Resolved, Suppression, Workspace};
-use zenith_lang_js::{ParseOptions, Resolver, ResolverError, ResolverSettings, TsconfigMode};
+use zenith_lang_js::{JsConfig, ParseOptions, Resolver, ResolverError, ResolverSettings};
 use zenith_utils::{
     location::Located,
     path::{absolute_path, adjust_canonicalisation, relative_posix},
@@ -233,7 +233,7 @@ impl Session {
             report.add_note(lines.join("\n"));
         } else {
             report.add_help(
-                "use `--show-unresolved` to list them, or `[resolve] ignore_unresolved` to silence expected ones",
+                "use `--show-unresolved` to list them, or `[languages.js] ignore_unresolved` to silence expected ones",
             );
         }
         // A `tsconfig.json` that extends one from a package can't be loaded until
@@ -298,47 +298,22 @@ impl Session {
     /// Which files to scan, as the configuration says.
     pub fn walk_settings(&self) -> WalkSettings {
         let files = &self.config.files;
+        let scanned = self.config.languages.scanned();
         WalkSettings {
-            include: files.include.clone(),
+            include: scanned.globs,
             exclude: files.exclude.clone(),
             respect_gitignore: files.respect_gitignore,
-            source_extensions: SOURCE_EXTENSIONS,
+            source_extensions: scanned.extensions,
         }
     }
 
     /// How to resolve specifiers, as the configuration says, with the
-    /// workspace packages found so far. Paths in the configuration are
-    /// relative to the root.
+    /// workspace packages found so far.
     pub fn resolver_settings(&self) -> ResolverSettings {
-        let resolve = &self.config.resolve;
-        let mut settings = ResolverSettings::new(self.root.clone());
-        settings.tsconfig = match &resolve.tsconfig {
-            Tsconfig::Auto => TsconfigMode::Auto,
-            Tsconfig::Off => TsconfigMode::Off,
-            Tsconfig::File(path) => TsconfigMode::File(self.root.join(path)),
-        };
-        if let Some(conditions) = &resolve.conditions {
-            settings.conditions = conditions.clone();
-        }
-        if let Some(main_fields) = &resolve.main_fields {
-            settings.main_fields = main_fields.clone();
-        }
-        if let Some(extensions) = &resolve.extensions {
-            settings.extensions = extensions.clone();
-        }
-        settings.aliases = resolve
-            .alias
-            .iter()
-            .map(|(alias, path)| (alias.clone(), self.root.join(path)))
-            .collect();
-        settings.workspace_packages = self
-            .workspace
-            .packages
-            .iter()
-            .map(|package| (package.name.clone(), package.path.clone()))
-            .collect();
-        settings.ignore_unresolved = resolve.ignore_unresolved.clone();
-        settings
+        // Without JavaScript and TypeScript, nothing is resolved, so the defaults
+        // stand in.
+        let js = self.config.languages.options::<JsConfig>().cloned().unwrap_or_default();
+        js.resolver_settings(&self.root, &self.workspace)
     }
 
     /// Where to keep the parse cache, as the configuration says, for
@@ -371,12 +346,14 @@ mod tests {
     use std::path::Path;
 
     use zenith_lang::WorkspacePackage;
+    use zenith_lang_js::{JS, TsconfigMode};
 
     use super::*;
+    use crate::LANGUAGES;
 
     /// A session for a project at `/repo` with the configuration `toml`.
     fn session(toml: &str) -> Session {
-        Session::new(PathBuf::from("/repo"), Config::parse(toml).unwrap())
+        Session::new(PathBuf::from("/repo"), Config::parse(toml, LANGUAGES).unwrap())
     }
 
     #[test]
@@ -393,9 +370,9 @@ mod tests {
     fn defaults_scan_every_source_file_and_resolve_like_typescript() {
         let session = session("");
         let walk = session.walk_settings();
-        assert!(walk.include.is_none() && walk.exclude.is_empty());
+        assert!(walk.include.is_empty() && walk.exclude.is_empty());
         assert!(walk.respect_gitignore);
-        assert_eq!(walk.source_extensions, SOURCE_EXTENSIONS);
+        assert_eq!(walk.source_extensions, JS.source_extensions);
 
         let defaults = ResolverSettings::new(PathBuf::from("/repo"));
         let settings = session.resolver_settings();
@@ -410,7 +387,7 @@ mod tests {
         assert_eq!(
             session.cache_settings("1.0.0"),
             Some(CacheSettings {
-                dir: PathBuf::from("/repo/node_modules/.cache/zenith"),
+                dir: PathBuf::from("/repo/.zenith_cache"),
                 version: "1.0.0".to_string()
             })
         );
@@ -419,37 +396,17 @@ mod tests {
 
     #[test]
     fn the_configuration_replaces_the_defaults() {
-        let session = session(
-            r#"
-            [files]
-            include = ["web/**"]
-            exclude = ["**/*.test.ts"]
-            respect_gitignore = false
-
-            [resolve]
-            tsconfig = "web/tsconfig.json"
-            conditions = ["browser", "import"]
-            main_fields = ["main"]
-            extensions = [".ts", ".js"]
-            alias = { "types" = "web/src/types", "~" = "web" }
-            ignore_unresolved = ["virtual:*"]
-
-            [baseline]
-            path = "lint/baseline.toml"
-
-            [cache]
-            dir = ".zenith"
-            "#,
-        );
+        let session = session(include_str!("fixtures/replaced-defaults.toml"));
         assert_eq!(session.baseline_path(), Path::new("/repo/lint/baseline.toml"));
         let cache = session.cache_settings("1.0.0").unwrap();
-        assert_eq!(cache.dir, Path::new("/repo/.zenith"));
         assert_eq!(cache.dir, Path::new("/repo/.zenith"));
         let globs = |globs: &[zenith_utils::glob::Glob]| -> Vec<String> {
             globs.iter().map(|glob| glob.as_str().to_string()).collect()
         };
         let walk = session.walk_settings();
-        assert_eq!(globs(walk.include.as_deref().unwrap()), ["web/**"]);
+        assert_eq!(globs(&walk.include), ["web/**"]);
+        // The language scans the files that `include` says, not by extension.
+        assert!(walk.source_extensions.is_empty());
         assert_eq!(globs(&walk.exclude), ["**/*.test.ts"]);
         assert!(!walk.respect_gitignore);
 
@@ -478,7 +435,7 @@ mod tests {
 
     #[test]
     fn tsconfig_files_can_be_turned_off() {
-        let settings = session("[resolve]\ntsconfig = \"off\"\n").resolver_settings();
+        let settings = session(include_str!("fixtures/tsconfig-off.toml")).resolver_settings();
         assert_eq!(settings.tsconfig, TsconfigMode::Off);
     }
 

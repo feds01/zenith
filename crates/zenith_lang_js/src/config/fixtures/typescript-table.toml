@@ -1,0 +1,4 @@
+[languages.typescript]
+include = ["web/**"]
+tsconfig = "off"
+ignore_unresolved = ["virtual:*"]

@@ -191,6 +191,10 @@ pub struct Graph {
     /// The packages, or `None` if there are none, as in most graphs, which
     /// then pay nothing for them.
     packages: Option<Box<Packages>>,
+
+    /// The extensions, without the `.`, that a path glob may leave off a
+    /// file's path: those of the languages that the files are in.
+    pub(crate) optional_extensions: Vec<&'static str>,
 }
 
 /// The directories that imports target as a package: a unit of code that is
@@ -235,6 +239,7 @@ impl Graph {
     pub(crate) fn from_parts(
         nodes: Vec<NodeParts>,
         imports: Vec<(ModuleId, ModuleId, ImportDetail)>,
+        optional_extensions: Vec<&'static str>,
     ) -> Self {
         debug_assert!(imports.is_sorted(), "imports must be sorted for the edge lookup");
         let node_count = nodes.len();
@@ -272,7 +277,17 @@ impl Graph {
             .collect();
         let preorder = assign_preorder(&mut nodes, &children);
 
-        Self { nodes, children, imports, importers, detail_offsets, details, preorder, packages }
+        Self {
+            nodes,
+            children,
+            imports,
+            importers,
+            detail_offsets,
+            details,
+            preorder,
+            packages,
+            optional_extensions,
+        }
     }
 
     /// This graph's module tree, with `imports` instead of its own: each an
@@ -294,6 +309,7 @@ impl Graph {
             details,
             preorder: self.preorder.clone(),
             packages: self.packages.clone(),
+            optional_extensions: self.optional_extensions.clone(),
         }
     }
 

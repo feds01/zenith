@@ -7,16 +7,16 @@
 //! |---|---|
 //! | `web/src/domains/*` | internal directories and files, with a path [`Glob`] |
 //! | `pkg:@acme/*` | the directories of matching workspace packages |
-//! | `npm:@aws-sdk/*` | external packages |
-//! | `node:*`, `bun:*` | builtins |
+//! | `<scheme>:<name>` | the external packages or builtins of a language, such as `npm:@aws-sdk/*` |
 //!
 //! Package, external and builtin names are matched with a [`NamePattern`],
 //! in which `*` also matches `/`. A selector can also be a table that removes
 //! modules with `except`, or keeps only the files with a `directive`.
 //!
-//! [`Selector::parse`] and [`IgnoreImport::parse`] check the syntax. Which
-//! modules a selector matches depends on the project, so the contracts
-//! resolve them.
+//! The schemes other than `pkg:` belong to a [`Language`](crate::Language),
+//! and need it to be enabled. [`Selector::parse`] and [`IgnoreImport::parse`]
+//! check the syntax. Which modules a selector matches depends on the project,
+//! so the contracts resolve them.
 
 use std::fmt;
 
@@ -56,37 +56,15 @@ pub enum SelectorTarget {
     /// The directories of the workspace packages whose name matches.
     Package(NamePattern),
 
-    /// The external packages whose name matches.
-    External(NamePattern),
+    /// The external packages or builtins of a language's scheme whose name
+    /// matches, such as `npm:react` or `node:fs`.
+    Scheme {
+        /// The scheme, without the `:`, which their node ids start with.
+        scheme: &'static str,
 
-    /// The builtins of a runtime whose name matches.
-    Builtin {
-        /// The runtime the builtins belong to.
-        scheme: BuiltinScheme,
-
-        /// The pattern of builtin names, without the scheme.
+        /// The pattern of names, without the scheme.
         pattern: NamePattern,
     },
-}
-
-/// The runtime that a builtin selector refers to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BuiltinScheme {
-    /// Node builtins, `node:<name>`.
-    Node,
-
-    /// Bun builtins, `bun:<name>`.
-    Bun,
-}
-
-impl BuiltinScheme {
-    /// The scheme as written before the `:`.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Node => "node",
-            Self::Bun => "bun",
-        }
-    }
 }
 
 impl Selector {
@@ -127,6 +105,16 @@ impl Selector {
         &self.target
     }
 
+    /// The scheme the selector is written with, without the `:`, such as
+    /// `pkg` or `npm`. `None` for a path.
+    pub fn scheme(&self) -> Option<&'static str> {
+        match &self.target {
+            SelectorTarget::Path(_) => None,
+            SelectorTarget::Package(_) => Some("pkg"),
+            SelectorTarget::Scheme { scheme, .. } => Some(scheme),
+        }
+    }
+
     /// Selectors whose members are removed from each matched module.
     pub fn except(&self) -> &[Selector] {
         &self.except
@@ -148,9 +136,9 @@ impl Selector {
     }
 
     /// Whether matching nothing is a configuration error. Path and `pkg:`
-    /// selectors must match something, to catch typos and renames. `npm:`
-    /// and builtin selectors may match nothing: it means nothing imports
-    /// them.
+    /// selectors must match something, to catch typos and renames. The
+    /// selectors of a language's scheme may match nothing: it means nothing
+    /// imports them.
     pub fn must_match(&self) -> bool {
         self.matches_files()
     }
@@ -234,25 +222,29 @@ impl fmt::Display for IgnoreImport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::LANGUAGES;
+
+    fn parse(raw: &str) -> Selector {
+        Selector::parse(raw, LANGUAGES).unwrap()
+    }
 
     #[test]
     fn only_path_and_package_selectors_must_match() {
-        assert!(Selector::parse("web/src").unwrap().must_match());
-        assert!(Selector::parse("pkg:web").unwrap().must_match());
-        assert!(!Selector::parse("npm:sharp").unwrap().must_match());
-        assert!(!Selector::parse("node:*").unwrap().must_match());
-        assert!(!Selector::parse("bun:sqlite").unwrap().must_match());
+        assert!(parse("web/src").must_match());
+        assert!(parse("pkg:web").must_match());
+        assert!(!parse("ext:sharp").must_match());
+        assert!(!parse("core:*").must_match());
     }
 
     #[test]
     fn directives_only_apply_to_selectors_of_files() {
         let filter = |raw, directive: Option<&str>| {
-            Selector::parse(raw).unwrap().with_filters(Vec::new(), directive.map(String::from))
+            parse(raw).with_filters(Vec::new(), directive.map(String::from))
         };
         for raw in ["web/src", "pkg:web"] {
             assert!(filter(raw, Some("use client")).is_ok());
         }
-        for raw in ["npm:react", "node:*"] {
+        for raw in ["ext:react", "core:*"] {
             assert_eq!(filter(raw, Some("use client")), Err(SelectorError::DirectiveWithoutFiles));
             assert!(filter(raw, None).is_ok());
         }

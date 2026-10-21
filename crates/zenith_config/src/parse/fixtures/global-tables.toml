@@ -1,0 +1,18 @@
+[files]
+exclude = ["experimental/**", "**/*.gen.ts"]
+respect_gitignore = false
+
+[languages.test]
+include = ["**/*.tst"]
+names = ["/*", "virtual:*"]
+
+[analysis]
+exclude_kinds = ["type", "dynamic"]
+
+[baseline]
+path = "config/zenith.baseline.toml"
+stale = "warn"
+
+[cache]
+enabled = false
+dir = ".cache/zenith"

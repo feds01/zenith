@@ -124,8 +124,12 @@ fmt:
 fmt-check:
     cargo fmt --all -- --check
 
-# Run clippy and the formatting check
-lint: clippy fmt-check
+# Check zenith's own contracts, in zenith.toml
+architecture:
+    cargo run -q -p zenith -- check
+
+# Run clippy, the formatting check and zenith's own contracts
+lint: clippy fmt-check architecture
 
 # Run the tests, clippy and the formatting check (CI also runs `cargo deny`)
 ci: test lint

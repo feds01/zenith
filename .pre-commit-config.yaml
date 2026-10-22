@@ -15,3 +15,10 @@ repos:
           pass_filenames: false
           types: [file, rust]
           language: system
+      -   id: zenith-architecture
+          name: Zenith architecture
+          description: Check zenith's own contracts, in zenith.toml, on the files that git tracks.
+          entry: cargo run -q -p zenith -- check --tracked
+          pass_filenames: false
+          files: (\.rs|Cargo\.toml|zenith\.toml)$
+          language: system

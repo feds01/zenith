@@ -1,0 +1,15 @@
+#:schema https://raw.githubusercontent.com/feds01/zenith/main/zenith.schema.json
+
+# zenith checks its own architecture.
+
+[files]
+exclude = ["tests/**"]     # the UI test cases are projects of their own
+
+[languages.rust]
+
+[contracts.languages-behind-the-pipeline]
+type = "protected"
+name = "Languages are only reached through the pipeline"
+modules = ["pkg:zenith_lang_*"]
+allowed_importers = ["pkg:zenith_pipeline", "pkg:zenith_benchmark"]
+guidance = "Reach a language through the interfaces in zenith_config and zenith_lang."

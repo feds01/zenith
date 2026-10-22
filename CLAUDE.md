@@ -18,7 +18,7 @@ and lint-clean on its own.
 just test     # all tests; extra args go to cargo, e.g. `just test -p zenith`
 just test-ui  # the UI snapshot tests in tests/cases, e.g. `just test-ui acme`
 just update-snapshots  # re-record their output.snap files
-just lint     # clippy -D warnings + rustfmt --check
+just lint     # clippy -D warnings + rustfmt --check + zenith's own contracts
 just fmt      # format
 just run      # run the CLI from source
 just bench    # benchmarks; extra args go to divan, e.g. `just bench walk`
@@ -27,6 +27,9 @@ just bench-instructions <bench> [filter]  # measure with CodSpeed locally, in Do
 just corpus <path> <config>  # a release build on a local checkout, with a config in corpus/
 just book     # serve the user guide in docs/book (mdBook)
 ```
+
+zenith checks its own architecture: the contracts in the root `zenith.toml`
+run in `just lint`, in the pre-commit hook and in CI.
 
 The toolchain is pinned nightly (`rust-toolchain.toml`). This is needed for the
 `rustfmt.toml` options `imports_granularity` and `group_imports`. Run

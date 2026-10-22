@@ -10,6 +10,7 @@ use std::{
 use log::{debug, warn};
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
+use zenith_utils::path::adjust_canonicalisation;
 
 use super::{Crates, Declared, Found, Target, TargetKind};
 use crate::manifest::Manifest;
@@ -150,18 +151,24 @@ struct MetadataDependency {
 }
 
 impl MetadataPackage {
-    /// The package, as found.
+    /// The package, as found. Its paths are canonicalised as the project root
+    /// is, since Cargo writes them as it was given them, or, for a path
+    /// dependency, as it joined them; on Windows, it may leave out the `\\?\`
+    /// prefix that the root has, or add it.
     fn found(self) -> Option<Found> {
-        let dir = self.manifest_path.parent()?.to_path_buf();
+        let dir = adjust_canonicalisation(self.manifest_path.parent()?);
         let targets: Vec<_> = (self.targets.iter())
-            .map(|target| Target { kind: target.kind(), root: target.src_path.clone() })
+            .map(|target| Target {
+                kind: target.kind(),
+                root: adjust_canonicalisation(&target.src_path),
+            })
             .collect();
         let library = self.targets.iter().find(|target| target.kind() == TargetKind::Lib);
         let dependencies = (self.dependencies.into_iter())
             .map(|dependency| Declared {
                 name: dependency.rename.as_deref().unwrap_or(&dependency.name).replace('-', "_"),
                 package: dependency.name,
-                path: dependency.path,
+                path: dependency.path.map(adjust_canonicalisation),
             })
             .collect();
         Some(Found {

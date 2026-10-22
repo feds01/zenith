@@ -6,6 +6,7 @@ use std::{
 };
 
 use tempfile::TempDir;
+use zenith_utils::path::adjust_canonicalisation;
 
 use crate::{crates::Crates, manifest::Manifest};
 
@@ -26,7 +27,7 @@ impl Project {
     /// contents. A `Cargo.toml` is a manifest of the project.
     pub(crate) fn new(files: &[(&str, &str)]) -> Self {
         let dir = TempDir::new().unwrap();
-        let root = fs::canonicalize(dir.path()).unwrap();
+        let root = adjust_canonicalisation(dir.path());
         let mut manifests = Vec::new();
         for (name, contents) in files {
             let path = root.join(name);

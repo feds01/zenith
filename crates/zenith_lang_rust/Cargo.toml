@@ -1,0 +1,34 @@
+[package]
+name = "zenith_lang_rust"
+version = { workspace = true }
+description = "Rust support: Cargo workspace discovery, parsing with tree-sitter, and module resolution"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = { workspace = true }
+
+[dependencies]
+zenith_config = { workspace = true }
+zenith_graph = { workspace = true }
+zenith_lang = { workspace = true }
+zenith_utils = { workspace = true }
+
+compact_str = { workspace = true }
+log = { workspace = true }
+rustc-hash = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thin-vec = { workspace = true }
+toml = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-rust = { workspace = true }
+
+[dev-dependencies]
+zenith_diagnostics = { workspace = true }
+
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

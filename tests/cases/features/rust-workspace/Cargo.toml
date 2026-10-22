@@ -1,0 +1,6 @@
+[workspace]
+members = ["crates/*"]
+
+[workspace.dependencies]
+lang_js = { path = "crates/lang_js" }
+pipeline = { path = "crates/pipeline" }

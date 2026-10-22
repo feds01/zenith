@@ -31,7 +31,8 @@ role for its directory.
 ## Workspace packages
 
 Each language finds the packages of the project: the workspace packages of a
-JavaScript monorepo, and the modules of a Go project. Each has a name and a
+JavaScript monorepo, the modules of a Go project, and the crates of a Cargo
+workspace. Each has a name and a
 directory, and names and directories often differ, so contracts can name
 packages with [`pkg:` selectors](selectors.md). The [languages](languages.md)
 page says where each language finds them.

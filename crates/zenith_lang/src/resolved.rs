@@ -43,6 +43,17 @@ impl Resolved {
     pub fn unresolved(reason: UnresolvedReason) -> Self {
         Self::Unresolved(Box::new(reason))
     }
+
+    /// A specifier that the language's resolver could not resolve, for this
+    /// reason.
+    pub fn failed(reason: impl Into<String>) -> Self {
+        Self::unresolved(UnresolvedReason::Failed(ResolveFailure::new(reason)))
+    }
+
+    /// A specifier that is left out as expected, for this reason.
+    pub fn ignored(reason: impl Into<String>) -> Self {
+        Self::Ignored(Box::new(UnresolvedReason::Failed(ResolveFailure::new(reason))))
+    }
 }
 
 // A `Resolved` is made for every import, so it is kept small: the reason of an
@@ -128,5 +139,20 @@ impl ResolveFailure {
 impl fmt::Display for ResolveFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.message)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_and_ignored_carry_a_failure_of_the_resolver() {
+        let reason = UnresolvedReason::Failed(ResolveFailure::new("no such crate"));
+        assert_eq!(Resolved::failed("no such crate"), Resolved::unresolved(reason.clone()));
+        assert_eq!(
+            Resolved::ignored(String::from("no such crate")),
+            Resolved::Ignored(Box::new(reason))
+        );
     }
 }

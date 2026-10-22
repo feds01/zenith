@@ -21,6 +21,7 @@ zenith_graph = { path = "crates/zenith_graph" }
 zenith_lang = { path = "crates/zenith_lang" }
 zenith_lang_go = { path = "crates/zenith_lang_go" }
 zenith_lang_js = { path = "crates/zenith_lang_js" }
+zenith_lang_rust = { path = "crates/zenith_lang_rust" }
 zenith_pipeline = { path = "crates/zenith_pipeline" }
 zenith_reporting = { path = "crates/zenith_reporting" }
 zenith_utils = { path = "crates/zenith_utils" }
@@ -63,6 +64,7 @@ thin-vec = { version = "0.2.21" }
 tree-sitter = { version = "0.27.1" }
 tree-sitter-go = { version = "0.25.0" }
 tree-sitter-gomod-orchard = { version = "0.5.3" }
+tree-sitter-rust = { version = "0.24.2" }
 toml = { version = "1.1.7", features = ["preserve_order"] }
 xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
 yaml-rust2 = { version = "0.13.0", default-features = false }

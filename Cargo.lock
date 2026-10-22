@@ -1750,6 +1750,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0af592be68c579aa78a16846bd19422978c3c52e438523d45ff5d1bff1f9d4a"
 
 [[package]]
+name = "tree-sitter-rust"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "439e577dbe07423ec2582ac62c7531120dbfccfa6e5f92406f93dd271a120e45"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "unicode-id-start"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2172,6 +2182,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "zenith_lang_rust"
+version = "0.2.0"
+dependencies = [
+ "compact_str",
+ "log",
+ "rustc-hash",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thin-vec",
+ "toml",
+ "tree-sitter",
+ "tree-sitter-rust",
+ "zenith_config",
+ "zenith_diagnostics",
+ "zenith_graph",
+ "zenith_lang",
+ "zenith_utils",
+]
+
+[[package]]
 name = "zenith_pipeline"
 version = "0.2.0"
 dependencies = [
@@ -2188,6 +2220,7 @@ dependencies = [
  "zenith_lang",
  "zenith_lang_go",
  "zenith_lang_js",
+ "zenith_lang_rust",
  "zenith_utils",
  "zenith_workspace",
 ]

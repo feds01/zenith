@@ -1,0 +1,52 @@
+# Rust
+
+```toml
+[languages.rust]           # off unless the table is written
+include = ["**/*.rs"]      # the default
+```
+
+| Option | |
+|---|---|
+| `include` | Globs of the files to scan. |
+
+## Packages
+
+Every Cargo package of the project is a crate, which `pkg:` selects by its
+package name, so `pkg:zenith_lang_*` selects the crates whose names start with
+`zenith_lang_`. zenith asks Cargo for the crates, with
+`cargo metadata --no-deps --offline`, which reads the manifests but resolves no
+versions and never touches the network. Without Cargo, or when it fails,
+zenith reads the `Cargo.toml` files itself and finds each crate's targets the
+way Cargo does.
+
+Each target of a crate is the root of a module tree: its library, its binaries,
+its tests, benchmarks and examples, and its build script. The other targets of
+a crate use its library by its name.
+
+## Imports
+
+Every import is a `value` import. Each `use` declaration imports each of its
+leaves, so `use a::{b, c::d}` imports `a::b` and `a::c::d`, and a glob imports
+the path before it. So does an `extern crate`, and so does a path in code that
+starts with `crate`, `self`, `super`, `::` or the name of a crate or module,
+such as `zenith_lang_js::JS` written without a `use`. `mod a;` declares a module
+but doesn't import it. [`zenith-ignore` comments](../suppressions.md) work as
+`//` or `/* */` comments.
+
+## Resolution
+
+A path imports the file of the last module on it: `a.rs` or `a/mod.rs` for the
+module `a`, in the module tree of the importing file's target. The rest of the
+path is items in that file. A crate's own dependencies, from its
+`[dependencies]`, `[dev-dependencies]` and `[build-dependencies]`, including
+renamed ones and those that `workspace = true` takes from the workspace, are
+the crates that its code may name.
+
+| Imported | Node | |
+|---|---|---|
+| a module of the project | `crates/api/src/store.rs` | Its file. A dependency that is a crate of the project resolves into the module tree of its library. |
+| another crate | `crate:serde` | Named by its package. |
+| the standard library | `rust:std` | `std`, `core`, `alloc`, `proc_macro` and `test`. |
+
+An inline `mod a { }` block is part of its file, `#[path]` attributes are not
+followed, and a file doesn't import itself.

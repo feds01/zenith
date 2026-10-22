@@ -103,6 +103,20 @@
       },
       "description": "Go."
     },
+    "RustTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Globs of the files to scan. Defaults to every Rust file, `**/*.rs`."
+        }
+      },
+      "description": "Rust."
+    },
     "FilesTable": {
       "type": "object",
       "additionalProperties": false,
@@ -139,6 +153,10 @@
         "go": {
           "$ref": "#/$defs/GoTable",
           "description": "Go: how its files are found and their imports resolved."
+        },
+        "rust": {
+          "$ref": "#/$defs/RustTable",
+          "description": "Rust: how its files are found and the imports between its crates and modules resolved."
         }
       }
     },

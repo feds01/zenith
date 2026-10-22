@@ -39,6 +39,7 @@ allow-wildcard-paths = true
 deny = [
   { crate = "zenith_lang_go", wrappers = ["zenith_pipeline", "zenith_benchmark"] },
   { crate = "zenith_lang_js", wrappers = ["zenith_pipeline", "zenith_benchmark"] },
+  { crate = "zenith_lang_rust", wrappers = ["zenith_pipeline"] },
 ]
 
 [sources]

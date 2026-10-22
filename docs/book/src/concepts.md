@@ -19,19 +19,22 @@ builtins that it imports:
 
 | Node | Example | |
 |---|---|---|
-| Directory | `web/src/domains` | Every ancestor directory of a file. A directory stands for its whole subtree. |
+| Directory | `web/src/domains` | Every ancestor directory of a file. A directory stands for its whole subtree, and is also what an import of a Go package refers to. |
 | File | `web/src/domains/ai/api/client.ts` | Every source file, and every file inside the root that an import resolves to, such as `.css` or `.json`. |
-| External package | `npm:react`, `npm:@tanstack/react-query` | Named by the package, so `lodash/get` is `npm:lodash`. |
-| Builtin | `node:fs`, `bun:sqlite` | Node builtins always have the `node:` prefix, and subpaths are dropped: `fs/promises` is `node:fs`. |
+| External package | `npm:react`, `gomod:github.com/pkg/errors` | A package from outside the project, with its language's scheme. |
+| Builtin | `node:fs`, `go:net/http` | A module of a runtime or standard library, with its language's scheme. |
 
-An `index.ts` is an ordinary file, with no special role for its directory.
+Each [language](languages.md) says how it names its external packages and
+builtins. A file such as an `index.ts` is an ordinary file, with no special
+role for its directory.
 
 ## Workspace packages
 
-Workspace packages are found from the root `package.json`'s `workspaces`
-field and from `pnpm-workspace.yaml`. Each has a name, from its own
-`package.json`, and a directory. Names and directories often differ, so
-contracts can name packages with [`pkg:` selectors](selectors.md).
+Each language finds the packages of the project: the workspace packages of a
+JavaScript monorepo, and the modules of a Go project. Each has a name and a
+directory, and names and directories often differ, so contracts can name
+packages with [`pkg:` selectors](selectors.md). The [languages](languages.md)
+page says where each language finds them.
 
 <figure class="diagram">
 {{#include diagrams/packages.svg}}
@@ -40,35 +43,35 @@ contracts can name packages with [`pkg:` selectors](selectors.md).
 
 ## Imports
 
-An import is an edge from a file to a file, package or builtin. Each import
-statement is recorded with its kind:
+An import is an edge from a file to a file, directory, package or builtin.
+Each import statement is recorded with its kind:
 
 <figure class="diagram">
 {{#include diagrams/imports.svg}}
 <figcaption>Each statement is an edge with its kind. A specifier that isn't a literal is skipped.</figcaption>
 </figure>
 
-| Kind | Made by |
+| Kind | |
 |---|---|
-| `value` | `import x from "s"`, `import "s"`, `export … from "s"` |
-| `type` | `import type …`, `export type …`, imports whose every name is `type`, and TypeScript import types such as `typeof import("s")` |
-| `dynamic` | `import("s")` with a literal specifier |
-| `require` | `require("s")` with a literal specifier, and `import x = require("s")` |
+| `value` | an ordinary import, which every language has |
+| `type` | an import that is erased at runtime, such as TypeScript's `import type` |
+| `dynamic` | an import made while the code runs, such as JavaScript's `import("s")` |
+| `require` | a CommonJS `require("s")` |
 
-Imports whose specifier isn't a literal, such as `import(path)`, are skipped
-and counted; `-v` lists them. Contracts can leave out imports by kind with
+The [languages](languages.md) page lists the statements that make each kind.
+Contracts can leave out imports by kind with
 [`exclude_kinds`](contracts/overview.md#common-options): type-only imports
 are erased at runtime, so they are often excluded.
 
 ## Re-exports
 
-A **pass-through module** only re-exports other modules, such as an
-`index.ts` of `export * from "./a"` and `export { b } from "./b"` lines, with
-no code of its own. JavaScript calls it a barrel. Through it, the import
-graph has a chain to every module it re-exports, so
-`import { format } from "./lib"` reaches whatever else `lib/index.ts`
-re-exports, even server code. Bundlers that know the module has no side
-effects leave the unused modules out.
+In JavaScript and TypeScript, a **pass-through module** only re-exports other
+modules, such as an `index.ts` of `export * from "./a"` and
+`export { b } from "./b"` lines, with no code of its own. JavaScript calls it a
+barrel. Through it, the import graph has a chain to every module it
+re-exports, so `import { format } from "./lib"` reaches whatever else
+`lib/index.ts` re-exports, even server code. Bundlers that know the module has
+no side effects leave the unused modules out.
 
 A contract with [`reexports = "transparent"`](contracts/overview.md#common-options)
 sees an import of names from a pass-through module as imports of the modules

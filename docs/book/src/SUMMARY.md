@@ -7,6 +7,9 @@
 - [Installation](installation.md)
 - [Getting started](getting-started.md)
 - [Concepts](concepts.md)
+- [Languages](languages.md)
+  - [JavaScript and TypeScript](languages/javascript.md)
+  - [Go](languages/go.md)
 - [Selectors](selectors.md)
 
 # Contracts

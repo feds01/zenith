@@ -22,6 +22,10 @@ modules = ["pkg:*"]
 The `#:schema` line lets editors with a TOML language server (Taplo, or Even
 Better TOML in VS Code) complete and check the file.
 
+zenith reads JavaScript and TypeScript by default. For a Go project, or one
+that mixes languages, enable each language with its table, such as
+`[languages.go]`: see [languages](languages.md).
+
 ## 2. Check the contracts
 
 ```sh

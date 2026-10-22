@@ -1,8 +1,8 @@
 {
   "name": "@feds01/zenith",
   "version": "0.0.0",
-  "description": "An architecture linter for TypeScript and JavaScript codebases",
-  "keywords": ["architecture", "linter", "imports", "monorepo", "typescript", "javascript"],
+  "description": "An architecture linter for monorepos",
+  "keywords": ["architecture", "linter", "imports", "monorepo", "typescript", "javascript", "go"],
   "homepage": "https://feds01.github.io/zenith/",
   "bugs": "https://github.com/feds01/zenith/issues",
   "repository": {

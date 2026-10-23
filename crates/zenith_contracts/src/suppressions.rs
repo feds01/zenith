@@ -2,7 +2,7 @@
 
 use rustc_hash::FxHashSet;
 use zenith_config::Config;
-use zenith_diagnostics::{Report, Source, SourceMap, Span};
+use zenith_diagnostics::{Report, Source, SourceMap, Span, message};
 use zenith_lang::Suppression;
 use zenith_utils::location::Located;
 
@@ -95,25 +95,18 @@ impl UnusedSuppression<'_> {
     /// file's `source` can be read.
     pub(crate) fn message(&self, source: Option<&Source>) -> String {
         match &self.reason {
-            UnusedReason::NoContract => "unused suppression: it names no contract".to_string(),
+            UnusedReason::NoContract => message!(contracts_unused_no_contract),
             UnusedReason::UnknownContracts(ids) => {
+                let count = ids.len();
                 let ids: Vec<_> = ids.iter().map(|id| format!("`{id}`")).collect();
-                match ids.as_slice() {
-                    [id] => format!("unused suppression: there is no contract {id}"),
-                    ids => {
-                        format!("unused suppression: there are no contracts {}", ids.join(", "))
-                    }
-                }
+                message!(contracts_unused_unknown_contracts, count, ids = ids.join(", "))
             }
             UnusedReason::NoImport => match source {
                 Some(source) => {
                     let line = source.line(self.suppression.value.target.start());
-                    format!(
-                        "unused suppression: no import on line {line} for the contracts it names"
-                    )
+                    message!(contracts_unused_no_import, line)
                 }
-                None => "unused suppression: no import on its line for the contracts it names"
-                    .to_string(),
+                None => message!(contracts_unused_no_import_on_its_line),
             },
         }
     }
@@ -154,6 +147,27 @@ to = [\"a\"]
         assert_eq!(
             reasons,
             [": NoContract", "f nope nada: UnknownContracts([\"nope\", \"nada\"])", "f: NoImport"]
+        );
+    }
+
+    #[test]
+    fn unused_suppressions_say_why() {
+        let toml = "[contracts.f]\ntype = \"forbidden\"\nfrom = [\"a\"]\nto = [\"b\"]\n";
+        let project = Project::new(&values(&[("a/x.ts", "b/y.ts")]), &[], toml)
+            .suppress("a/x.ts", 1, "")
+            .suppress("a/x.ts", 1, "nope")
+            .suppress("a/x.ts", 1, "nope nada")
+            .suppress("a/x.ts", 3, "f");
+        let messages: Vec<_> =
+            project.unused_suppressions(&["f"]).iter().map(|unused| unused.message(None)).collect();
+        assert_eq!(
+            messages,
+            [
+                "unused suppression: it names no contract",
+                "unused suppression: there is no contract `nope`",
+                "unused suppression: there are no contracts `nope`, `nada`",
+                "unused suppression: no import on its line for the contracts it names",
+            ]
         );
     }
 

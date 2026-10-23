@@ -2,6 +2,7 @@
 
 use std::{fmt, path::PathBuf};
 
+use zenith_diagnostics::message;
 use zenith_utils::glob::NamePattern;
 
 /// What a specifier resolves to.
@@ -114,12 +115,14 @@ impl fmt::Display for UnresolvedReason {
         match self {
             Self::Failed(failure) => write!(f, "{failure}"),
             Self::NotExported { package, subpath } => {
-                write!(f, "`{subpath}` is not exported by `{package}`")
+                f.write_str(&message!(lang_not_exported, subpath, package))
             }
             Self::OutsideRoot(path) => {
-                write!(f, "resolved to `{}`, outside the project and in no package", path.display())
+                f.write_str(&message!(lang_outside_root, path = path.display()))
             }
-            Self::UnsupportedScheme(scheme) => write!(f, "unsupported `{scheme}:` specifier"),
+            Self::UnsupportedScheme(scheme) => {
+                f.write_str(&message!(lang_unsupported_scheme, scheme))
+            }
         }
     }
 }

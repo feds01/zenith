@@ -174,7 +174,7 @@ mod tests {
     use std::{fs, ops::Range, thread};
 
     use tempfile::TempDir;
-    use zenith_diagnostics::{self as diagnostics, Reporter, SourceMap};
+    use zenith_diagnostics::{Diagnostic, ReportKind, Reporter, SourceMap};
 
     use super::*;
     use crate::JS;
@@ -345,7 +345,11 @@ class D implements E
         let reports: Vec<_> = parsed
             .errors
             .iter()
-            .map(|error| error.value.report(diagnostics::Span::new(file, error.range)))
+            .map(|error| {
+                let mut report = error.value.report_in(ReportKind::Error, Some(file));
+                report.add_span(error.range);
+                report
+            })
             .collect();
         let expected = [
             "error: Missing initializer in const declaration",

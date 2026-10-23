@@ -4,10 +4,10 @@
 use std::{fmt, io, path::PathBuf};
 
 use thin_vec::ThinVec;
-use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span};
+use zenith_diagnostics::{Diagnostic, Report, ReportKind, SourceId, SourceMap, Span, message};
 use zenith_graph::{GraphError, ImportDetail};
 use zenith_lang::{ResolveFailure, SyntaxError, UnresolvedReason};
-use zenith_utils::{location::Located, printing::plural};
+use zenith_utils::location::Located;
 use zenith_workspace::GitError;
 
 /// Why a stage failed, which stops the pipeline.
@@ -33,7 +33,7 @@ impl fmt::Display for PipelineError {
             Self::Graph(error) => write!(f, "{error}"),
             Self::Git(error) => write!(f, "{error}"),
             Self::OutsideRoot(path) => {
-                write!(f, "`{}` is not inside the project root", path.display())
+                f.write_str(&message!(pipeline_outside_root, path = path.display()))
             }
         }
     }
@@ -80,24 +80,23 @@ impl FileError {
         let file = &self.file;
         let errors = match &self.kind {
             FileErrorKind::Read(error) => {
-                let mut report = Report::warning(format!("could not read `{file}`: {error}"));
-                report.add_note("its imports are missing from the graph");
+                let mut report = Report::warning(message!(pipeline_unreadable_file, file, error));
+                report.add_note(message!(pipeline_unreadable_file.note));
                 return report;
             }
             FileErrorKind::Syntax(errors) => errors,
         };
         let (Some(first), Some(source)) = (errors.first(), source) else {
-            let mut report = Report::warning(format!("`{file}` has syntax errors"));
-            report.add_note("some of its imports may be missing from the graph");
+            let mut report = Report::warning(message!(pipeline_syntax_errors, file));
+            report.add_note(message!(pipeline_syntax_errors.note));
             return report;
         };
 
-        let mut report = first.value.report(Span::new(source, first.range));
-        report.kind = ReportKind::Warning;
-        report.add_note("some of the file's imports may be missing from the graph");
+        let mut report = first.value.report_in(ReportKind::Warning, Some(source));
+        report.add_span(first.range);
+        report.add_note(message!(pipeline_syntax_error_imports));
         if errors.len() > 1 {
-            let count = plural(errors.len(), "syntax error");
-            report.add_note(format!("this is the first of {count} in the file"));
+            report.add_note(message!(pipeline_first_syntax_error, count = errors.len()));
         }
         report
     }
@@ -131,7 +130,11 @@ impl UnresolvedImport {
     /// The report of the import: a warning, pointing at the import in
     /// `sources` if its file can be read.
     pub fn report(&self, sources: &mut SourceMap) -> Report {
-        let title = format!("could not resolve `{}`: {}", self.import.specifier, self.reason);
+        let title = message!(
+            pipeline_unresolved_import,
+            specifier = self.import.specifier,
+            reason = self.reason
+        );
         let mut report = Report::warning(title);
         if let Some(source) = sources.file(&self.file) {
             report.add_span(Span::new(source, self.import.range));

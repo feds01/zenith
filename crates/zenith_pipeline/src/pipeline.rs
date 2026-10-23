@@ -6,6 +6,7 @@ use std::{
 };
 
 use log::debug;
+use zenith_diagnostics::message;
 
 use crate::{
     PipelineError, Session,
@@ -114,7 +115,10 @@ impl Pipeline {
             let start = Instant::now();
             let result = stage.run(session);
             let time = start.elapsed();
-            debug!("the {} stage took {time:.1?}", stage.kind());
+            debug!(
+                "{}",
+                message!(pipeline_stage_time, stage = stage.kind(), time = format!("{time:.1?}"))
+            );
             self.timings.push((stage.kind(), time));
             result?;
             self.completed += 1;

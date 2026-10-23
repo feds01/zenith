@@ -6,6 +6,7 @@ use std::{fmt, mem};
 use index_vec::{IndexVec, index_vec};
 use rustc_hash::FxHashMap;
 use thin_vec::ThinVec;
+use zenith_diagnostics::message;
 use zenith_utils::path::{is_relative_posix, posix_parent};
 
 use crate::{Graph, ImportDetail, ModuleId, NodeKind, graph::NodeParts};
@@ -74,19 +75,15 @@ pub enum GraphError {
 impl fmt::Display for GraphError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidPath { path } => {
-                write!(f, "`{path}` is not a normalised POSIX path relative to the project root")
-            }
-            Self::InvalidName { name } => {
-                write!(f, "`{name}` is not a name of the form `<scheme>:<name>`")
-            }
-            Self::KindConflict { name, existing, added } => write!(
-                f,
-                "`{name}` is already {}, so it cannot also be {}",
-                describe(*existing),
-                describe(*added)
-            ),
-            Self::TooManyNodes => write!(f, "the graph cannot hold more than {} nodes", u32::MAX),
+            Self::InvalidPath { path } => f.write_str(&message!(graph_invalid_path, path)),
+            Self::InvalidName { name } => f.write_str(&message!(graph_invalid_name, name)),
+            Self::KindConflict { name, existing, added } => f.write_str(&message!(
+                graph_kind_conflict,
+                name,
+                existing = describe(*existing),
+                added = describe(*added)
+            )),
+            Self::TooManyNodes => f.write_str(&message!(graph_too_many_nodes, max = u32::MAX)),
         }
     }
 }
@@ -94,12 +91,12 @@ impl fmt::Display for GraphError {
 impl std::error::Error for GraphError {}
 
 /// A node kind for messages, with its article.
-fn describe(kind: NodeKind) -> &'static str {
+fn describe(kind: NodeKind) -> String {
     match kind {
-        NodeKind::Directory => "a directory",
-        NodeKind::File => "a file",
-        NodeKind::External => "an external package",
-        NodeKind::Builtin => "a builtin",
+        NodeKind::Directory => message!(graph_kind_directory),
+        NodeKind::File => message!(graph_kind_file),
+        NodeKind::External => message!(graph_kind_external),
+        NodeKind::Builtin => message!(graph_kind_builtin),
     }
 }
 

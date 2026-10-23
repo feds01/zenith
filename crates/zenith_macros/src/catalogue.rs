@@ -16,8 +16,13 @@ use fluent_syntax::{
 
 /// The files of the catalogue in English, which every message is in: each
 /// file's name, and its contents.
-const SOURCES: &[(&str, &str)] =
-    &[("config.ftl", include_str!("../../zenith_diagnostics/messages/en-US/config.ftl"))];
+const SOURCES: &[(&str, &str)] = &[
+    ("config.ftl", include_str!("../../zenith_diagnostics/messages/en-US/config.ftl")),
+    ("graph.ftl", include_str!("../../zenith_diagnostics/messages/en-US/graph.ftl")),
+    ("lang.ftl", include_str!("../../zenith_diagnostics/messages/en-US/lang.ftl")),
+    ("pipeline.ftl", include_str!("../../zenith_diagnostics/messages/en-US/pipeline.ftl")),
+    ("workspace.ftl", include_str!("../../zenith_diagnostics/messages/en-US/workspace.ftl")),
+];
 
 /// The functions that a message can call: those that zenith_diagnostics
 /// registers, fluent-bundle's builtins.

@@ -5,10 +5,8 @@
 use std::fmt;
 
 use serde::Serialize;
-use zenith_utils::{
-    printing::plural,
-    tree_writing::{TreeNode, TreeWriter},
-};
+use zenith_diagnostics::message;
+use zenith_utils::tree_writing::{TreeNode, TreeWriter};
 
 use crate::{Graph, GraphView, ModuleId, NodeKind, NodeSet, UnitGraph};
 
@@ -74,7 +72,8 @@ pub struct ChildDependency<'g> {
 
 impl fmt::Display for ChildDependency<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} -> {} ({})", self.from, self.to, plural(self.imports as usize, "import"))
+        let Self { from, to, imports } = self;
+        f.write_str(&message!(graph_overview_dependency, from, to, imports))
     }
 }
 
@@ -143,7 +142,7 @@ impl fmt::Display for OverviewTree<'_, '_> {
         let ModuleOverview { graph, id, module, dependencies, .. } = self.overview;
         write!(f, "{}", TreeWriter::new(&tree_node(graph, *id, self.depth, true)))?;
         if !dependencies.is_empty() {
-            writeln!(f, "\ndependencies between the children of `{module}`:")?;
+            writeln!(f, "\n{}", message!(graph_overview_dependencies, module))?;
             for dependency in dependencies {
                 writeln!(f, "  {dependency}")?;
             }
@@ -190,7 +189,8 @@ fn tree_node(graph: &Graph, id: ModuleId, depth: usize, top: bool) -> TreeNode {
     }
 
     let slash = if id == ModuleId::ROOT { "" } else { "/" };
-    let label = format!("{shown}{slash} ({})", plural(graph.file_count(id), "file"));
+    let name = format!("{shown}{slash}");
+    let label = message!(graph_overview_directory, name, files = graph.file_count(id));
     if depth == 0 {
         return TreeNode::leaf(label);
     }

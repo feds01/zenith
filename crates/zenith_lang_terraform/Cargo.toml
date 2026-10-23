@@ -10,10 +10,14 @@ publish = { workspace = true }
 
 [dependencies]
 zenith_diagnostics = { workspace = true }
+zenith_lang = { workspace = true }
 zenith_utils = { workspace = true }
 
 tree-sitter = { workspace = true }
 tree-sitter-hcl = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

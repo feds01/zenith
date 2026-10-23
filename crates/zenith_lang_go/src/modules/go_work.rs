@@ -9,9 +9,9 @@
 //! comment.
 
 use zenith_diagnostics::message;
-use zenith_utils::location::ByteRange;
+use zenith_utils::{location::ByteRange, path::is_local_path};
 
-use super::{ModError, Parsed, Replace, ReplaceTarget, is_local_path, unquote};
+use super::{ModError, Parsed, Replace, ReplaceTarget, unquote};
 
 /// What a `go.work` file says about its workspace.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -32,10 +32,18 @@ Every change to it on `main` is published to
 
 ## Releasing
 
-Bump `version` in the root `Cargo.toml`, and with it `Cargo.lock`, merge
-to `main`, then run `just release` to tag it.
+Bump `version` in the root `Cargo.toml`, and with it `Cargo.lock`, and run
+`just changelog <version>`, which writes [CHANGELOG.md](CHANGELOG.md) with
+[git-cliff](https://git-cliff.org) from the titles of the pull requests
+merged since the last release (see [cliff.toml](cliff.toml)). Merge that to
+`main`, then run `just release` to tag it.
 [cargo-dist](https://opensource.axo.dev/cargo-dist/) builds the binaries and
-installers, and publishes the GitHub release and the Homebrew formula.
+installers, and publishes the GitHub release, with the release's section of
+the changelog as its notes, and the Homebrew formula.
+
+A pull request's title is its entry in the changelog, so write it as a
+conventional commit, as in `feat(graph): …`. Features, fixes, performance and
+documentation are listed; other types are not.
 
 The npm packages are built from the release's archives by `just publish-npm`,
 from the templates in [npm/](npm): a package per platform with just its

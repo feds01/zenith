@@ -371,6 +371,30 @@ fn a_missing_token_is_a_syntax_error() {
 }
 
 #[test]
+fn safe_items_of_an_extern_block_are_valid() {
+    let source = "unsafe extern \"C\" {\n    safe fn f();\n    pub safe static X: a::b::T;\n    pub(crate) safe static mut Y: u8;\n}\n";
+    assert_eq!(specifiers(source), ["a::b"]);
+    // Elsewhere, `safe` is an error.
+    assert_eq!(parse("fn f() {}\nsafe fn g() {}\n").errors.len(), 1);
+}
+
+#[test]
+fn several_attributes_on_a_parameter_are_valid() {
+    let source = "fn f(\n    #[a] #[b::c] #[d] x: u8,\n    #[e]\n    /// f\n    #[g(h = i::j::K)]\n    y: u8,\n) {}\n";
+    assert_eq!(specifiers(source), ["b::c", "i::j"]);
+    assert!(parse("trait T { fn f(&self, #[a] #[b] x: u8); }\n").errors.is_empty());
+}
+
+#[test]
+fn attribute_and_derive_rules_of_macro_rules_are_valid() {
+    let source = "macro_rules! k (\n    derive() ($i:item) => {};\n    unsafe attr($x:expr) ($i:item) => { $i };\n);\nuse a::b;\n";
+    let parsed = parse(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let [import] = parsed.imports.as_slice() else { panic!("{:?}", parsed.imports) };
+    assert_eq!((import.specifier.as_str(), &source[Range::from(import.range)]), ("a::b", "a::b"));
+}
+
+#[test]
 fn valid_code_has_no_syntax_errors() {
     assert!(parse("fn main() { println!(\"{}\", 1); }\n").errors.is_empty());
     assert_eq!(parse("").imports, []);

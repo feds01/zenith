@@ -11,7 +11,7 @@ use zenith_graph::{ImportDetail, ImportKind, ImportedNames};
 use zenith_lang::{ParsedFile, Suppression, SyntaxError};
 use zenith_utils::location::{ByteRange, Located};
 
-use super::comments::comments;
+use super::{comments::comments, gaps};
 
 /// The primitive types, which have associated functions and constants that
 /// are written like paths, such as `u8::MAX`, but are not modules.
@@ -121,7 +121,7 @@ impl<'s> Reader<'s> {
             self.error(node, missing(node.kind()));
             return false;
         }
-        if node.is_error() {
+        if node.is_error() && !gaps::is_valid(node, self.source) {
             self.error(node, Cow::Borrowed("invalid syntax"));
         }
         match node.kind() {

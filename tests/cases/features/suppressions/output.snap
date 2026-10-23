@@ -11,6 +11,8 @@ error[a-not-b]: `src/a` must not import `src/b`
   |
 2 | import { y } from "../b/y";
   |                   ^^^^^^^^ imports `src/b/y.ts`
+  |
+  = help: remove these imports
 
 error[b-protected]: `src/b` may only be imported by its allowed importers
  --> src/a/empty.ts:2:19
@@ -27,6 +29,8 @@ error[b-protected]: `src/b` may only be imported by its allowed importers
   |
 2 | import { y } from "../b/y";
   |                   ^^^^^^^^ imports `src/b/y.ts`
+  |
+  = help: remove these imports
 
 warning: unused suppression: it names no contract
  --> src/a/empty.ts:1:1
@@ -55,11 +59,11 @@ Contracts
 $ zenith check --format compact
 exit: 1
 --- stdout
-src/a/empty.ts:2:19: error[a-not-b]: `src/a` must not import `src/b`
-src/a/unknown.ts:2:19: error[a-not-b]: `src/a` must not import `src/b`
-src/a/empty.ts:2:19: error[b-protected]: `src/a/empty.ts` may not import the protected module `src/b`
-src/a/trailing.ts:1:19: error[b-protected]: `src/a/trailing.ts` may not import the protected module `src/b`
-src/a/unknown.ts:2:19: error[b-protected]: `src/a/unknown.ts` may not import the protected module `src/b`
+src/a/empty.ts:2:19: error[a-not-b]: `src/a` must not import `src/b`; remove this import
+src/a/unknown.ts:2:19: error[a-not-b]: `src/a` must not import `src/b`; remove this import
+src/a/empty.ts:2:19: error[b-protected]: `src/a/empty.ts` may not import the protected module `src/b`; remove this import
+src/a/trailing.ts:1:19: error[b-protected]: `src/a/trailing.ts` may not import the protected module `src/b`; remove this import
+src/a/unknown.ts:2:19: error[b-protected]: `src/a/unknown.ts` may not import the protected module `src/b`; remove this import
 src/a/empty.ts:1:1: warning: unused suppression: it names no contract
 src/a/unknown.ts:1:1: warning: unused suppression: there is no contract `no-such-contract`
 src/a/unused.ts:1:1: warning: unused suppression: no import on line 2 for the contracts it names
@@ -68,11 +72,11 @@ src/a/unused.ts:1:1: warning: unused suppression: no import on line 2 for the co
 $ zenith check --format github
 exit: 1
 --- stdout
-::error file=src/a/empty.ts,line=2,col=19,title=zenith(a-not-b)::`src/a` must not import `src/b`
-::error file=src/a/unknown.ts,line=2,col=19,title=zenith(a-not-b)::`src/a` must not import `src/b`
-::error file=src/a/empty.ts,line=2,col=19,title=zenith(b-protected)::`src/a/empty.ts` may not import the protected module `src/b`
-::error file=src/a/trailing.ts,line=1,col=19,title=zenith(b-protected)::`src/a/trailing.ts` may not import the protected module `src/b`
-::error file=src/a/unknown.ts,line=2,col=19,title=zenith(b-protected)::`src/a/unknown.ts` may not import the protected module `src/b`
+::error file=src/a/empty.ts,line=2,col=19,title=zenith(a-not-b)::`src/a` must not import `src/b`; remove this import
+::error file=src/a/unknown.ts,line=2,col=19,title=zenith(a-not-b)::`src/a` must not import `src/b`; remove this import
+::error file=src/a/empty.ts,line=2,col=19,title=zenith(b-protected)::`src/a/empty.ts` may not import the protected module `src/b`; remove this import
+::error file=src/a/trailing.ts,line=1,col=19,title=zenith(b-protected)::`src/a/trailing.ts` may not import the protected module `src/b`; remove this import
+::error file=src/a/unknown.ts,line=2,col=19,title=zenith(b-protected)::`src/a/unknown.ts` may not import the protected module `src/b`; remove this import
 ::warning file=src/a/empty.ts,line=1,col=1,title=zenith::unused suppression: it names no contract
 ::warning file=src/a/unknown.ts,line=1,col=1,title=zenith::unused suppression: there is no contract `no-such-contract`
 ::warning file=src/a/unused.ts,line=1,col=1,title=zenith::unused suppression: no import on line 2 for the contracts it names
@@ -96,6 +100,8 @@ error[b-protected]: `src/b` may only be imported by its allowed importers
   |
 2 | import { y } from "../b/y";
   |                   ^^^^^^^^ imports `src/b/y.ts`
+  |
+  = help: remove these imports
 
 warning: unused suppression: it names no contract
  --> src/a/empty.ts:1:1
@@ -151,7 +157,18 @@ exit: 1
                   "specifier": "../b/y",
                   "kind": "value"
                 }
-              ]
+              ],
+              "fix": {
+                "action": "remove_import",
+                "import": {
+                  "file": "src/a/empty.ts",
+                  "line": 2,
+                  "column": 19,
+                  "specifier": "../b/y",
+                  "kind": "value"
+                },
+                "hint": "remove this import"
+              }
             },
             {
               "importer": "src/a/trailing.ts",
@@ -163,7 +180,18 @@ exit: 1
                   "specifier": "../b/y",
                   "kind": "value"
                 }
-              ]
+              ],
+              "fix": {
+                "action": "remove_import",
+                "import": {
+                  "file": "src/a/trailing.ts",
+                  "line": 1,
+                  "column": 19,
+                  "specifier": "../b/y",
+                  "kind": "value"
+                },
+                "hint": "remove this import"
+              }
             },
             {
               "importer": "src/a/unknown.ts",
@@ -175,7 +203,18 @@ exit: 1
                   "specifier": "../b/y",
                   "kind": "value"
                 }
-              ]
+              ],
+              "fix": {
+                "action": "remove_import",
+                "import": {
+                  "file": "src/a/unknown.ts",
+                  "line": 2,
+                  "column": 19,
+                  "specifier": "../b/y",
+                  "kind": "value"
+                },
+                "hint": "remove this import"
+              }
             }
           ]
         }

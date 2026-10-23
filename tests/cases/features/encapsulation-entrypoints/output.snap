@@ -6,6 +6,8 @@ error[feature-surface]: `src/feature` may only be imported through its entry poi
   |
 1 | import { impl } from "../feature/internal/impl";
   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `src/feature/internal/impl.ts`, which is internal
+  |
+  = help: import `src/feature` through one of its entry points instead
 
 Contracts
   ✗ feature-surface  encapsulation  broken (1 violation)

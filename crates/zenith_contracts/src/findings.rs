@@ -1,5 +1,5 @@
-//! What contracts find: violations, and the imports and chains of imports
-//! that make them.
+//! What contracts find: violations, the imports and chains of imports that
+//! make them, and how to fix them.
 //!
 //! Findings refer to nodes by their [`ModuleId`] in the graph they were found
 //! in, and keep each import's [`ImportDetail`]s, so that a report can name the
@@ -7,6 +7,8 @@
 
 use std::fmt;
 
+use serde::Serialize;
+use zenith_config::ContractKind;
 use zenith_diagnostics::message;
 use zenith_graph::{Graph, GraphView, ImportDetail, ModuleId, Route};
 use zenith_pipeline::Scope;
@@ -256,6 +258,121 @@ impl Violation {
             Self::UndeclaredModule { .. } => Vec::new(),
         }
     }
+
+    /// How to fix each finding of the violation, which a contract of type
+    /// `kind` found, in order: a chain at its first import, which the
+    /// importing unit's own code makes; an illegal import at it; a cycle
+    /// breaker at its first import; and an undeclared module at no import.
+    pub fn fixes(&self, kind: &ContractKind) -> Vec<Fix<'_>> {
+        let action = match self {
+            Self::Dependency { .. } | Self::IllegalImports { .. } => match kind {
+                ContractKind::Forbidden(_) | ContractKind::Protected(_) => FixAction::RemoveImport,
+                ContractKind::Independence(_) | ContractKind::Layers(_) => FixAction::MoveModule,
+                ContractKind::Encapsulation(_) => FixAction::ImportThroughEntryPoint,
+                // An `acyclic` contract finds cycles only.
+                ContractKind::Acyclic(_) => FixAction::BreakCycle,
+            },
+            Self::Cycle { .. } => FixAction::BreakCycle,
+            Self::UndeclaredModule { .. } => FixAction::DeclareLayer,
+        };
+        let fix = |link, hint| Fix { action, link, hint };
+        match self {
+            Self::Dependency { chains, .. } => chains
+                .iter()
+                .map(|chain| {
+                    let hint = match (action, chain.links.len()) {
+                        (FixAction::MoveModule, _) => message!(contracts_fix_move_module),
+                        (_, 1) => message!(contracts_fix_remove_import),
+                        _ => message!(contracts_fix_remove_import.chain),
+                    };
+                    fix(chain.links.first(), hint)
+                })
+                .collect(),
+            Self::IllegalImports { module, imports } => imports
+                .iter()
+                .map(|link| {
+                    let hint = match action {
+                        FixAction::ImportThroughEntryPoint => {
+                            message!(contracts_fix_import_through_entry_point, module)
+                        }
+                        _ => message!(contracts_fix_remove_import),
+                    };
+                    fix(Some(link), hint)
+                })
+                .collect(),
+            Self::Cycle { breakers, .. } => breakers
+                .iter()
+                .map(|breaker| {
+                    let (importer, imported) = (&breaker.importer, &breaker.imported);
+                    let hint = message!(contracts_fix_break_cycle, importer, imported);
+                    fix(breaker.imports.first(), hint)
+                })
+                .collect(),
+            Self::UndeclaredModule { .. } => vec![fix(None, message!(contracts_fix_declare_layer))],
+        }
+    }
+
+    /// How to fix all the findings of the violation, which a contract of
+    /// type `kind` found, in a line: the hint of its one finding's fix, or
+    /// else one that holds for each of its findings.
+    pub fn hint(&self, kind: &ContractKind) -> String {
+        let mut fixes = self.fixes(kind);
+        match self {
+            Self::UndeclaredModule { .. } => message!(contracts_undeclared_module.help),
+            _ if fixes.len() == 1 => fixes.remove(0).hint,
+            Self::Dependency { chains, .. } => match fixes[0].action {
+                FixAction::MoveModule => message!(contracts_fix_move_module.all),
+                _ if chains.iter().any(|chain| chain.links.len() > 1) => {
+                    message!(contracts_fix_remove_import.chains)
+                }
+                _ => message!(contracts_fix_remove_import.all),
+            },
+            Self::IllegalImports { .. } => match fixes[0].action {
+                FixAction::ImportThroughEntryPoint => fixes.remove(0).hint,
+                _ => message!(contracts_fix_remove_import.all),
+            },
+            Self::Cycle { .. } => message!(contracts_fix_break_cycle.all),
+        }
+    }
+}
+
+/// How to fix a finding of a violation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fix<'a> {
+    /// What to do.
+    pub action: FixAction,
+
+    /// The import to change, if the fix is about one.
+    pub link: Option<&'a Link>,
+
+    /// What to do, in a line of plain language.
+    pub hint: String,
+}
+
+/// What fixes a finding of a violation, named in the JSON output in
+/// snake_case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FixAction {
+    /// Remove the import, which a `forbidden` or `protected` contract
+    /// forbids.
+    RemoveImport,
+
+    /// Move what the importer needs into a module that it may import, as
+    /// `independence` and `layers` contracts allow, or remove the import.
+    MoveModule,
+
+    /// Import the module of an `encapsulation` contract through one of its
+    /// entry points.
+    ImportThroughEntryPoint,
+
+    /// Remove the dependency, one that would make an `acyclic` contract's
+    /// units acyclic.
+    BreakCycle,
+
+    /// Declare the module as a layer of an exhaustive `layers` contract, or
+    /// ignore it.
+    DeclareLayer,
 }
 
 /// A dependency of one unit on another whose removal, with the other
@@ -298,5 +415,41 @@ impl fmt::Display for CycleScope {
             Self::Modules(selectors) => message!(contracts_cycle_in, selectors),
             Self::Children(unit) => message!(contracts_cycle_among_children, unit),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        FixAction,
+        testing::{Project, values},
+    };
+
+    #[test]
+    fn each_contract_type_fixes_its_violations_with_its_own_action() {
+        let project = Project::new(
+            &values(&[
+                ("a/x.ts", "b/y.ts"),
+                ("b/y.ts", "a/w.ts"),
+                ("c/v.ts", "a/x.ts"),
+                ("p/a/x.ts", "p/d/y.ts"),
+            ]),
+            &[],
+            include_str!("fixtures/fixes.toml"),
+        );
+        let fix = |id: &str| {
+            let report = project.check(id);
+            let fix = report.violations[0].fixes(&report.config.kind).remove(0);
+            let link = fix.link.map(|link| project.graph.name(link.importer).to_string());
+            (fix.action, link)
+        };
+        let a = Some("a/x.ts".to_string());
+        assert_eq!(fix("forbidden"), (FixAction::RemoveImport, a.clone()));
+        assert_eq!(fix("independence"), (FixAction::MoveModule, a.clone()));
+        assert_eq!(fix("layers"), (FixAction::MoveModule, a.clone()));
+        assert_eq!(fix("exhaustive"), (FixAction::DeclareLayer, None));
+        assert_eq!(fix("protected"), (FixAction::RemoveImport, a.clone()));
+        assert_eq!(fix("acyclic"), (FixAction::BreakCycle, Some("b/y.ts".into())));
+        assert_eq!(fix("encapsulation"), (FixAction::ImportThroughEntryPoint, a));
     }
 }

@@ -11,6 +11,8 @@ error[languages-are-internal]: `lang_js` may only be imported by its allowed imp
    |
 12 |     let language = lang_js::JS;
    |                    ^^^^^^^^^^^ imports `crates/lang_js/src/lib.rs`
+   |
+   = help: remove these imports
 
 Contracts
   ✗ languages-are-internal  protected  broken (2 violations)

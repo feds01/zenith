@@ -11,6 +11,7 @@ error[client-safety]: `src/components/preview.tsx` must not import `npm:sharp`
             src/components/preview.tsx:3
             -> src/lib/images.ts:1
             -> npm:sharp
+  = help: remove this import, or one further along the chain
 
 error[client-safety-without-boundaries]: `src/components/preview.tsx` must not import `npm:sharp`
  --> src/components/preview.tsx:3:27
@@ -22,6 +23,7 @@ error[client-safety-without-boundaries]: `src/components/preview.tsx` must not i
             src/components/preview.tsx:3
             -> src/lib/images.ts:1
             -> npm:sharp
+  = help: remove this import, or one further along the chain
 
 error[client-safety-without-boundaries]: `src/components/save-button.tsx` must not import `npm:sharp`
  --> src/components/save-button.tsx:3:24
@@ -35,6 +37,7 @@ error[client-safety-without-boundaries]: `src/components/save-button.tsx` must n
             -> src/actions/upload.ts:5
             -> src/lib/images.ts:1
             -> npm:sharp
+  = help: remove this import, or one further along the chain
 
 error[client-safety-without-boundaries]: `src/components/save-button.tsx` must not import `npm:server-only`
  --> src/components/save-button.tsx:3:24
@@ -47,6 +50,7 @@ error[client-safety-without-boundaries]: `src/components/save-button.tsx` must n
             -> src/lib/actions.ts:1
             -> src/actions/upload.ts:3
             -> npm:server-only
+  = help: remove this import, or one further along the chain
 
 error[client-safety-without-boundaries]: `src/components/save-button.tsx` must not import `node:fs`
  --> src/components/save-button.tsx:3:24
@@ -59,6 +63,7 @@ error[client-safety-without-boundaries]: `src/components/save-button.tsx` must n
             -> src/lib/actions.ts:1
             -> src/actions/upload.ts:4
             -> node:fs
+  = help: remove this import, or one further along the chain
 
 error[client-safety-without-boundaries]: `src/components/upload-form.tsx` must not import `npm:sharp`
  --> src/components/upload-form.tsx:3:24
@@ -71,6 +76,7 @@ error[client-safety-without-boundaries]: `src/components/upload-form.tsx` must n
             -> src/actions/upload.ts:5
             -> src/lib/images.ts:1
             -> npm:sharp
+  = help: remove this import, or one further along the chain
 
 error[client-safety-without-boundaries]: `src/components/upload-form.tsx` must not import `npm:server-only`
  --> src/components/upload-form.tsx:3:24
@@ -82,6 +88,7 @@ error[client-safety-without-boundaries]: `src/components/upload-form.tsx` must n
             src/components/upload-form.tsx:3
             -> src/actions/upload.ts:3
             -> npm:server-only
+  = help: remove this import, or one further along the chain
 
 error[client-safety-without-boundaries]: `src/components/upload-form.tsx` must not import `node:fs`
  --> src/components/upload-form.tsx:3:24
@@ -93,6 +100,7 @@ error[client-safety-without-boundaries]: `src/components/upload-form.tsx` must n
             src/components/upload-form.tsx:3
             -> src/actions/upload.ts:4
             -> node:fs
+  = help: remove this import, or one further along the chain
 
 Contracts
   ✗ client-safety                     forbidden  broken (1 violation)

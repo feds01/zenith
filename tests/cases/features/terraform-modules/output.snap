@@ -6,12 +6,16 @@ error[modules-below-stacks]: `modules` must not import `live`
   |
 6 |   source = "../../live/prod"
   |            ^^^^^^^^^^^^^^^^^ imports `live/prod`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 error[no-repository-modules]: `live` must not import `tfmod:github.com/acme/modules`
   --> live/prod/main.tf:26:12
    |
 26 |   source = "git::https://github.com/acme/modules.git//dns?ref=v1.2.0"
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `tfmod:github.com/acme/modules`
+   |
+   = help: remove this import
 
 warning: 1 import could not be resolved
   |

@@ -6,18 +6,24 @@ error[orders-not-store]: `internal/orders` must not import `internal/store`
   |
 6 |     "example.com/shop/internal/store"
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `internal/store`
+  |
+  = help: remove this import
 
 error[store-has-no-http]: `internal/store` must not import `go:net/http`
  --> internal/store/store.go:4:2
   |
 4 |     "net/http"
   |     ^^^^^^^^^^ imports `go:net/http`
+  |
+  = help: remove this import
 
 error[shop-has-no-pkg-modules]: `example.com/shop` must not import `gomod:github.com/pkg/errors`
  --> internal/orders/orders.go:4:2
   |
 4 |     "github.com/pkg/errors"
   |     ^^^^^^^^^^^^^^^^^^^^^^^ imports `gomod:github.com/pkg/errors`
+  |
+  = help: remove this import
 
 Contracts
   ✗ orders-not-store         forbidden  broken (1 violation) · 1 suppressed

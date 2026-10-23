@@ -6,6 +6,8 @@ error[core-protected]: `src/core` may only be imported by its allowed importers
   |
 1 | import { b } from "../core/b";
   |                   ^^^^^^^^^^^ imports `src/core/b.ts`
+  |
+  = help: remove this import
 
 Contracts
   ✗ core-protected  protected  broken (1 violation)

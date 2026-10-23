@@ -15,7 +15,8 @@
 //! that `zenith-ignore` comments suppress, and the known violations that its
 //! [`Baseline`] records. It returns a [`ContractReport`] of its
 //! [`Violation`]s, which [`ContractReport::reports`] turns into reports with
-//! excerpts of the imports that break it. The suppressions that had no effect
+//! excerpts of the imports that break it, and [`Violation::fix`] into a
+//! [`Fix`] for each of their findings. The suppressions that had no effect
 //! on any contract are each an [`UnusedSuppression`]. [`CheckJson`] is all of
 //! it as the JSON output of `zenith check`.
 
@@ -37,7 +38,7 @@ mod view;
 pub use baseline::{BASELINE_VERSION, Baseline, BaselineError};
 pub use contract::{Contract, ContractReport, Exemptions};
 pub use error::{ContractError, ContractErrorKind};
-pub use findings::{Chain, CycleBreaker, CycleScope, Link, Violation};
+pub use findings::{Chain, CycleBreaker, CycleScope, Fix, FixAction, Link, Violation};
 pub use schema::{CheckJson, JSON_VERSION};
 pub use selection::{Selection, UnmatchedSelector};
 pub use suppressions::{UnusedReason, UnusedSuppression};

@@ -6,12 +6,16 @@ error[three-tiers]: `src/mid` must not import `src/high`
   |
 1 | import { high } from "../high/h";
   |                      ^^^^^^^^^^^ imports `src/high/h.ts`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 error[three-tiers]: `src/low` must not import `src/mid`
  --> src/low/l.ts:1:21
   |
 1 | import { mid } from "../mid/m";
   |                     ^^^^^^^^^^ imports `src/mid/m.ts`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 Contracts
   ✗ three-tiers  layers  broken (2 violations)

@@ -6,6 +6,8 @@ error[closed-mid]: `src/high` must not import `src/low`
   |
 2 | import { low } from "../low/l";
   |                     ^^^^^^^^^^ imports `src/low/l.ts`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 Contracts
   ✗ closed-mid  layers  broken (1 violation)

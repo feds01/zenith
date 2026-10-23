@@ -1,21 +1,21 @@
 $ zenith check --format compact
 exit: 1
 --- stdout
-src/web/a.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`
-src/web/b.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`
+src/web/a.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`; remove this import
+src/web/b.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`; remove this import
 warning: 1 import could not be resolved
 0 kept, 1 broken · 4 files, 2 imports
 
 $ zenith check src/web/a.ts --format compact
 exit: 1
 --- stdout
-src/web/a.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`
+src/web/a.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`; remove this import
 0 kept, 1 broken · 4 files, 2 imports
 
 $ zenith check src/api/server.ts --format compact
 exit: 1
 --- stdout
-src/web/b.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`
+src/web/b.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`; remove this import
 0 kept, 1 broken · 4 files, 2 imports
 
 $ zenith check src/web
@@ -31,6 +31,8 @@ error[web-not-api]: `src/web` must not import `src/api`
   |
 1 | import { server } from "../api/server";
   |                        ^^^^^^^^^^^^^^^ imports `src/api/server.ts`
+  |
+  = help: remove these imports
 
 warning: 1 import could not be resolved
   |
@@ -49,8 +51,8 @@ exit: 0
 $ zenith check . --format compact
 exit: 1
 --- stdout
-src/web/a.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`
-src/web/b.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`
+src/web/a.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`; remove this import
+src/web/b.ts:1:24: error[web-not-api]: `src/web` must not import `src/api`; remove this import
 warning: 1 import could not be resolved
 0 kept, 1 broken · 4 files, 2 imports
 

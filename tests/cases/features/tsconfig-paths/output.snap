@@ -6,6 +6,8 @@ error[tools-not-shared]: `tools` must not import `shared`
   |
 1 | import { shared } from "~shared/util";
   |                        ^^^^^^^^^^^^^^ imports `shared/util.ts`
+  |
+  = help: remove this import
 
 Contracts
   ✓ core-not-app           forbidden  kept

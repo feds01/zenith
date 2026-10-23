@@ -6,6 +6,8 @@ error[b-not-a]: `src/b` must not import `src/a`
   |
 1 | import type { X } from "../a/types";
   |                        ^^^^^^^^^^^^ imports `src/a/types.ts`
+  |
+  = help: remove this import
 
 Contracts
   ✗ b-not-a  forbidden  broken (1 violation)

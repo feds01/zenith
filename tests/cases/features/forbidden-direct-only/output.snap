@@ -16,12 +16,15 @@ error[transitive]: `src/a` must not import `src/c`
             src/a/x.ts:1
             -> src/b/y.ts:1
             -> src/c/z.ts
+  = help: remove these imports, or for a chain, one further along it
 
 error[direct-only]: `src/a` must not import `src/c`
  --> src/a/w.ts:1:19
   |
 1 | import { z } from "../c/z";
   |                   ^^^^^^^^ imports `src/c/z.ts`
+  |
+  = help: remove this import
 
 Contracts
   ✗ transitive   forbidden  broken (2 violations)

@@ -1,0 +1,31 @@
+[contracts.forbidden]
+type = "forbidden"
+from = ["a"]
+to = ["b"]
+
+[contracts.independence]
+type = "independence"
+modules = ["a", "b"]
+
+[contracts.layers]
+type = "layers"
+layers = ["b", "a"]
+
+[contracts.exhaustive]
+type = "layers"
+containers = ["p"]
+layers = ["a"]
+exhaustive = true
+
+[contracts.protected]
+type = "protected"
+modules = ["b"]
+allowed_importers = ["c"]
+
+[contracts.acyclic]
+type = "acyclic"
+modules = ["a", "b"]
+
+[contracts.encapsulation]
+type = "encapsulation"
+modules = ["b"]

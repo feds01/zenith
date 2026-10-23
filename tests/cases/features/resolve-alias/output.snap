@@ -6,6 +6,8 @@ error[ui-not-types]: `src/ui` must not import `src/types`
   |
 1 | import { ANONYMOUS } from "types/user";
   |                           ^^^^^^^^^^^^ imports `src/types/user.ts`
+  |
+  = help: remove this import
 
 warning: 1 import could not be resolved
   |

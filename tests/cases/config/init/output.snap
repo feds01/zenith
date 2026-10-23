@@ -14,6 +14,7 @@ error[packages-acyclic]: dependency cycle in `pkg:*`
   |
   = note: it could be made acyclic by removing 1 dependency:
             @init/b -> @init/a (1 import)
+  = help: remove `@init/b` -> `@init/a` to break the cycle
 
 Contracts
   ✗ packages-acyclic  acyclic  broken (1 violation)

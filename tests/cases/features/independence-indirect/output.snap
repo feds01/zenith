@@ -11,12 +11,15 @@ error[modules-independent]: `src/a` must not import `src/b`
             src/a/x.ts:1
             -> src/shared/s.ts:1
             -> src/b/y.ts
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 error[modules-independent]: `src/c` must not import `src/a`
  --> src/c/z.ts:1:19
   |
 1 | import { x } from "../a/x";
   |                   ^^^^^^^^ imports `src/a/x.ts`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 Contracts
   ✗ modules-independent  independence  broken (2 violations)

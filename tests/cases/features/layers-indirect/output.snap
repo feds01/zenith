@@ -11,6 +11,7 @@ error[indirect]: `src/low` must not import `src/high`
             src/low/l.ts:1
             -> src/util/u.ts:1
             -> src/high/h.ts
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 Contracts
   ✗ indirect     layers  broken (1 violation)

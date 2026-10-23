@@ -53,7 +53,10 @@ such as `"use client"`, are recorded too, and contracts can see through
 Specifiers resolve as TypeScript and Node resolve them, with each file's
 nearest `tsconfig.json` and its `paths`, project references and `extends`.
 Imports of workspace packages resolve to their source, through their `exports`
-maps, whether or not `node_modules` is installed.
+maps, and so do `tsconfig.json` files that extend one from a workspace package,
+whether or not `node_modules` is installed. A project inside another checkout,
+such as a git worktree, never resolves them through the other checkout's
+`node_modules`.
 
 | Imported | Node | |
 |---|---|---|
@@ -61,7 +64,6 @@ maps, whether or not `node_modules` is installed.
 | an external package | `npm:react` | Named without its subpath, so `lodash/get` is `npm:lodash`. A bare specifier that doesn't resolve still names its package, so `npm:` contracts work in CI without installing dependencies. |
 | a builtin | `node:fs`, `bun:sqlite` | Node builtins always have the `node:` prefix, and lose their subpath too: `fs/promises` is `node:fs`. |
 
-A `tsconfig.json` that extends one from a package, even a workspace package,
-can only be loaded once the package is installed. Until then, its files
-resolve without it, so their path aliases don't resolve, and `zenith check`
-says so.
+A `tsconfig.json` that extends one from any other package can only be loaded
+once the package is installed. Until then, its files resolve without it, so
+their path aliases don't resolve, and `zenith check` says so.

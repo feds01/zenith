@@ -12,6 +12,7 @@ use std::{
 
 use log::debug;
 use rustc_hash::{FxHashMap, FxHashSet};
+use zenith_diagnostics::message;
 use zenith_utils::path::relative_posix;
 
 use crate::WalkResult;
@@ -69,7 +70,7 @@ impl Git {
     /// inside it.
     pub fn renames(&self) -> Renames {
         self.find_renames().unwrap_or_else(|error| {
-            debug!("not following renamed files: {error}");
+            debug!("{}", message!(workspace_renames_not_followed, error));
             Renames::default()
         })
     }
@@ -214,8 +215,10 @@ pub enum GitError {
 impl fmt::Display for GitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Run(error) => write!(f, "could not run `git`: {error}"),
-            Self::Failed { command, message } => write!(f, "`git {command}` failed: {message}"),
+            Self::Run(error) => f.write_str(&message!(workspace_git_not_run, error)),
+            Self::Failed { command, message } => {
+                f.write_str(&message!(workspace_git_failed, command, message))
+            }
         }
     }
 }

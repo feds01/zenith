@@ -41,8 +41,8 @@ guidance = "Keep server-only modules out of client bundles."
 
 `zenith check` finds a component that imports from the app layer above it, and
 a client component that reaches `sharp` through another module. It shows each
-violation with the import, or the chain of imports, that makes it, then a line
-per contract:
+violation with the import, or the chain of imports, that makes it, and how to
+fix it, then a line per contract:
 
 ```text
 error[web-layers]: `web/src/components` must not import `web/src/app`
@@ -51,6 +51,7 @@ error[web-layers]: `web/src/components` must not import `web/src/app`
 3 | import { DASHBOARD_TABS } from "@/app/tabs";
   |                                ^^^^^^^^^^^^ imports `web/src/app/tabs.ts`
   |
+  = help: move the imported code into a module that may be imported here, or remove this import
   = help: Lower layers must not import higher ones.
 
 error[client-safety]: `web/src/components/upload.tsx` must not import `npm:sharp`
@@ -63,6 +64,7 @@ error[client-safety]: `web/src/components/upload.tsx` must not import `npm:sharp
             web/src/components/upload.tsx:3
             -> web/src/lib/images.ts:1
             -> npm:sharp
+  = help: remove this import, or one further along the chain
   = help: Keep server-only modules out of client bundles.
 
 Contracts

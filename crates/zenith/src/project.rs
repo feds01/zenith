@@ -133,7 +133,8 @@ pub(crate) fn compile_contracts<'s>(
     let selected = configs.iter().filter(|config| ids.is_empty() || ids.contains(&config.id));
     Contract::compile_all(selected, &session.graph, &session.workspace).map_err(|errors| {
         let (sources, config) = session.sources();
-        let reports: Vec<_> = errors.iter().map(|error| error.report(config)).collect();
+        let reports: Vec<_> =
+            errors.iter().map(|error| error.report_in(ReportKind::Error, config)).collect();
         reporting::emit(&sources, &reports);
         Reported.into()
     })

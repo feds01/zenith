@@ -3,7 +3,7 @@
 use std::time::{Duration, Instant};
 
 use rayon::prelude::*;
-use zenith_config::{AlertLevel, ContractConfig, IgnoreImport, Selector};
+use zenith_config::{AlertLevel, ContractConfig, IgnoreImport, InContract, Selector};
 use zenith_graph::{Graph, ModuleId, NodeSet, Unit};
 use zenith_lang::Workspace;
 use zenith_pipeline::{FileSuppressions, Graphs, Scope};
@@ -301,7 +301,8 @@ impl<'a> UnitResolver<'a> {
 
     /// Record an error in the contract, at `range` in the configuration file.
     pub(crate) fn error(&mut self, kind: ContractErrorKind, range: Option<ByteRange>) {
-        self.errors.push(ContractError { contract: self.contract.to_string(), kind, range });
+        let contract = InContract(self.contract.to_string());
+        self.errors.push(ContractError { contract, kind, range });
     }
 }
 
@@ -375,7 +376,7 @@ allowed_importers = [\"web/aap\"]
             .map(|error| {
                 let range = error.range.unwrap();
                 (
-                    error.contract.as_str(),
+                    error.contract.0.as_str(),
                     error.kind.to_string(),
                     &toml[range.start() as usize..range.end() as usize],
                 )

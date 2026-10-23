@@ -18,6 +18,7 @@ use fluent_syntax::{
 /// file's name, and its contents.
 const SOURCES: &[(&str, &str)] = &[
     ("config.ftl", include_str!("../../zenith_diagnostics/messages/en-US/config.ftl")),
+    ("contracts.ftl", include_str!("../../zenith_diagnostics/messages/en-US/contracts.ftl")),
     ("go.ftl", include_str!("../../zenith_diagnostics/messages/en-US/go.ftl")),
     ("graph.ftl", include_str!("../../zenith_diagnostics/messages/en-US/graph.ftl")),
     ("js.ftl", include_str!("../../zenith_diagnostics/messages/en-US/js.ftl")),

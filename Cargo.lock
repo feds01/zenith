@@ -2562,7 +2562,7 @@ dependencies = [
 
 [[package]]
 name = "zenith"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "argfile",
@@ -2585,7 +2585,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_benchmark"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "codspeed-divan-compat",
  "fastrand",
@@ -2607,7 +2607,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_cache"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "log",
  "rustc-hash 2.1.3",
@@ -2618,7 +2618,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_config"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "indexmap",
  "schemars",
@@ -2635,7 +2635,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_contracts"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "rayon",
  "rustc-hash 2.1.3",
@@ -2656,7 +2656,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_diagnostics"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "annotate-snippets",
  "fluent-bundle",
@@ -2669,7 +2669,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_graph"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "bitflags",
  "compact_str 0.10.0",
@@ -2688,7 +2688,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lang"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "thin-vec",
  "zenith_cache",
@@ -2699,7 +2699,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lang_go"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "log",
  "schemars",
@@ -2717,7 +2717,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lang_js"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "compact_str 0.10.0",
  "indexmap",
@@ -2745,7 +2745,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lang_python"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "log",
  "ruff_python_ast",
@@ -2766,7 +2766,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lang_rust"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "compact_str 0.10.0",
  "log",
@@ -2787,7 +2787,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_macros"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "fluent-syntax",
  "proc-macro2",
@@ -2797,7 +2797,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_pipeline"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "log",
  "rayon",
@@ -2820,7 +2820,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_reporting"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "zenith_diagnostics",
  "zenith_utils",
@@ -2828,7 +2828,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_utils"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "dunce",
  "log",
@@ -2840,7 +2840,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_workspace"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ignore",
  "log",

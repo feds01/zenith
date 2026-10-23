@@ -3,13 +3,10 @@
 //! and its line of the summary.
 
 use zenith_config::{AlertLevel, BaselineConfig, ContractConfig, ContractKind, Severity};
-use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span};
+use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span, message};
 use zenith_graph::{Graph, ImportDetail, ImportKind};
 use zenith_reporting::{Count, Outcome, Summary, SummaryEntry};
-use zenith_utils::{
-    location::ByteRange,
-    printing::{plural, thousands},
-};
+use zenith_utils::location::ByteRange;
 
 use crate::{Chain, ContractReport, CycleBreaker, Link, Violation, baseline::entry_ranges};
 
@@ -79,18 +76,18 @@ impl ContractReport<'_> {
         } else if self.stale_entries.is_empty() {
             Outcome::Kept
         } else {
-            let status = "kept, with a stale baseline".to_string();
+            let status = message!(contracts_kept_with_stale_baseline);
             Outcome::KeptWith { status, kind: baseline.stale_kind(self.config.severity) }
         };
         let left_out = [
-            (self.baselined, "baselined"),
-            (self.ignored, "ignored"),
-            (self.suppressed, "suppressed"),
+            (self.baselined, message!(contracts_baselined, count = self.baselined)),
+            (self.ignored, message!(contracts_ignored, count = self.ignored)),
+            (self.suppressed, message!(contracts_suppressed, count = self.suppressed)),
         ];
         let details = left_out
             .into_iter()
             .filter(|(count, _)| *count > 0)
-            .map(|(count, how)| format!("{} {how}", thousands(count)))
+            .map(|(_, detail)| detail)
             .collect();
         SummaryEntry {
             id: self.config.id.clone(),
@@ -157,22 +154,20 @@ impl ReportBuilder<'_> {
     fn unmatched_ignores(&self, kind: ReportKind, report: &ContractReport) -> Vec<Report> {
         let config = report.config;
         let (kind, help) = match config.unmatched_ignore_imports {
-            AlertLevel::Error => {
-                (kind, "remove it, or set `unmatched_ignore_imports` to `warn` or `none`")
-            }
+            AlertLevel::Error => (kind, message!(contracts_unmatched_ignore.help_error)),
             AlertLevel::Warn => {
-                (ReportKind::Warning, "remove it, or set `unmatched_ignore_imports` to `none`")
+                (ReportKind::Warning, message!(contracts_unmatched_ignore.help_warn))
             }
             AlertLevel::None => return Vec::new(),
         };
         let mut reports = Vec::new();
         for entry in &report.unmatched_ignores {
-            let title = format!("the ignored import `{entry}` matches no import");
+            let title = message!(contracts_unmatched_ignore, entry);
             let mut report = Report::new(kind, title).with_id(&config.id);
             if let (Some(source), Some(range)) = (self.config, entry.range()) {
                 report.add_span(Span::new(source, range));
             }
-            report.add_help(help);
+            report.add_help(&help);
             reports.push(report);
         }
         reports
@@ -186,7 +181,7 @@ impl ReportBuilder<'_> {
             return None;
         }
         let config = report.config;
-        let title = plural(entries.len(), "stale baseline entry");
+        let title = message!(contracts_stale_entries, count = entries.len());
         let kind = self.baseline.stale_kind(config.severity);
         let mut stale = Report::new(kind, title).with_id(&config.id);
         let mut unlocated = Vec::new();
@@ -194,21 +189,19 @@ impl ReportBuilder<'_> {
         for (entry, span) in shown.iter().zip(self.entry_spans(&config.id, shown)) {
             match span {
                 Some(span) => {
-                    stale.add_labelled_span(span, "its import no longer exists");
+                    stale.add_labelled_span(span, message!(contracts_stale_entries.label));
                 }
                 None => unlocated.push(format!("  {entry}")),
             }
         }
         if !unlocated.is_empty() {
-            stale.add_note(format!("these imports no longer exist:\n{}", unlocated.join("\n")));
+            let heading = message!(contracts_stale_entries.unlocated);
+            stale.add_note(format!("{heading}\n{}", unlocated.join("\n")));
         }
         if entries.len() > MAX_STALE {
-            stale.add_note(format!("and {}", plural(entries.len() - MAX_STALE, "more entry")));
+            stale.add_note(message!(contracts_more_entries, count = entries.len() - MAX_STALE));
         }
-        stale.add_help(match entries.len() {
-            1 => "run `zenith baseline --prune` to remove it",
-            _ => "run `zenith baseline --prune` to remove them",
-        });
+        stale.add_help(message!(contracts_stale_entries.help, count = entries.len()));
         Some(stale)
     }
 
@@ -233,11 +226,13 @@ impl ReportBuilder<'_> {
             match violation {
                 Violation::Dependency { importer, imported, chains } => {
                     for chain in chains {
-                        let via = match chain.links.len() {
-                            1 => String::new(),
-                            _ => format!(" (via {})", chain_summary(graph, chain)),
+                        let title = match chain.links.len() {
+                            1 => message!(contracts_must_not_import, importer, imported),
+                            _ => {
+                                let chain = chain_summary(graph, chain);
+                                message!(contracts_must_not_import_via, importer, imported, chain)
+                            }
                         };
-                        let title = format!("`{importer}` must not import `{imported}`{via}");
                         findings.push(self.finding(kind, title, chain.links.first()));
                     }
                 }
@@ -245,12 +240,10 @@ impl ReportBuilder<'_> {
                     for link in imports {
                         let title = if encapsulation {
                             let imported = graph.name(link.imported);
-                            format!(
-                                "`{imported}` is internal to `{module}`; import it through an entry point"
-                            )
+                            message!(contracts_internal_import, imported, module)
                         } else {
                             let importer = graph.name(link.importer);
-                            format!("`{importer}` may not import the protected module `{module}`")
+                            message!(contracts_protected_import, importer, module)
                         };
                         findings.push(self.finding(kind, title, Some(link)));
                     }
@@ -259,18 +252,19 @@ impl ReportBuilder<'_> {
                     for breaker in breakers {
                         let mut cycle = breaker.cycle.clone();
                         cycle.push(breaker.importer.clone());
-                        let title = format!(
-                            "dependency cycle {scope}: {}; remove `{}` -> `{}` to break it",
-                            cycle.join(" -> "),
-                            breaker.importer,
-                            breaker.imported
+                        let title = message!(
+                            contracts_cycle_finding,
+                            scope,
+                            cycle = cycle.join(" -> "),
+                            importer = breaker.importer,
+                            imported = breaker.imported
                         );
                         findings.push(self.finding(kind, title, breaker.imports.first()));
                     }
                 }
                 Violation::UndeclaredModule { container, module } => {
                     let module = graph.name(*module);
-                    let title = format!("`{module}` is not declared as a layer of `{container}`");
+                    let title = message!(contracts_undeclared_module, module, container);
                     findings.push(Report::new(kind, title));
                 }
             }
@@ -288,7 +282,7 @@ impl ReportBuilder<'_> {
         };
         if let Some(unmatched) = unmatched {
             for entry in &report.unmatched_ignores {
-                let title = format!("the ignored import `{entry}` matches no import");
+                let title = message!(contracts_unmatched_ignore, entry);
                 let mut finding = Report::new(unmatched, title);
                 if let (Some(source), Some(range)) = (self.config, entry.range()) {
                     finding.add_span(Span::new(source, range));
@@ -298,12 +292,12 @@ impl ReportBuilder<'_> {
         }
         let stale = self.entry_spans(&config.id, &report.stale_entries);
         for (entry, span) in report.stale_entries.iter().zip(stale) {
-            let title = format!("stale baseline entry `{entry}`: its import no longer exists");
+            let title = message!(contracts_stale_entry, entry);
             let mut finding = Report::new(self.baseline.stale_kind(config.severity), title);
             if let Some(span) = span {
                 finding.add_span(span);
             }
-            finding.add_help("run `zenith baseline --prune` to remove it");
+            finding.add_help(message!(contracts_stale_entries.help, count = 1));
             findings.push(finding);
         }
         findings.into_iter().map(|finding| finding.with_id(&config.id)).collect()
@@ -328,42 +322,41 @@ impl ReportBuilder<'_> {
     ) -> Report {
         match violation {
             Violation::Dependency { importer, imported, chains } => {
-                let title = format!("`{importer}` must not import `{imported}`");
+                let title = message!(contracts_must_not_import, importer, imported);
                 self.chains(Report::new(kind, title), chains)
             }
             Violation::IllegalImports { module, imports } => {
                 let encapsulation = matches!(config.kind, ContractKind::Encapsulation(_));
                 let title = if encapsulation {
-                    format!("`{module}` may only be imported through its entry points")
+                    message!(contracts_internal_module, module)
                 } else {
-                    format!("`{module}` may only be imported by its allowed importers")
+                    message!(contracts_protected_module, module)
                 };
                 let mut report = Report::new(kind, title);
                 for link in imports.iter().take(MAX_IMPORTS) {
                     let imported = self.graph.name(link.imported);
                     let label = if encapsulation {
-                        format!("imports `{imported}`, which is internal")
+                        message!(contracts_internal_module.label, imported)
                     } else {
-                        format!("imports `{imported}`")
+                        message!(contracts_imports, imported)
                     };
                     self.excerpt(&mut report, link, label);
                 }
                 if imports.len() > MAX_IMPORTS {
-                    let more = plural(imports.len() - MAX_IMPORTS, "more import");
-                    report.add_note(format!("and {more}"));
+                    let more =
+                        message!(contracts_more_imports, count = imports.len() - MAX_IMPORTS);
+                    report.add_note(more);
                 }
                 report
             }
             Violation::Cycle { scope, breakers } => {
-                self.cycle(Report::new(kind, format!("dependency cycle {scope}")), breakers)
+                self.cycle(Report::new(kind, message!(contracts_cycle, scope)), breakers)
             }
             Violation::UndeclaredModule { container, module } => {
                 let module = self.graph.name(*module);
-                let title = format!("`{module}` is not declared as a layer of `{container}`");
+                let title = message!(contracts_undeclared_module, module, container);
                 let mut report = Report::new(kind, title);
-                report.add_help(
-                    "the contract is exhaustive: declare it in `layers`, or add it to `exhaustive_ignores`",
-                );
+                report.add_help(message!(contracts_undeclared_module.help));
                 report
             }
         }
@@ -375,29 +368,24 @@ impl ReportBuilder<'_> {
         for chain in chains.iter().take(MAX_EXCERPTS) {
             let link = &chain.links[0];
             let label = match chain.links.len() {
-                1 => format!("imports `{}`", self.graph.name(link.imported)),
-                length => format!("starts a chain of {length} imports"),
+                1 => message!(contracts_imports, imported = self.graph.name(link.imported)),
+                length => message!(contracts_chain_start, length),
             };
             self.excerpt(&mut report, link, label);
         }
 
         let indirect: Vec<_> = chains.iter().filter(|chain| chain.links.len() > 1).collect();
         for (index, chain) in indirect.iter().take(MAX_CHAINS).enumerate() {
-            let heading = match indirect.len() {
-                1 => "import chain:".to_string(),
-                total => format!("import chain {} of {total}:", index + 1),
-            };
+            let heading =
+                message!(contracts_chain_heading, index = index + 1, total = indirect.len());
             report.add_note(format!("{heading}\n{}", self.chain(chain)));
         }
         if indirect.len() > MAX_CHAINS {
-            report.add_note(format!("and {}", plural(indirect.len() - MAX_CHAINS, "more chain")));
+            report.add_note(message!(contracts_more_chains, count = indirect.len() - MAX_CHAINS));
         }
         let direct = chains.len() - indirect.len();
         if direct > MAX_EXCERPTS {
-            report.add_note(format!(
-                "{} in total; use `--format compact` to list them all",
-                plural(direct, "direct import")
-            ));
+            report.add_note(message!(contracts_direct_imports, count = direct));
         }
         report
     }
@@ -410,21 +398,22 @@ impl ReportBuilder<'_> {
         {
             let mut cycle = breaker.cycle.clone();
             cycle.push(breaker.importer.clone());
-            self.excerpt(&mut report, link, format!("closes the cycle {}", cycle.join(" -> ")));
+            let label = message!(contracts_cycle.label, cycle = cycle.join(" -> "));
+            self.excerpt(&mut report, link, label);
         }
-        let mut note = format!(
-            "it could be made acyclic by removing {}:",
-            match breakers.len() {
-                1 => "1 dependency".to_string(),
-                count => format!("{count} dependencies"),
-            }
-        );
+        let mut note = message!(contracts_cycle_breakers, count = breakers.len());
         for breaker in breakers.iter().take(MAX_BREAKERS) {
-            let imports = plural(breaker.imports.len(), "import");
-            note += &format!("\n  {} -> {} ({imports})", breaker.importer, breaker.imported);
+            let line = message!(
+                contracts_cycle_breaker,
+                importer = breaker.importer,
+                imported = breaker.imported,
+                count = breaker.imports.len()
+            );
+            note += &format!("\n  {line}");
         }
         if breakers.len() > MAX_BREAKERS {
-            note += &format!("\n  and {} more", breakers.len() - MAX_BREAKERS);
+            let more = message!(contracts_more_breakers, count = breakers.len() - MAX_BREAKERS);
+            note += &format!("\n  {more}");
         }
         report.add_note(note);
         report
@@ -529,9 +518,9 @@ fn chain_summary(graph: &Graph, chain: &Chain) -> String {
     if nodes.len() <= 5 {
         return nodes.join(" -> ");
     }
-    let more = nodes.len() - 4;
+    let more = message!(contracts_chain_middle, count = nodes.len() - 4);
     format!(
-        "{} -> {} -> ({more} more) -> {} -> {}",
+        "{} -> {} -> {more} -> {} -> {}",
         nodes[0],
         nodes[1],
         nodes[nodes.len() - 2],
@@ -627,6 +616,23 @@ mod tests {
             "0.ts -> 1.ts -> 2.ts -> 3.ts -> 4.ts"
         );
         assert_eq!(chain_summary(&graph, &chain(&ids)), "0.ts -> 1.ts -> (2 more) -> 4.ts -> 5.ts");
+    }
+
+    #[test]
+    fn counts_choose_their_plural_and_group_their_digits() {
+        assert_eq!(message!(contracts_chain_heading, index = 1, total = 1), "import chain:");
+        assert_eq!(message!(contracts_chain_heading, index = 2, total = 3), "import chain 2 of 3:");
+        assert_eq!(message!(contracts_more_chains, count = 1), "and 1 more chain");
+        assert_eq!(message!(contracts_more_imports, count = 1234), "and 1,234 more imports");
+        assert_eq!(message!(contracts_more_entries, count = 2), "and 2 more entries");
+        assert_eq!(
+            message!(contracts_cycle_breakers, count = 2),
+            "it could be made acyclic by removing 2 dependencies:"
+        );
+        assert_eq!(
+            message!(contracts_stale_entries.help, count = 2),
+            "run `zenith baseline --prune` to remove them"
+        );
     }
 
     #[test]

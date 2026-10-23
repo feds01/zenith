@@ -16,6 +16,7 @@
 use std::fmt;
 
 use zenith_config::{Selector, SelectorTarget};
+use zenith_diagnostics::message;
 use zenith_graph::{Graph, NodeSet, Unit};
 use zenith_lang::Workspace;
 
@@ -126,7 +127,7 @@ pub struct UnmatchedSelector {
 
 impl fmt::Display for UnmatchedSelector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "`{}` does not match anything", self.selector)
+        f.write_str(&message!(contracts_unmatched_selector, selector = self.selector))
     }
 }
 

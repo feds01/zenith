@@ -7,6 +7,7 @@
 
 use std::fmt;
 
+use zenith_diagnostics::message;
 use zenith_graph::{Graph, GraphView, ImportDetail, ModuleId, Route};
 use zenith_pipeline::Scope;
 
@@ -293,9 +294,9 @@ pub enum CycleScope {
 /// children of `web/src` ``.
 impl fmt::Display for CycleScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Modules(selectors) => write!(f, "in `{selectors}`"),
-            Self::Children(unit) => write!(f, "among the children of `{unit}`"),
-        }
+        f.write_str(&match self {
+            Self::Modules(selectors) => message!(contracts_cycle_in, selectors),
+            Self::Children(unit) => message!(contracts_cycle_among_children, unit),
+        })
     }
 }

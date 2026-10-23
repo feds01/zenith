@@ -27,6 +27,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use toml::Spanned;
+use zenith_diagnostics::message;
 use zenith_graph::{EdgeSet, Graph, ModuleId};
 use zenith_lang::Workspace;
 use zenith_pipeline::Graphs;
@@ -333,21 +334,15 @@ pub enum BaselineError {
 
 impl fmt::Display for BaselineError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Read { path, error } => {
-                write!(f, "could not read the baseline `{path}`: {error}")
+        let text = match self {
+            Self::Read { path, error } => message!(contracts_baseline_read, path, error),
+            Self::Invalid { path, message } => message!(contracts_baseline_invalid, path, message),
+            Self::Version { path, version } => {
+                message!(contracts_baseline_version, path, version, expected = BASELINE_VERSION)
             }
-            Self::Invalid { path, message } => {
-                write!(f, "the baseline `{path}` is invalid: {message}")
-            }
-            Self::Version { path, version } => write!(
-                f,
-                "the baseline `{path}` has version {version}, but zenith reads version {BASELINE_VERSION}"
-            ),
-            Self::Write { path, error } => {
-                write!(f, "could not write the baseline `{path}`: {error}")
-            }
-        }
+            Self::Write { path, error } => message!(contracts_baseline_write, path, error),
+        };
+        f.write_str(&text)
     }
 }
 
@@ -361,7 +356,7 @@ fn describe(error: &toml::de::Error, text: &str) -> String {
     let lines = LineIndex::new(text);
     let line = lines.line(span.start as u32);
     let column = span.start as u32 - lines.line_range(line).start() + 1;
-    format!("{message} at line {line} column {column}")
+    message!(contracts_baseline_error_at, message, line, column)
 }
 
 /// The message includes the cause, so the error has no `source`: reporters

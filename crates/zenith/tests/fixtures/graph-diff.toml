@@ -1,0 +1,7 @@
+# Leaves a file out, so that a test can tell whether a commit's graph was
+# built with this configuration.
+
+[files]
+exclude = ["src/legacy.ts"]
+
+[languages.js]

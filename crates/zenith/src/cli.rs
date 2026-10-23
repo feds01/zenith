@@ -5,6 +5,7 @@ use std::{
     ffi::{OsStr, OsString},
     io::{self, IsTerminal},
     iter,
+    num::NonZeroUsize,
     path::PathBuf,
 };
 
@@ -145,6 +146,7 @@ pub enum Command {
 
     /// Show the module tree under a selector, and the dependencies between
     /// its children.
+    #[command(args_conflicts_with_subcommands = true, disable_help_subcommand = true)]
     Graph(GraphCommand),
 
     /// Show the shortest import chains from one selector to another.
@@ -237,6 +239,57 @@ pub struct GraphCommand {
     /// The imports to leave out of the dependencies.
     #[command(flatten)]
     pub kinds: KindFilter,
+
+    /// What to show instead of the module tree.
+    #[command(subcommand)]
+    pub action: Option<GraphAction>,
+}
+
+/// What `zenith graph` can show instead of the module tree.
+#[derive(Clone, Debug, clap::Subcommand)]
+pub enum GraphAction {
+    /// Show the dependencies between the children of a selector that were
+    /// added and removed from one git ref to another.
+    Diff(GraphDiffCommand),
+}
+
+/// Arguments of `zenith graph diff`.
+#[derive(Clone, Debug, clap::Args)]
+pub struct GraphDiffCommand {
+    /// The ref to compare from, e.g. `main`, at the commit where the head
+    /// left it.
+    pub base: String,
+
+    /// The ref to compare to. Defaults to the working tree.
+    pub head: Option<String>,
+
+    /// The selector whose children to compare, after `--`, e.g. `-- web/src`.
+    /// Defaults to the whole project.
+    #[arg(last = true, value_parser = parse_selector)]
+    pub selector: Option<Selector>,
+
+    /// How far below the selector to compare; 1 compares its children.
+    /// Unlike `zenith graph --depth`, it doesn't set how deep a tree is
+    /// drawn.
+    #[arg(long, default_value_t = NonZeroUsize::MIN, value_name = "N")]
+    pub depth: NonZeroUsize,
+
+    /// The output format.
+    #[arg(long, value_enum, default_value_t = GraphDiffFormat::Tree)]
+    pub format: GraphDiffFormat,
+
+    /// The imports to leave out of the dependencies.
+    #[command(flatten)]
+    pub kinds: KindFilter,
+}
+
+/// The output formats of `zenith graph diff`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum GraphDiffFormat {
+    /// The added and removed dependencies, as the lines of a diff.
+    Tree,
+    /// The added and removed dependencies as JSON.
+    Json,
 }
 
 /// Arguments of `zenith why`.
@@ -454,6 +507,36 @@ mod tests {
     }
 
     #[test]
+    fn parses_graph_diff() {
+        let cli = parse("zenith graph diff main");
+        let Command::Graph(GraphCommand { action: Some(GraphAction::Diff(diff)), .. }) =
+            cli.command
+        else {
+            panic!("expected `graph diff`")
+        };
+        assert_eq!((diff.base.as_str(), diff.head, diff.selector), ("main", None, None));
+        assert_eq!((diff.depth.get(), diff.format), (1, GraphDiffFormat::Tree));
+
+        let cli = parse("zenith graph diff main feature --depth 2 -- web/src");
+        let Command::Graph(GraphCommand { action: Some(GraphAction::Diff(diff)), .. }) =
+            cli.command
+        else {
+            panic!("expected `graph diff`")
+        };
+        assert_eq!(diff.head.as_deref(), Some("feature"));
+        assert_eq!(diff.selector, Some(parse_selector("web/src").unwrap()));
+        assert_eq!(diff.depth.get(), 2);
+
+        // A selector still comes straight after `graph`, as `./diff` for a directory
+        // called `diff`.
+        let Command::Graph(graph) = parse("zenith graph ./diff").command else {
+            panic!("expected `graph`")
+        };
+        assert!(graph.action.is_none());
+        assert_eq!(graph.selector, Some(parse_selector("./diff").unwrap()));
+    }
+
+    #[test]
     fn colours_only_when_asked_or_on_a_terminal() {
         assert!(ColourChoice::Always.should_colour());
         assert!(!ColourChoice::Never.should_colour());
@@ -466,6 +549,7 @@ mod tests {
             "zenith check src --since main --contract a --format github --no-baseline --show-unresolved --show-timings",
             "zenith baseline --contract a --prune",
             "zenith graph web/src --depth 3 --format dot --exclude-kind type --exclude-kind require",
+            "zenith graph diff main HEAD --depth 2 --format json --exclude-kind type -- web/src",
             "zenith why web/src pkg:@acme/api --exclude-kind dynamic --exclude-kind value --limit 5",
             "zenith resolve web/src/app.ts @/lib/format",
             "zenith init --force",
@@ -487,6 +571,10 @@ mod tests {
             ("zenith graph --exclude-kind types", ErrorKind::InvalidValue),
             ("zenith graph web/{src", ErrorKind::ValueValidation),
             ("zenith why web/src ../lib", ErrorKind::ValueValidation),
+            ("zenith graph diff", ErrorKind::MissingRequiredArgument),
+            ("zenith graph diff main --depth 0", ErrorKind::ValueValidation),
+            ("zenith graph diff main --format dot", ErrorKind::InvalidValue),
+            ("zenith graph diff main web/src extra", ErrorKind::UnknownArgument),
         ] {
             let error = Cli::try_parse_from(line.split_whitespace()).unwrap_err();
             assert_eq!(error.kind(), kind, "{line}");

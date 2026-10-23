@@ -10,6 +10,7 @@ use zenith_contracts::Contract;
 use zenith_diagnostics::{Diagnostic, ReportKind, SourceMap, message};
 use zenith_pipeline::{FileError, FileErrorKind, LANGUAGES, Pipeline, Session, StageKind};
 use zenith_utils::path::adjust_canonicalisation;
+use zenith_workspace::Checkout;
 
 use crate::{Reported, cli::GlobalArgs, reporting, version::version};
 
@@ -66,6 +67,52 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
     session.tracked_only = global.tracked;
     if !global.no_cache {
         session.cache = session.cache_settings(&version().to_string());
+    }
+    Ok(session)
+}
+
+/// Build the graph of the project of `project` as it is in `checkout`, the
+/// commit that `reference` names: rooted at the same path in the checkout,
+/// and configured by the configuration file at the same path, or by the one
+/// in that root, or else by the defaults. A configuration file outside the
+/// repository configures it as it is.
+///
+/// Every file of the commit is scanned, without a parse cache, and nothing is
+/// said of them: what is wrong with another commit's files is not the working
+/// tree's to fix. The errors name the reference, not the checkout's temporary
+/// directory.
+pub(crate) fn build_at(
+    global: &GlobalArgs,
+    project: &Session,
+    checkout: &Checkout,
+    reference: &str,
+) -> Result<Session> {
+    // 1. Find the root and the configuration file at the same paths in the
+    //    checkout.
+    let root = checkout.path_of(&project.root);
+    if !root.is_dir() {
+        bail!(message!(cli_graph_diff_no_root, reference));
+    }
+    let config = project
+        .config
+        .file
+        .as_ref()
+        .map(|file| checkout.path_of(&adjust_canonicalisation(&file.path)));
+    let global = GlobalArgs {
+        config: config.filter(|path| path.is_file()),
+        root: Some(root),
+        tracked: false,
+        no_cache: true,
+        ..global.clone()
+    };
+
+    // 2. Build the graph, without reporting on the files.
+    let failed = || message!(cli_graph_diff_failed, reference);
+    let mut session = open(&global).with_context(failed)?;
+    Pipeline::standard().run_until(&mut session, StageKind::Graph).with_context(failed)?;
+    session.narrow();
+    if session.files.is_empty() {
+        bail!(message!(cli_graph_diff_no_source_files, reference));
     }
     Ok(session)
 }

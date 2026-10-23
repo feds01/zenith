@@ -11,7 +11,7 @@ pub(crate) mod version;
 use std::{fmt, panic, process::ExitCode};
 
 use anyhow::Result;
-use cli::Command;
+use cli::{Command, GraphAction, GraphCommand};
 use crash::crash_handler;
 use zenith_utils::{highlight::set_colour_enabled, pool::setup_global_threads};
 
@@ -64,6 +64,9 @@ pub fn run(cli::Cli { command, global }: cli::Cli) -> Result<ExitStatus> {
     let status = match command {
         Command::Check(args) => commands::check::check(&global, args),
         Command::Baseline(args) => commands::baseline::baseline(&global, args),
+        Command::Graph(GraphCommand { action: Some(GraphAction::Diff(args)), .. }) => {
+            commands::graph_diff::graph_diff(&global, args)
+        }
         Command::Graph(args) => commands::graph::graph(&global, args),
         Command::Why(args) => commands::why::why(&global, args),
         Command::Resolve(args) => commands::resolve::resolve(&global, args),

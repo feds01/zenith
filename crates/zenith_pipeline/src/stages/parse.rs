@@ -5,6 +5,7 @@ use std::{io, mem, time::SystemTime};
 use log::{debug, info};
 use rayon::prelude::*;
 use zenith_cache::{Cache, Lookup, Origin};
+use zenith_diagnostics::message;
 use zenith_lang::ParsedFile;
 use zenith_utils::fs::read_text;
 
@@ -114,7 +115,7 @@ fn parse_cached(session: &mut Session, mut cache: Cache<ParsedFile>) -> Vec<Pars
 
     // 4. Rewrite the cache if anything in it changed: a file was parsed, was read
     //    to find it unchanged, or is gone. A file that can't be read has no entry.
-    debug!("{unchanged} of {} files are unchanged since the last run", parsed.len());
+    debug!("{}", message!(pipeline_unchanged_files, unchanged, total = parsed.len()));
     let entries: Vec<_> = session
         .files
         .iter()
@@ -126,7 +127,7 @@ fn parse_cached(session: &mut Session, mut cache: Cache<ParsedFile>) -> Vec<Pars
         && let Err(error) = cache.save(started, entries.into_iter())
     {
         let dir = &cache.settings().dir;
-        info!("could not write the parse cache to `{}`: {error}", dir.display());
+        info!("{}", message!(pipeline_cache_not_written, dir = dir.display(), error));
     }
     parsed
 }

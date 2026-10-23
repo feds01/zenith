@@ -6,13 +6,12 @@ use rustc_hash::FxHashSet;
 use thin_vec::ThinVec;
 use zenith_cache::CacheSettings;
 use zenith_config::{Config, ContractConfig, Reexports};
-use zenith_diagnostics::{Report, SourceId, SourceMap};
+use zenith_diagnostics::{Report, SourceId, SourceMap, message};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_lang::{ParsedFile, Resolved, Suppression, Workspace};
 use zenith_utils::{
     location::Located,
     path::{absolute_path, adjust_canonicalisation, relative_posix},
-    printing::plural,
 };
 use zenith_workspace::WalkSettings;
 
@@ -232,11 +231,11 @@ impl Session {
             .filter(|file| files.contains(file.name.as_str()))
             .map(|file| usize::from(file.language))
             .collect();
-        let options: Vec<_> = (self.config.languages.enabled().enumerate())
+        (self.config.languages.enabled().enumerate())
             .filter(|(position, _)| languages.contains(position))
-            .map(|(_, language)| format!("`[languages.{}] ignore_unresolved`", language.name))
-            .collect();
-        options.join(" or ")
+            .map(|(_, language)| message!(pipeline_ignore_unresolved, language = language.name))
+            .reduce(|first, second| message!(pipeline_either, first, second))
+            .unwrap_or_default()
     }
 
     /// The warning about the imports that couldn't be resolved, listing
@@ -245,39 +244,36 @@ impl Session {
         if self.unresolved.is_empty() {
             return None;
         }
-        let title = format!("{} could not be resolved", plural(self.unresolved.len(), "import"));
-        let mut report = Report::warning(title);
+        let count = self.unresolved.len();
+        let mut report = Report::warning(message!(pipeline_unresolved_imports, count));
         if list {
             let lines: Vec<_> = self
                 .unresolved
                 .iter()
                 .map(|import| {
                     let (specifier, reason) = (&import.import.specifier, &import.reason);
-                    format!("  {}  `{specifier}`  ({reason})", import.location(sources))
+                    let location = import.location(sources);
+                    format!(
+                        "  {}",
+                        message!(pipeline_unresolved_entry, location, specifier, reason)
+                    )
                 })
                 .collect();
             report.add_note(lines.join("\n"));
         } else {
-            report.add_help(format!(
-                "use `--show-unresolved` to list them, or {} to silence expected ones",
-                self.ignore_unresolved_options()
-            ));
+            let options = self.ignore_unresolved_options();
+            report.add_help(message!(pipeline_unresolved_imports.help, options));
         }
         // A `tsconfig.json` that extends one from a package can't be loaded until
         // the package is installed, and then none of its `paths` resolve.
         let in_tsconfig_errors =
             self.unresolved.iter().filter(|import| import.reason.is_config_error()).count();
         if in_tsconfig_errors > 0 {
-            let which = match (in_tsconfig_errors, self.unresolved.len()) {
-                (1, 1) => "it is in a file".to_string(),
-                (count, total) if count == total => "they are all in files".to_string(),
-                (1, _) => "1 of them is in a file".to_string(),
-                (count, _) => format!("{count} of them are in files"),
-            };
-            report.add_help(format!(
-                "{which} whose `tsconfig.json` couldn't be loaded; if it extends one from a \
-                 package, install the dependencies first"
-            ));
+            report.add_help(match (in_tsconfig_errors, count) {
+                (1, 1) => message!(pipeline_tsconfig_only),
+                (in_tsconfig, total) if in_tsconfig == total => message!(pipeline_tsconfig_all),
+                (in_tsconfig, _) => message!(pipeline_tsconfig_some, count = in_tsconfig),
+            });
         }
         Some(report)
     }

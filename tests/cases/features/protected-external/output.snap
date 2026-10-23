@@ -6,12 +6,16 @@ error[sharp-only-in-images]: `npm:sharp` may only be imported by its allowed imp
   |
 1 | import sharp from "sharp";
   |                   ^^^^^^^ imports `npm:sharp`
+  |
+  = help: remove this import
 
 error[imaging-only-in-resize]: `gomod:github.com/disintegration/imaging` may only be imported by its allowed importers
  --> services/thumbs/cmd/thumbs/main.go:6:2
   |
 6 |     "github.com/disintegration/imaging"
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `gomod:github.com/disintegration/imaging`
+  |
+  = help: remove this import
 
 Contracts
   ✗ sharp-only-in-images    protected  broken (1 violation)

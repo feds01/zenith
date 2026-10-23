@@ -14,6 +14,7 @@
   - [Rust](languages/rust.md)
   - [Terraform](languages/terraform.md)
 - [Selectors](selectors.md)
+- [Continuous integration](ci.md)
 
 # Contracts
 

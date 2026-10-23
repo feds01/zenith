@@ -314,6 +314,7 @@ impl Session {
             exclude: files.exclude.clone(),
             respect_gitignore: files.respect_gitignore,
             source_extensions: scanned.extensions,
+            source_file_names: scanned.file_names,
             manifests: self.backends.manifests(),
         }
     }

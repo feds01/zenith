@@ -12,6 +12,7 @@
   - [Go](languages/go.md)
   - [Python](languages/python.md)
   - [Rust](languages/rust.md)
+  - [Terraform](languages/terraform.md)
 - [Selectors](selectors.md)
 
 # Contracts

@@ -1,0 +1,3 @@
+[languages.terraform]
+include = ["infra/**/*.tf", "live/**/terragrunt.hcl"]
+ignore_unresolved = ["../../shared/*"]

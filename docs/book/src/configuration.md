@@ -42,10 +42,10 @@ JavaScript and TypeScript are enabled. See [languages](languages.md).
 `.svelte-kit`, `.turbo`, `.vercel`, `.cache`, `.wxt`, `.mastra` and
 `storybook-static` are always excluded, wherever they are, and so are Python's
 `.venv`, `site-packages`, `__pycache__`, `.tox`, `.nox`, `.mypy_cache`,
-`.pytest_cache` and `.ruff_cache`, and Yarn's `.pnp.cjs` and
-`.pnp.loader.mjs`. `dist`, `build` and `out` are excluded only
-next to a `package.json`, since elsewhere, as in `src/build/`, they may hold
-source code.
+`.pytest_cache` and `.ruff_cache`, Terraform's `.terraform` and
+`.terragrunt-cache`, and Yarn's `.pnp.cjs` and `.pnp.loader.mjs`. `dist`,
+`build` and `out` are excluded only next to a `package.json`, since elsewhere,
+as in `src/build/`, they may hold source code.
 
 ## Resolution
 

@@ -181,14 +181,16 @@ impl LanguagesConfig {
 
     /// The position, among the [enabled](Self::enabled) languages, of the
     /// language whose source file `name` is: the first whose `include`
-    /// matches it, or that scans by extension and has its extension. `None`
-    /// for a file of no enabled language.
+    /// matches it, or that scans by extension and file name and has its
+    /// extension or its file name. `None` for a file of no enabled language.
     pub fn language_of(&self, name: &str) -> Option<usize> {
-        let extension = name.rsplit_once('.').map(|(_, extension)| extension);
+        let file_name = name.rsplit('/').next().unwrap_or(name);
+        let extension = file_name.rsplit_once('.').map(|(_, extension)| extension);
         self.iter().position(|(language, options)| match options.include() {
             Some(include) => include.iter().any(|glob| glob.is_match(name)),
             None => {
                 extension.is_some_and(|extension| language.source_extensions.contains(&extension))
+                    || language.source_file_names.contains(&file_name)
             }
         })
     }
@@ -206,23 +208,27 @@ impl LanguagesConfig {
     }
 
     /// Which files to scan: the globs that the enabled languages set as their
-    /// `include`, and the source extensions of those that leave it to the
-    /// default.
+    /// `include`, and the source extensions and file names of those that
+    /// leave it to the default.
     pub fn scanned(&self) -> Scanned {
         let mut globs = Vec::new();
         let mut extensions = Vec::new();
+        let mut file_names = Vec::new();
         for (language, options) in &self.enabled {
             match options.include() {
                 Some(include) => globs.extend(include.iter().cloned()),
-                None => extensions.push(language.source_extensions),
+                None => {
+                    extensions.push(language.source_extensions);
+                    file_names.push(language.source_file_names);
+                }
             }
         }
-        Scanned { globs, extensions: union(extensions) }
+        Scanned { globs, extensions: union(extensions), file_names: union(file_names) }
     }
 }
 
 /// Which files the enabled languages scan: those that match one of the
-/// globs, and those with one of the extensions.
+/// globs, and those with one of the extensions or file names.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Scanned {
     /// The `include` globs of the languages that set them.
@@ -230,6 +236,10 @@ pub struct Scanned {
 
     /// The source extensions, without the `.`, of the languages that don't.
     pub extensions: Vec<&'static str>,
+
+    /// The source file names of the languages that don't, such as
+    /// `terragrunt.hcl`.
+    pub file_names: Vec<&'static str>,
 }
 
 /// The values of `lists`, in order, without repeats.

@@ -118,9 +118,20 @@ fn without_a_languages_table_the_default_languages_are_enabled() {
 fn the_enabled_languages_are_in_the_order_of_the_registry() {
     let config = valid(include_str!("fixtures/languages-reversed.toml"));
     assert_eq!(config.languages.enabled().collect::<Vec<_>>(), [&TEST, &OTHER]);
-    // The extensions of each are scanned, and may be left off selectors.
-    assert_eq!(config.languages.scanned().extensions, ["tst", "oth"]);
+    // The extensions and file names of each are scanned, and the extensions may
+    // be left off selectors.
+    let scanned = config.languages.scanned();
+    assert_eq!((scanned.extensions, scanned.file_names), (vec!["tst", "oth"], vec!["Otherfile"]));
     assert_eq!(config.languages.optional_extensions(), ["tst", "d.tst", "oth"]);
+
+    // A file is of the language whose extension or file name it has.
+    let language_of = |name| config.languages.language_of(name);
+    assert_eq!(language_of("src/a.tst"), Some(0));
+    assert_eq!(language_of("src/a.oth"), Some(1));
+    assert_eq!(language_of("src/Otherfile"), Some(1));
+    assert_eq!(language_of("Otherfile"), Some(1));
+    assert_eq!(language_of("src/Otherfile.txt"), None);
+    assert_eq!(language_of("Otherfile/a.txt"), None);
 }
 
 #[test]

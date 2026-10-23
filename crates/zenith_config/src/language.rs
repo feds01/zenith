@@ -44,6 +44,11 @@ pub struct Language {
     /// of the globs, which is faster and finds the same files.
     pub source_extensions: &'static [&'static str],
 
+    /// The names of the files that [`include`](Self::include) matches besides
+    /// those with a source extension, such as `terragrunt.hcl`, which the file
+    /// walk checks instead of the globs too.
+    pub source_file_names: &'static [&'static str],
+
     /// The extensions, without the `.`, that a path selector may leave off a
     /// file's path, so `src/types` matches the file `src/types.ts` as well as
     /// the directory `src/types`.
@@ -83,7 +88,8 @@ impl fmt::Debug for Language {
 /// The options of a language, parsed from its table.
 pub trait LanguageOptions: Any + fmt::Debug + Send + Sync {
     /// Globs of the files to scan, or `None` for every file with one of the
-    /// language's [source extensions](Language::source_extensions).
+    /// language's [source extensions](Language::source_extensions) or
+    /// [source file names](Language::source_file_names).
     fn include(&self) -> Option<&[Glob]>;
 
     /// The language, set up by these options for the pipeline to run.

@@ -25,12 +25,11 @@ pub struct ParsedFile {
     /// parser records names.
     pub exports: Exports<u32>,
 
-    /// The dynamic imports and `require` calls whose specifier is not a
-    /// string literal or a template literal without substitutions, e.g.
-    /// `import(path)` or `` require(`./${name}`) ``, in source order. Each is
-    /// located by the call, and is [`ImportKind::Dynamic`] or
-    /// [`ImportKind::Require`]. They can't be resolved, so they are not in
-    /// [`imports`](Self::imports).
+    /// The imports whose specifier is not a literal, e.g. JavaScript's
+    /// `import(path)` or `` require(`./${name}`) ``, or a Terraform module
+    /// source made from a template, in source order. Each is located by the
+    /// call or the expression, with the kind the import would have. They
+    /// can't be resolved, so they are not in [`imports`](Self::imports).
     pub non_literal_imports: ThinVec<Located<ImportKind>>,
 
     /// The directive prologue, e.g. `["use client"]`: the string-literal

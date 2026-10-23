@@ -1,0 +1,22 @@
+# Terraform is off unless it has a table. A module source that is a local path
+# is an import of the module's directory, which is one node of the graph, so
+# `../../modules/vpc` is `modules/vpc`. A registry module is
+# `tfmod:hashicorp/consul/aws`, and a repository `tfmod:github.com/acme/modules`.
+# The `.terraform` directory, where Terraform keeps the modules it downloads,
+# is never scanned.
+[languages.terraform]
+
+# `modules/app` reaches up into a stack.
+[contracts.modules-below-stacks]
+type = "layers"
+layers = ["live | units", "modules"]
+
+# The suppression above the module block in `live/staging` covers its source.
+[contracts.stacks-independent]
+type = "independence"
+modules = ["live/*"]
+
+[contracts.no-repository-modules]
+type = "forbidden"
+from = ["live", "units"]
+to = ["tfmod:github.com/*"]

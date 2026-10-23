@@ -39,6 +39,8 @@ const ALWAYS_EXCLUDED_DIRS: &[&str] = &[
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
+    ".terraform",
+    ".terragrunt-cache",
 ];
 
 /// Files that are never scanned: Yarn Plug'n'Play's generated loaders.
@@ -53,7 +55,7 @@ const PACKAGE_OUTPUT_DIRS: &[&str] = &["dist", "build", "out"];
 #[derive(Debug, Clone)]
 pub struct WalkSettings {
     /// Globs of the files to scan, besides those with one of the
-    /// `source_extensions`.
+    /// `source_extensions` or `source_file_names`.
     pub include: Vec<Glob>,
 
     /// Globs of the files and directories to skip.
@@ -67,6 +69,10 @@ pub struct WalkSettings {
     /// those that match one of the `include` globs. Checking an extension is
     /// cheaper than matching globs.
     pub source_extensions: Vec<&'static str>,
+
+    /// The names of the source files to scan, such as `terragrunt.hcl`,
+    /// besides those that match one of the `include` globs.
+    pub source_file_names: Vec<&'static str>,
 
     /// The names of the manifest files to collect, such as `package.json`,
     /// from which the languages find the project's packages.
@@ -228,6 +234,7 @@ impl ParallelVisitor for Visitor<'_> {
             .and_then(|extension| extension.to_str())
             .is_some_and(|extension| self.settings.source_extensions.contains(&extension));
         let included = has_source_extension
+            || self.settings.source_file_names.contains(&name.as_ref())
             || self.settings.include.iter().any(|glob| glob.is_match(&relative));
         if included {
             self.local.source_files.push(path.to_path_buf());
@@ -268,6 +275,7 @@ mod tests {
             exclude: exclude.iter().map(|glob| Glob::new(glob).unwrap()).collect(),
             respect_gitignore: true,
             source_extensions: vec!["ts", "tsx", "js", "cjs", "mjs"],
+            source_file_names: Vec::new(),
             manifests: vec!["package.json"],
         }
     }
@@ -294,6 +302,8 @@ mod tests {
             "web/node_modules/x/index.js",
             "web/.next/d.js",
             "web/src/routes.gen.ts",
+            "infra/.terraform/modules/vpc/main.ts",
+            "infra/.terragrunt-cache/x/main.ts",
             "web/.storybook/main.ts",
             "experimental/f.ts",
             "out/g.js",
@@ -367,6 +377,15 @@ mod tests {
         let both = WalkSettings { include: globs_only.include, ..settings(&[]) };
         let (files, _) = found(&root, &both);
         assert_eq!(files, ["scripts/c.ts", "src/a.ts", "src/b.vue"]);
+    }
+
+    #[test]
+    fn source_file_names_select_files_by_name() {
+        let (_dir, root) = project(&["live/terragrunt.hcl", "live/backend.hcl", "src/a.ts"]);
+
+        let names = WalkSettings { source_file_names: vec!["terragrunt.hcl"], ..settings(&[]) };
+        let (files, _) = found(&root, &names);
+        assert_eq!(files, ["live/terragrunt.hcl", "src/a.ts"]);
     }
 
     #[cfg(unix)]

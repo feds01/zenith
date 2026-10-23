@@ -23,6 +23,7 @@ pub const RUST: Language = Language {
     enabled_by_default: false,
     include: &["**/*.rs"],
     source_extensions: &["rs"],
+    source_file_names: &[],
     optional_extensions: &["rs"],
     // `crate:` is for external crates, `rust:` for those of the standard library.
     schemes: &["crate", "rust"],

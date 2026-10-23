@@ -1,0 +1,67 @@
+$ zenith check --show-unresolved
+exit: 1
+--- stdout
+error[modules-below-stacks]: `modules` must not import `live`
+ --> modules/app/main.tf:6:12
+  |
+6 |   source = "../../live/prod"
+  |            ^^^^^^^^^^^^^^^^^ imports `live/prod`
+
+error[no-repository-modules]: `live` must not import `tfmod:github.com/acme/modules`
+  --> live/prod/main.tf:26:12
+   |
+26 |   source = "git::https://github.com/acme/modules.git//dns?ref=v1.2.0"
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `tfmod:github.com/acme/modules`
+
+warning: 1 import could not be resolved
+  |
+  = note:   modules/app/main.tf:10:12  `../rds`  (no directory `modules/rds` in the project)
+
+Contracts
+  ✗ modules-below-stacks   layers        broken (1 violation)
+  ✓ stacks-independent     independence  kept · 1 suppressed
+  ✗ no-repository-modules  forbidden     broken (1 violation)
+
+1 kept, 2 broken · 6 files, 10 imports
+
+$ zenith graph
+exit: 0
+--- stdout
+. (6 files)
+├─live/ (2 files)
+│ ├─prod/ (1 file)
+│ └─staging/ (1 file)
+├─modules/ (2 files)
+│ ├─app/ (1 file)
+│ └─vpc/ (1 file)
+└─units/ (2 files)
+  ├─app/ (1 file)
+  └─network/ (1 file)
+
+dependencies between the children of `.`:
+  live -> modules (3 imports)
+  modules -> live (1 import)
+  units -> modules (1 import)
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+
+$ zenith resolve live/prod/main.tf ../../modules/vpc
+exit: 0
+--- stdout
+package: modules/vpc
+
+$ zenith resolve live/prod/main.tf hashicorp/consul/aws
+exit: 0
+--- stdout
+external: tfmod:hashicorp/consul/aws
+
+$ zenith resolve live/prod/main.tf git::https://github.com/acme/modules.git//dns?ref=v1.2.0
+exit: 0
+--- stdout
+external: tfmod:github.com/acme/modules
+
+$ zenith resolve units/app/terragrunt.hcl ../network
+exit: 0
+--- stdout
+package: units/network
+

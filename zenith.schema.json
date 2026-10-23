@@ -162,6 +162,28 @@
       },
       "description": "Rust."
     },
+    "TerraformTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Globs of the files to scan. Defaults to every Terraform, OpenTofu and\nTerragrunt file: `**/*.tf`, `**/*.tofu` and `**/terragrunt.hcl`."
+        },
+        "ignore_unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Name patterns of module sources and dependency paths that are expected\nnot to resolve, so are not reported as unresolved.",
+          "default": []
+        }
+      },
+      "description": "Terraform, OpenTofu and Terragrunt."
+    },
     "FilesTable": {
       "type": "object",
       "additionalProperties": false,
@@ -206,6 +228,10 @@
         "rust": {
           "$ref": "#/$defs/RustTable",
           "description": "Rust: how its files are found and the imports between its crates and modules resolved."
+        },
+        "terraform": {
+          "$ref": "#/$defs/TerraformTable",
+          "description": "Terraform, OpenTofu and Terragrunt: how their files are found and their module sources resolved."
         }
       }
     },

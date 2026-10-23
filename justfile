@@ -9,6 +9,7 @@ default:
 # Install the pinned toolchain and the pre-commit hooks
 setup:
     rustup toolchain install
+    @command -v sccache >/dev/null || echo "sccache not found: with it, worktrees share their compilations. Install it with 'brew install sccache' or 'cargo install sccache --locked', and set 'build.rustc-wrapper = \"sccache\"' in ~/.cargo/config.toml"
     @command -v pre-commit >/dev/null || { echo "pre-commit not found, install it with 'brew install pre-commit' or 'pipx install pre-commit'"; exit 1; }
     pre-commit install
 

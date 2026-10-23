@@ -80,6 +80,14 @@ dbg_macro = "warn"
 todo = "warn"
 unimplemented = "warn"
 
+# Each worktree has a target directory of its own, so the dev and test builds
+# are kept small: line tables, for backtraces and stepping, but not the full
+# debug info, and no incremental cache. Without it, sccache can share the
+# workspace crates' compilations between worktrees too.
+[profile.dev]
+debug = "line-tables-only"
+incremental = false
+
 [profile.release]
 opt-level = 3
 lto = "fat"

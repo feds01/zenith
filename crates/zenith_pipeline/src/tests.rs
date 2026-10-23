@@ -355,6 +355,28 @@ fn unresolved_imports_are_reported_where_they_are() {
 }
 
 #[test]
+fn the_help_about_unresolved_imports_names_the_options_of_their_languages() {
+    let project = Project::new(&[
+        ("Cargo.toml", b"[package]\nname = \"app\"\n"),
+        ("src/lib.rs", b"use missing::Thing;\n"),
+        ("app.ts", b"import './missing';\n"),
+    ]);
+    let help = |config: &str| {
+        let session = project.build(config).unwrap();
+        let (mut sources, _) = session.sources();
+        let report = session.unresolved_report(&mut sources, false).unwrap();
+        Reporter::new(&sources, &[report]).to_string()
+    };
+    let rust = help("[languages.rust]\n");
+    assert!(rust.contains("or `[languages.rust] ignore_unresolved` to silence"), "{rust}");
+    let both = help("[languages.js]\n[languages.rust]\n");
+    assert!(
+        both.contains("`[languages.js] ignore_unresolved` or `[languages.rust] ignore_unresolved`"),
+        "{both}"
+    );
+}
+
+#[test]
 fn the_configuration_file_is_shown_relative_to_the_root() {
     let project = Project::new(&[]);
     let mut session = project.session("");

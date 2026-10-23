@@ -7,7 +7,7 @@ use log::warn;
 use zenith_lang::{
     Backend, ImportResolver, ParsedFile, ResolveFailure, Resolved, SourceParser, Workspace,
 };
-use zenith_utils::{fs::read_text, path::relative_posix};
+use zenith_utils::{fs::read_text, glob::NamePattern, path::relative_posix};
 
 use crate::{parse::Parser, resolve::GoModules};
 
@@ -18,13 +18,17 @@ pub(crate) struct GoBackend {
 
     /// The modules of the project, once they are discovered.
     modules: GoModules,
+
+    /// Patterns of the import paths that are expected not to resolve.
+    ignore_unresolved: Vec<NamePattern>,
 }
 
 impl GoBackend {
-    /// The backend of the project at `root`, which must be canonical. It has
-    /// no modules until it discovers them.
-    pub(crate) fn new(root: &Path) -> Self {
-        Self { root: root.to_path_buf(), modules: GoModules::default() }
+    /// The backend of the project at `root`, which must be canonical, which
+    /// expects the import paths that match `ignore_unresolved` not to
+    /// resolve. It has no modules until it discovers them.
+    pub(crate) fn new(root: &Path, ignore_unresolved: Vec<NamePattern>) -> Self {
+        Self { root: root.to_path_buf(), modules: GoModules::default(), ignore_unresolved }
     }
 }
 
@@ -52,7 +56,11 @@ impl Backend for GoBackend {
     }
 
     fn resolver(&self) -> Result<Box<dyn ImportResolver + '_>, ResolveFailure> {
-        Ok(Box::new(GoResolver { root: &self.root, modules: &self.modules }))
+        Ok(Box::new(GoResolver {
+            root: &self.root,
+            modules: &self.modules,
+            ignore_unresolved: &self.ignore_unresolved,
+        }))
     }
 }
 
@@ -69,13 +77,17 @@ struct GoResolver<'a> {
 
     /// The modules of the project.
     modules: &'a GoModules,
+
+    /// Patterns of the import paths that are expected not to resolve.
+    ignore_unresolved: &'a [NamePattern],
 }
 
 impl ImportResolver for GoResolver<'_> {
     fn resolve(&self, path: &Path, specifier: &str) -> Resolved {
         // Imports resolve from the directory of the importing file.
         let dir = path.parent().and_then(|dir| relative_posix(self.root, dir)).unwrap_or_default();
-        self.modules.resolve(&dir, specifier).into()
+        let resolved: Resolved = self.modules.resolve(&dir, specifier).into();
+        resolved.ignoring_unresolved(specifier, self.ignore_unresolved)
     }
 }
 

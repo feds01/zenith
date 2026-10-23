@@ -2,6 +2,8 @@
 
 use std::{fmt, path::PathBuf};
 
+use zenith_utils::glob::NamePattern;
+
 /// What a specifier resolves to.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Resolved {
@@ -53,6 +55,21 @@ impl Resolved {
     /// A specifier that is left out as expected, for this reason.
     pub fn ignored(reason: impl Into<String>) -> Self {
         Self::Ignored(Box::new(UnresolvedReason::Failed(ResolveFailure::new(reason))))
+    }
+
+    /// What `specifier` resolved to, as [`Ignored`](Self::Ignored) if it is
+    /// unresolved and matches one of `ignore_unresolved`, a language's
+    /// patterns of the specifiers that are expected not to resolve.
+    #[must_use]
+    pub fn ignoring_unresolved(self, specifier: &str, ignore_unresolved: &[NamePattern]) -> Self {
+        match self {
+            Self::Unresolved(reason)
+                if ignore_unresolved.iter().any(|pattern| pattern.is_match(specifier)) =>
+            {
+                Self::Ignored(reason)
+            }
+            resolved => resolved,
+        }
     }
 }
 
@@ -145,6 +162,18 @@ impl fmt::Display for ResolveFailure {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unresolved_specifiers_that_match_a_pattern_are_ignored() {
+        let patterns = [NamePattern::new("virtual:*").unwrap()];
+        let ignored =
+            Resolved::failed("no such module").ignoring_unresolved("virtual:a", &patterns);
+        assert_eq!(ignored, Resolved::ignored("no such module"));
+        let unresolved = Resolved::failed("no such module").ignoring_unresolved("./a", &patterns);
+        assert_eq!(unresolved, Resolved::failed("no such module"));
+        let builtin = Resolved::Builtin("node:fs".into());
+        assert_eq!(builtin.clone().ignoring_unresolved("virtual:a", &patterns), builtin);
+    }
 
     #[test]
     fn failed_and_ignored_carry_a_failure_of_the_resolver() {

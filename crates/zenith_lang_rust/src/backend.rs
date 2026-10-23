@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use zenith_lang::{
     Backend, ImportResolver, ParsedFile, ResolveFailure, Resolved, SourceParser, Workspace,
 };
+use zenith_utils::glob::NamePattern;
 
 use crate::{crates::Crates, parse::Parser, resolve::Resolver};
 
@@ -16,12 +17,16 @@ pub(crate) struct RustBackend {
 
     /// The crates of the project, once they are discovered.
     crates: Crates,
+
+    /// Patterns of the paths that are expected not to resolve.
+    ignore_unresolved: Vec<NamePattern>,
 }
 
 impl RustBackend {
-    /// The backend of the project at `root`, which must be canonical.
-    pub(crate) fn new(root: &Path) -> Self {
-        Self { root: root.to_path_buf(), crates: Crates::default() }
+    /// The backend of the project at `root`, which must be canonical, which
+    /// expects the paths that match `ignore_unresolved` not to resolve.
+    pub(crate) fn new(root: &Path, ignore_unresolved: Vec<NamePattern>) -> Self {
+        Self { root: root.to_path_buf(), crates: Crates::default(), ignore_unresolved }
     }
 }
 
@@ -44,7 +49,7 @@ impl Backend for RustBackend {
     }
 
     fn resolver(&self) -> Result<Box<dyn ImportResolver + '_>, ResolveFailure> {
-        Ok(Box::new(Resolver::new(&self.root, &self.crates)))
+        Ok(Box::new(Resolver::new(&self.root, &self.crates, &self.ignore_unresolved)))
     }
 }
 

@@ -1,2 +1,3 @@
 [languages.go]
 include = ["cmd/**", "internal/**/*.go"]
+ignore_unresolved = ["example.com/generated/*"]

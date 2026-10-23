@@ -6,7 +6,9 @@
 //! library. Otherwise the first segment is a module of the file's own module,
 //! as `use` paths may start with one. The path leads through the modules to
 //! the file of the last one, and what follows is an item in it. Inline
-//! modules and `#[path]` attributes are not followed.
+//! modules and `#[path]` attributes are not followed. A path that starts with
+//! the name of a tool, such as `clippy::too_many_lines` in an `#[allow]`, is
+//! the tool's attribute or lint, not an import.
 
 #[cfg(test)]
 mod tests;
@@ -14,12 +16,16 @@ mod tests;
 use std::path::Path;
 
 use zenith_lang::{Resolved, UnresolvedReason};
-use zenith_utils::path::relative_posix;
+use zenith_utils::{glob::NamePattern, path::relative_posix};
 
 use crate::{
     crates::{Crate, Crates, Dependency, STANDARD_CRATES, Target},
     modules::Position,
 };
+
+/// The tools whose attributes and lints the compiler knows, such as
+/// `#[rustfmt::skip]` and `#[allow(clippy::too_many_lines)]`.
+const TOOLS: &[&str] = &["clippy", "diagnostic", "miri", "rust_analyzer", "rustdoc", "rustfmt"];
 
 /// Resolves the imports of the Rust files of a project, with the `crates`
 /// that were found in it, which are shared between threads.
@@ -29,17 +35,31 @@ pub(crate) struct Resolver<'a> {
 
     /// The crates of the project.
     crates: &'a Crates,
+
+    /// Patterns of the paths that are expected not to resolve.
+    ignore_unresolved: &'a [NamePattern],
 }
 
 impl<'a> Resolver<'a> {
-    /// A resolver of the project at `root`, which must be canonical.
-    pub(crate) fn new(root: &'a Path, crates: &'a Crates) -> Self {
-        Self { root, crates }
+    /// A resolver of the project at `root`, which must be canonical, which
+    /// expects the paths that match `ignore_unresolved` not to resolve.
+    pub(crate) fn new(
+        root: &'a Path,
+        crates: &'a Crates,
+        ignore_unresolved: &'a [NamePattern],
+    ) -> Self {
+        Self { root, crates, ignore_unresolved }
     }
 
     /// What `specifier`, a path written with `::`, refers to when the file at
     /// `path` imports it.
     pub(crate) fn resolve(&self, path: &Path, specifier: &str) -> Resolved {
+        self.resolve_specifier(path, specifier)
+            .ignoring_unresolved(specifier, self.ignore_unresolved)
+    }
+
+    /// Resolve `specifier`, without applying `ignore_unresolved`.
+    fn resolve_specifier(&self, path: &Path, specifier: &str) -> Resolved {
         // 1. Find the package of the importing file.
         let Some(krate) = self.crates.containing(path) else {
             return Resolved::failed("the file is in no Cargo package");
@@ -50,7 +70,11 @@ impl<'a> Resolver<'a> {
             Some(rest) => (true, rest),
             None => (false, specifier),
         };
-        let segments: Vec<&str> = specifier.split("::").collect();
+        // A raw identifier, such as `r#false`, names the module `false`.
+        let segments: Vec<&str> = specifier
+            .split("::")
+            .map(|segment| segment.strip_prefix("r#").unwrap_or(segment))
+            .collect();
 
         // 3. Resolve it from where it starts.
         match segments[0] {
@@ -128,6 +152,11 @@ impl<'a> Resolver<'a> {
             if depth > own {
                 return self.file(&file, path);
             }
+        }
+        // 3. A tool's attribute or lint, which only names a crate or module when one
+        //    has its name.
+        if !rooted && TOOLS.contains(&name) {
+            return Resolved::ignored(format!("an attribute or lint of the tool `{name}`"));
         }
         Resolved::failed(format!("`{name}` is not a crate, or a module here"))
     }

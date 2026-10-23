@@ -4,14 +4,14 @@
 use std::{borrow::Cow, cmp::Ordering, ops::Range};
 
 use compact_str::CompactString;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use thin_vec::ThinVec;
 use tree_sitter::Node;
 use zenith_graph::{ImportDetail, ImportKind, ImportedNames};
 use zenith_lang::{ParsedFile, Suppression, SyntaxError};
 use zenith_utils::location::{ByteRange, Located};
 
-use super::comments::comments;
+use super::{comments::comments, gaps};
 
 /// The primitive types, which have associated functions and constants that
 /// are written like paths, such as `u8::MAX`, but are not modules.
@@ -28,6 +28,15 @@ pub(super) struct Reader<'s> {
     /// The leaves of `use` declarations and the `extern crate`s.
     imports: Vec<ImportDetail>,
 
+    /// Where the declaration of each of [`imports`](Self::imports) starts.
+    declarations: Vec<usize>,
+
+    /// What each name that a `use` or an `extern crate` brings into scope
+    /// stands for, as a path written in the module of the file, with where
+    /// its declaration starts. `None` if it stands for more than one path, in
+    /// different scopes, or for an item of the file.
+    aliases: FxHashMap<CompactString, Option<(CompactString, usize)>>,
+
     /// The paths in code, each specifier once.
     paths: Vec<ImportDetail>,
 
@@ -39,6 +48,10 @@ pub(super) struct Reader<'s> {
     /// a module.
     bound: FxHashSet<CompactString>,
 
+    /// The names of the inline modules. A `use` path that starts with one is
+    /// in the file.
+    modules: FxHashSet<CompactString>,
+
     /// The ranges of the comments.
     comments: Vec<Range<usize>>,
 
@@ -47,6 +60,10 @@ pub(super) struct Reader<'s> {
 
     /// Where the last error ends. Errors inside it are part of it.
     reported_until: usize,
+
+    /// Where the `use` declaration or `extern crate` that is being read
+    /// starts.
+    declaration: usize,
 
     /// Where the `use` declaration that is being read ends.
     use_end: usize,
@@ -66,12 +83,16 @@ impl<'s> Reader<'s> {
         let mut reader = Reader {
             source,
             imports: Vec::new(),
+            declarations: Vec::new(),
+            aliases: FxHashMap::default(),
             paths: Vec::new(),
             seen: FxHashSet::default(),
             bound: FxHashSet::default(),
+            modules: FxHashSet::default(),
             comments: Vec::new(),
             errors: ThinVec::new(),
             reported_until: 0,
+            declaration: 0,
             use_end: 0,
             inline: Vec::new(),
             nested: None,
@@ -105,7 +126,7 @@ impl<'s> Reader<'s> {
             self.error(node, missing(node.kind()));
             return false;
         }
-        if node.is_error() {
+        if node.is_error() && !gaps::is_valid(node, self.source) {
             self.error(node, Cow::Borrowed("invalid syntax"));
         }
         match node.kind() {
@@ -114,6 +135,7 @@ impl<'s> Reader<'s> {
                 return false;
             }
             "use_declaration" => {
+                self.declaration = node.start_byte();
                 self.use_end = node.end_byte();
                 if let Some(argument) = node.child_by_field_name("argument") {
                     self.use_tree(argument, "");
@@ -124,7 +146,9 @@ impl<'s> Reader<'s> {
                 if let Some(name) = node.child_by_field_name("name")
                     && node.child_by_field_name("body").is_some()
                 {
-                    self.bound.insert(self.text(name).into());
+                    let name: CompactString = self.text(name).into();
+                    self.bound.insert(name.clone());
+                    self.modules.insert(name);
                     self.inline.push(node.end_byte());
                 }
             }
@@ -196,9 +220,25 @@ impl<'s> Reader<'s> {
             "_" => {}
             name => {
                 self.bound.insert(name.into());
+                self.alias(name, &specifier);
             }
         }
         self.import(path, &specifier);
+    }
+
+    /// Record that `name`, which the declaration being read brings into
+    /// scope, stands for `specifier`.
+    fn alias(&mut self, name: &str, specifier: &str) {
+        let target =
+            self.in_file(specifier).map(|target| (target.as_ref().into(), self.declaration));
+        self.aliases
+            .entry(name.into())
+            .and_modify(|known| {
+                if known.as_ref().map(|(path, _)| path) != target.as_ref().map(|(path, _)| path) {
+                    *known = None;
+                }
+            })
+            .or_insert(target);
     }
 
     /// Read `extern crate name;`, which imports the crate.
@@ -210,7 +250,9 @@ impl<'s> Reader<'s> {
         let (name_text, alias_text) = (self.text(name), self.text(alias));
         // `extern crate self as name;` names the crate itself.
         if name_text != "self" {
+            self.declaration = node.start_byte();
             self.bound.insert(alias_text.as_ref().into());
+            self.alias(&alias_text, &name_text);
             self.import(name, &name_text);
         }
     }
@@ -225,6 +267,7 @@ impl<'s> Reader<'s> {
                 names: ImportedNames::All,
             };
             self.imports.push(detail);
+            self.declarations.push(self.declaration);
         }
     }
 
@@ -268,7 +311,8 @@ impl<'s> Reader<'s> {
         let tokens: Vec<Node<'s>> = node.children(&mut cursor).collect();
         let is_name = |token: Option<&Node<'s>>| {
             token.is_some_and(|token| {
-                matches!(token.kind(), "identifier" | "crate" | "self" | "super")
+                // A primitive type, such as `f64` in `std::f64::consts`, is a token of its own.
+                matches!(token.kind(), "identifier" | "primitive_type" | "crate" | "self" | "super")
             })
         };
         let is_separator =
@@ -343,8 +387,40 @@ impl<'s> Reader<'s> {
         strip_blanks(&self.source[node.byte_range()])
     }
 
+    /// `specifier`, an import of the declaration that starts at
+    /// `declaration`, with its first segment replaced by the path that it
+    /// stands for, if another declaration brought it into scope: `use
+    /// smoltcp::socket::tcp;` then `use tcp::State;` imports
+    /// `smoltcp::socket::tcp::State`.
+    fn unalias(&self, specifier: &mut CompactString, declaration: usize) {
+        // A few steps follow a chain of names, and stop a cycle.
+        for _ in 0..8 {
+            let (first, rest) = specifier.split_once("::").unwrap_or((specifier, ""));
+            let Some(Some((path, from))) = self.aliases.get(first) else {
+                return;
+            };
+            if *from == declaration || path == first {
+                return;
+            }
+            *specifier = match rest {
+                "" => path.clone(),
+                rest => format!("{path}::{rest}").into(),
+            };
+        }
+    }
+
     /// The file that was read.
-    fn finish(self) -> ParsedFile {
+    fn finish(mut self) -> ParsedFile {
+        let mut imports = std::mem::take(&mut self.imports);
+        for (import, declaration) in imports.iter_mut().zip(&self.declarations) {
+            self.unalias(&mut import.specifier, *declaration);
+        }
+        // A `use` of an inline module is in the file.
+        imports.retain(|import| {
+            let first = import.specifier.split("::").next().unwrap_or_default();
+            !self.modules.contains(first) || self.aliases.contains_key(first)
+        });
+
         // A path in code whose first segment is a name that a `use` brought into scope
         // is already imported by it.
         let bound = &self.bound;
@@ -352,7 +428,7 @@ impl<'s> Reader<'s> {
             let first = path.specifier.split("::").next().unwrap_or_default();
             path.specifier.starts_with("::") || !bound.contains(first)
         });
-        let mut imports: Vec<_> = self.imports.into_iter().chain(paths).collect();
+        imports.extend(paths);
         imports.sort_by_key(|import| import.range);
 
         let comments = comments(self.source, &self.comments);

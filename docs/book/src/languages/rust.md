@@ -3,11 +3,13 @@
 ```toml
 [languages.rust]           # off unless the table is written
 include = ["**/*.rs"]      # the default
+ignore_unresolved = ["generated::*"]   # paths not to warn about
 ```
 
 | Option | |
 |---|---|
 | `include` | Globs of the files to scan. |
+| `ignore_unresolved` | Name patterns of the paths that are expected not to resolve, so are not reported as unresolved, such as a module that a macro declares. |
 
 ## Packages
 
@@ -29,8 +31,13 @@ Every import is a `value` import. Each `use` declaration imports each of its
 leaves, so `use a::{b, c::d}` imports `a::b` and `a::c::d`, and a glob imports
 the path before it. So does an `extern crate`, and so does a path in code that
 starts with `crate`, `self`, `super`, `::` or the name of a crate or module,
-such as `zenith_lang_js::JS` written without a `use`. `mod a;` declares a module
-but doesn't import it. [`zenith-ignore` comments](../suppressions.md) work as
+such as `zenith_lang_js::JS` written without a `use`. A `use` path that starts
+with a name that another `use` or an `extern crate` brought into scope imports
+what the name stands for: after `use smoltcp::socket::tcp;`, `use tcp::State;`
+imports `smoltcp::socket::tcp::State`. `mod a;` declares a module but doesn't
+import it. Some newer syntax that tree-sitter's Rust grammar doesn't know
+is read all the same: `safe` items in an `extern` block, several attributes on
+a parameter, and the `attr` and `derive` rules of a `macro_rules!`. [`zenith-ignore` comments](../suppressions.md) work as
 `//` or `/* */` comments.
 
 ## Resolution
@@ -48,5 +55,9 @@ the crates that its code may name.
 | another crate | `crate:serde` | Named by its package. |
 | the standard library | `rust:std` | `std`, `core`, `alloc`, `proc_macro` and `test`. |
 
-An inline `mod a { }` block is part of its file, `#[path]` attributes are not
-followed, and a file doesn't import itself.
+An inline `mod a { }` block is part of its file, so a path into it, `use`d or
+not, imports nothing. `#[path]` attributes are not followed, and a file
+doesn't import itself. A raw identifier names what it spells: `r#false` is the
+module `false`. A path that starts with the name of a tool, such as
+`clippy::too_many_lines` in an `#[allow]` or `rustfmt::skip`, is the tool's
+attribute or lint, and imports nothing unless a crate or module has the name.

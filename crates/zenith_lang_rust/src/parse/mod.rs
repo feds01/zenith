@@ -5,9 +5,12 @@
 //! `::`, an `extern crate`, or a path in code that starts with `crate`,
 //! `self`, `super`, `::` or the name of a crate or module, such as
 //! `zenith_lang_js::JS` used without a `use`. Everything that is not
-//! syntax errors or comments is read from one walk of the syntax tree.
+//! syntax errors or comments is read from one walk of the syntax tree. The
+//! grammar doesn't know all of Rust: [`gaps`] says what it misses, and how
+//! the parser reads it all the same.
 
 mod comments;
+mod gaps;
 mod reader;
 
 #[cfg(test)]
@@ -48,10 +51,20 @@ impl Parser {
             let errors = ThinVec::from([Located::new(ByteRange::default(), error)]);
             return ParsedFile { errors, ..ParsedFile::default() };
         }
-        let tree = self
-            .inner
-            .parse(source, None)
-            .expect("a parser with a language and no cancellation always parses");
+        let tree = self.parse_tree(source);
+        if tree.root_node().has_error()
+            && let Some(blanked) = gaps::without_rule_kinds(source, tree.root_node())
+        {
+            let tree = self.parse_tree(&blanked);
+            return Reader::read(&blanked, tree.root_node());
+        }
         Reader::read(source, tree.root_node())
+    }
+
+    /// The syntax tree of `source`.
+    fn parse_tree(&mut self, source: &str) -> tree_sitter::Tree {
+        self.inner
+            .parse(source, None)
+            .expect("a parser with a language and no cancellation always parses")
     }
 }

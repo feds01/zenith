@@ -21,7 +21,7 @@ impl Fixture {
     /// What `specifier` resolves to when the file `from` imports it, both
     /// relative to the root of the project.
     fn resolve(&self, from: &str, specifier: &str) -> Resolved {
-        Resolver::new(self.project.root(), &self.crates)
+        Resolver::new(self.project.root(), &self.crates, &[])
             .resolve(&self.project.path(from), specifier)
     }
 
@@ -217,6 +217,33 @@ fn an_unknown_first_segment_does_not_resolve() {
 }
 
 #[test]
+fn a_raw_identifier_names_what_it_spells() {
+    let fixture = Fixture::new();
+    assert_eq!(fixture.file(LIB, "crate::r#a::r#b::Thing"), AB);
+}
+
+#[test]
+fn paths_that_match_ignore_unresolved_are_ignored() {
+    let fixture = Fixture::new();
+    let patterns = [NamePattern::new("generated::*").unwrap()];
+    let resolver = Resolver::new(fixture.project.root(), &fixture.crates, &patterns);
+    let resolve = |specifier| resolver.resolve(&fixture.project.path(AB), specifier);
+    assert!(matches!(resolve("generated::Thing"), Resolved::Ignored(_)));
+    assert!(matches!(resolve("missing::Thing"), Resolved::Unresolved(_)));
+}
+
+#[test]
+fn a_tool_attribute_or_lint_is_ignored() {
+    let fixture = Fixture::new();
+    for specifier in ["clippy::too_many_lines", "rustfmt::skip", "diagnostic::on_unimplemented"] {
+        let resolved = fixture.resolve(AB, specifier);
+        assert!(matches!(resolved, Resolved::Ignored(_)), "{specifier}: {resolved:?}");
+    }
+    // A crate or module of the tool's name is what the path names.
+    assert_eq!(fixture.failure(AB, "::clippy::Lint"), "`clippy` is not a crate, or a module here");
+}
+
+#[test]
 fn a_type_in_scope_is_ignored() {
     let fixture = Fixture::new();
     let resolved = fixture.resolve(AB, "Direction::North");
@@ -248,7 +275,7 @@ fn a_crate_without_a_library_does_not_resolve() {
         ("user/src/lib.rs", ""),
     ]);
     let crates = project.crates();
-    let resolved = Resolver::new(project.root(), &crates)
+    let resolved = Resolver::new(project.root(), &crates, &[])
         .resolve(&project.path("user/src/lib.rs"), "bin_only::a");
     assert_eq!(resolved, Resolved::failed("`bin-only` has no library"));
 }

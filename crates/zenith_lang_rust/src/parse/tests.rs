@@ -140,6 +140,45 @@ fn a_path_in_code_is_not_an_import_of_what_a_use_brought_into_scope() {
 }
 
 #[test]
+fn a_use_of_an_inline_module_is_in_the_file() {
+    let source = "pub use real::Screen;\nuse other::f;\nmod real {\n    pub struct Screen;\n}\n";
+    assert_eq!(specifiers(source), ["other::f"]);
+}
+
+#[test]
+fn a_use_path_may_start_with_what_another_use_brought_into_scope() {
+    let source = "use smoltcp::socket::tcp;\nfn f() {\n    use tcp::State::{Closed, Listen};\n}\n";
+    assert_eq!(
+        specifiers(source),
+        [
+            "smoltcp::socket::tcp",
+            "smoltcp::socket::tcp::State::Closed",
+            "smoltcp::socket::tcp::State::Listen"
+        ]
+    );
+    // Through renames, `extern crate`s and chains of names.
+    assert_eq!(specifiers("use a::b as c;\nuse c::d;\n"), ["a::b", "a::b::d"]);
+    assert_eq!(specifiers("extern crate a as b;\nuse b::c;\n"), ["a", "a::c"]);
+    assert_eq!(specifiers("use a::b;\nuse b::c;\nuse c::d;\n"), ["a::b", "a::b::c", "a::b::c::d"]);
+}
+
+#[test]
+fn a_use_path_starts_with_what_its_own_declaration_does_not_bring_into_scope() {
+    assert_eq!(specifiers("use a::a;\nuse b::{b, b::c};\n"), ["a::a", "b::b", "b::b::c"]);
+    // A crate imported by its name stands for itself.
+    assert_eq!(
+        specifiers("use serde;\nuse serde::Deserialize;\n"),
+        ["serde", "serde::Deserialize"]
+    );
+}
+
+#[test]
+fn a_name_brought_into_scope_as_different_paths_is_left_as_it_is() {
+    let source = "fn f() { use a::m; }\nfn g() { use b::m; }\nuse m::x;\n";
+    assert_eq!(specifiers(source), ["a::m", "b::m", "m::x"]);
+}
+
+#[test]
 fn primitive_types_are_not_modules() {
     assert_eq!(
         specifiers(
@@ -171,6 +210,12 @@ fn the_end_of_a_longer_path_in_a_macro_is_not_a_path() {
         specifiers("fn f() { assert_eq!(<T>::new(), Vec::<u8>::new().len()); }"),
         [] as [&str; 0]
     );
+}
+
+#[test]
+fn a_path_in_a_macro_may_go_through_a_primitive_type() {
+    let source = "fn f() { assert!(std::f64::consts::PI > 3.0 && u8::MAX > 0); }";
+    assert_eq!(specifiers(source), ["std::f64::consts"]);
 }
 
 #[test]
@@ -335,6 +380,30 @@ fn a_missing_token_is_a_syntax_error() {
     let errors: Vec<_> = parsed.errors.iter().map(|error| error.value.to_string()).collect();
     assert_eq!(errors, ["expected `;`"]);
     assert_eq!(parsed.imports.len(), 1);
+}
+
+#[test]
+fn safe_items_of_an_extern_block_are_valid() {
+    let source = "unsafe extern \"C\" {\n    safe fn f();\n    pub safe static X: a::b::T;\n    pub(crate) safe static mut Y: u8;\n}\n";
+    assert_eq!(specifiers(source), ["a::b"]);
+    // Elsewhere, `safe` is an error.
+    assert_eq!(parse("fn f() {}\nsafe fn g() {}\n").errors.len(), 1);
+}
+
+#[test]
+fn several_attributes_on_a_parameter_are_valid() {
+    let source = "fn f(\n    #[a] #[b::c] #[d] x: u8,\n    #[e]\n    /// f\n    #[g(h = i::j::K)]\n    y: u8,\n) {}\n";
+    assert_eq!(specifiers(source), ["b::c", "i::j"]);
+    assert!(parse("trait T { fn f(&self, #[a] #[b] x: u8); }\n").errors.is_empty());
+}
+
+#[test]
+fn attribute_and_derive_rules_of_macro_rules_are_valid() {
+    let source = "macro_rules! k (\n    derive() ($i:item) => {};\n    unsafe attr($x:expr) ($i:item) => { $i };\n);\nuse a::b;\n";
+    let parsed = parse(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let [import] = parsed.imports.as_slice() else { panic!("{:?}", parsed.imports) };
+    assert_eq!((import.specifier.as_str(), &source[Range::from(import.range)]), ("a::b", "a::b"));
 }
 
 #[test]

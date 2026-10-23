@@ -1,16 +1,20 @@
 //! What git knows about a project, through a [`Git`] client: the files that
 //! it tracks, for scanning only those, as in a pre-commit hook, where
 //! untracked files aren't part of the commit, the files that it sees
-//! renamed, for following them, and the files that changed since a commit,
-//! for reporting on only those.
+//! renamed, for following them, the files that changed since a commit, for
+//! reporting on only those, and the project at another commit, through a
+//! [`Checkout`].
+
+mod checkout;
 
 use std::{
     ffi::OsString,
-    fmt,
+    fmt, iter,
     path::{Path, PathBuf},
     process::Command,
 };
 
+pub use checkout::Checkout;
 use log::{debug, warn};
 use rustc_hash::{FxHashMap, FxHashSet};
 use zenith_diagnostics::message;
@@ -91,16 +95,30 @@ impl Git {
     /// convenience. A file renamed into or out of the root is not a rename
     /// inside it.
     pub fn renames(&self) -> Renames {
-        self.find_renames().unwrap_or_else(|error| {
+        self.renames_between("HEAD", None)
+    }
+
+    /// The files that git sees renamed inside the project root between the
+    /// commit `base` and the commit `head`, or the files in the worktree
+    /// without one. Like [`Self::renames`], there are none if git can't list
+    /// them.
+    pub fn renames_between(&self, base: &str, head: Option<&str>) -> Renames {
+        let revisions: Vec<_> = iter::once(base).chain(head).collect();
+        self.find_renames(&revisions).unwrap_or_else(|error| {
             debug!("{}", message!(workspace_renames_not_followed, error));
             Renames::default()
         })
     }
 
-    /// [`Self::renames`], or why git could not list them.
-    fn find_renames(&self) -> Result<Renames, GitError> {
-        // 1. Compare the last commit with the files in the worktree, finding renames.
-        let output = self.run(&["diff", "-M", "--name-status", "-z", "--no-ext-diff", "HEAD"])?;
+    /// The renames between the `revisions` that git compares, or why git
+    /// could not list them.
+    fn find_renames(&self, revisions: &[&str]) -> Result<Renames, GitError> {
+        // 1. Compare the revisions, or a revision with the files in the worktree,
+        //    finding renames.
+        let mut args = vec!["diff", "-M", "--name-status", "-z", "--no-ext-diff"];
+        args.extend(revisions);
+        args.push("--");
+        let output = self.run(&args)?;
 
         // 2. Git names the files relative to the worktree's root, and the project's are
         //    relative to its own root, which may be a directory inside it.
@@ -141,17 +159,9 @@ impl Git {
     /// `since` is anything that names a commit, as for
     /// [`Self::resolve_commit`].
     pub fn changed_files(&self, since: &str, untracked: bool) -> Result<Vec<String>, GitError> {
-        // 1. Find the commit first, so that an unknown one has an error of its own,
-        //    then where the branch left it. Before the first commit, `HEAD` names none.
-        let commit = self.resolve_commit(since)?;
-        let head = self.resolve_commit("HEAD")?;
-        let base = match self.merge_base(&commit, &head)? {
-            Some(base) => base,
-            None => {
-                warn!("{}", message!(workspace_no_merge_base, reference = since));
-                commit
-            }
-        };
+        // 1. Find where the branch left the commit. Before the first commit, `HEAD`
+        //    names none.
+        let base = self.branch_point(since, "HEAD")?;
 
         // 2. Compare it with the files in the worktree, without finding renames, so
         //    that a renamed file is deleted under its old name and added under its new
@@ -188,6 +198,25 @@ impl Git {
                 Err(GitError::UnknownCommit(reference.to_owned()))
             }
             Err(error) => Err(error),
+        }
+    }
+
+    /// The hash of the commit where the branch at `head` left `reference`:
+    /// their merge base, as in `git diff <reference>...<head>` and a pull
+    /// request's diff. If they share no history, as in a shallow clone
+    /// without the merge base, it is the commit of `reference` itself, with a
+    /// warning. Both are anything that names a commit, as for
+    /// [`Self::resolve_commit`], which finds `reference` first, so that an
+    /// unknown one has an error of its own.
+    pub fn branch_point(&self, reference: &str, head: &str) -> Result<String, GitError> {
+        let commit = self.resolve_commit(reference)?;
+        let head_commit = self.resolve_commit(head)?;
+        match self.merge_base(&commit, &head_commit)? {
+            Some(base) => Ok(base),
+            None => {
+                warn!("{}", message!(workspace_no_merge_base, reference, head));
+                Ok(commit)
+            }
         }
     }
 
@@ -328,6 +357,10 @@ pub enum GitError {
 
     /// No commit has this name.
     UnknownCommit(String),
+
+    /// The temporary directory to check a commit out into could not be made,
+    /// with this message.
+    Checkout(String),
 }
 
 impl fmt::Display for GitError {
@@ -343,6 +376,7 @@ impl fmt::Display for GitError {
             Self::UnknownCommit(reference) => {
                 f.write_str(&message!(workspace_unknown_commit, reference))
             }
+            Self::Checkout(error) => f.write_str(&message!(workspace_checkout_failed, error)),
         }
     }
 }
@@ -383,7 +417,7 @@ mod tests {
     /// A git repository with `files`, each with contents of its own, so that
     /// git sees them renamed when they move, committed, and its canonical
     /// root.
-    fn committed(files: &[&str]) -> (TempDir, PathBuf) {
+    pub(super) fn committed(files: &[&str]) -> (TempDir, PathBuf) {
         let (dir, root) = repository(files, files);
         for file in files {
             fs::write(root.join(file), format!("export const name = '{file}';\n")).unwrap();
@@ -505,6 +539,25 @@ mod tests {
     }
 
     #[test]
+    fn renames_between_commits_are_found() {
+        let (_dir, root) = committed(&["src/a.ts", "src/b.ts"]);
+        git(&root, &["mv", "src/a.ts", "src/z.ts"]);
+        commit(&root);
+        git(&root, &["mv", "src/b.ts", "src/y.ts"]);
+
+        let git = Git::new(&root);
+        let between = git.renames_between("HEAD~1", Some("HEAD"));
+        assert_eq!(
+            between,
+            [("src/a.ts".to_string(), "src/z.ts".to_string())].into_iter().collect()
+        );
+        let since = git.renames_between("HEAD~1", None);
+        assert_eq!(since.len(), 2);
+        assert_eq!(since.follow("src/b.ts"), "src/y.ts");
+        assert!(git.renames_between("no-such-branch", None).is_empty());
+    }
+
+    #[test]
     fn renames_are_named_relative_to_a_root_inside_the_repository() {
         let (_dir, repository) = committed(&["web/a.ts", "web/b.ts", "api/d.ts"]);
         fs::create_dir(repository.join("web/src")).unwrap();
@@ -515,14 +568,14 @@ mod tests {
 
         let root = repository.join("web");
         let git = Git::new(&root).with_env("GIT_INDEX_FILE", ".git/index");
-        let renames = git.find_renames().unwrap();
+        let renames = git.find_renames(&["HEAD"]).unwrap();
         assert_eq!(renames, [("a.ts".to_string(), "src/a.ts".to_string())].into_iter().collect());
     }
 
     #[test]
     fn there_are_no_renames_before_the_first_commit_or_outside_a_repository() {
         let (_dir, root) = repository(&["a.ts"], &["a.ts"]);
-        assert!(Git::new(&root).find_renames().is_err());
+        assert!(Git::new(&root).find_renames(&["HEAD"]).is_err());
         assert!(Git::new(&root).renames().is_empty());
 
         let dir = TempDir::new().unwrap();

@@ -30,6 +30,30 @@ services, and should only run behind API routes:
   importers short and deliberate; a [`forbidden`](forbidden.md) contract can
   rule out the chains as well.
 
+## Restricting a third-party dependency
+
+A [language's scheme](../selectors.md#string-forms) protects an external
+package, so that only some of your code may use it:
+
+```toml
+[contracts.sharp-only-in-images]
+type = "protected"
+modules = ["npm:sharp"]
+allowed_importers = ["web/src/images"]
+```
+
+Say `sharp`, a native image library, should stay behind one module that
+resizes images:
+
+- **Broken by** `web/src/app/profile/avatar.ts` importing `sharp`.
+- **Allowed:** `web/src/images/resize.ts` importing `sharp`, and `avatar.ts`
+  importing `web/src/images/resize.ts`.
+
+Other languages' packages work the same, such as
+`gomod:github.com/disintegration/imaging` or `crate:serde`. Since such a
+selector may match nothing, a misspelt package name isn't an error: the
+contract is simply kept.
+
 ## Options
 
 | Option | Default | |

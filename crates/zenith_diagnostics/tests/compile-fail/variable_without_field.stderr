@@ -1,0 +1,5 @@
+error: the message shows `$byte`, which `Position` has no field for
+ --> tests/compile-fail/variable_without_field.rs:6:8
+  |
+6 | #[diag(test_position)]
+  |        ^^^^^^^^^^^^^

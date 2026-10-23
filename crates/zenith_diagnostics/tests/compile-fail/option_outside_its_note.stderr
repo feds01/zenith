@@ -1,0 +1,5 @@
+error: the message shows `$value`, an `Option`, which only the notes and labels on its field can show
+ --> tests/compile-fail/option_outside_its_note.rs:6:8
+  |
+6 | #[diag(test_disallowed)]
+  |        ^^^^^^^^^^^^^^^

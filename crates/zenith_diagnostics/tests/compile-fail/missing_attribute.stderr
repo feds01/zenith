@@ -1,0 +1,5 @@
+error: the message `test_empty` has no attribute `.help`
+ --> tests/compile-fail/missing_attribute.rs:7:3
+  |
+7 | #[help]
+  |   ^^^^

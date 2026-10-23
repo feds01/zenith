@@ -25,3 +25,4 @@ test_checked = checked {$count ->
    *[other] {$count} files
 }
 test_year = in {NUMBER($year, useGrouping: "false")}
+test_unknown_function = {UPPER($name)}

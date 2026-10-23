@@ -1,0 +1,5 @@
+error: the catalogue has no function `UPPER`; a message can call `NUMBER`
+ --> tests/compile-fail/unknown_function.rs:6:14
+  |
+6 |     message!(test_unknown_function, name = "a");
+  |              ^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,5 @@
+error: the message has `.help`, which `Mismatch` doesn't show: add `#[help]`
+ --> tests/compile-fail/unshown_attribute.rs:6:8
+  |
+6 | #[diag(test_mismatch)]
+  |        ^^^^^^^^^^^^^

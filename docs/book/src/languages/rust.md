@@ -49,4 +49,6 @@ the crates that its code may name.
 | the standard library | `rust:std` | `std`, `core`, `alloc`, `proc_macro` and `test`. |
 
 An inline `mod a { }` block is part of its file, `#[path]` attributes are not
-followed, and a file doesn't import itself.
+followed, and a file doesn't import itself. A path that starts with the name of a tool, such as
+`clippy::too_many_lines` in an `#[allow]` or `rustfmt::skip`, is the tool's
+attribute or lint, and imports nothing unless a crate or module has the name.

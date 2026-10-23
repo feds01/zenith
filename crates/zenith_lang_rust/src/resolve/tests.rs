@@ -217,6 +217,17 @@ fn an_unknown_first_segment_does_not_resolve() {
 }
 
 #[test]
+fn a_tool_attribute_or_lint_is_ignored() {
+    let fixture = Fixture::new();
+    for specifier in ["clippy::too_many_lines", "rustfmt::skip", "diagnostic::on_unimplemented"] {
+        let resolved = fixture.resolve(AB, specifier);
+        assert!(matches!(resolved, Resolved::Ignored(_)), "{specifier}: {resolved:?}");
+    }
+    // A crate or module of the tool's name is what the path names.
+    assert_eq!(fixture.failure(AB, "::clippy::Lint"), "`clippy` is not a crate, or a module here");
+}
+
+#[test]
 fn a_type_in_scope_is_ignored() {
     let fixture = Fixture::new();
     let resolved = fixture.resolve(AB, "Direction::North");

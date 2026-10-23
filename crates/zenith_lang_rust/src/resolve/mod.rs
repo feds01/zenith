@@ -6,7 +6,9 @@
 //! library. Otherwise the first segment is a module of the file's own module,
 //! as `use` paths may start with one. The path leads through the modules to
 //! the file of the last one, and what follows is an item in it. Inline
-//! modules and `#[path]` attributes are not followed.
+//! modules and `#[path]` attributes are not followed. A path that starts with
+//! the name of a tool, such as `clippy::too_many_lines` in an `#[allow]`, is
+//! the tool's attribute or lint, not an import.
 
 #[cfg(test)]
 mod tests;
@@ -20,6 +22,10 @@ use crate::{
     crates::{Crate, Crates, Dependency, STANDARD_CRATES, Target},
     modules::Position,
 };
+
+/// The tools whose attributes and lints the compiler knows, such as
+/// `#[rustfmt::skip]` and `#[allow(clippy::too_many_lines)]`.
+const TOOLS: &[&str] = &["clippy", "diagnostic", "miri", "rust_analyzer", "rustdoc", "rustfmt"];
 
 /// Resolves the imports of the Rust files of a project, with the `crates`
 /// that were found in it, which are shared between threads.
@@ -128,6 +134,11 @@ impl<'a> Resolver<'a> {
             if depth > own {
                 return self.file(&file, path);
             }
+        }
+        // 3. A tool's attribute or lint, which only names a crate or module when one
+        //    has its name.
+        if !rooted && TOOLS.contains(&name) {
+            return Resolved::ignored(format!("an attribute or lint of the tool `{name}`"));
         }
         Resolved::failed(format!("`{name}` is not a crate, or a module here"))
     }

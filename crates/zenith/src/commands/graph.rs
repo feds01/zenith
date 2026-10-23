@@ -2,6 +2,7 @@
 
 use anyhow::{Result, bail};
 use zenith_contracts::Selection;
+use zenith_diagnostics::message;
 use zenith_graph::{GraphView, ModuleId, ModuleOverview};
 use zenith_pipeline::StageKind;
 
@@ -28,7 +29,7 @@ pub fn graph(global: &GlobalArgs, args: GraphCommand) -> Result<ExitStatus> {
         Some(selector) => {
             let selection = Selection::resolve(selector, graph, &session.workspace);
             if selection.units.is_empty() {
-                bail!("`{selector}` does not match anything");
+                bail!(message!(cli_matches_nothing, selector));
             }
             selection.units.iter().map(|unit| unit.root).collect()
         }

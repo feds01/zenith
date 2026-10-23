@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use zenith_diagnostics::{Report, Reporter, SourceMap};
+use zenith_diagnostics::{Report, Reporter, SourceMap, message};
 use zenith_utils::highlight::{Modifier, colour_enabled, highlight};
 
 use crate::Summary;
@@ -46,7 +46,7 @@ impl fmt::Display for Output<'_> {
                 if !self.reports.is_empty() {
                     write!(f, "{reporter}\n\n")?;
                 }
-                writeln!(f, "{}", highlight(Modifier::Bold, "Contracts"))?;
+                writeln!(f, "{}", highlight(Modifier::Bold, message!(reporting_contracts)))?;
                 for line in self.summary.entry_lines() {
                     writeln!(f, "  {line}")?;
                 }

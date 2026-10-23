@@ -7,6 +7,7 @@ use log::{info, warn};
 use zenith_contracts::{
     Baseline, CheckJson, Contract, ContractReport, Exemptions, UnusedSuppression,
 };
+use zenith_diagnostics::message;
 use zenith_pipeline::StageKind;
 use zenith_reporting::{Format, Output, Summary};
 
@@ -36,12 +37,9 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     };
     if let Some(baseline) = &baseline {
         let shown = &session.config.baseline.path;
-        info!("using the baseline `{shown}`");
+        info!("{}", message!(cli_using_baseline, path = shown));
         if baseline.conflicted {
-            warn!(
-                "the baseline `{shown}` has merge conflict markers, so the entries of both sides \
-                 count; `zenith baseline --prune` resolves them"
-            );
+            warn!("{}", message!(cli_baseline_conflicted, path = shown));
         }
     }
 

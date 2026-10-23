@@ -7,9 +7,9 @@ use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
 use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
 use zenith_contracts::Contract;
-use zenith_diagnostics::{Diagnostic, ReportKind, SourceMap};
+use zenith_diagnostics::{Diagnostic, ReportKind, SourceMap, message};
 use zenith_pipeline::{FileError, FileErrorKind, LANGUAGES, Pipeline, Session, StageKind};
-use zenith_utils::{path::adjust_canonicalisation, printing::plural};
+use zenith_utils::path::adjust_canonicalisation;
 
 use crate::{Reported, cli::GlobalArgs, reporting, version::version};
 
@@ -24,10 +24,10 @@ use crate::{Reported, cli::GlobalArgs, reporting, version::version};
 /// turns it off.
 pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
     // 1. Find the configuration file, if there is one.
-    let cwd = env::current_dir().context("could not read the current directory")?;
+    let cwd = env::current_dir().with_context(|| message!(cli_current_dir))?;
     let config_path = match (&global.config, &global.root) {
         (Some(config), _) if !config.is_file() => {
-            bail!("the configuration file `{}` does not exist", config.display());
+            bail!(message!(cli_config_not_found, path = config.display()));
         }
         (Some(config), _) => Some(config.clone()),
         (None, Some(root)) => Some(root.join(CONFIG_FILE_NAME)).filter(|path| path.is_file()),
@@ -44,7 +44,7 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
         (None, None) => &cwd,
     };
     if !root.is_dir() {
-        bail!("the project root `{}` is not a directory", root.display());
+        bail!(message!(cli_root_not_a_directory, root = root.display()));
     }
     let root = adjust_canonicalisation(root);
     debug!("project root: {}", root.display());
@@ -85,26 +85,16 @@ pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<Pipeli
 
     if last >= StageKind::Graph {
         if session.files.is_empty() {
-            bail!(
-                "found no source files in the project root `{}`; use `--root` to point at the project",
-                session.root.display()
-            );
+            bail!(message!(cli_no_source_files, root = session.root.display()));
         }
-        info!(
-            "indexed {} and {}",
-            plural(session.files.len(), "source file"),
-            plural(session.graph.detail_count(), "import")
-        );
+        let (files, imports) = (session.files.len(), session.graph.detail_count());
+        info!("{}", message!(cli_indexed, files, imports));
         if session.cache.is_some() {
-            info!(
-                "reused the imports of {} of them from the parse cache",
-                session.stats.cached_files
-            );
+            info!("{}", message!(cli_reused_from_cache, files = session.stats.cached_files));
         }
         match session.stats.non_literal_imports {
             0 => {}
-            1 => info!("skipped 1 import whose specifier is not a literal"),
-            count => info!("skipped {count} imports whose specifier is not a literal"),
+            imports => info!("{}", message!(cli_non_literal_imports, imports)),
         }
     }
     Ok(pipeline)
@@ -123,10 +113,8 @@ pub(crate) fn compile_contracts<'s>(
         if session.config.contract(id).is_none() {
             let known: Vec<_> = configs.iter().map(|config| format!("`{}`", config.id)).collect();
             match known.as_slice() {
-                [] => bail!("there is no contract `{id}`; the configuration has no contracts"),
-                known => {
-                    bail!("there is no contract `{id}`; the contracts are {}", known.join(", "))
-                }
+                [] => bail!(message!(cli_unknown_contract_without_contracts, id)),
+                known => bail!(message!(cli_unknown_contract, id, contracts = known.join(", "))),
             }
         }
     }
@@ -179,22 +167,25 @@ fn report_file_errors(sources: &mut SourceMap, errors: &[FileError]) {
 /// Warn about the imports of `session` that could not be resolved, and list
 /// them with `-v`.
 pub(crate) fn warn_about_unresolved(session: &Session) {
-    let count = session.unresolved.len();
-    if count == 0 {
+    let imports = session.unresolved.len();
+    if imports == 0 {
         return;
     }
     let mut sources = SourceMap::with_root(&session.root);
     let listed = log_enabled!(log::Level::Info);
     if listed {
         for import in &session.unresolved {
-            info!(
-                "`{}` in {} could not be resolved: {}",
-                import.import.specifier,
-                import.location(&mut sources),
-                import.reason
+            let unresolved = message!(
+                cli_unresolved_import,
+                specifier = import.import.specifier,
+                location = import.location(&mut sources),
+                reason = import.reason
             );
+            info!("{unresolved}");
         }
     }
-    let hint = if listed { "" } else { "; run with `-v` to list them" };
-    warn!("{} could not be resolved{hint}", plural(count, "import"));
+    match listed {
+        true => warn!("{}", message!(cli_unresolved, imports)),
+        false => warn!("{}", message!(cli_unresolved_unlisted, imports)),
+    }
 }

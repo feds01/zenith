@@ -8,6 +8,7 @@ use zenith::{
     cli::{Cli, expand_args},
     run,
 };
+use zenith_diagnostics::message;
 
 /// mimalloc, which allocates and frees the many small values that parsing and
 /// resolving make faster than the system allocator, on every platform.
@@ -20,7 +21,7 @@ pub fn main() -> ExitCode {
     let args = match expand_args(env::args_os()) {
         Ok(args) => args,
         Err(e) => {
-            eprintln!("error: {e}");
+            eprintln!("{}", message!(cli_error, error = e));
             return ExitStatus::Error.into();
         }
     };
@@ -30,7 +31,7 @@ pub fn main() -> ExitCode {
     match run(args) {
         Ok(status) => status.into(),
         Err(e) => {
-            eprintln!("error: {e:#}");
+            eprintln!("{}", message!(cli_error, error = format!("{e:#}")));
             ExitStatus::Error.into()
         }
     }

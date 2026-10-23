@@ -10,6 +10,7 @@ use std::{
 use log::warn;
 use serde_json::Value;
 use yaml_rust2::{Yaml, YamlLoader};
+use zenith_config::PatternError;
 use zenith_lang::{Workspace, WorkspacePackage};
 use zenith_utils::{
     fs::{ReadJsonError, read_json, read_text},
@@ -45,7 +46,9 @@ pub fn discover_packages(root: &Path, package_jsons: &[PathBuf]) -> Workspace {
         match Glob::new(pattern) {
             Ok(glob) if negated => excludes.push(glob),
             Ok(glob) => includes.push(glob),
-            Err(error) => warn!("ignoring the invalid workspace pattern `{pattern}`: {error}"),
+            Err(error) => {
+                warn!("ignoring the invalid workspace pattern `{pattern}`: {}", PatternError(error))
+            }
         }
     }
 

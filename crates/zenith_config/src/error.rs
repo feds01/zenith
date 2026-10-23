@@ -181,7 +181,7 @@ pub enum ConfigErrorKind {
         pattern: String,
 
         /// What is wrong with it.
-        error: GlobError,
+        error: PatternError,
     },
 
     /// An invalid `ignore_imports` entry.
@@ -288,6 +288,22 @@ impl Alternatives {
             (None, None) => title,
         }
     }
+
+    /// [`inline`](Self::inline) for schemes: each is written with its `:`,
+    /// and the allowed ones are always "one of" them.
+    fn inline_schemes(&self, title: String) -> String {
+        match &self.suggestion {
+            Some(suggestion) => {
+                let suggestion = format!("{suggestion}:");
+                message!(config_did_you_mean_inline, title, suggestion)
+            }
+            None => {
+                let names: Vec<_> = self.expected.iter().map(|name| format!("`{name}:`")).collect();
+                let names = message!(config_many_names, names = names.join(", "));
+                message!(config_expected_inline, title, names)
+            }
+        }
+    }
 }
 
 impl Subdiagnostic for Alternatives {
@@ -370,6 +386,30 @@ impl fmt::Display for LoadError {
 /// it twice.
 impl std::error::Error for LoadError {}
 
+/// Why a glob or name pattern is invalid, shown with the catalogue's text.
+/// The text doesn't repeat the pattern, so callers can name it with its
+/// context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PatternError(pub GlobError);
+
+impl fmt::Display for PatternError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&match self.0 {
+            GlobError::Empty => message!(config_glob_empty),
+            GlobError::EmptyPath => message!(config_glob_empty_path),
+            GlobError::EmptySegment => message!(config_glob_empty_segment),
+            GlobError::LeadingSlash => message!(config_glob_leading_slash),
+            GlobError::TrailingSlash => message!(config_glob_trailing_slash),
+            GlobError::EscapedSlash => message!(config_glob_escaped_slash),
+            GlobError::TrailingBackslash => message!(config_glob_trailing_backslash),
+            GlobError::DoubleStar => message!(config_glob_double_star),
+            GlobError::UnclosedBrace => message!(config_glob_unclosed_brace),
+        })
+    }
+}
+
+impl std::error::Error for PatternError {}
+
 /// Why a selector is invalid.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SelectorError {
@@ -382,11 +422,9 @@ pub enum SelectorError {
         /// The scheme as written, without the `:`.
         scheme: String,
 
-        /// The schemes that zenith knows, without the `:`.
-        expected: Vec<String>,
-
-        /// The scheme closest to it, if any is close.
-        suggestion: Option<String>,
+        /// The schemes that zenith knows, without the `:`, and the closest
+        /// to it.
+        alternatives: Alternatives,
     },
 
     /// A path goes up with `..`, out of the project root.
@@ -399,22 +437,9 @@ pub enum SelectorError {
 impl fmt::Display for SelectorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Pattern(error) => write!(f, "{error}"),
-            Self::UnknownScheme { scheme, expected, suggestion } => {
-                let title = message!(config_unknown_scheme, scheme);
-                let text = match suggestion {
-                    Some(suggestion) => {
-                        let suggestion = format!("{suggestion}:");
-                        message!(config_did_you_mean_inline, title, suggestion)
-                    }
-                    None => {
-                        let names: Vec<_> =
-                            expected.iter().map(|name| format!("`{name}:`")).collect();
-                        let names = message!(config_many_names, names = names.join(", "));
-                        message!(config_expected_inline, title, names)
-                    }
-                };
-                f.write_str(&text)
+            Self::Pattern(error) => write!(f, "{}", PatternError(*error)),
+            Self::UnknownScheme { scheme, alternatives } => {
+                f.write_str(&alternatives.inline_schemes(message!(config_unknown_scheme, scheme)))
             }
             Self::ParentDir => f.write_str(&message!(config_parent_dir)),
             Self::DirectiveWithoutFiles => f.write_str(&message!(config_directive_without_files)),
@@ -428,9 +453,9 @@ impl SelectorError {
     /// The error for a selector that starts with `scheme`, which none of the
     /// `languages` knows.
     pub(crate) fn unknown_scheme(scheme: &str, languages: Languages) -> Self {
-        let expected: Vec<String> = languages.schemes().map(String::from).collect();
-        let suggestion = suggest(scheme, languages.schemes()).map(String::from);
-        Self::UnknownScheme { scheme: scheme.to_string(), expected, suggestion }
+        let alternatives =
+            Alternatives::new(scheme, languages.schemes().map(String::from).collect());
+        Self::UnknownScheme { scheme: scheme.to_string(), alternatives }
     }
 }
 
@@ -669,6 +694,18 @@ mod tests {
         assert_eq!(
             tidy("invalid type: string \"map\", expected a boolean"),
             "invalid type: string \"map\", expected a boolean"
+        );
+    }
+
+    #[test]
+    fn pattern_errors_explain_the_fix() {
+        assert_eq!(
+            PatternError(GlobError::LeadingSlash).to_string(),
+            "leading `/`; globs are relative to the project root"
+        );
+        assert_eq!(
+            PatternError(GlobError::DoubleStar).to_string(),
+            "`**` must be a whole path segment; use `*` within a segment"
         );
     }
 

@@ -38,7 +38,7 @@ pub use contracts::{
 };
 pub use error::{
     Alternatives, ConfigError, ConfigErrorKind, IgnoreImportError, LayerError, LoadError,
-    SelectorError,
+    PatternError, SelectorError,
 };
 pub use language::{Language, LanguageOptions, Languages, NEUTRAL_SCHEMES};
 pub use parse::LanguageTable;

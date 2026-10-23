@@ -32,7 +32,7 @@ use zenith_utils::{glob::GlobError, location::ByteRange};
 
 use crate::{
     config::Config,
-    error::{ConfigError, ConfigErrorKind, classify},
+    error::{ConfigError, ConfigErrorKind, PatternError, classify},
     language::{Language, Languages},
     schema::{ConfigFile, Located},
 };
@@ -130,7 +130,10 @@ impl Parser {
             .iter()
             .filter_map(|pattern| {
                 self.check(compile(&pattern.value), Some(pattern.range), |error| {
-                    ConfigErrorKind::InvalidPattern { pattern: pattern.value.clone(), error }
+                    ConfigErrorKind::InvalidPattern {
+                        pattern: pattern.value.clone(),
+                        error: PatternError(error),
+                    }
                 })
             })
             .collect()

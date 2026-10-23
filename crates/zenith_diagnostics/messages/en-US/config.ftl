@@ -58,6 +58,19 @@ config_many_names = one of {$names}
 config_did_you_mean_inline = {$title}; {config_did_you_mean}
 config_expected_inline = {$title}, {config_expected}
 
+## Why a glob or name pattern is invalid. The pattern itself is named by
+## the message that shows this one.
+
+config_glob_empty = the pattern is empty
+config_glob_empty_path = empty path
+config_glob_empty_segment = empty path segment
+config_glob_leading_slash = leading `/`; globs are relative to the project root
+config_glob_trailing_slash = trailing `/`
+config_glob_escaped_slash = `/` cannot be escaped
+config_glob_trailing_backslash = trailing `\`
+config_glob_double_star = `**` must be a whole path segment; use `*` within a segment
+config_glob_unclosed_brace = unclosed `{"{"}`
+
 ## Why a selector, an `ignore_imports` entry or a layer is invalid.
 
 config_unknown_scheme = unknown scheme `{$scheme}:`

@@ -53,7 +53,9 @@ the crates that its code may name.
 | another crate | `crate:serde` | Named by its package. |
 | the standard library | `rust:std` | `std`, `core`, `alloc`, `proc_macro` and `test`. |
 
-An inline `mod a { }` block is part of its file, `#[path]` attributes are not
-followed, and a file doesn't import itself. A path that starts with the name of a tool, such as
+An inline `mod a { }` block is part of its file, so a path into it, `use`d or
+not, imports nothing. `#[path]` attributes are not followed, and a file
+doesn't import itself. A raw identifier names what it spells: `r#false` is the
+module `false`. A path that starts with the name of a tool, such as
 `clippy::too_many_lines` in an `#[allow]` or `rustfmt::skip`, is the tool's
 attribute or lint, and imports nothing unless a crate or module has the name.

@@ -217,6 +217,12 @@ fn an_unknown_first_segment_does_not_resolve() {
 }
 
 #[test]
+fn a_raw_identifier_names_what_it_spells() {
+    let fixture = Fixture::new();
+    assert_eq!(fixture.file(LIB, "crate::r#a::r#b::Thing"), AB);
+}
+
+#[test]
 fn a_tool_attribute_or_lint_is_ignored() {
     let fixture = Fixture::new();
     for specifier in ["clippy::too_many_lines", "rustfmt::skip", "diagnostic::on_unimplemented"] {

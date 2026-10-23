@@ -56,7 +56,11 @@ impl<'a> Resolver<'a> {
             Some(rest) => (true, rest),
             None => (false, specifier),
         };
-        let segments: Vec<&str> = specifier.split("::").collect();
+        // A raw identifier, such as `r#false`, names the module `false`.
+        let segments: Vec<&str> = specifier
+            .split("::")
+            .map(|segment| segment.strip_prefix("r#").unwrap_or(segment))
+            .collect();
 
         // 3. Resolve it from where it starts.
         match segments[0] {

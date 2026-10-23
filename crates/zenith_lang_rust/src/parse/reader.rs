@@ -48,6 +48,10 @@ pub(super) struct Reader<'s> {
     /// a module.
     bound: FxHashSet<CompactString>,
 
+    /// The names of the inline modules. A `use` path that starts with one is
+    /// in the file.
+    modules: FxHashSet<CompactString>,
+
     /// The ranges of the comments.
     comments: Vec<Range<usize>>,
 
@@ -84,6 +88,7 @@ impl<'s> Reader<'s> {
             paths: Vec::new(),
             seen: FxHashSet::default(),
             bound: FxHashSet::default(),
+            modules: FxHashSet::default(),
             comments: Vec::new(),
             errors: ThinVec::new(),
             reported_until: 0,
@@ -141,7 +146,9 @@ impl<'s> Reader<'s> {
                 if let Some(name) = node.child_by_field_name("name")
                     && node.child_by_field_name("body").is_some()
                 {
-                    self.bound.insert(self.text(name).into());
+                    let name: CompactString = self.text(name).into();
+                    self.bound.insert(name.clone());
+                    self.modules.insert(name);
                     self.inline.push(node.end_byte());
                 }
             }
@@ -304,7 +311,8 @@ impl<'s> Reader<'s> {
         let tokens: Vec<Node<'s>> = node.children(&mut cursor).collect();
         let is_name = |token: Option<&Node<'s>>| {
             token.is_some_and(|token| {
-                matches!(token.kind(), "identifier" | "crate" | "self" | "super")
+                // A primitive type, such as `f64` in `std::f64::consts`, is a token of its own.
+                matches!(token.kind(), "identifier" | "primitive_type" | "crate" | "self" | "super")
             })
         };
         let is_separator =
@@ -407,6 +415,11 @@ impl<'s> Reader<'s> {
         for (import, declaration) in imports.iter_mut().zip(&self.declarations) {
             self.unalias(&mut import.specifier, *declaration);
         }
+        // A `use` of an inline module is in the file.
+        imports.retain(|import| {
+            let first = import.specifier.split("::").next().unwrap_or_default();
+            !self.modules.contains(first) || self.aliases.contains_key(first)
+        });
 
         // A path in code whose first segment is a name that a `use` brought into scope
         // is already imported by it.

@@ -140,6 +140,12 @@ fn a_path_in_code_is_not_an_import_of_what_a_use_brought_into_scope() {
 }
 
 #[test]
+fn a_use_of_an_inline_module_is_in_the_file() {
+    let source = "pub use real::Screen;\nuse other::f;\nmod real {\n    pub struct Screen;\n}\n";
+    assert_eq!(specifiers(source), ["other::f"]);
+}
+
+#[test]
 fn a_use_path_may_start_with_what_another_use_brought_into_scope() {
     let source = "use smoltcp::socket::tcp;\nfn f() {\n    use tcp::State::{Closed, Listen};\n}\n";
     assert_eq!(
@@ -204,6 +210,12 @@ fn the_end_of_a_longer_path_in_a_macro_is_not_a_path() {
         specifiers("fn f() { assert_eq!(<T>::new(), Vec::<u8>::new().len()); }"),
         [] as [&str; 0]
     );
+}
+
+#[test]
+fn a_path_in_a_macro_may_go_through_a_primitive_type() {
+    let source = "fn f() { assert!(std::f64::consts::PI > 3.0 && u8::MAX > 0); }";
+    assert_eq!(specifiers(source), ["std::f64::consts"]);
 }
 
 #[test]

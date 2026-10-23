@@ -3,7 +3,9 @@
 
 use std::{fmt, io, path::PathBuf};
 
-use zenith_diagnostics::{Report, Reporter, SourceId, SourceMap, Span};
+use zenith_diagnostics::{
+    Diagnostic, Report, Reporter, SourceId, SourceMap, Span, Subdiagnostic, message,
+};
 use zenith_utils::{glob::GlobError, location::ByteRange};
 
 use crate::language::Languages;
@@ -30,37 +32,36 @@ impl ConfigError {
             report.add_span(Span::new(source, range));
         }
         if let Some(contract) = &self.contract {
-            report.add_note(format!("in contract `{contract}`"));
+            report.add_note(message!(config_in_contract, contract));
         }
-        if let Some(help) = self.kind.help() {
-            report.add_help(help);
-        }
+        self.kind.add_to(&mut report);
         report
     }
 }
 
 /// What is wrong in a configuration file.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Diagnostic)]
 pub enum ConfigErrorKind {
     /// The file is not valid TOML.
+    #[diag(config_syntax)]
     Syntax {
         /// The message of the TOML parser.
         message: String,
     },
 
     /// A key that zenith doesn't know.
+    #[diag(config_unknown_key)]
     UnknownKey {
         /// The key as written.
         key: String,
 
-        /// The keys allowed in its table.
-        expected: Vec<String>,
-
-        /// The allowed key closest to it, if any is close.
-        suggestion: Option<String>,
+        /// The keys allowed in its table, and the closest to it.
+        #[subdiagnostic]
+        alternatives: Alternatives,
     },
 
     /// A required key is missing.
+    #[diag(config_missing_key)]
     MissingKey {
         /// The missing key.
         key: String,
@@ -68,43 +69,42 @@ pub enum ConfigErrorKind {
 
     /// A value that is not one of the allowed ones, such as an unknown
     /// `severity`.
+    #[diag(config_unknown_value)]
     UnknownValue {
         /// The value as written.
         value: String,
 
-        /// The allowed values.
-        expected: Vec<String>,
-
-        /// The allowed value closest to it, if any is close.
-        suggestion: Option<String>,
+        /// The allowed values, and the closest to it.
+        #[subdiagnostic]
+        alternatives: Alternatives,
     },
 
     /// A contract `type` that zenith doesn't know.
+    #[diag(config_unknown_contract_type)]
     UnknownContractType {
         /// The type as written.
         name: String,
 
-        /// The contract types.
-        expected: Vec<String>,
-
-        /// The contract type closest to it, if any is close.
-        suggestion: Option<String>,
+        /// The contract types, and the closest to it.
+        #[subdiagnostic]
+        alternatives: Alternatives,
     },
 
     /// A language table in `[languages]` that zenith doesn't know.
+    #[diag(config_unknown_language)]
     UnknownLanguage {
         /// The name as written.
         name: String,
 
-        /// The names that a language's table goes by.
-        expected: Vec<String>,
-
-        /// The name closest to it, if any is close.
-        suggestion: Option<String>,
+        /// The names that a language's table goes by, and the closest to it.
+        #[subdiagnostic]
+        alternatives: Alternatives,
     },
 
     /// A language's table is given under two of its names, such as `js` and
     /// `typescript`.
+    #[diag(config_duplicate_language)]
+    #[help]
     DuplicateLanguage {
         /// The name of the second table, as written.
         name: String,
@@ -114,12 +114,16 @@ pub enum ConfigErrorKind {
     },
 
     /// `[languages]` has no language, so there is nothing to scan.
+    #[diag(config_no_languages)]
     NoLanguages {
         /// The name of a language to suggest, if there is one.
+        #[help]
         example: Option<String>,
     },
 
     /// A selector names a scheme of a language that is not enabled.
+    #[diag(config_disabled_scheme)]
+    #[help]
     DisabledScheme {
         /// The selector as written.
         selector: String,
@@ -133,6 +137,7 @@ pub enum ConfigErrorKind {
 
     /// A value of the wrong type, or out of range, as reported by the TOML
     /// deserialiser.
+    #[diag(config_invalid_value)]
     InvalidValue {
         /// What is wrong, e.g. "invalid type: integer `1`, expected a
         /// string".
@@ -140,22 +145,26 @@ pub enum ConfigErrorKind {
     },
 
     /// A value that must be a table, such as a contract, is not one.
+    #[diag(config_not_a_table)]
     NotATable {
         /// The dotted key of the value, e.g. `contracts.web-layers`.
         key: String,
     },
 
     /// A contract `type` is not a string.
+    #[diag(config_contract_type_not_a_string)]
     ContractTypeNotAString,
 
     /// A contract id with characters other than ASCII letters, digits, `-`
     /// and `_`.
+    #[diag(config_invalid_contract_id)]
     InvalidContractId {
         /// The id as written.
         id: String,
     },
 
     /// An invalid selector.
+    #[diag(config_invalid_selector)]
     InvalidSelector {
         /// The selector as written.
         selector: String,
@@ -166,6 +175,7 @@ pub enum ConfigErrorKind {
 
     /// An invalid glob or name pattern outside a selector, e.g. in `[files]
     /// exclude`.
+    #[diag(config_invalid_pattern)]
     InvalidPattern {
         /// The pattern as written.
         pattern: String,
@@ -175,6 +185,7 @@ pub enum ConfigErrorKind {
     },
 
     /// An invalid `ignore_imports` entry.
+    #[diag(config_invalid_ignore_import)]
     InvalidIgnoreImport {
         /// The entry as written.
         entry: String,
@@ -184,6 +195,7 @@ pub enum ConfigErrorKind {
     },
 
     /// An invalid layer of a `layers` contract.
+    #[diag(config_invalid_layer)]
     InvalidLayer {
         /// The layer as written.
         layer: String,
@@ -193,118 +205,95 @@ pub enum ConfigErrorKind {
     },
 
     /// A `layers` contract has no layers.
+    #[diag(config_no_layers)]
     NoLayers,
 
     /// A `layers` contract is `exhaustive` without `containers`, which are
     /// what it would be exhaustive about.
+    #[diag(config_exhaustive_without_containers)]
     ExhaustiveWithoutContainers,
 
     /// A contract has `boundaries` and `allow_indirect_imports`, with which
     /// only direct imports count, and they pass through nothing.
+    #[diag(config_boundaries_without_chains)]
     BoundariesWithoutChains,
 
     /// An `encapsulation` contract sets `reexports = "transparent"`, although
     /// importing through entry points, which often only re-export, is what it
     /// allows.
+    #[diag(config_transparent_encapsulation)]
     TransparentEncapsulation,
 }
 
 impl ConfigErrorKind {
-    /// What is wrong, without the names that an unknown name could have
-    /// been.
-    fn title(&self) -> String {
+    /// The names that an unknown name could have been, if it is one.
+    fn alternatives(&self) -> Option<&Alternatives> {
         match self {
-            Self::Syntax { message } => format!("invalid TOML: {message}"),
-            Self::UnknownKey { key, .. } => format!("unknown key `{key}`"),
-            Self::MissingKey { key } => format!("missing key `{key}`"),
-            Self::UnknownValue { value, .. } => format!("unknown value `{value}`"),
-            Self::UnknownContractType { name, .. } => format!("unknown contract type `{name}`"),
-            Self::UnknownLanguage { name, .. } => format!("unknown language `{name}`"),
-            Self::DuplicateLanguage { name, first } => format!(
-                "`languages.{name}` is another name for `languages.{first}`, which is already given"
-            ),
-            Self::NoLanguages { .. } => "no language is enabled".to_string(),
-            Self::DisabledScheme { selector, scheme, language } => format!(
-                "`{selector}` uses the `{scheme}:` scheme of the `{language}` language, which is not enabled"
-            ),
-            Self::InvalidValue { message } => message.clone(),
-            Self::NotATable { key } => format!("`{key}` must be a table"),
-            Self::ContractTypeNotAString => "`type` must be a string".to_string(),
-            Self::InvalidContractId { id } => format!(
-                "invalid contract id `{id}`: ids may only contain ASCII letters, digits, `-` and `_`"
-            ),
-            Self::InvalidSelector { selector, error } => {
-                format!("invalid selector `{selector}`: {error}")
-            }
-            Self::InvalidPattern { pattern, error } => {
-                format!("invalid pattern `{pattern}`: {error}")
-            }
-            Self::InvalidIgnoreImport { entry, error } => {
-                format!("invalid `ignore_imports` entry `{entry}`: {error}")
-            }
-            Self::InvalidLayer { layer, error } => format!("invalid layer `{layer}`: {error}"),
-            Self::NoLayers => "`layers` must list at least one layer".to_string(),
-            Self::ExhaustiveWithoutContainers => "`exhaustive` requires `containers`".to_string(),
-            Self::BoundariesWithoutChains => {
-                "`boundaries` has no effect with `allow_indirect_imports = true`, since direct \
-                 imports pass through nothing"
-                    .to_string()
-            }
-            Self::TransparentEncapsulation => {
-                "`encapsulation` contracts can't see through re-exports, since importing through an \
-                 entry point, which often only re-exports, is what they allow"
-                    .to_string()
-            }
-        }
-    }
-
-    /// The names that an unknown name could have been, and the closest of
-    /// them, if any is close.
-    fn alternatives(&self) -> Option<(&[String], Option<&str>)> {
-        match self {
-            Self::UnknownKey { expected, suggestion, .. }
-            | Self::UnknownValue { expected, suggestion, .. }
-            | Self::UnknownLanguage { expected, suggestion, .. }
-            | Self::UnknownContractType { expected, suggestion, .. } => {
-                Some((expected, suggestion.as_deref()))
-            }
+            Self::UnknownKey { alternatives, .. }
+            | Self::UnknownValue { alternatives, .. }
+            | Self::UnknownLanguage { alternatives, .. }
+            | Self::UnknownContractType { alternatives, .. } => Some(alternatives),
             _ => None,
-        }
-    }
-
-    /// How to fix an unknown name: the closest allowed name, or else the
-    /// allowed names.
-    fn help(&self) -> Option<String> {
-        match self {
-            Self::DuplicateLanguage { .. } => {
-                return Some("give the language one table".to_string());
-            }
-            Self::NoLanguages { example } => {
-                let example = example.as_ref()?;
-                return Some(format!("add a table for one, such as `[languages.{example}]`"));
-            }
-            Self::DisabledScheme { language, .. } => {
-                return Some(format!("enable it with a `[languages.{language}]` table"));
-            }
-            _ => {}
-        }
-        match self.alternatives()? {
-            (_, Some(suggestion)) => Some(format!("did you mean `{suggestion}`?")),
-            (expected, None) => expected_names(expected).map(|names| format!("expected {names}")),
         }
     }
 }
 
-/// The allowed names, as `` `a` ``, `` `a` or `b` `` or
-/// `` one of `a`, `b`, `c` ``, or `None` if there are none.
-fn expected_names(names: &[String]) -> Option<String> {
-    match names {
-        [] => None,
-        [only] => Some(format!("`{only}`")),
-        [first, second] => Some(format!("`{first}` or `{second}`")),
-        names => {
-            let names: Vec<_> = names.iter().map(|name| format!("`{name}`")).collect();
-            Some(format!("one of {}", names.join(", ")))
+/// The names that an unknown name could have been, and the closest of them,
+/// if any is close.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Alternatives {
+    /// The allowed names.
+    pub expected: Vec<String>,
+
+    /// The allowed name closest to the unknown one, if any is close.
+    pub suggestion: Option<String>,
+}
+
+impl Alternatives {
+    /// The names that `unknown` could have been, of the `expected` ones.
+    pub(crate) fn new(unknown: &str, expected: Vec<String>) -> Self {
+        let suggestion = suggest(unknown, expected.iter().map(String::as_str)).map(String::from);
+        Self { expected, suggestion }
+    }
+
+    /// The allowed names, quoted, as `` `a` ``, `` `a` or `b` `` or
+    /// `` one of `a`, `b`, `c` ``, or `None` if there are none.
+    fn expected_names(&self) -> Option<String> {
+        let names: Vec<_> = self.expected.iter().map(|name| format!("`{name}`")).collect();
+        match names.as_slice() {
+            [] => None,
+            [only] => Some(only.clone()),
+            [first, second] => Some(message!(config_two_names, first, second)),
+            names => Some(message!(config_many_names, names = names.join(", "))),
+        }
+    }
+
+    /// How to fix the unknown name: the closest allowed name, or else the
+    /// allowed names, if there are any.
+    fn help(&self) -> Option<String> {
+        match &self.suggestion {
+            Some(suggestion) => Some(message!(config_did_you_mean, suggestion)),
+            None => self.expected_names().map(|names| message!(config_expected, names)),
+        }
+    }
+}
+
+impl Alternatives {
+    /// `title`, then on the same line how to fix the unknown name, as
+    /// [`help`](Self::help) gives it.
+    fn inline(&self, title: String) -> String {
+        match (&self.suggestion, self.expected_names()) {
+            (Some(suggestion), _) => message!(config_did_you_mean_inline, title, suggestion),
+            (None, Some(names)) => message!(config_expected_inline, title, names),
+            (None, None) => title,
+        }
+    }
+}
+
+impl Subdiagnostic for Alternatives {
+    fn add_to(&self, report: &mut Report) {
+        if let Some(help) = self.help() {
+            report.add_help(help);
         }
     }
 }
@@ -312,24 +301,22 @@ fn expected_names(names: &[String]) -> Option<String> {
 /// On one line: the title, then a "did you mean" hint or the allowed names.
 impl fmt::Display for ConfigErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.title())?;
+        let title = self.title();
         match self.alternatives() {
-            Some((_, Some(suggestion))) => write!(f, "; did you mean `{suggestion}`?"),
-            Some((expected, None)) => match expected_names(expected) {
-                Some(names) => write!(f, ", expected {names}"),
-                None => Ok(()),
-            },
-            None => Ok(()),
+            Some(alternatives) => f.write_str(&alternatives.inline(title)),
+            None => f.write_str(&title),
         }
     }
 }
 
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(contract) = &self.contract {
-            write!(f, "in contract `{contract}`: ")?;
+        match &self.contract {
+            Some(contract) => {
+                f.write_str(&message!(config_in_contract_inline, contract, error = self.kind))
+            }
+            None => write!(f, "{}", self.kind),
         }
-        write!(f, "{}", self.kind)
     }
 }
 
@@ -365,7 +352,9 @@ pub enum LoadError {
 impl fmt::Display for LoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Read { path, error } => write!(f, "could not read `{}`: {error}", path.display()),
+            Self::Read { path, error } => {
+                f.write_str(&message!(config_read, path = path.display(), error))
+            }
             Self::Invalid { path, contents, errors } => {
                 let mut sources = SourceMap::new();
                 let source = sources.add(path.display().to_string(), contents.as_str());
@@ -412,22 +401,23 @@ impl fmt::Display for SelectorError {
         match self {
             Self::Pattern(error) => write!(f, "{error}"),
             Self::UnknownScheme { scheme, expected, suggestion } => {
-                write!(f, "unknown scheme `{scheme}:`")?;
-                match suggestion {
-                    Some(suggestion) => write!(f, "; did you mean `{suggestion}:`?"),
+                let title = message!(config_unknown_scheme, scheme);
+                let text = match suggestion {
+                    Some(suggestion) => {
+                        let suggestion = format!("{suggestion}:");
+                        message!(config_did_you_mean_inline, title, suggestion)
+                    }
                     None => {
                         let names: Vec<_> =
                             expected.iter().map(|name| format!("`{name}:`")).collect();
-                        write!(f, ", expected one of {}", names.join(", "))
+                        let names = message!(config_many_names, names = names.join(", "));
+                        message!(config_expected_inline, title, names)
                     }
-                }
+                };
+                f.write_str(&text)
             }
-            Self::ParentDir => {
-                f.write_str("`..` is not allowed; paths are relative to the project root")
-            }
-            Self::DirectiveWithoutFiles => f.write_str(
-                "`directive` only applies to path and `pkg:` selectors, which match files",
-            ),
+            Self::ParentDir => f.write_str(&message!(config_parent_dir)),
+            Self::DirectiveWithoutFiles => f.write_str(&message!(config_directive_without_files)),
         }
     }
 }
@@ -469,9 +459,9 @@ pub enum IgnoreImportError {
 impl fmt::Display for IgnoreImportError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Arrow => f.write_str("expected `<importer> -> <imported>`"),
+            Self::Arrow => f.write_str(&message!(config_ignore_import_arrow)),
             Self::Selector { selector, error } => {
-                write!(f, "invalid selector `{selector}`: {error}")
+                f.write_str(&message!(config_invalid_selector, selector, error))
             }
         }
     }
@@ -508,13 +498,12 @@ pub enum LayerError {
 impl fmt::Display for LayerError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MixedSeparators => f.write_str("a layer cannot mix `|` and `:` separators"),
-            Self::EmptyMember => f.write_str("a member is empty"),
-            Self::Selector { member, error } => write!(f, "invalid selector `{member}`: {error}"),
-            Self::NotRelative { member } => write!(
-                f,
-                "`{member}` is not a path; with `containers`, layers are paths relative to each container"
-            ),
+            Self::MixedSeparators => f.write_str(&message!(config_mixed_separators)),
+            Self::EmptyMember => f.write_str(&message!(config_empty_member)),
+            Self::Selector { member, error } => {
+                f.write_str(&message!(config_invalid_selector, selector = member, error))
+            }
+            Self::NotRelative { member } => f.write_str(&message!(config_not_relative, member)),
         }
     }
 }
@@ -544,12 +533,12 @@ pub(crate) fn suggest<'a>(
 /// `to`", which are recognised here to suggest a fix.
 pub(crate) fn classify(message: &str) -> ConfigErrorKind {
     if let Some((key, expected)) = quoted_and_expected(message, "unknown field `") {
-        let suggestion = suggest(&key, expected.iter().map(String::as_str)).map(String::from);
-        return ConfigErrorKind::UnknownKey { key, expected, suggestion };
+        let alternatives = Alternatives::new(&key, expected);
+        return ConfigErrorKind::UnknownKey { key, alternatives };
     }
     if let Some((value, expected)) = quoted_and_expected(message, "unknown variant `") {
-        let suggestion = suggest(&value, expected.iter().map(String::as_str)).map(String::from);
-        return ConfigErrorKind::UnknownValue { value, expected, suggestion };
+        let alternatives = Alternatives::new(&value, expected);
+        return ConfigErrorKind::UnknownValue { value, alternatives };
     }
     if let Some((key, _)) = quoted_and_expected(message, "missing field `") {
         return ConfigErrorKind::MissingKey { key };
@@ -585,16 +574,28 @@ fn tidy_invalid_type(message: &str) -> String {
         return message.to_string();
     };
     let unexpected = match unexpected {
-        "sequence" => "array",
-        "map" => "table",
-        other => other,
+        "sequence" => message!(config_value_array),
+        "map" => message!(config_value_table),
+        other => other.to_string(),
     };
-    let expected = match expected {
-        "a sequence" => "an array",
-        "a map" => "a table",
-        other => other,
-    };
-    format!("invalid type: {unexpected}, expected {expected}")
+    message!(config_invalid_type, unexpected, expected = expectation(expected))
+}
+
+/// The catalogue's text for what serde `expected`: one of the expectations
+/// that the tables of the schema declare with `expecting`, which are matched
+/// here as they are written there, or serde's names for an array or a
+/// table. serde's names for other types, such as "a boolean", are its own.
+fn expectation(expected: &str) -> String {
+    match expected {
+        "a sequence" => message!(config_type_array),
+        "a map" | "a table" => message!(config_type_table),
+        "a contract table" => message!(config_type_contract_table),
+        "a selector table" => message!(config_type_selector_table),
+        "a selector string or table" => message!(config_type_selector),
+        "a layer table" => message!(config_type_layer_table),
+        "a layer string or table" => message!(config_type_layer),
+        other => other.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -625,29 +626,32 @@ mod tests {
             classify("unknown field `exclud`, expected one of `include`, `exclude`"),
             ConfigErrorKind::UnknownKey {
                 key: "exclud".into(),
-                expected: vec!["include".into(), "exclude".into()],
-                suggestion: Some("exclude".into()),
+                alternatives: Alternatives {
+                    expected: vec!["include".into(), "exclude".into()],
+                    suggestion: Some("exclude".into()),
+                },
             }
         );
         assert_eq!(
             classify("unknown field `zzz`, expected `path`"),
             ConfigErrorKind::UnknownKey {
                 key: "zzz".into(),
-                expected: vec!["path".into()],
-                suggestion: None,
+                alternatives: Alternatives { expected: vec!["path".into()], suggestion: None },
             }
         );
         assert_eq!(
             classify("unknown field `a`b`, expected `path`"),
             ConfigErrorKind::UnknownKey {
                 key: "a`b".into(),
-                expected: vec!["path".into()],
-                suggestion: None,
+                alternatives: Alternatives { expected: vec!["path".into()], suggestion: None },
             }
         );
         assert_eq!(
             classify("unknown field `a`, there are no fields"),
-            ConfigErrorKind::UnknownKey { key: "a".into(), expected: Vec::new(), suggestion: None }
+            ConfigErrorKind::UnknownKey {
+                key: "a".into(),
+                alternatives: Alternatives { expected: Vec::new(), suggestion: None },
+            }
         );
     }
 
@@ -671,12 +675,9 @@ mod tests {
     #[test]
     fn shows_suggestions_or_else_the_allowed_names() {
         let unknown = |expected: &[&str], suggestion: Option<&str>| {
-            ConfigErrorKind::UnknownKey {
-                key: "x".into(),
-                expected: expected.iter().map(|name| name.to_string()).collect(),
-                suggestion: suggestion.map(String::from),
-            }
-            .to_string()
+            let expected = expected.iter().map(|name| name.to_string()).collect();
+            let alternatives = Alternatives { expected, suggestion: suggestion.map(String::from) };
+            ConfigErrorKind::UnknownKey { key: "x".into(), alternatives }.to_string()
         };
         assert_eq!(unknown(&["a", "b"], Some("a")), "unknown key `x`; did you mean `a`?");
         assert_eq!(unknown(&[], None), "unknown key `x`");

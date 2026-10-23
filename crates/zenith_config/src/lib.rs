@@ -37,7 +37,8 @@ pub use contracts::{
     IndependenceConfig, Layer, LayerMember, LayersConfig, ProtectedConfig, Reexports, Severity,
 };
 pub use error::{
-    ConfigError, ConfigErrorKind, IgnoreImportError, LayerError, LoadError, SelectorError,
+    Alternatives, ConfigError, ConfigErrorKind, IgnoreImportError, LayerError, LoadError,
+    SelectorError,
 };
 pub use language::{Language, LanguageOptions, Languages, NEUTRAL_SCHEMES};
 pub use parse::LanguageTable;

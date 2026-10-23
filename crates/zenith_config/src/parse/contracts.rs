@@ -18,7 +18,7 @@ use crate::{
         AcyclicConfig, CONTRACT_TYPES, ContractConfig, ContractKind, EncapsulationConfig,
         ForbiddenConfig, IndependenceConfig, LayersConfig, ProtectedConfig, Reexports,
     },
-    error::{ConfigErrorKind, suggest},
+    error::{Alternatives, ConfigErrorKind},
     schema::{
         AcyclicTable, ContractTable, EncapsulationTable, ForbiddenTable, IndependenceTable,
         LayersTable, Located, ProtectedTable, SelectorValue,
@@ -93,10 +93,10 @@ impl Parser {
                 EncapsulationTable::deserialize(value).map(ContractTable::Encapsulation)
             }
             name => {
+                let expected = CONTRACT_TYPES.map(String::from).to_vec();
                 let kind = ConfigErrorKind::UnknownContractType {
                     name: name.to_string(),
-                    expected: CONTRACT_TYPES.map(String::from).to_vec(),
-                    suggestion: suggest(name, CONTRACT_TYPES).map(String::from),
+                    alternatives: Alternatives::new(name, expected),
                 };
                 self.add_error(kind, Some(kind_range));
                 return None;

@@ -15,7 +15,7 @@ use zenith_utils::{glob::GlobError, location::ByteRange};
 use super::{Parser, TomlValue};
 use crate::{
     config::LanguagesConfig,
-    error::{ConfigErrorKind, suggest},
+    error::{Alternatives, ConfigErrorKind},
     language::{Language, LanguageOptions},
     schema::Located,
 };
@@ -52,8 +52,7 @@ impl Parser {
                 let names: Vec<_> = self.languages.table_names().map(String::from).collect();
                 let kind = ConfigErrorKind::UnknownLanguage {
                     name: name.to_string(),
-                    suggestion: suggest(&name, names.iter().map(String::as_str)).map(String::from),
-                    expected: names,
+                    alternatives: Alternatives::new(&name, names),
                 };
                 self.add_error(kind, Some(name_range));
                 continue;

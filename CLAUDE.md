@@ -53,7 +53,9 @@ a new kind of responsibility, not for each feature:
   It knows no language.
 - `zenith_contracts`: selectors, the contract types and the violations they
   find, suppressions, the baseline, and the JSON output of `zenith check`.
-- `zenith_diagnostics`: reports with source excerpts, and how they render.
+- `zenith_diagnostics`: reports with source excerpts, the catalogue of
+  what zenith says to its users, the `Diagnostic` trait through which an
+  error makes its report, and how reports render.
 - `zenith_graph`: the module tree and import graph, views of it, and the
   algorithms that run on them.
 - `zenith_lang`: the interface that each supported language implements, and
@@ -68,6 +70,9 @@ a new kind of responsibility, not for each feature:
 - `zenith_lang_rust`: Rust support: crate discovery with Cargo or from the
   manifests, parsing with rust-analyzer's parser, and resolving imports along
   each target's module tree.
+- `zenith_macros`: the macros through which code names the messages of
+  the catalogue, `#[derive(Diagnostic)]` and `message!`, which check them
+  when it compiles.
 - `zenith_pipeline`: the stages that turn a project into its import graph,
   the session they share, and the registry of the languages zenith reads.
 - `zenith_reporting`: the output formats of `zenith check`.
@@ -95,6 +100,11 @@ Key invariants:
   comments: `// 1. Open the project, and build its graph.`, `// 2. …`.
 - Keep commands thin: logic that isn't about the command line belongs in the
   core crates, with the command only gluing it together.
+- Keep what zenith says to its users in the catalogue,
+  `crates/zenith_diagnostics/messages/en-US/*.ftl`, not in code. Name a
+  message with `#[derive(Diagnostic)]` and `#[diag(id)]` on an error type,
+  or with `message!(id, ...)`. Ids are snake_case, starting with their
+  area, as in `config_unknown_key`.
 - Use British spelling in prose (colour, normalise, behaviour).
 - Commits are conventional (`feat(graph): …`, `fix(resolve): …`). Branches are
   `feds01/<topic>`.

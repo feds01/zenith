@@ -1,6 +1,7 @@
 //! `zenith resolve`.
 
 use anyhow::{Result, bail};
+use zenith_diagnostics::message;
 use zenith_lang::Resolved;
 use zenith_pipeline::{PipelineError, StageKind};
 use zenith_utils::path::{adjust_canonicalisation, relative_posix};
@@ -18,7 +19,7 @@ pub fn resolve(global: &GlobalArgs, args: ResolveCommand) -> Result<ExitStatus> 
     let mut session = project::open(global)?;
     let file = adjust_canonicalisation(&args.file);
     if !file.is_file() {
-        bail!("`{}` is not a file", args.file.display());
+        bail!(message!(cli_not_a_file, path = args.file.display()));
     }
 
     // 2. Find the file's language, and the workspace packages, which resolve
@@ -26,7 +27,7 @@ pub fn resolve(global: &GlobalArgs, args: ResolveCommand) -> Result<ExitStatus> 
     let language = relative_posix(&session.root, &file)
         .and_then(|name| session.config.languages.language_of(&name));
     let Some(language) = language else {
-        bail!("`{}` is not a source file of an enabled language", args.file.display());
+        bail!(message!(cli_not_a_source_file, path = args.file.display()));
     };
     project::run_until(&mut session, StageKind::Discover)?;
     let backend = session.backends.get(language);
@@ -39,19 +40,19 @@ pub fn resolve(global: &GlobalArgs, args: ResolveCommand) -> Result<ExitStatus> 
         Resolved::Unresolved(_) | Resolved::Ignored(_) => ExitStatus::Failure,
         _ => ExitStatus::Success,
     };
-    let (kind, target) = match resolved {
-        Resolved::Internal(path) => ("internal", path),
-        Resolved::Package(dir) => ("package", dir),
-        Resolved::External { package, found: true } => ("external", format!("{scheme}:{package}")),
+    let shown = match resolved {
+        Resolved::Internal(path) => message!(cli_resolved_internal, path),
+        Resolved::Package(dir) => message!(cli_resolved_package, dir),
+        Resolved::External { package, found: true } => {
+            message!(cli_resolved_external, scheme, package)
+        }
         Resolved::External { package, found: false } => {
-            ("external", format!("{scheme}:{package} (not installed, so named from the specifier)"))
+            message!(cli_resolved_not_installed, scheme, package)
         }
-        Resolved::Builtin(name) => ("builtin", name),
-        Resolved::Unresolved(reason) => ("unresolved", reason.to_string()),
-        Resolved::Ignored(reason) => {
-            ("unresolved", format!("{reason} (expected, by `ignore_unresolved`)"))
-        }
+        Resolved::Builtin(name) => message!(cli_resolved_builtin, name),
+        Resolved::Unresolved(reason) => message!(cli_resolved_unresolved, reason),
+        Resolved::Ignored(reason) => message!(cli_resolved_ignored, reason),
     };
-    println!("{kind}: {target}");
+    println!("{shown}");
     Ok(status)
 }

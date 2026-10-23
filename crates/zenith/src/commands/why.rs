@@ -4,13 +4,10 @@ use std::fmt;
 
 use anyhow::{Result, bail};
 use zenith_contracts::Selection;
-use zenith_diagnostics::SourceMap;
+use zenith_diagnostics::{SourceMap, message};
 use zenith_graph::{Graph, GraphView, ImportKind, KindSet, ModuleId, NodeSet};
 use zenith_pipeline::StageKind;
-use zenith_utils::{
-    highlight::{Modifier, highlight},
-    printing::plural,
-};
+use zenith_utils::highlight::{Modifier, highlight};
 
 use crate::{
     ExitStatus,
@@ -39,7 +36,7 @@ pub fn why(global: &GlobalArgs, args: WhyCommand) -> Result<ExitStatus> {
     let to = Selection::try_resolve(&args.to, graph, &session.workspace)?;
     let (from, to) = (from.members(), to.members());
     if from.intersects(&to) {
-        bail!("`{}` and `{}` overlap, so there is no import between them", args.from, args.to);
+        bail!(message!(cli_why_overlap, from = args.from, to = args.to));
     }
 
     // 3. Find the shortest chains between them, without the excluded kinds.
@@ -47,7 +44,7 @@ pub fn why(global: &GlobalArgs, args: WhyCommand) -> Result<ExitStatus> {
     let view = GraphView::without_kinds(graph, excluded);
     let chains = view.find_shortest_chains(&from, &to, &NodeSet::new());
     if chains.is_empty() {
-        println!("`{}` does not import `{}`.", args.from, args.to);
+        println!("{}", message!(cli_why_no_chain, from = args.from, to = args.to));
         return Ok(ExitStatus::Success);
     }
 
@@ -55,11 +52,14 @@ pub fn why(global: &GlobalArgs, args: WhyCommand) -> Result<ExitStatus> {
     let mut sources = SourceMap::with_root(&session.root);
     let total = chains.len();
     for (number, chain) in chains.iter().take(args.limit).enumerate() {
-        println!("{}", highlight(Modifier::Bold, format!("chain {} of {total}:", number + 1)));
+        println!(
+            "{}",
+            highlight(Modifier::Bold, message!(cli_why_chain, number = number + 1, total))
+        );
         println!("{}", Chain::new(graph, chain, excluded, &mut sources));
     }
     if total > args.limit {
-        println!("and {} more; use `--limit` to show them", plural(total - args.limit, "chain"));
+        println!("{}", message!(cli_why_more, chains = total - args.limit));
     }
     Ok(ExitStatus::Success)
 }

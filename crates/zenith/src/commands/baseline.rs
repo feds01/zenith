@@ -5,8 +5,8 @@ use std::{fs, io};
 use anyhow::{Context, Result};
 use log::warn;
 use zenith_contracts::{Baseline, Exemptions};
+use zenith_diagnostics::message;
 use zenith_pipeline::StageKind;
-use zenith_utils::printing::{plural, thousands};
 use zenith_workspace::Git;
 
 use crate::{
@@ -56,29 +56,29 @@ pub fn baseline(global: &GlobalArgs, args: BaselineCommand) -> Result<ExitStatus
     let shown = &session.config.baseline.path;
     if baseline.is_empty() {
         match fs::remove_file(&path) {
-            Ok(()) => println!("No violations remain; removed `{shown}`."),
+            Ok(()) => println!("{}", message!(cli_baseline_removed, path = shown)),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                println!("No violations to record.");
+                println!("{}", message!(cli_baseline_empty));
             }
             Err(error) => {
-                return Err(error).with_context(|| format!("could not remove `{shown}`"));
+                return Err(error)
+                    .with_context(|| message!(cli_baseline_remove_failed, path = shown));
             }
         }
         return Ok(ExitStatus::Success);
     }
     baseline.save(&path)?;
-    let after = baseline.len();
-    println!(
-        "Wrote {} {} for {} to `{shown}` (was {}).",
-        thousands(after),
-        if after == 1 { "baseline entry" } else { "baseline entries" },
-        plural(baseline.contracts.len(), "contract"),
-        thousands(old.len())
+    let written = message!(
+        cli_baseline_written,
+        entries = baseline.len(),
+        contracts = baseline.contracts.len(),
+        path = shown,
+        was = old.len()
     );
+    println!("{written}");
     let new = baseline.count_new(&known);
     if new > 0 {
-        let them = if new == 1 { "it" } else { "them" };
-        warn!("the baseline gained {}; review {them} before committing", plural(new, "entry"));
+        warn!("{}", message!(cli_baseline_gained, entries = new));
     }
     Ok(ExitStatus::Success)
 }

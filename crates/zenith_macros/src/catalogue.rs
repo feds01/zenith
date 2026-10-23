@@ -17,6 +17,7 @@ use fluent_syntax::{
 /// The files of the catalogue in English, which every message is in: each
 /// file's name, and its contents.
 const SOURCES: &[(&str, &str)] = &[
+    ("cli.ftl", include_str!("../../zenith_diagnostics/messages/en-US/cli.ftl")),
     ("config.ftl", include_str!("../../zenith_diagnostics/messages/en-US/config.ftl")),
     ("contracts.ftl", include_str!("../../zenith_diagnostics/messages/en-US/contracts.ftl")),
     ("go.ftl", include_str!("../../zenith_diagnostics/messages/en-US/go.ftl")),

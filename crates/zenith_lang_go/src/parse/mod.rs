@@ -39,6 +39,7 @@ mod tests;
 
 use std::fmt;
 
+use zenith_diagnostics::message;
 use zenith_utils::location::{ByteRange, Located};
 
 /// Parses Go source files into [`GoFile`]s.
@@ -195,16 +196,16 @@ pub enum GoSyntaxError {
 impl fmt::Display for GoSyntaxError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::SourceTooLarge => f.write_str("the source is too large to read"),
-            Self::MissingPackageClause => f.write_str("expected the package clause"),
-            Self::Invalid => f.write_str("invalid syntax"),
+            Self::SourceTooLarge => f.write_str(&message!(go_source_too_large)),
+            Self::MissingPackageClause => f.write_str(&message!(go_missing_package_clause)),
+            Self::Invalid => f.write_str(&message!(go_invalid_syntax)),
             // A kind of node is a name in snake case, and a token is anything else.
             Self::Missing(kind) if kind.chars().all(|c| c.is_ascii_lowercase() || c == '_') => {
-                write!(f, "expected {}", kind.replace('_', " "))
+                f.write_str(&message!(go_expected_node, node = kind.replace('_', " ")))
             }
-            Self::Missing(token) => write!(f, "expected `{token}`"),
-            Self::EscapedImportPath => f.write_str("escapes in import paths are not supported"),
-            Self::EmptyImportPath => f.write_str("the import path is empty"),
+            Self::Missing(token) => f.write_str(&message!(go_expected_token, token)),
+            Self::EscapedImportPath => f.write_str(&message!(go_escaped_import_path)),
+            Self::EmptyImportPath => f.write_str(&message!(go_empty_import_path)),
         }
     }
 }

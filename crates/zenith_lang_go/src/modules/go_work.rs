@@ -8,6 +8,7 @@
 //! a `)` line. Operands are words or quoted strings, and `//` starts a
 //! comment.
 
+use zenith_diagnostics::message;
 use zenith_utils::location::ByteRange;
 
 use super::{ModError, Parsed, Replace, ReplaceTarget, is_local_path, unquote};
@@ -54,7 +55,7 @@ impl GoWork {
             }
         }
         if let Some((verb, line)) = block {
-            reader.error(&line, &format!("the `{verb}` block is never closed"));
+            reader.error(&line, &message!(go_unclosed_block, verb));
         }
         Parsed { value: reader.value, errors: reader.errors }
     }
@@ -95,7 +96,7 @@ impl Reader {
                 quote @ (b'"' | b'`') => match rest[1..].find(quote as char) {
                     Some(end) => end + 2,
                     None => {
-                        self.error(line, "string literal not terminated");
+                        self.error(line, &message!(go_unterminated_string));
                         return None;
                     }
                 },
@@ -106,7 +107,7 @@ impl Reader {
                     .map_or(rest.len(), |end| rest[..end].find("=>").unwrap_or(end)),
             };
             let Some(word) = unquote(&rest[..length]) else {
-                self.error(line, "escapes in module paths are not supported");
+                self.error(line, &message!(go_escaped_module_path));
                 return None;
             };
             words.push(word.to_owned());
@@ -120,7 +121,7 @@ impl Reader {
     fn statement(&mut self, verb: &str, operands: &[String], line: &Line) {
         match (verb, operands) {
             ("use", [dir]) if !is_punctuation(dir) => self.value.uses.push(dir.clone()),
-            ("use", _) => self.error(line, "`use` takes one directory path"),
+            ("use", _) => self.error(line, &message!(go_use_operands)),
             ("replace", operands) => {
                 if let Some(replace) = self.replace(operands, line) {
                     self.value.replaces.push(replace);
@@ -135,19 +136,19 @@ impl Reader {
     /// version.
     fn replace(&mut self, operands: &[String], line: &Line) -> Option<Replace> {
         let Some(arrow) = operands.iter().position(|word| word == "=>") else {
-            self.error(line, "`replace` needs a `=>`");
+            self.error(line, &message!(go_replace_without_arrow));
             return None;
         };
         let (old, new) = (&operands[..arrow], &operands[arrow + 1..]);
         if old.iter().chain(new).any(|word| is_punctuation(word)) {
-            self.error(line, "unexpected punctuation in `replace`");
+            self.error(line, &message!(go_replace_punctuation));
             return None;
         }
         let (old, old_version) = match old {
             [path] => (path.clone(), None),
             [path, version] => (path.clone(), Some(version.clone())),
             _ => {
-                self.error(line, "`replace` needs a module path, and optionally a version");
+                self.error(line, &message!(go_replace_old));
                 return None;
             }
         };
@@ -157,8 +158,7 @@ impl Reader {
                 ReplaceTarget::Module { path: path.clone(), version: version.clone() }
             }
             _ => {
-                let message = "`replace` needs a directory, or a module path and a version";
-                self.error(line, message);
+                self.error(line, &message!(go_replace_new));
                 return None;
             }
         };

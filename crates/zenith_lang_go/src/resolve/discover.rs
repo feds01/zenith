@@ -3,6 +3,7 @@
 
 use std::{error::Error, fmt, io};
 
+use zenith_diagnostics::message;
 use zenith_utils::path::posix_parent;
 
 use super::{GoModule, GoModules, GoWorkspace};
@@ -31,8 +32,12 @@ pub struct DiscoverError {
 impl fmt::Display for DiscoverError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
-            DiscoverErrorKind::Read(message) => write!(f, "{}: cannot read: {message}", self.file),
-            DiscoverErrorKind::Parse(error) => write!(f, "{}: {error}", self.file),
+            DiscoverErrorKind::Read(error) => {
+                f.write_str(&message!(go_cannot_read, file = self.file, error))
+            }
+            DiscoverErrorKind::Parse(error) => {
+                f.write_str(&message!(go_malformed, file = self.file, error))
+            }
         }
     }
 }

@@ -27,8 +27,8 @@
 //! between units ([`UnitGraph::nominate_cycle_breakers`]).
 //!
 //! A [`ModuleOverview`] shows the shape of part of a project: a node, its
-//! children, and the dependencies between them, as a tree, a Graphviz digraph
-//! or JSON.
+//! children, and the dependencies between them, as a tree, a Graphviz digraph,
+//! a Mermaid flowchart or JSON.
 
 mod builder;
 mod cycles;
@@ -53,7 +53,9 @@ pub use graph::{Graph, ImportDetail, ModuleId, Node, NodeKind};
 pub use kinds::{ImportKind, KindSet};
 pub use layers::{Architecture, LayerId, LayerRef, Level, LevelId, PackageDependency, Route};
 pub use node_set::NodeSet;
-pub use overview::{ChildDependency, ModuleOverview, OverviewChild, OverviewDot, OverviewTree};
+pub use overview::{
+    ChildDependency, ModuleOverview, OverviewChild, OverviewDot, OverviewMermaid, OverviewTree,
+};
 pub use reexports::ModuleExports;
 pub use unit::Unit;
 pub use view::{EdgeSet, GraphView};

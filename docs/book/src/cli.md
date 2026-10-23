@@ -4,7 +4,7 @@
 zenith check [<path>…] [--contract <id>]… [--format pretty|compact|json|github]
              [--no-baseline] [--show-unresolved] [--show-timings]
 zenith baseline [--contract <id>]… [--prune]
-zenith graph [<selector>] [--depth <n>] [--format tree|dot|json] [--exclude-kind <kind>]…
+zenith graph [<selector>] [--depth <n>] [--format tree|dot|mermaid|json] [--exclude-kind <kind>]…
 zenith why <from-selector> <to-selector> [--exclude-kind <kind>]… [--limit <n>]
 zenith resolve <file> <specifier>
 zenith init [--force]
@@ -15,7 +15,7 @@ zenith version
 |---|---|
 | `check` | Checks the contracts, or only those of `--contract`. With paths, it only reports what involves the files under them. |
 | `baseline` | Records the current violations in the [baseline](baseline.md). |
-| `graph` | Shows the module tree under a selector, and the dependencies between each node's children, as a tree, Graphviz or JSON. |
+| `graph` | Shows the module tree under a selector, and the dependencies between each node's children, as a tree, Graphviz, Mermaid or JSON. |
 | `why` | Shows the shortest import chains from one selector to another. |
 | `resolve` | Shows what a specifier resolves to from a file, and why. |
 | `init` | Writes a starter `zenith.toml` for the workspace packages it finds. |
@@ -33,6 +33,10 @@ Every command takes these options:
 
 Arguments may also come from a file, with `@path`. Selectors are matched by
 zenith itself, so quote them, as in `zenith graph "web/src/*"`.
+
+When a `graph` selector matches several modules, each is shown on its own,
+except in Mermaid, where each is a subgraph of one flowchart, so that the
+output renders from a single code block.
 
 ## Checking some files
 

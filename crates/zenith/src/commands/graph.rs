@@ -52,6 +52,7 @@ pub fn graph(global: &GlobalArgs, args: GraphCommand) -> Result<ExitStatus> {
                 print!("{}", overview.dot());
             }
         }
+        GraphFormat::Mermaid => print!("{}", ModuleOverview::mermaid(&overviews)),
         GraphFormat::Json => println!("{}", serde_json::to_string_pretty(&overviews)?),
     }
     Ok(ExitStatus::Success)

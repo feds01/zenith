@@ -286,6 +286,8 @@ pub enum GraphFormat {
     Tree,
     /// A Graphviz digraph of the dependencies between children.
     Dot,
+    /// A Mermaid flowchart of the dependencies between children.
+    Mermaid,
     /// Children and dependencies as JSON.
     Json,
 }

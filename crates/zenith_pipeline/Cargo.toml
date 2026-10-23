@@ -18,6 +18,7 @@ zenith_lang_go = { workspace = true }
 zenith_lang_js = { workspace = true }
 zenith_lang_python = { workspace = true }
 zenith_lang_rust = { workspace = true }
+zenith_lang_terraform = { workspace = true }
 zenith_utils = { workspace = true }
 zenith_workspace = { workspace = true }
 

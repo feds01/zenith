@@ -22,6 +22,7 @@ pub const PYTHON: Language = Language {
     enabled_by_default: false,
     include: &["**/*.py", "**/*.pyi"],
     source_extensions: &["py", "pyi"],
+    source_file_names: &[],
     optional_extensions: &["py", "pyi"],
     // `pypi:` is for third-party packages, `python:` for the standard library.
     schemes: &["pypi", "python"],

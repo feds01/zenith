@@ -162,6 +162,52 @@
       },
       "description": "Rust."
     },
+    "TerraformTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Globs of the files to scan. Defaults to every Terraform, OpenTofu and\nTerragrunt file: `**/*.tf`, `**/*.tofu` and `**/terragrunt.hcl`."
+        },
+        "ignore_unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Name patterns of module sources and dependency paths that are expected\nnot to resolve, so are not reported as unresolved.",
+          "default": []
+        },
+        "registries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Name patterns of hosts that serve the public registry's modules, such\nas a mirror, whose modules are named as the public registry's are,\nbesides the public registries themselves.",
+          "default": []
+        },
+        "repository_hosts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Name patterns of hosts of repositories that module sources may name\nwithout a scheme, as they name GitHub's, such as a GitHub Enterprise\nserver, besides `github.com` and `bitbucket.org`.",
+          "default": []
+        },
+        "bucket_hosts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Name patterns of hosts of buckets that module sources may name without\na scheme, as they name S3's, besides `*.amazonaws.com` and\n`www.googleapis.com`.",
+          "default": []
+        }
+      },
+      "description": "Terraform, OpenTofu and Terragrunt."
+    },
     "FilesTable": {
       "type": "object",
       "additionalProperties": false,
@@ -206,6 +252,10 @@
         "rust": {
           "$ref": "#/$defs/RustTable",
           "description": "Rust: how its files are found and the imports between its crates and modules resolved."
+        },
+        "terraform": {
+          "$ref": "#/$defs/TerraformTable",
+          "description": "Terraform, OpenTofu and Terragrunt: how their files are found and their module sources resolved."
         }
       }
     },

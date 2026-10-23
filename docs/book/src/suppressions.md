@@ -11,7 +11,8 @@ import { y } from "@/app/(dashboard)/types"; // zenith-ignore web-layers
 ```
 
 - It works the same in Go files, where it is a `//` or `/* */` comment among the
-  imports.
+  imports, and in Terraform files, where it may also be a `#` comment, and one
+  above a block or an attribute applies to every import in it.
 - The syntax is `zenith-ignore <id> [<id>…][: <reason>]`, in a line or a block
   comment. Ids may also be separated by commas.
 - A comment after code applies to the imports that start on its own line. A

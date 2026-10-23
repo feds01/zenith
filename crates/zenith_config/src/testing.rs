@@ -23,6 +23,7 @@ pub(crate) const TEST: Language = Language {
     enabled_by_default: true,
     include: &["**/*.tst"],
     source_extensions: &["tst"],
+    source_file_names: &[],
     optional_extensions: &["tst", "d.tst"],
     schemes: &["ext", "core", "sys"],
     parse: |table| Arc::new(TestOptions::parse(table)),
@@ -30,14 +31,16 @@ pub(crate) const TEST: Language = Language {
     schema: |generator| generator.subschema_for::<TestTable>(),
 };
 
-/// A language that is only enabled by its table.
+/// A language that is only enabled by its table. Its files are `.oth` files,
+/// and the files named `Otherfile`.
 pub(crate) const OTHER: Language = Language {
     name: "other",
     table_names: &["other"],
     description: "Another language of the tests.",
     enabled_by_default: false,
-    include: &["**/*.oth"],
+    include: &["**/*.oth", "**/Otherfile"],
     source_extensions: &["oth"],
+    source_file_names: &["Otherfile"],
     optional_extensions: &["oth"],
     schemes: &["oth"],
     parse: |table| Arc::new(OtherOptions::parse(table)),

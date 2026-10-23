@@ -2800,10 +2800,14 @@ dependencies = [
 name = "zenith_lang_terraform"
 version = "0.4.0"
 dependencies = [
+ "schemars",
+ "serde",
  "tempfile",
  "tree-sitter",
  "tree-sitter-hcl",
+ "zenith_config",
  "zenith_diagnostics",
+ "zenith_graph",
  "zenith_lang",
  "zenith_utils",
 ]
@@ -2837,6 +2841,7 @@ dependencies = [
  "zenith_lang_js",
  "zenith_lang_python",
  "zenith_lang_rust",
+ "zenith_lang_terraform",
  "zenith_utils",
  "zenith_workspace",
 ]

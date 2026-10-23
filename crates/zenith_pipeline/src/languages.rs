@@ -8,6 +8,7 @@ pub const LANGUAGES: Languages = Languages::new(&[
     &zenith_lang_go::GO,
     &zenith_lang_python::PYTHON,
     &zenith_lang_rust::RUST,
+    &zenith_lang_terraform::TERRAFORM,
 ]);
 
 #[cfg(test)]
@@ -46,12 +47,16 @@ mod tests {
     }
 
     #[test]
-    fn the_source_extensions_are_what_the_default_include_matches() {
+    fn the_source_extensions_and_file_names_are_what_the_default_include_matches() {
         for language in LANGUAGES.iter() {
             let globs: Vec<_> =
                 language.include.iter().map(|glob| Glob::new(glob).unwrap()).collect();
             for extension in language.source_extensions {
                 let path = format!("src/a.{extension}");
+                assert!(globs.iter().any(|glob| glob.is_match(&path)), "{path}");
+            }
+            for name in language.source_file_names {
+                let path = format!("src/{name}");
                 assert!(globs.iter().any(|glob| glob.is_match(&path)), "{path}");
             }
             assert!(!globs.iter().any(|glob| glob.is_match("src/a.txt")));

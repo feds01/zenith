@@ -1,0 +1,3 @@
+module "downloaded" {
+  source = "./nowhere"
+}

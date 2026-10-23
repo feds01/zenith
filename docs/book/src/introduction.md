@@ -78,8 +78,9 @@ Contracts
   [`independence`](contracts/independence.md), [`layers`](contracts/layers.md),
   [`protected`](contracts/protected.md), [`acyclic`](contracts/acyclic.md) and
   [`encapsulation`](contracts/encapsulation.md).
-- **Several languages:** JavaScript and TypeScript, Go, Python and Rust, in one
-  [import graph](languages.md), with the same contracts for each.
+- **Several languages:** JavaScript and TypeScript, Go, Python, Rust and
+  Terraform, in one [import graph](languages.md), with the same contracts for
+  each.
 - **Monorepo aware:** workspace packages, Go modules, Python packages and Cargo
   crates are found automatically, and can be named in contracts with `pkg:`
   selectors.

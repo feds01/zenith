@@ -40,12 +40,13 @@
 //! Each syntax error is recorded in [`TerraformFile::errors`], and the blocks
 //! around it are still read.
 
+mod lang;
 mod reader;
 
 #[cfg(test)]
 mod tests;
 
-use std::fmt;
+use std::{fmt, path::Path};
 
 use zenith_diagnostics::message;
 use zenith_utils::location::{ByteRange, Located};
@@ -104,6 +105,18 @@ pub enum Dialect {
 
     /// A Terragrunt configuration file, `terragrunt.hcl`.
     Terragrunt,
+}
+
+impl Dialect {
+    /// The dialect of the file at `path`: Terragrunt for a `.hcl` file, such
+    /// as `terragrunt.hcl`, and Terraform for any other, such as a `.tf` or a
+    /// `.tofu` file.
+    pub fn of(path: &Path) -> Self {
+        match path.extension().is_some_and(|extension| extension == "hcl") {
+            true => Self::Terragrunt,
+            false => Self::Terraform,
+        }
+    }
 }
 
 /// What a Terraform or Terragrunt file refers to, with where in the file each

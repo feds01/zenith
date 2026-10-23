@@ -1,0 +1,6 @@
+[languages.terraform]
+include = ["infra/**/*.tf", "live/**/terragrunt.hcl"]
+ignore_unresolved = ["../../shared/*"]
+registries = ["terraform-mirror.acme.com"]
+repository_hosts = ["*.ghe.acme.com"]
+bucket_hosts = ["minio.acme.com"]

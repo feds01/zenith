@@ -18,7 +18,10 @@
 //! - before code, the line where the comment ends;
 //! - on a line, or lines, of its own, the next line.
 //!
-//! Other comments next to it don't count as code.
+//! Other comments next to it don't count as code. A language whose imports
+//! sit inside statements that span lines, such as Terraform's blocks, extends
+//! the target line to the end of each such statement that starts on it, with
+//! [`Suppression::cover`].
 
 use std::ops::Range;
 
@@ -43,7 +46,8 @@ pub struct Suppression {
 
     /// The target line, including its line ending. The suppression applies to
     /// the imports that start in it. Past the last line, it is the empty
-    /// range at the end of the file.
+    /// range at the end of the file. It reaches past the line to the end of
+    /// the statements it [covers](Self::cover).
     pub target: ByteRange,
 }
 
@@ -67,6 +71,17 @@ impl Suppression {
                 Some(Located::new(comment.range, suppression))
             })
             .collect()
+    }
+}
+
+impl Suppression {
+    /// Extend the target to the end of `statement`, a statement with imports
+    /// in it, if the statement starts in the target, so that a comment above
+    /// a statement that spans lines applies to every import in it.
+    pub fn cover(&mut self, statement: ByteRange) {
+        if self.target.contains(statement.start()) && statement.end() > self.target.end() {
+            self.target = ByteRange::new(self.target.start(), statement.end());
+        }
     }
 }
 
@@ -254,5 +269,24 @@ import c from 'c';
         // On a line of its own, it is the next line.
         let alone = Comment { trailing: false, ..comment };
         assert_eq!(target(alone), lines.line_range(2));
+    }
+
+    #[test]
+    fn covers_the_statements_that_start_on_the_target_line() {
+        let suppression = |start, end| Suppression {
+            contracts: vec!["a".to_owned()],
+            reason: None,
+            target: ByteRange::new(start, end),
+        };
+        let mut covering = suppression(10, 20);
+        covering.cover(ByteRange::new(12, 50));
+        assert_eq!(covering.target, ByteRange::new(10, 50));
+        // A statement that starts elsewhere, or ends inside the target, changes
+        // nothing.
+        for statement in [ByteRange::new(20, 60), ByteRange::new(5, 60), ByteRange::new(12, 15)] {
+            let mut unchanged = suppression(10, 20);
+            unchanged.cover(statement);
+            assert_eq!(unchanged.target, ByteRange::new(10, 20), "{statement:?}");
+        }
     }
 }

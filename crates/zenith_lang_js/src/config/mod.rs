@@ -24,6 +24,7 @@ pub const JS: Language = Language {
     include: &["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"],
     // Declaration files (`.d.ts`) are `ts` files.
     source_extensions: &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"],
+    source_file_names: &[],
     optional_extensions: &["ts", "tsx", "mts", "cts", "d.ts", "js", "jsx", "mjs", "cjs"],
     schemes: &["npm", "node", "bun"],
     parse: |table| Arc::new(JsConfig::parse(table)),

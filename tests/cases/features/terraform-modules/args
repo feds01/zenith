@@ -1,0 +1,8 @@
+check --show-unresolved
+graph
+# A module of the project, a registry module, a repository, and a Terragrunt
+# dependency.
+resolve live/prod/main.tf ../../modules/vpc
+resolve live/prod/main.tf hashicorp/consul/aws
+resolve live/prod/main.tf git::https://github.com/acme/modules.git//dns?ref=v1.2.0
+resolve units/app/terragrunt.hcl ../network

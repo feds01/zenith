@@ -1,0 +1,6 @@
+[languages.terraform]
+
+[contracts.no-remote-modules]
+type = "forbidden"
+from = ["live"]
+to = ["tfmod:github.com/*", "pkg:acme"]

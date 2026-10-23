@@ -1,7 +1,7 @@
 # Zenith: guide for contributors and agents
 
-Zenith is an architecture linter for monorepos in JavaScript, TypeScript, Go
-and Rust, written in Rust. The user guide in
+Zenith is an architecture linter for monorepos in JavaScript, TypeScript, Go,
+Python and Rust, written in Rust. The user guide in
 [docs/book](docs/book/src/SUMMARY.md) describes its behaviour: when a change
 alters what users see, update the guide in the same change.
 
@@ -67,6 +67,9 @@ a new kind of responsibility, not for each feature:
 - `zenith_lang_js`: JavaScript and TypeScript support: parsing with oxc,
   specifier resolution with `oxc_resolver`, workspace package discovery
   from `package.json`, and the `[languages.js]` table.
+- `zenith_lang_python`: Python support: package discovery from
+  `pyproject.toml`, parsing with Ruff's parser, and resolving module paths
+  against the roots that absolute imports start from.
 - `zenith_lang_rust`: Rust support: crate discovery with Cargo or from the
   manifests, parsing with rust-analyzer's parser, and resolving imports along
   each target's module tree.

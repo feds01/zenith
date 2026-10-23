@@ -1,0 +1,6 @@
+# The root only configures the tools and the workspace.
+[tool.uv.workspace]
+members = ["services/*"]
+
+[tool.ruff]
+line-length = 100

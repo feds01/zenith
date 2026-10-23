@@ -111,6 +111,35 @@
       },
       "description": "Go."
     },
+    "PythonTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Globs of the files to scan. Defaults to every Python file and stub,\n`**/*.py` and `**/*.pyi`."
+        },
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The directories that absolute imports start from, relative to the\nproject root, as on `sys.path`. Defaults to the `src` directory of each\npackage with a `pyproject.toml`, or the package's own directory when it\nhas none, and the project root."
+        },
+        "ignore_unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Name patterns of module paths that are expected not to resolve, so\nare not reported as unresolved.",
+          "default": []
+        }
+      },
+      "description": "Python."
+    },
     "RustTable": {
       "type": "object",
       "additionalProperties": false,
@@ -169,6 +198,10 @@
         "go": {
           "$ref": "#/$defs/GoTable",
           "description": "Go: how its files are found and their imports resolved."
+        },
+        "python": {
+          "$ref": "#/$defs/PythonTable",
+          "description": "Python: how its files are found and the imports between its modules resolved."
         },
         "rust": {
           "$ref": "#/$defs/RustTable",

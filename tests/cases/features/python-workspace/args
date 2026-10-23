@@ -1,0 +1,11 @@
+check
+graph services --depth 2
+why services/api services/billing
+# A module, a name in a module, a relative import, the standard library, a
+# third-party package, and a loose script beside its helper.
+resolve services/api/src/acme/api/handlers.py acme.core.db
+resolve services/api/src/acme/api/handlers.py acme.core.db.Session
+resolve services/api/src/acme/api/handlers.py .models
+resolve services/api/src/acme/api/handlers.py typing.TYPE_CHECKING
+resolve services/api/src/acme/api/handlers.py requests
+resolve scripts/migrate.py helpers.run

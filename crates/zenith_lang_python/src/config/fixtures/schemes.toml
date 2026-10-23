@@ -1,0 +1,6 @@
+[languages.python]
+
+[contracts.no-requests]
+type = "forbidden"
+from = ["services/core"]
+to = ["pypi:requests", "python:subprocess", "pkg:api"]

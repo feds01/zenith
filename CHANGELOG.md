@@ -3,6 +3,16 @@
 What changed for zenith's users in each release. dist shows a release's
 section as its notes on GitHub.
 
+## [0.5.0] - 2026-10-23
+
+[Changes since v0.4.0](https://github.com/feds01/zenith/compare/v0.4.0...v0.5.0)
+
+### Features
+
+- **terraform:** read the module sources of Terraform and Terragrunt files ([#105](https://github.com/feds01/zenith/pull/105))
+- **terraform:** resolve module sources to directories and external modules ([#106](https://github.com/feds01/zenith/pull/106))
+- **terraform:** check Terraform and Terragrunt projects ([#107](https://github.com/feds01/zenith/pull/107))
+
 ## [0.4.0] - 2026-10-23
 
 [Changes since v0.3.0](https://github.com/feds01/zenith/compare/v0.3.0...v0.4.0)

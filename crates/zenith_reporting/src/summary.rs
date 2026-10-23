@@ -2,10 +2,10 @@
 
 use std::time::Duration;
 
-use zenith_diagnostics::ReportKind;
+use zenith_diagnostics::{ReportKind, message};
 use zenith_utils::{
     highlight::{Colour, Modifier, highlight},
-    printing::{plural, thousands},
+    printing::plural,
 };
 
 /// Whether a contract is kept or broken.
@@ -101,24 +101,21 @@ impl Summary {
             .iter()
             .map(|entry| {
                 let (mark, status) = match &entry.outcome {
-                    Outcome::Kept => (highlight(Colour::Green, "✓"), "kept".to_string()),
+                    Outcome::Kept => (highlight(Colour::Green, "✓"), message!(reporting_kept)),
                     Outcome::KeptWith { status, kind: ReportKind::Error } => {
                         (highlight(Colour::Red, "✗"), status.clone())
                     }
                     Outcome::KeptWith { status, kind: ReportKind::Warning } => {
                         (highlight(Colour::Yellow, "!"), status.clone())
                     }
-                    Outcome::Broken { findings, kind: ReportKind::Error } => {
-                        let findings = plural(*findings, "violation");
-                        (highlight(Colour::Red, "✗"), format!("broken ({findings})"))
-                    }
-                    Outcome::Broken { findings, kind: ReportKind::Warning } => {
-                        let findings = plural(*findings, "violation");
-                        (
-                            highlight(Colour::Yellow, "!"),
-                            format!("broken ({findings}, warning only)"),
-                        )
-                    }
+                    Outcome::Broken { findings, kind: ReportKind::Error } => (
+                        highlight(Colour::Red, "✗"),
+                        message!(reporting_broken, findings = *findings),
+                    ),
+                    Outcome::Broken { findings, kind: ReportKind::Warning } => (
+                        highlight(Colour::Yellow, "!"),
+                        message!(reporting_broken_warning, findings = *findings),
+                    ),
                 };
                 let details = match entry.details.as_slice() {
                     [] => String::new(),
@@ -137,21 +134,18 @@ impl Summary {
     /// `<kept> kept, <broken> broken[, <n> warnings][ · <count>]… · <files>
     /// files, <imports> imports`, followed by the timings if they are shown.
     pub(crate) fn totals(&self) -> String {
-        let mut line = format!("{} kept, {} broken", self.kept(), self.broken(ReportKind::Error));
-        let warnings = self.broken(ReportKind::Warning);
-        if warnings > 0 {
-            line += &format!(", {}", plural(warnings, "warning"));
-        }
+        let (kept, broken) = (self.kept(), self.broken(ReportKind::Error));
+        let mut line = match self.broken(ReportKind::Warning) {
+            0 => message!(reporting_outcomes, kept, broken),
+            warnings => message!(reporting_outcomes_with_warnings, kept, broken, warnings),
+        };
         for Count { noun, count, .. } in &self.counts {
             if *count > 0 {
                 line += &format!(" · {}", plural(*count, noun));
             }
         }
-        let count = |count: usize, noun: &str| match count {
-            1 => format!("1 {noun}"),
-            count => format!("{} {noun}s", thousands(count)),
-        };
-        line += &format!(" · {}, {}", count(self.files, "file"), count(self.imports, "import"));
+        let checked = message!(reporting_checked, files = self.files, imports = self.imports);
+        line += &format!(" · {checked}");
         if let Some(timings) = &self.timings {
             let steps: Vec<_> =
                 timings.iter().map(|(name, time)| format!("{name} {time:.1?}")).collect();

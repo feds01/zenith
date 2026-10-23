@@ -1,14 +1,22 @@
 //! Rust as the pipeline runs it: crates from `Cargo.toml` files, parsing with
-//! tree-sitter, and resolving along the module tree.
+//! rust-analyzer's parser in each crate's edition, and resolving along the
+//! module tree.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use zenith_lang::{
     Backend, ImportResolver, ParsedFile, ResolveFailure, Resolved, SourceParser, Workspace,
 };
 use zenith_utils::glob::NamePattern;
 
-use crate::{crates::Crates, parse::Parser, resolve::Resolver};
+use crate::{
+    crates::{Crates, Editions},
+    parse::Parser,
+    resolve::Resolver,
+};
 
 /// Rust, set up for one project.
 pub(crate) struct RustBackend {
@@ -18,6 +26,9 @@ pub(crate) struct RustBackend {
     /// The crates of the project, once they are discovered.
     crates: Crates,
 
+    /// The edition of each crate, which the parsers share.
+    editions: Arc<Editions>,
+
     /// Patterns of the paths that are expected not to resolve.
     ignore_unresolved: Vec<NamePattern>,
 }
@@ -26,7 +37,8 @@ impl RustBackend {
     /// The backend of the project at `root`, which must be canonical, which
     /// expects the paths that match `ignore_unresolved` not to resolve.
     pub(crate) fn new(root: &Path, ignore_unresolved: Vec<NamePattern>) -> Self {
-        Self { root: root.to_path_buf(), crates: Crates::default(), ignore_unresolved }
+        let (crates, editions) = (Crates::default(), Arc::default());
+        Self { root: root.to_path_buf(), crates, editions, ignore_unresolved }
     }
 }
 
@@ -41,11 +53,12 @@ impl Backend for RustBackend {
 
     fn discover(&mut self, manifests: &[PathBuf]) -> Workspace {
         self.crates = Crates::discover(&self.root, manifests);
+        self.editions = Arc::new(self.crates.editions());
         self.crates.workspace(&self.root)
     }
 
     fn parser(&self) -> Box<dyn SourceParser> {
-        Box::new(Parser::new())
+        Box::new(Parser::new(Arc::clone(&self.editions)))
     }
 
     fn resolver(&self) -> Result<Box<dyn ImportResolver + '_>, ResolveFailure> {

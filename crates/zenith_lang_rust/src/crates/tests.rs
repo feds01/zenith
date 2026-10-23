@@ -210,3 +210,32 @@ fn the_manifests_are_read_when_cargo_fails() {
     assert_eq!(found, project.crates());
     assert_eq!(found.crates.len(), 1);
 }
+
+#[test]
+fn a_crate_has_the_edition_of_its_manifest_or_of_its_workspace() {
+    let project = Project::new(&[
+        (
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"a\", \"b\", \"c\"]\n\n[workspace.package]\nedition = \"2024\"\n",
+        ),
+        (
+            "a/Cargo.toml",
+            "[package]\nname = \"a\"\nversion = \"0.1.0\"\nedition.workspace = true\n",
+        ),
+        ("a/src/lib.rs", ""),
+        ("b/Cargo.toml", "[package]\nname = \"b\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"),
+        ("b/src/lib.rs", ""),
+        ("c/Cargo.toml", "[package]\nname = \"c\"\nversion = \"0.1.0\"\n"),
+        ("c/src/lib.rs", ""),
+    ]);
+    let crates = project.crates();
+    let editions = ["a", "b", "c"].map(|name| krate(&crates, name).edition);
+    assert_eq!(editions, [Edition::Edition2024, Edition::Edition2021, Edition::Edition2015]);
+    if let Some(from_cargo) = from_cargo(&project) {
+        assert_eq!(from_cargo, crates);
+    }
+
+    let editions = crates.editions();
+    assert_eq!(editions.of(&project.path("b/src/lib.rs")), Edition::Edition2021);
+    assert_eq!(editions.of(&project.path("scripts/run.rs")), Edition::LATEST);
+}

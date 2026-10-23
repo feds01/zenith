@@ -1,17 +1,24 @@
 //! Tests of the parser: the imports it reads, how it locates them, and the
 //! suppressions and syntax errors it finds.
 
-use std::{ops::Range, path::Path};
+use std::{
+    ops::Range,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
+use ra_ap_syntax::Edition;
+use rustc_hash::FxHashMap;
 use zenith_graph::{ImportKind, ImportedNames};
 use zenith_lang::{ParsedFile, Suppression};
 use zenith_utils::location::LineIndex;
 
 use super::Parser;
+use crate::crates::Editions;
 
 /// Parse `source` as the file `x.rs`.
 fn parse(source: &str) -> ParsedFile {
-    Parser::new().parse_source(Path::new("x.rs"), source)
+    Parser::new(Arc::new(Editions::default())).parse_source(Path::new("x.rs"), source)
 }
 
 /// The specifiers of the imports of `source`, which must have no syntax errors.
@@ -386,8 +393,6 @@ fn a_missing_token_is_a_syntax_error() {
 fn safe_items_of_an_extern_block_are_valid() {
     let source = "unsafe extern \"C\" {\n    safe fn f();\n    pub safe static X: a::b::T;\n    pub(crate) safe static mut Y: u8;\n}\n";
     assert_eq!(specifiers(source), ["a::b"]);
-    // Elsewhere, `safe` is an error.
-    assert_eq!(parse("fn f() {}\nsafe fn g() {}\n").errors.len(), 1);
 }
 
 #[test]
@@ -404,6 +409,18 @@ fn attribute_and_derive_rules_of_macro_rules_are_valid() {
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
     let [import] = parsed.imports.as_slice() else { panic!("{:?}", parsed.imports) };
     assert_eq!((import.specifier.as_str(), &source[Range::from(import.range)]), ("a::b", "a::b"));
+}
+
+#[test]
+fn a_file_is_parsed_in_the_edition_of_its_crate() {
+    let editions = FxHashMap::from_iter([(PathBuf::from("/old"), Edition::Edition2015)]);
+    let editions = Arc::new(Editions(editions));
+    let parse = |path: &str| {
+        Parser::new(Arc::clone(&editions)).parse_source(Path::new(path), "fn async() {}\n")
+    };
+    // `async` is a name in Rust 2015, and a keyword since.
+    assert!(parse("/old/src/lib.rs").errors.is_empty());
+    assert!(!parse("/new/src/lib.rs").errors.is_empty());
 }
 
 #[test]

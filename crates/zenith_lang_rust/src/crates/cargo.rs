@@ -12,7 +12,7 @@ use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use zenith_utils::path::adjust_canonicalisation;
 
-use super::{Crates, Declared, Found, Target, TargetKind};
+use super::{Crates, Declared, Found, Target, TargetKind, edition};
 use crate::manifest::Manifest;
 
 /// Why Cargo could not say what the crates are.
@@ -117,6 +117,9 @@ struct MetadataPackage {
     /// The path of its `Cargo.toml`.
     manifest_path: PathBuf,
 
+    /// The edition of Rust that its code is written in, such as `"2021"`.
+    edition: Option<String>,
+
     /// Its targets.
     targets: Vec<MetadataTarget>,
 
@@ -174,6 +177,7 @@ impl MetadataPackage {
         Some(Found {
             name: self.name,
             dir,
+            edition: edition(self.edition.as_deref()),
             library: library.map(|target| target.name.clone()),
             targets,
             dependencies,

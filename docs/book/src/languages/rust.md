@@ -29,8 +29,11 @@ Every import is a `value` import. Each `use` declaration imports each of its
 leaves, so `use a::{b, c::d}` imports `a::b` and `a::c::d`, and a glob imports
 the path before it. So does an `extern crate`, and so does a path in code that
 starts with `crate`, `self`, `super`, `::` or the name of a crate or module,
-such as `zenith_lang_js::JS` written without a `use`. `mod a;` declares a module
-but doesn't import it. [`zenith-ignore` comments](../suppressions.md) work as
+such as `zenith_lang_js::JS` written without a `use`. A `use` path that starts
+with a name that another `use` or an `extern crate` brought into scope imports
+what the name stands for: after `use smoltcp::socket::tcp;`, `use tcp::State;`
+imports `smoltcp::socket::tcp::State`. `mod a;` declares a module but doesn't
+import it. [`zenith-ignore` comments](../suppressions.md) work as
 `//` or `/* */` comments.
 
 ## Resolution

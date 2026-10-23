@@ -140,6 +140,39 @@ fn a_path_in_code_is_not_an_import_of_what_a_use_brought_into_scope() {
 }
 
 #[test]
+fn a_use_path_may_start_with_what_another_use_brought_into_scope() {
+    let source = "use smoltcp::socket::tcp;\nfn f() {\n    use tcp::State::{Closed, Listen};\n}\n";
+    assert_eq!(
+        specifiers(source),
+        [
+            "smoltcp::socket::tcp",
+            "smoltcp::socket::tcp::State::Closed",
+            "smoltcp::socket::tcp::State::Listen"
+        ]
+    );
+    // Through renames, `extern crate`s and chains of names.
+    assert_eq!(specifiers("use a::b as c;\nuse c::d;\n"), ["a::b", "a::b::d"]);
+    assert_eq!(specifiers("extern crate a as b;\nuse b::c;\n"), ["a", "a::c"]);
+    assert_eq!(specifiers("use a::b;\nuse b::c;\nuse c::d;\n"), ["a::b", "a::b::c", "a::b::c::d"]);
+}
+
+#[test]
+fn a_use_path_starts_with_what_its_own_declaration_does_not_bring_into_scope() {
+    assert_eq!(specifiers("use a::a;\nuse b::{b, b::c};\n"), ["a::a", "b::b", "b::b::c"]);
+    // A crate imported by its name stands for itself.
+    assert_eq!(
+        specifiers("use serde;\nuse serde::Deserialize;\n"),
+        ["serde", "serde::Deserialize"]
+    );
+}
+
+#[test]
+fn a_name_brought_into_scope_as_different_paths_is_left_as_it_is() {
+    let source = "fn f() { use a::m; }\nfn g() { use b::m; }\nuse m::x;\n";
+    assert_eq!(specifiers(source), ["a::m", "b::m", "m::x"]);
+}
+
+#[test]
 fn primitive_types_are_not_modules() {
     assert_eq!(
         specifiers(

@@ -3,7 +3,7 @@
 //! and its line of the summary.
 
 use zenith_config::{AlertLevel, BaselineConfig, ContractConfig, ContractKind, Severity};
-use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span, message};
+use zenith_diagnostics::{Report, ReportElement, ReportKind, SourceId, SourceMap, Span, message};
 use zenith_graph::{Graph, ImportDetail, ImportKind};
 use zenith_reporting::{Count, Outcome, Summary, SummaryEntry};
 use zenith_utils::location::ByteRange;
@@ -73,6 +73,24 @@ impl ContractReport<'_> {
         baseline: &BaselineConfig,
     ) -> Vec<Finding<'_>> {
         ReportBuilder { graph, sources, config, baseline }.findings(self)
+    }
+
+    /// What checking the contract found, as diagnostics for an editor to
+    /// show on the code: the [findings](Self::findings), each also labelling
+    /// the first import of its related links, the rest of its chain or the
+    /// other imports of its cycle breaker, which an editor shows as related
+    /// information. A finding about no one import, such as an undeclared
+    /// module or an exceeded limit, points at none.
+    pub fn diagnostics(
+        &self,
+        graph: &Graph,
+        sources: &mut SourceMap,
+        config: Option<SourceId>,
+        baseline: &BaselineConfig,
+    ) -> Vec<Report> {
+        let mut builder = ReportBuilder { graph, sources, config, baseline };
+        let findings = builder.findings(self);
+        findings.into_iter().map(|finding| builder.with_related(finding)).collect()
     }
 
     /// The summary of the checked contracts `reports`, with the `baseline`
@@ -386,6 +404,21 @@ impl ReportBuilder<'_> {
         findings
     }
 
+    /// The report of `finding`, which, if it points at an import, also labels
+    /// the first import of each of its related links with what it imports.
+    fn with_related(&mut self, finding: Finding) -> Report {
+        let mut report = finding.report;
+        let located =
+            report.contents.iter().any(|element| matches!(element, ReportElement::CodeBlock(_)));
+        if located {
+            for link in finding.related {
+                let label = message!(contracts_imports, imported = self.graph.name(link.imported));
+                self.excerpt(&mut report, link, label);
+            }
+        }
+        report
+    }
+
     /// The report of a finding titled `title`, followed by the hint of its
     /// `fix`, pointing at the first import of the fix's link if there is one
     /// and its file can be read.
@@ -648,6 +681,7 @@ fn chain_summary(graph: &Graph, chain: &Chain) -> String {
 mod tests {
     use std::ops::Range;
 
+    use zenith_diagnostics::ReportCodeBlock;
     use zenith_graph::{GraphBuilder, ImportedNames, ModuleId};
 
     use super::*;
@@ -816,6 +850,35 @@ mod tests {
                  remove this import, or one further along the chain",
             ]
         );
+    }
+
+    #[test]
+    fn diagnostics_label_the_later_links_of_their_chain() {
+        let project = Project::new(
+            &values(&[("a/z.ts", "c/w.ts"), ("c/w.ts", "b/y.ts")]),
+            &[],
+            include_str!("fixtures/diagnostics.toml"),
+        );
+        let report = project.check("ab");
+        let mut sources = SourceMap::new();
+        // The imports are at bytes 100 and 200, the start of the second line of
+        // their files.
+        let importer = sources.add("a/z.ts", format!("{}\nimport './w';\n", " ".repeat(99)));
+        let next = sources.add("c/w.ts", format!("{}\nimport './y';\n", " ".repeat(199)));
+        let baseline = BaselineConfig::default();
+        let diagnostics = report.diagnostics(&project.graph, &mut sources, None, &baseline);
+        let [diagnostic] = diagnostics.as_slice() else { panic!("expected one diagnostic") };
+        let block = |source, start, label: Option<&str>| {
+            let span = Span::new(source, ByteRange::new(start, start + 10));
+            ReportElement::CodeBlock(ReportCodeBlock { span, label: label.map(Into::into) })
+        };
+        assert_eq!(
+            diagnostic.contents,
+            [block(importer, 100, None), block(next, 200, Some("imports `b/y.ts`"))]
+        );
+        // The findings point at the first import alone.
+        let findings = report.findings(&project.graph, &mut sources, None, &baseline);
+        assert_eq!(findings[0].contents, diagnostic.contents[..1]);
     }
 
     #[test]

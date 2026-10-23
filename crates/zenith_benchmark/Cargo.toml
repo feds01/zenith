@@ -36,6 +36,10 @@ name = "lang_js"
 harness = false
 
 [[bench]]
+name = "lang_python"
+harness = false
+
+[[bench]]
 name = "pipeline"
 harness = false
 
@@ -59,6 +63,7 @@ zenith_cache = { workspace = true }
 zenith_contracts = { workspace = true }
 zenith_lang = { workspace = true }
 zenith_lang_go = { workspace = true }
+zenith_lang_python = { workspace = true }
 zenith_pipeline = { workspace = true }
 
 divan = { workspace = true }

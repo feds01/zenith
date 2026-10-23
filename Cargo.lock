@@ -2690,6 +2690,7 @@ dependencies = [
  "zenith_lang",
  "zenith_lang_go",
  "zenith_lang_js",
+ "zenith_lang_python",
  "zenith_pipeline",
  "zenith_utils",
  "zenith_workspace",

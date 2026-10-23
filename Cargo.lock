@@ -2682,6 +2682,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thin-vec",
+ "zenith_diagnostics",
  "zenith_utils",
 ]
 

@@ -27,6 +27,7 @@ fn terraform_is_enabled_by_its_table_alone() {
     assert!(Config::defaults(LANGUAGES).languages.options::<TerraformConfig>().is_none());
     let terraform = terraform("[languages.terraform]\n");
     assert_eq!((terraform.include, terraform.ignore_unresolved), (None, vec![]));
+    assert_eq!(terraform.hosts, Hosts::default());
 }
 
 #[test]
@@ -40,6 +41,15 @@ fn parses_the_terraform_table() {
         ])
     );
     assert_eq!(terraform.ignore_unresolved, [NamePattern::new("../../shared/*").unwrap()]);
+    let patterns = |raw: &str| vec![NamePattern::new(raw).unwrap()];
+    assert_eq!(
+        terraform.hosts,
+        Hosts::new(
+            patterns("terraform-mirror.acme.com"),
+            patterns("*.ghe.acme.com"),
+            patterns("minio.acme.com")
+        )
+    );
 }
 
 #[test]
@@ -47,7 +57,8 @@ fn invalid_tables_are_errors() {
     for (contents, expected) in [
         (
             include_str!("fixtures/unknown-key.toml"),
-            "unknown key `zzz`, expected `include` or `ignore_unresolved`",
+            "unknown key `zzz`, expected one of `include`, `ignore_unresolved`, `registries`, \
+             `repository_hosts`, `bucket_hosts`",
         ),
         (include_str!("fixtures/invalid-pattern.toml"), "invalid pattern `infra/{`: unclosed `{`"),
     ] {

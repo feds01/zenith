@@ -10,7 +10,7 @@ use zenith_utils::{glob::NamePattern, path::relative_posix};
 
 use crate::{
     parse::{Dialect, Parser},
-    resolve::TerraformResolved,
+    resolve::{Hosts, Resolver},
 };
 
 /// Terraform, set up for one project.
@@ -18,17 +18,20 @@ pub(crate) struct TerraformBackend {
     /// The canonical project root.
     root: PathBuf,
 
+    /// The resolver of the module sources of the project.
+    resolver: Resolver,
+
     /// Patterns of the module sources and dependency paths that are expected
     /// not to resolve.
     ignore_unresolved: Vec<NamePattern>,
 }
 
 impl TerraformBackend {
-    /// The backend of the project at `root`, which must be canonical, which
-    /// expects the module sources that match `ignore_unresolved` not to
-    /// resolve.
-    pub(crate) fn new(root: &Path, ignore_unresolved: Vec<NamePattern>) -> Self {
-        Self { root: root.to_path_buf(), ignore_unresolved }
+    /// The backend of the project at `root`, which must be canonical, whose
+    /// module sources may name `hosts`, and which expects the module sources
+    /// that match `ignore_unresolved` not to resolve.
+    pub(crate) fn new(root: &Path, hosts: Hosts, ignore_unresolved: Vec<NamePattern>) -> Self {
+        Self { root: root.to_path_buf(), resolver: Resolver::new(root, hosts), ignore_unresolved }
     }
 }
 
@@ -53,6 +56,7 @@ impl Backend for TerraformBackend {
     fn resolver(&self) -> Result<Box<dyn ImportResolver + '_>, ResolveFailure> {
         Ok(Box::new(TerraformResolver {
             root: &self.root,
+            resolver: &self.resolver,
             ignore_unresolved: &self.ignore_unresolved,
         }))
     }
@@ -70,6 +74,9 @@ struct TerraformResolver<'a> {
     /// The canonical project root.
     root: &'a Path,
 
+    /// The resolver of the module sources of the project.
+    resolver: &'a Resolver,
+
     /// Patterns of the module sources and dependency paths that are expected
     /// not to resolve.
     ignore_unresolved: &'a [NamePattern],
@@ -77,11 +84,9 @@ struct TerraformResolver<'a> {
 
 impl ImportResolver for TerraformResolver<'_> {
     fn resolve(&self, path: &Path, specifier: &str) -> Resolved {
-        // Local paths resolve from the directory of the importing file.
+        // Local paths resolve from the directory of the importing file, in its dialect.
         let dir = path.parent().and_then(|dir| relative_posix(self.root, dir)).unwrap_or_default();
-        let dialect = Dialect::of(path);
-        let resolved: Resolved =
-            TerraformResolved::resolve(self.root, &dir, specifier, dialect).into();
+        let resolved: Resolved = self.resolver.resolve(&dir, specifier, Dialect::of(path)).into();
         resolved.ignoring_unresolved(specifier, self.ignore_unresolved)
     }
 }
@@ -165,6 +170,33 @@ mod tests {
         );
         assert!(matches!(resolve("live/main.tf", "../shared/vpc"), Resolved::Ignored(_)));
         assert!(matches!(resolve("live/main.tf", "../../other/vpc"), Resolved::Unresolved(_)));
+    }
+
+    #[test]
+    fn the_configured_hosts_are_resolved_against() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let settings = BackendSettings { root: &root, record_exports: false };
+        let config = TerraformConfig {
+            hosts: Hosts::new(
+                vec![NamePattern::new("mirror.acme.com").unwrap()],
+                vec![NamePattern::new("github.acme.com").unwrap()],
+                vec![],
+            ),
+            ..TerraformConfig::default()
+        };
+        let backend = config.backend(settings);
+        let resolver = backend.resolver().unwrap();
+        let external = |package: &str| Resolved::External { package: package.into(), found: true };
+        let file = root.join("main.tf");
+        assert_eq!(
+            resolver.resolve(&file, "mirror.acme.com/hashicorp/consul/aws"),
+            external("hashicorp/consul/aws")
+        );
+        assert_eq!(
+            resolver.resolve(&file, "github.acme.com/platform/modules/vpc"),
+            external("github.acme.com/platform/modules")
+        );
     }
 
     fn package(dir: &str) -> Resolved {

@@ -12,7 +12,7 @@ use zenith_config::{Language, LanguageOptions, LanguageTable, Located};
 use zenith_lang::{Backend, BackendSettings};
 use zenith_utils::glob::{Glob, NamePattern};
 
-use crate::backend::TerraformBackend;
+use crate::{backend::TerraformBackend, resolve::Hosts};
 
 /// Terraform, with OpenTofu and Terragrunt.
 pub const TERRAFORM: Language = Language {
@@ -42,6 +42,10 @@ pub struct TerraformConfig {
     /// Patterns of module sources and dependency paths that are expected not
     /// to resolve, so are not reported as unresolved.
     pub ignore_unresolved: Vec<NamePattern>,
+
+    /// The hosts that module sources may name: the public ones, with the
+    /// `registries`, `repository_hosts` and `bucket_hosts` of the table.
+    pub hosts: Hosts,
 }
 
 impl TerraformConfig {
@@ -54,6 +58,11 @@ impl TerraformConfig {
         Self {
             include: parsed.include.map(|include| table.patterns(&include, Glob::new)),
             ignore_unresolved: table.patterns(&parsed.ignore_unresolved, NamePattern::new),
+            hosts: Hosts::new(
+                table.patterns(&parsed.registries, NamePattern::new),
+                table.patterns(&parsed.repository_hosts, NamePattern::new),
+                table.patterns(&parsed.bucket_hosts, NamePattern::new),
+            ),
         }
     }
 }
@@ -64,7 +73,8 @@ impl LanguageOptions for TerraformConfig {
     }
 
     fn backend(&self, settings: BackendSettings<'_>) -> Box<dyn Backend> {
-        Box::new(TerraformBackend::new(settings.root, self.ignore_unresolved.clone()))
+        let ignore_unresolved = self.ignore_unresolved.clone();
+        Box::new(TerraformBackend::new(settings.root, self.hosts.clone(), ignore_unresolved))
     }
 }
 
@@ -80,4 +90,19 @@ struct TerraformTable {
     /// Name patterns of module sources and dependency paths that are expected
     /// not to resolve, so are not reported as unresolved.
     ignore_unresolved: Vec<Located<String>>,
+
+    /// Name patterns of hosts that serve the public registry's modules, such
+    /// as a mirror, whose modules are named as the public registry's are,
+    /// besides the public registries themselves.
+    registries: Vec<Located<String>>,
+
+    /// Name patterns of hosts of repositories that module sources may name
+    /// without a scheme, as they name GitHub's, such as a GitHub Enterprise
+    /// server, besides `github.com` and `bitbucket.org`.
+    repository_hosts: Vec<Located<String>>,
+
+    /// Name patterns of hosts of buckets that module sources may name without
+    /// a scheme, as they name S3's, besides `*.amazonaws.com` and
+    /// `www.googleapis.com`.
+    bucket_hosts: Vec<Located<String>>,
 }

@@ -6,12 +6,22 @@ Terraform, OpenTofu and Terragrunt files share one language.
 [languages.terraform]      # off unless the table is written
 include = ["**/*.tf", "**/*.tofu", "**/terragrunt.hcl"]   # the default
 ignore_unresolved = ["../../shared/*"]   # module sources not to warn about
+registries = ["terraform-mirror.acme.com"]   # mirrors of the public registry
+repository_hosts = ["*.ghe.acme.com"]        # read like github.com
+bucket_hosts = ["minio.acme.com"]            # read like S3
 ```
 
 | Option | |
 |---|---|
 | `include` | Globs of the files to scan. A `.hcl` file that it matches is read as a Terragrunt file. |
 | `ignore_unresolved` | Name patterns of the module sources and dependency paths that are expected not to resolve, so are not reported as unresolved. |
+| `registries` | Name patterns of hosts that serve the public registry's modules, such as a mirror, whose modules are named as the public registry's are. |
+| `repository_hosts` | Name patterns of hosts of repositories that module sources name without a scheme, as they name GitHub's, such as a GitHub Enterprise server. |
+| `bucket_hosts` | Name patterns of hosts of buckets that module sources name without a scheme, as they name S3's. |
+
+Each host option adds to the public hosts: the public registries,
+`github.com` and `bitbucket.org`, and S3 (`*.amazonaws.com`) and GCS
+(`www.googleapis.com`). Hosts are matched in lowercase.
 
 The `.terraform` and `.terragrunt-cache` directories, where Terraform and
 Terragrunt keep the modules they download, are never scanned.
@@ -55,8 +65,8 @@ module "database" {
 | Imported | Node | |
 |---|---|---|
 | a local path, such as `../../modules/vpc` | `modules/vpc` | The directory it leads to from the importing file's directory, which must be in the project. A `//` before a subdirectory, as in `../modules//vpc`, leads to the subdirectory. |
-| a registry module, such as `hashicorp/consul/aws` | `tfmod:hashicorp/consul/aws` | Named by its namespace, name and target system. A private registry's hostname stays in front, as in `tfmod:app.terraform.io/acme/vpc/aws`. Terragrunt's `tfr://` addresses are read the same. |
-| a repository, a bucket or an archive, such as `git::https://github.com/acme/modules.git//vpc?ref=v1.2.0` | `tfmod:github.com/acme/modules` | Named by its host and path, without the getter, scheme, credentials, port, `.git`, subdirectory or query. On GitHub and Bitbucket, written without a scheme, the repository is the first two segments of the path, so `github.com/acme/modules/vpc` is `tfmod:github.com/acme/modules` too. |
+| a registry module, such as `hashicorp/consul/aws` | `tfmod:hashicorp/consul/aws` | Named by its namespace, name and target system. A private registry's hostname stays in front, as in `tfmod:app.terraform.io/acme/vpc/aws`, unless `registries` names it as a mirror of the public one. Terragrunt's `tfr://` addresses are read the same. |
+| a repository, a bucket or an archive, such as `git::https://github.com/acme/modules.git//vpc?ref=v1.2.0` | `tfmod:github.com/acme/modules` | Named by its host and path, without the getter, scheme, credentials, port, `.git`, subdirectory or query. On GitHub, Bitbucket and the `repository_hosts`, written without a scheme, the repository is the first two segments of the path, so `github.com/acme/modules/vpc` is `tfmod:github.com/acme/modules` too. |
 
 Registry names and hostnames ignore case, so both are in lowercase.
 

@@ -41,7 +41,11 @@ import it. [`zenith-ignore` comments](../suppressions.md) work as `//` or
 The tokens of a macro call or an attribute aren't parsed as code, so zenith
 reads the paths in them: `vec![crate::a::b()]` imports `crate::a::b`. A path
 that starts at a macro variable, such as `$crate::a` or `$module::a`, or at an
-interpolation of `quote!`, such as `#krate::a`, imports nothing.
+interpolation, which macros like `quote!` write as `#krate::a`, imports
+nothing. Nor does a path in the body of `quote!`, `quote_spanned!`,
+`parse_quote!` or `parse_quote_spanned!`, whatever path names the macro: the
+body is code that a procedural macro generates for the crates that use it, so
+its paths are theirs, not imports of the macro's crate.
 
 Files are parsed with [rust-analyzer](https://rust-analyzer.github.io)'s
 parser, in the edition of their crate, which Cargo or the crate's

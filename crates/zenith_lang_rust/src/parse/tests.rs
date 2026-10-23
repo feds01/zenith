@@ -220,6 +220,28 @@ fn a_path_in_a_macro_does_not_start_at_an_interpolation() {
 }
 
 #[test]
+fn the_paths_in_a_quote_body_are_not_imports() {
+    let source = "\
+fn f() -> TokenStream {
+    let a = quote::quote! { ::d::Diagnostic for X { fn f(_: crate::a::B) { e::f() } } };
+    let b = syn::parse_quote!(::g::H);
+    vec![quote_spanned!(span=> ::i::j()), parse_quote_spanned! { span => k::l }];
+    ::m::n()
+}
+";
+    // The paths of the macros are imports, and those after their bodies.
+    assert_eq!(specifiers(source), ["quote::quote", "syn::parse_quote", "::m::n"]);
+}
+
+#[test]
+fn the_paths_in_other_macros_are_imports() {
+    assert_eq!(
+        specifiers("fn f() { vec![crate::a::b()]; quoted! { ::c::d() }; m!(quote, ::e::f) }"),
+        ["crate::a::b", "::c::d", "::e::f"]
+    );
+}
+
+#[test]
 fn the_end_of_a_longer_path_in_a_macro_is_not_a_path() {
     assert_eq!(
         specifiers("fn f() { assert_eq!(<T>::new(), Vec::<u8>::new().len()); }"),

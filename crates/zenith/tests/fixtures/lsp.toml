@@ -1,0 +1,7 @@
+# The project of the language server's tests: `web` must not reach `api`,
+# directly or through `lib`.
+[contracts.web-api]
+type = "forbidden"
+from = ["web"]
+to = ["api"]
+guidance = "Move what `web` needs out of `api`."

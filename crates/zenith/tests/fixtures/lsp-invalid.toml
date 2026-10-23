@@ -1,0 +1,7 @@
+# The project of the language server's tests, with a mistake in the name of
+# a key.
+[contracts.web-api]
+type = "forbidden"
+from = ["web"]
+to = ["api"]
+severty = "warn"

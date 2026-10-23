@@ -162,6 +162,10 @@ pub enum Command {
     /// the import graph.
     Suggest,
 
+    /// Run a language server on stdin and stdout, which shows the violations
+    /// in an editor as diagnostics, and updates them on every save.
+    Lsp,
+
     /// Print the JSON Schema of `zenith.toml`.
     #[command(hide = true)]
     Schema,
@@ -554,6 +558,7 @@ mod tests {
             "zenith resolve web/src/app.ts @/lib/format",
             "zenith init --force",
             "zenith suggest",
+            "zenith lsp",
             "zenith schema",
             "zenith --config zenith.toml --root . --color always --no-cache -v version",
         ] {

@@ -58,11 +58,12 @@ modules = ["crate:ignore"]
 allowed_importers = ["pkg:zenith_workspace"]
 guidance = "Walk files through zenith_workspace."
 
+# The CLI's test of `zenith lsp` plays the editor, which speaks it too.
 [contracts.protocol-in-the-server]
 type = "protected"
 name = "Only zenith_lsp speaks the Language Server Protocol"
 modules = ["crate:lsp-server", "crate:lsp-types"]
-allowed_importers = ["pkg:zenith_lsp"]
+allowed_importers = ["pkg:zenith_lsp", "crates/zenith/tests/lsp.rs"]
 guidance = "Give zenith_lsp reports to publish, and leave the protocol to it."
 
 [contracts.messages-in-the-catalogue]

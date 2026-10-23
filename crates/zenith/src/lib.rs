@@ -10,9 +10,10 @@ pub(crate) mod version;
 
 use std::{fmt, panic, process::ExitCode};
 
-use anyhow::Result;
+use anyhow::{Error, Result};
 use cli::Command;
 use crash::crash_handler;
+use zenith_diagnostics::{Report, Reporter, SourceMap};
 use zenith_utils::{highlight::set_colour_enabled, pool::setup_global_threads};
 
 /// How a command finished, which determines the process exit code.
@@ -39,19 +40,34 @@ impl From<ExitStatus> for ExitCode {
     }
 }
 
-/// An error that has already been shown, e.g. as reports of an invalid
-/// configuration file, so all that is left is to exit with
-/// [`ExitStatus::Error`].
+/// An error that is shown as reports, e.g. of an invalid configuration
+/// file, after which zenith exits with [`ExitStatus::Error`].
 #[derive(Debug)]
-pub(crate) struct Reported;
+pub(crate) struct Reported {
+    /// The sources that the reports point into.
+    pub sources: SourceMap,
+
+    /// The reports of the error.
+    pub reports: Vec<Report>,
+}
 
 impl fmt::Display for Reported {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("the errors have been reported")
+        write!(f, "{}", Reporter::new(&self.sources, &self.reports).short())
     }
 }
 
 impl std::error::Error for Reported {}
+
+impl Reported {
+    /// Show `error` on stderr, if it is reports, and return them; or else
+    /// return `error` as it is, for the caller to show.
+    pub(crate) fn emit(error: Error) -> Result<Self, Error> {
+        let reported = error.downcast::<Self>()?;
+        reporting::emit(&reported.sources, &reported.reports);
+        Ok(reported)
+    }
+}
 
 /// Handler function which will delegate functionality to the appropriate
 /// command.
@@ -69,11 +85,9 @@ pub fn run(cli::Cli { command, global }: cli::Cli) -> Result<ExitStatus> {
         Command::Resolve(args) => commands::resolve::resolve(&global, args),
         Command::Init(args) => commands::init::init(&global, args),
         Command::Suggest => commands::suggest::suggest(&global),
+        Command::Lsp => commands::lsp::lsp(&global),
         Command::Schema => commands::schema::schema(),
         Command::Version => commands::version::version(),
     };
-    match status {
-        Err(error) if error.is::<Reported>() => Ok(ExitStatus::Error),
-        status => status,
-    }
+    status.or_else(|error| Reported::emit(error).map(|_| ExitStatus::Error))
 }

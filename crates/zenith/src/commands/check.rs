@@ -3,11 +3,7 @@
 use std::time::Instant;
 
 use anyhow::Result;
-use log::{info, warn};
-use zenith_contracts::{
-    Baseline, CheckJson, Contract, ContractReport, Exemptions, UnusedSuppression,
-};
-use zenith_diagnostics::message;
+use zenith_contracts::{CheckJson, Contract, ContractReport};
 use zenith_pipeline::StageKind;
 use zenith_reporting::{Format, Output, Summary};
 use zenith_workspace::Git;
@@ -32,27 +28,15 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     let contracts = project::compile_contracts(&session, &args.contracts)?;
 
     // 3. Read the baseline, unless it is ignored.
-    let baseline = match args.no_baseline {
-        true => None,
-        false => Baseline::load(&session.baseline_path())?,
-    };
-    if let Some(baseline) = &baseline {
-        let shown = &session.config.baseline.path;
-        info!("{}", message!(cli_using_baseline, path = shown));
-        if baseline.conflicted {
-            warn!("{}", message!(cli_baseline_conflicted, path = shown));
-        }
-    }
+    let baseline = project::baseline(&session, args.no_baseline)?;
 
     // 4. Check the contracts in parallel, without the imports that suppressions and
     //    the baseline leave out, and find the suppressions that had no effect. Keep
     //    only what involves the files under the paths.
     let start = Instant::now();
-    let exemptions =
-        Exemptions { suppressions: &session.suppressions, baseline: baseline.as_ref() };
     let graphs = session.graphs();
-    let mut checked = Contract::check_all(&contracts, graphs, &session.workspace, &exemptions);
-    let mut unused = UnusedSuppression::find(&session.config, &exemptions, &checked);
+    let (mut checked, mut unused) =
+        Contract::check_session(&contracts, &session, baseline.as_ref());
     for report in &mut checked {
         report.narrow(graphs.of(report.config), &session.scope);
     }

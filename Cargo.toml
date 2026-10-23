@@ -80,6 +80,15 @@ dbg_macro = "warn"
 todo = "warn"
 unimplemented = "warn"
 
+# Each worktree has a target directory of its own, so the dev and test builds
+# are kept small: line tables, for backtraces and stepping, but not variables'
+# debug info, and no incremental cache, which grows to a gigabyte or more. A
+# rebuild after an edit is a second or so slower for it; `CARGO_INCREMENTAL=1`
+# and `CARGO_PROFILE_DEV_DEBUG=true` bring each back for a shell.
+[profile.dev]
+debug = "line-tables-only"
+incremental = false
+
 [profile.release]
 opt-level = 3
 lto = "fat"

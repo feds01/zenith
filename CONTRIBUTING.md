@@ -12,6 +12,10 @@ just lint      # clippy (deny warnings), the formatting check and zenith's own c
 just run       # run the CLI from source, e.g. `just run version`
 ```
 
+With [sccache](https://github.com/mozilla/sccache) as cargo's
+`build.rustc-wrapper` in `~/.cargo/config.toml`, every checkout and worktree
+shares its compiled dependencies; `just setup` says how to set it up.
+
 Run `just lint` before committing; the pre-commit hooks run the same checks on
 the files you commit. CI runs the tests on Linux, macOS and Windows, and the
 formatting check, clippy, zenith's own contracts and `cargo deny` on Linux.

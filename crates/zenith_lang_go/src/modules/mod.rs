@@ -15,7 +15,7 @@ use std::{error::Error, fmt};
 pub use go_mod::GoMod;
 pub use go_work::GoWork;
 use zenith_diagnostics::message;
-use zenith_utils::{location::ByteRange, path::has_windows_drive};
+use zenith_utils::location::ByteRange;
 
 /// A `require` of a module, at a version.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,14 +100,4 @@ fn unquote(text: &str) -> Option<&str> {
         Some(interpreted) => (!interpreted.contains('\\')).then_some(interpreted),
         None => Some(text),
     }
-}
-
-/// Whether a `replace` target is a directory rather than a module path, as Go
-/// tells them apart: it is `.` or `..`, starts with `./`, `../` or `/`, or is
-/// a Windows path, such as `..\shared` or `C:\work\shared`.
-fn is_local_path(path: &str) -> bool {
-    matches!(path, "." | "..")
-        || path.starts_with(['/', '\\'])
-        || ["./", "../", ".\\", "..\\"].iter().any(|prefix| path.starts_with(prefix))
-        || has_windows_drive(path)
 }

@@ -3,9 +3,9 @@
 
 use tree_sitter::Node;
 use zenith_diagnostics::message;
-use zenith_utils::location::ByteRange;
+use zenith_utils::{location::ByteRange, path::is_local_path};
 
-use super::{ModError, Parsed, Replace, ReplaceTarget, Require, is_local_path, unquote};
+use super::{ModError, Parsed, Replace, ReplaceTarget, Require, unquote};
 
 /// What a `go.mod` file says about its module.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

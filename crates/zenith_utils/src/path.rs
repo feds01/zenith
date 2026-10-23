@@ -153,7 +153,7 @@ pub fn posix_ancestors(dir: &str) -> impl Iterator<Item = &str> {
 /// `None` if the result is not inside the root: `path` is absolute, starts
 /// with a Windows drive, or climbs out past the root with `..`.
 pub fn join_posix(base: &str, path: &str) -> Option<String> {
-    if path.starts_with(['/', '\\']) || has_windows_drive(path) {
+    if is_absolute_path(path) {
         return None;
     }
     let mut segments: Vec<&str> = base.split('/').filter(|segment| !segment.is_empty()).collect();
@@ -167,6 +167,23 @@ pub fn join_posix(base: &str, path: &str) -> Option<String> {
         }
     }
     Some(segments.join("/"))
+}
+
+/// Whether `path`, as a user wrote it with either separator, is absolute: it
+/// starts with a separator or a Windows drive, as in `/srv`, `\\\\srv` or
+/// `C:\\work`.
+pub fn is_absolute_path(path: &str) -> bool {
+    path.starts_with(['/', '\\']) || has_windows_drive(path)
+}
+
+/// Whether `path`, as a user wrote it with either separator, is written as a
+/// path on the file system rather than a name: it is `.` or `..`, starts with
+/// `./` or `../`, or is absolute. Go's `replace` targets and Terraform's module
+/// sources tell directories from module names so.
+pub fn is_local_path(path: &str) -> bool {
+    matches!(path, "." | "..")
+        || ["./", "../", ".\\", "..\\"].iter().any(|prefix| path.starts_with(prefix))
+        || is_absolute_path(path)
 }
 
 /// Whether `path` starts with a Windows drive, as in `C:\\work`.
@@ -356,6 +373,19 @@ mod tests {
         assert_eq!(join_posix("svc", "/etc"), None);
         assert_eq!(join_posix("svc", "C:\\x"), None);
         assert_eq!(join_posix("svc", "\\\\srv\\x"), None);
+    }
+
+    #[test]
+    fn local_paths_are_told_from_names() {
+        for local in
+            [".", "..", "./a", "../a", ".\\a", "..\\a", "/srv/a", "\\\\srv\\a", "C:/a", "c:\\a"]
+        {
+            assert!(is_local_path(local), "{local}");
+        }
+        for name in ["a", "a/b", ".a", "...", "example.com/a", ""] {
+            assert!(!is_local_path(name), "{name}");
+        }
+        assert!(is_absolute_path("/a") && is_absolute_path("C:/a") && !is_absolute_path("./a"));
     }
 
     #[test]

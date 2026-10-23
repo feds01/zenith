@@ -49,8 +49,11 @@ Contracts
 ## 3. Add contracts
 
 Describe the architecture you want, a rule at a time: see the
-[contract types](contracts/overview.md). Two commands help while writing them:
+[contract types](contracts/overview.md). Three commands help while writing them:
 
+- `zenith suggest` prints contracts that the code already keeps, inferred
+  from the import graph, ready to add to `zenith.toml`: see
+  [suggesting contracts](cli.md#suggesting-contracts).
 - `zenith graph web/src --depth 1` shows a directory's children and the
   imports between them.
 - `zenith why web/src/lib web/src/app` shows why one part imports another,

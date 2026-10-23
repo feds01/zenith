@@ -156,6 +156,10 @@ pub enum Command {
     /// Write a starter `zenith.toml` from the discovered packages.
     Init(InitCommand),
 
+    /// Print, as TOML, contracts that the code already keeps, inferred from
+    /// the import graph.
+    Suggest,
+
     /// Print the JSON Schema of `zenith.toml`.
     #[command(hide = true)]
     Schema,
@@ -457,6 +461,7 @@ mod tests {
             "zenith why web/src pkg:@acme/api --exclude-kind dynamic --exclude-kind value --limit 5",
             "zenith resolve web/src/app.ts @/lib/format",
             "zenith init --force",
+            "zenith suggest",
             "zenith schema",
             "zenith --config zenith.toml --root . --color always --no-cache -v version",
         ] {

@@ -1,0 +1,5 @@
+{
+  "name": "suggest-independence",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"]
+}

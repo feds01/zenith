@@ -1,0 +1,9 @@
+# Contracts see through re-exports by default, and none is configured. `a`
+# imports `c` through the barrel `b/index.ts`, and `b` imports `a`: a cycle
+# between `a` and `b` only if the barrel imports what it re-exports.
+suggest
+# `suggested.toml` holds the `[analysis]` table and what `suggest` printed,
+# which the code keeps.
+check --config suggested.toml
+# Seen as opaque, the barrel makes the cycle, so nothing is suggested.
+suggest --config opaque.toml

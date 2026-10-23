@@ -68,6 +68,7 @@ pub fn run(cli::Cli { command, global }: cli::Cli) -> Result<ExitStatus> {
         Command::Why(args) => commands::why::why(&global, args),
         Command::Resolve(args) => commands::resolve::resolve(&global, args),
         Command::Init(args) => commands::init::init(&global, args),
+        Command::Suggest => commands::suggest::suggest(&global),
         Command::Schema => commands::schema::schema(),
         Command::Version => commands::version::version(),
     };

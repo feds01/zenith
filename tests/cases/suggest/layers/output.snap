@@ -1,0 +1,27 @@
+$ zenith suggest
+exit: 0
+--- stdout
+# The top-level directories depend on each other in no cycle.
+[contracts.directories-acyclic]
+type = "acyclic"
+modules = ["app", "domain", "infra", "scripts"]
+
+# These top-level directories stack in one order: each depends on the next.
+[contracts.directories-layers]
+type = "layers"
+layers = ["app", "domain", "infra"]
+
+$ zenith check --config suggested.toml
+exit: 0
+--- stdout
+Contracts
+  ✓ directories-acyclic  acyclic  kept
+  ✓ directories-layers   layers   kept
+
+2 kept, 0 broken · 4 files, 3 imports
+
+$ zenith suggest --config suggested.toml
+exit: 0
+--- stderr
+warning: found no new contracts to suggest that the code keeps
+

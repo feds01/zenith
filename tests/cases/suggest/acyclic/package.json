@@ -1,0 +1,5 @@
+{
+  "name": "suggest-acyclic",
+  "private": true,
+  "workspaces": ["packages/*"]
+}

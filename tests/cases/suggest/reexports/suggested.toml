@@ -1,0 +1,12 @@
+[analysis]
+reexports = "transparent"
+
+# The top-level directories depend on each other in no cycle.
+[contracts.directories-acyclic]
+type = "acyclic"
+modules = ["a", "b", "c"]
+
+# These top-level directories stack in one order: each depends on the next.
+[contracts.directories-layers]
+type = "layers"
+layers = ["b", "a", "c"]

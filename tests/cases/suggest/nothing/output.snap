@@ -1,0 +1,5 @@
+$ zenith suggest
+exit: 0
+--- stderr
+warning: found no new contracts to suggest that the code keeps
+

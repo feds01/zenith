@@ -8,6 +8,7 @@ zenith graph [<selector>] [--depth <n>] [--format tree|dot|mermaid|json] [--excl
 zenith why <from-selector> <to-selector> [--exclude-kind <kind>]… [--limit <n>]
 zenith resolve <file> <specifier>
 zenith init [--force]
+zenith suggest
 zenith version
 ```
 
@@ -19,6 +20,7 @@ zenith version
 | `why` | Shows the shortest import chains from one selector to another. |
 | `resolve` | Shows what a specifier resolves to from a file, and why. |
 | `init` | Writes a starter `zenith.toml` for the workspace packages it finds. |
+| `suggest` | Prints contracts that the code already keeps, as TOML: see [suggesting contracts](#suggesting-contracts). |
 
 Every command takes these options:
 
@@ -72,6 +74,38 @@ code scanning and other dashboards, which is then uploaded, as in
 [the workflow of the `sarif` format](output.md#sarif). Its paths are relative
 to the root of the git repository, so a project in a subdirectory of one works
 too. The exit code is the same as with any other format.
+
+## Suggesting contracts
+
+`zenith suggest` reads the import graph and prints, as TOML, contracts that
+the code keeps as it is, each with a comment that says why. They are about
+the workspace packages, or the top-level directories when there are fewer
+than two packages:
+
+- `acyclic`, when they depend on each other in no cycle. The packages are
+  written as `pkg:*`, so it covers the packages added later too, unless a
+  package is inside another;
+- `layers`, when those that depend on each other stack in one strict order,
+  each depending on the next;
+- `independence`, for the packages in one directory, such as `apps`, when none
+  of them depends on another.
+
+```toml
+# The workspace packages in `apps` do not depend on each other.
+[contracts.apps-independent]
+type = "independence"
+modules = ["pkg:@acme/admin", "pkg:@acme/web"]
+```
+
+Each suggestion is checked against the graph before it is printed, as a
+contract of the configuration, with its `[analysis]` defaults, so it passes
+`zenith check` from the start.
+
+It never writes a file. Write the suggestions to one to review them, as in
+`zenith suggest > suggested.toml`, and copy the ones you want into
+`zenith.toml`; or let an agent read them. A contract whose id the
+configuration already has is not suggested, so once you have added them, a
+second run only prints what is new.
 
 ## Exit codes
 

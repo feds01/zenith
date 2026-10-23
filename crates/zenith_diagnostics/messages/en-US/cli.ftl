@@ -91,6 +91,10 @@ cli_init_written = Wrote `{$path}` ({cli_source_files} and {NUMBER($packages)} w
    *[other] packages
 } found).
 
+## `zenith suggest`.
+
+cli_suggest_none = found no new contracts to suggest that the code keeps
+
 ## `zenith version`.
 
 cli_version = zenith {$version}

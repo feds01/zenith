@@ -14,6 +14,7 @@ use std::{error::Error, fmt};
 
 pub use go_mod::GoMod;
 pub use go_work::GoWork;
+use zenith_diagnostics::message;
 use zenith_utils::{location::ByteRange, path::has_windows_drive};
 
 /// A `require` of a module, at a version.
@@ -81,7 +82,7 @@ pub struct ModError {
 
 impl fmt::Display for ModError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "line {}: {}", self.line, self.message)
+        f.write_str(&message!(go_malformed_line, line = self.line, error = self.message))
     }
 }
 

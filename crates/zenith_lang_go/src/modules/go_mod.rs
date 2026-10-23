@@ -2,6 +2,7 @@
 //! them.
 
 use tree_sitter::Node;
+use zenith_diagnostics::message;
 use zenith_utils::location::ByteRange;
 
 use super::{ModError, Parsed, Replace, ReplaceTarget, Require, is_local_path, unquote};
@@ -98,7 +99,7 @@ impl Reader<'_> {
         let Some(path) = self.operand(path) else { return };
         if self.value.module.is_some() {
             // The error covers the whole directive.
-            self.error(path.parent().unwrap_or(path), "repeated `module` directive");
+            self.error(path.parent().unwrap_or(path), &message!(go_repeated_module));
             return;
         }
         self.value.module = Some(self.text(path).to_owned());
@@ -127,16 +128,13 @@ impl Reader<'_> {
         let target = self.text(to);
         let new = match (is_local_path(target), to_version) {
             (true, None) => ReplaceTarget::Path(target.to_owned()),
-            (true, Some(_)) => return self.error(spec, "a directory replacement has no version"),
+            (true, Some(_)) => return self.error(spec, &message!(go_directory_with_version)),
             (false, Some(version)) => ReplaceTarget::Module {
                 path: target.to_owned(),
                 version: self.text(version).to_owned(),
             },
             (false, None) => {
-                let message = format!(
-                    "replacement `{target}` has no version, so it must be a directory path"
-                );
-                return self.error(spec, &message);
+                return self.error(spec, &message!(go_replacement_without_version, target));
             }
         };
         let old = self.text(old).to_owned();
@@ -148,7 +146,7 @@ impl Reader<'_> {
     /// escape in it is reported instead.
     fn operand<'tree>(&mut self, node: Node<'tree>) -> Option<Node<'tree>> {
         if unquote(self.raw(node)).is_none() {
-            self.error(node, "escapes in module paths are not supported");
+            self.error(node, &message!(go_escaped_module_path));
             return None;
         }
         Some(node)
@@ -159,13 +157,13 @@ impl Reader<'_> {
     fn syntax_errors(&mut self, node: Node) {
         if node.is_missing() {
             let message = match node.is_named() {
-                true => format!("expected {}", node.kind().replace('_', " ")),
-                false => format!("expected `{}`", node.kind()),
+                true => message!(go_expected_node, node = node.kind().replace('_', " ")),
+                false => message!(go_expected_token, token = node.kind()),
             };
             return self.error(node, &message);
         }
         if node.is_error() {
-            return self.error(node, "invalid syntax");
+            return self.error(node, &message!(go_invalid_syntax));
         }
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {

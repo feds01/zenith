@@ -13,6 +13,7 @@ use oxc_resolver::{
 };
 use rustc_hash::FxHashMap;
 use serde_json::Value;
+use zenith_diagnostics::message;
 use zenith_lang::{ResolveFailure, Resolved, UnresolvedReason};
 use zenith_utils::{
     fs::read_json,
@@ -77,10 +78,10 @@ impl fmt::Display for ResolverError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TsconfigNotFound(path) => {
-                write!(f, "the tsconfig file `{}` does not exist", path.display())
+                f.write_str(&message!(js_tsconfig_not_found, path = path.display()))
             }
             Self::InvalidExtension(extension) => {
-                write!(f, "`{extension}` is not an extension, such as `.ts`")
+                f.write_str(&message!(js_invalid_extension, extension))
             }
         }
     }

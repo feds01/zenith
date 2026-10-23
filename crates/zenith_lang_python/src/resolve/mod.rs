@@ -17,6 +17,7 @@ mod tests;
 
 use std::path::Path;
 
+use zenith_diagnostics::message;
 use zenith_lang::{Resolved, UnresolvedReason};
 use zenith_utils::{glob::NamePattern, path::relative_posix};
 
@@ -66,7 +67,7 @@ impl<'a> Resolver<'a> {
         let dots = specifier.len() - rest.len();
         let names: Vec<&str> = rest.split('.').filter(|name| !name.is_empty()).collect();
         match dots {
-            0 if names.is_empty() => Resolved::failed("the specifier names no module"),
+            0 if names.is_empty() => Resolved::failed(message!(python_no_module)),
             0 => self.absolute(path, &names),
             _ => self.relative(path, dots, &names),
         }
@@ -80,7 +81,7 @@ impl<'a> Resolver<'a> {
         for _ in 1..dots {
             match package.parent() {
                 Some(parent) if package != self.root => package = parent,
-                _ => return Resolved::failed("the relative import goes above the project root"),
+                _ => return Resolved::failed(message!(python_above_root)),
             }
         }
 
@@ -91,9 +92,7 @@ impl<'a> Resolver<'a> {
         }
         match (self.directories.init_file(package), names.first()) {
             (Some(init), _) => self.file(&init, path),
-            (None, Some(name)) => {
-                Resolved::failed(format!("no module `{name}` in the namespace package"))
-            }
+            (None, Some(name)) => Resolved::failed(message!(python_not_in_namespace, name)),
             (None, None) => match relative_posix(self.root, package) {
                 Some(dir) => Resolved::Package(dir),
                 None => Resolved::unresolved(UnresolvedReason::OutsideRoot(package.to_path_buf())),
@@ -138,7 +137,7 @@ impl<'a> Resolver<'a> {
     /// project. A file does not import itself.
     fn file(&self, file: &Path, importer: &Path) -> Resolved {
         if file == importer {
-            return Resolved::ignored("the name is in the importing file");
+            return Resolved::ignored(message!(python_importing_file));
         }
         match relative_posix(self.root, file) {
             Some(name) => Resolved::Internal(name),

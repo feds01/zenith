@@ -11,6 +11,7 @@ use log::warn;
 use serde_json::Value;
 use yaml_rust2::{Yaml, YamlLoader};
 use zenith_config::PatternError;
+use zenith_diagnostics::message;
 use zenith_lang::{Workspace, WorkspacePackage};
 use zenith_utils::{
     fs::{ReadJsonError, read_json, read_text},
@@ -47,7 +48,8 @@ pub fn discover_packages(root: &Path, package_jsons: &[PathBuf]) -> Workspace {
             Ok(glob) if negated => excludes.push(glob),
             Ok(glob) => includes.push(glob),
             Err(error) => {
-                warn!("ignoring the invalid workspace pattern `{pattern}`: {}", PatternError(error))
+                let error = PatternError(error);
+                warn!("{}", message!(js_invalid_workspace_pattern, pattern, error))
             }
         }
     }
@@ -91,10 +93,13 @@ fn warn_about_duplicate_names(workspace: &Workspace) {
     for package in workspace.packages.iter().chain(&workspace.root_package) {
         match seen.entry(&package.name) {
             Entry::Occupied(first) => warn!(
-                "the packages in `{}` and `{}` are both named `{}`",
-                display_dir(first.get()),
-                display_dir(&package.dir),
-                package.name
+                "{}",
+                message!(
+                    js_duplicate_package,
+                    first = display_dir(first.get()),
+                    second = display_dir(&package.dir),
+                    name = package.name
+                )
             ),
             Entry::Vacant(slot) => {
                 slot.insert(&package.dir);
@@ -115,7 +120,7 @@ fn read_manifest(path: &Path) -> Option<Value> {
         Ok(value) => Some(value),
         Err(ReadJsonError::Read(error)) if error.kind() == io::ErrorKind::NotFound => None,
         Err(error) => {
-            warn!("could not read `{}`: {error}", path.display());
+            warn!("{}", message!(js_read, path = path.display(), error));
             None
         }
     }
@@ -144,14 +149,14 @@ fn pnpm_patterns(path: &Path) -> Vec<String> {
         Ok(contents) => contents,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Vec::new(),
         Err(error) => {
-            warn!("could not read `{}`: {error}", path.display());
+            warn!("{}", message!(js_read, path = path.display(), error));
             return Vec::new();
         }
     };
     let documents = match YamlLoader::load_from_str(&contents) {
         Ok(documents) => documents,
         Err(error) => {
-            warn!("could not parse `{}`: {error}", path.display());
+            warn!("{}", message!(js_parse, path = path.display(), error));
             return Vec::new();
         }
     };

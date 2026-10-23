@@ -18,6 +18,7 @@ use std::{borrow::Cow, path::Path, sync::Arc};
 use ra_ap_syntax::{SourceFile, TextRange};
 use reader::Reader;
 use thin_vec::ThinVec;
+use zenith_diagnostics::message;
 use zenith_lang::{ParsedFile, SyntaxError};
 use zenith_utils::location::{ByteRange, Located};
 
@@ -40,7 +41,7 @@ impl Parser {
     /// not read, as offsets can't address it.
     pub(crate) fn parse_source(&mut self, path: &Path, source: &str) -> ParsedFile {
         if u32::try_from(source.len()).is_err() {
-            let error = SyntaxError { message: Cow::Borrowed("the source is too large to read") };
+            let error = SyntaxError { message: Cow::Owned(message!(rust_source_too_large)) };
             let errors = ThinVec::from([Located::new(ByteRange::default(), error)]);
             return ParsedFile { errors, ..ParsedFile::default() };
         }

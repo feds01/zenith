@@ -10,6 +10,7 @@ use std::{
 use log::{debug, warn};
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
+use zenith_diagnostics::message;
 use zenith_utils::path::adjust_canonicalisation;
 
 use super::{Crates, Declared, Found, Target, TargetKind, edition};
@@ -29,10 +30,8 @@ impl CargoError {
     /// Log the error, as the reason to read the manifests instead.
     pub(super) fn log(&self) {
         match self {
-            Self::NotFound => debug!("`cargo` is not installed, so reading the manifests instead"),
-            Self::Failed(error) => {
-                warn!("`cargo metadata` failed, so reading the manifests instead: {error}")
-            }
+            Self::NotFound => debug!("{}", message!(rust_reading_manifests)),
+            Self::Failed(error) => warn!("{}", message!(rust_cargo_failed, error)),
         }
     }
 }
@@ -40,7 +39,7 @@ impl CargoError {
 impl fmt::Display for CargoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NotFound => f.write_str("cargo is not installed"),
+            Self::NotFound => f.write_str(&message!(rust_cargo_not_installed)),
             Self::Failed(error) => f.write_str(error),
         }
     }

@@ -15,6 +15,7 @@ mod tests;
 
 use std::path::Path;
 
+use zenith_diagnostics::message;
 use zenith_lang::{Resolved, UnresolvedReason};
 use zenith_utils::{glob::NamePattern, path::relative_posix};
 
@@ -62,7 +63,7 @@ impl<'a> Resolver<'a> {
     fn resolve_specifier(&self, path: &Path, specifier: &str) -> Resolved {
         // 1. Find the package of the importing file.
         let Some(krate) = self.crates.containing(path) else {
-            return Resolved::failed("the file is in no Cargo package");
+            return Resolved::failed(message!(rust_no_package));
         };
 
         // 2. Split the path. One that starts with `::` names a crate, never a module.
@@ -87,7 +88,7 @@ impl<'a> Resolver<'a> {
     /// when they are imported by the file at `path`, in `krate`.
     fn relative(&self, krate: &Crate, path: &Path, segments: &[&str]) -> Resolved {
         let Some(Position { target, modules }) = krate.locate(path) else {
-            return Resolved::failed(format!("the file is in no module tree of `{}`", krate.name));
+            return Resolved::failed(message!(rust_no_module_tree, name = krate.name));
         };
 
         // 1. Start at the root for `crate`, and at the file's module otherwise.
@@ -99,7 +100,7 @@ impl<'a> Resolver<'a> {
         // 2. Each `self` stays, and each `super` leaves the module.
         while let Some((&step @ ("self" | "super"), tail)) = rest.split_first() {
             if step == "super" && modules.pop().is_none() {
-                return Resolved::failed("`super` goes above the crate root");
+                return Resolved::failed(message!(rust_super_above_root));
             }
             rest = tail;
         }
@@ -125,7 +126,7 @@ impl<'a> Resolver<'a> {
                 let krate = self.crates.get(*index);
                 return match krate.library() {
                     Some(library) => self.module(library, rest, path),
-                    None => Resolved::failed(format!("`{}` has no library", krate.name)),
+                    None => Resolved::failed(message!(rust_no_library, name = krate.name)),
                 };
             }
             Some(Dependency::External(package)) => {
@@ -141,7 +142,7 @@ impl<'a> Resolver<'a> {
         //    name that starts with a capital is a type in scope, such as an enum whose
         //    variants are imported.
         if name.starts_with(char::is_uppercase) {
-            return Resolved::ignored("a type in scope, not a crate or module");
+            return Resolved::ignored(message!(rust_type_in_scope));
         }
         if !rooted && let Some(Position { target, modules }) = krate.locate(path) {
             let mut all: Vec<&str> = modules.iter().map(String::as_str).collect();
@@ -156,9 +157,9 @@ impl<'a> Resolver<'a> {
         // 3. A tool's attribute or lint, which only names a crate or module when one
         //    has its name.
         if !rooted && TOOLS.contains(&name) {
-            return Resolved::ignored(format!("an attribute or lint of the tool `{name}`"));
+            return Resolved::ignored(message!(rust_tool, name));
         }
-        Resolved::failed(format!("`{name}` is not a crate, or a module here"))
+        Resolved::failed(message!(rust_not_a_crate, name))
     }
 
     /// The file of the module that `modules` name in the tree of `target`,
@@ -171,7 +172,7 @@ impl<'a> Resolver<'a> {
     /// project. A file does not import itself.
     fn file(&self, file: &Path, importer: &Path) -> Resolved {
         if file == importer {
-            return Resolved::ignored("the path is in the importing file");
+            return Resolved::ignored(message!(rust_importing_file));
         }
         match relative_posix(self.root, file) {
             Some(name) => Resolved::Internal(name),

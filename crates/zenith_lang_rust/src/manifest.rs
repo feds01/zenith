@@ -9,6 +9,7 @@ use std::{
 
 use log::warn;
 use serde::{Deserialize, de::IgnoredAny};
+use zenith_diagnostics::message;
 use zenith_utils::{fs::read_text, path::normalize_path};
 
 use crate::crates::{Declared, Target, TargetKind};
@@ -185,7 +186,7 @@ impl Manifest {
                 match manifest {
                     Ok(manifest) => Some((path.parent()?, manifest)),
                     Err(error) => {
-                        warn!("could not read `{}`: {error}", path.display());
+                        warn!("{}", message!(rust_read, path = path.display(), error));
                         None
                     }
                 }

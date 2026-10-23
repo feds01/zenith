@@ -12,6 +12,91 @@ contracts_missing_layer = `{$container}` has no layer `{$member}`
     .help = wrap the layer in parentheses to make it optional
 contracts_not_a_directory = `{$module}` is not a directory
 
+## A violation of a contract: the title of its report, or of a finding of
+## it, and the labels and notes of its excerpts.
+
+contracts_must_not_import = `{$importer}` must not import `{$imported}`
+contracts_must_not_import_via = `{$importer}` must not import `{$imported}` (via {$chain})
+contracts_imports = imports `{$imported}`
+contracts_internal_module = `{$module}` may only be imported through its entry points
+    .label = imports `{$imported}`, which is internal
+contracts_protected_module = `{$module}` may only be imported by its allowed importers
+contracts_internal_import = `{$imported}` is internal to `{$module}`; import it through an entry point
+contracts_protected_import = `{$importer}` may not import the protected module `{$module}`
+contracts_more_imports = and {NUMBER($count)} more {$count ->
+    [one] import
+   *[other] imports
+}
+contracts_undeclared_module = `{$module}` is not declared as a layer of `{$container}`
+    .help = the contract is exhaustive: declare it in `layers`, or add it to `exhaustive_ignores`
+
+## The chains of imports through which a module imports one it must not.
+
+contracts_chain_start = starts a chain of {NUMBER($length)} imports
+contracts_chain_heading = {$total ->
+    [one] import chain:
+   *[other] import chain {$index} of {$total}:
+}
+contracts_more_chains = and {NUMBER($count)} more {$count ->
+    [one] chain
+   *[other] chains
+}
+contracts_direct_imports = {NUMBER($count)} direct {$count ->
+    [one] import
+   *[other] imports
+} in total; use `--format compact` to list them all
+contracts_chain_middle = ({NUMBER($count)} more)
+
+## Dependency cycles, and the dependencies that would break them.
+
+contracts_cycle_in = in `{$selectors}`
+contracts_cycle_among_children = among the children of `{$unit}`
+contracts_cycle = dependency cycle {$scope}
+    .label = closes the cycle {$cycle}
+contracts_cycle_finding = dependency cycle {$scope}: {$cycle}; remove `{$importer}` -> `{$imported}` to break it
+contracts_cycle_breakers = it could be made acyclic by removing {NUMBER($count)} {$count ->
+    [one] dependency
+   *[other] dependencies
+}:
+contracts_cycle_breaker = {$importer} -> {$imported} ({NUMBER($count)} {$count ->
+    [one] import
+   *[other] imports
+})
+contracts_more_breakers = and {NUMBER($count)} more
+
+## The `ignore_imports` entries that match nothing, with how to fix one when
+## they are errors, and when they are warnings.
+
+contracts_unmatched_ignore = the ignored import `{$entry}` matches no import
+    .help_error = remove it, or set `unmatched_ignore_imports` to `warn` or `none`
+    .help_warn = remove it, or set `unmatched_ignore_imports` to `none`
+
+## The entries of the baseline whose import no longer exists.
+
+contracts_stale_entries = {NUMBER($count)} stale baseline {$count ->
+    [one] entry
+   *[other] entries
+}
+    .label = its import no longer exists
+    .unlocated = these imports no longer exist:
+    .help = run `zenith baseline --prune` to remove {$count ->
+        [one] it
+       *[other] them
+    }
+contracts_more_entries = and {NUMBER($count)} more {$count ->
+    [one] entry
+   *[other] entries
+}
+contracts_stale_entry = stale baseline entry `{$entry}`: its import no longer exists
+
+## A contract's line of the summary: its status when it is kept with stale
+## baseline entries, and the imports that it left out.
+
+contracts_kept_with_stale_baseline = kept, with a stale baseline
+contracts_baselined = {NUMBER($count)} baselined
+contracts_ignored = {NUMBER($count)} ignored
+contracts_suppressed = {NUMBER($count)} suppressed
+
 ## The `zenith-ignore` comments that had no effect. A line is shown as it is,
 ## without its digits grouped.
 

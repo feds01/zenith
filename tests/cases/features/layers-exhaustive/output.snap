@@ -10,3 +10,55 @@ Contracts
 
 0 kept, 1 broken · 8 files, 3 imports
 
+$ zenith check --format compact
+exit: 1
+--- stdout
+error[domain-layers]: `domains/orders/utils.ts` is not declared as a layer of `domains/orders`; declare the module in `layers`
+0 kept, 1 broken · 8 files, 3 imports
+
+$ zenith check --format json
+exit: 1
+--- stdout
+{
+  "version": 1,
+  "passed": false,
+  "summary": {
+    "kept": 0,
+    "broken": 1,
+    "warnings": 0,
+    "stale_baseline_entries": 0,
+    "files": 8,
+    "imports": 3
+  },
+  "contracts": [
+    {
+      "id": "domain-layers",
+      "name": "domain-layers",
+      "type": "layers",
+      "severity": "error",
+      "status": "broken",
+      "guidance": null,
+      "violations": [
+        {
+          "kind": "undeclared_module",
+          "container": "domains/orders",
+          "module": "domains/orders/utils.ts",
+          "fix": {
+            "action": "declare_layer",
+            "import": null,
+            "hint": "declare the module in `layers`"
+          }
+        }
+      ],
+      "unmatched_ignore_imports": [],
+      "stale_baseline_entries": [],
+      "ignored": 0,
+      "suppressed": 0,
+      "baselined": 0
+    }
+  ],
+  "unused_suppressions": [],
+  "unresolved": [],
+  "file_errors": []
+}
+

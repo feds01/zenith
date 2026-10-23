@@ -48,7 +48,18 @@ exit: 1
                     }
                   ]
                 }
-              ]
+              ],
+              "fix": {
+                "action": "break_cycle",
+                "import": {
+                  "file": "packages/utils/src/campaign-url.ts",
+                  "line": 1,
+                  "column": 27,
+                  "specifier": "@acme/api",
+                  "kind": "value"
+                },
+                "hint": "remove `@acme/utils` -> `@acme/api` to break the cycle"
+              }
             }
           ]
         }
@@ -100,7 +111,18 @@ exit: 1
                 }
               ],
               "extra_heads": [],
-              "extra_tails": []
+              "extra_tails": [],
+              "fix": {
+                "action": "remove_import",
+                "import": {
+                  "file": "web/src/domains/analytics/components/AnalyticsChart.tsx",
+                  "line": 3,
+                  "column": 36,
+                  "specifier": "@/lib/files",
+                  "kind": "value"
+                },
+                "hint": "remove this import, or one further along the chain"
+              }
             }
           ]
         },
@@ -173,7 +195,18 @@ exit: 1
                 }
               ],
               "extra_heads": [],
-              "extra_tails": []
+              "extra_tails": [],
+              "fix": {
+                "action": "remove_import",
+                "import": {
+                  "file": "web/src/domains/campaigns/components/CampaignAiPanel.tsx",
+                  "line": 3,
+                  "column": 35,
+                  "specifier": "@acme/ai",
+                  "kind": "value"
+                },
+                "hint": "remove this import, or one further along the chain"
+              }
             }
           ]
         },
@@ -222,7 +255,18 @@ exit: 1
                 }
               ],
               "extra_heads": [],
-              "extra_tails": []
+              "extra_tails": [],
+              "fix": {
+                "action": "remove_import",
+                "import": {
+                  "file": "web/src/domains/campaigns/components/CampaignAiPanel.tsx",
+                  "line": 3,
+                  "column": 35,
+                  "specifier": "@acme/ai",
+                  "kind": "value"
+                },
+                "hint": "remove this import, or one further along the chain"
+              }
             }
           ]
         }

@@ -6,6 +6,8 @@ warning[gradual]: `src/a` must not import `src/b`
   |
 1 | import { y } from "../b/y";
   |                   ^^^^^^^^ imports `src/b/y.ts`
+  |
+  = help: remove this import
 
 Contracts
   ! gradual  forbidden  broken (1 violation, warning only)

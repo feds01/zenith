@@ -1,0 +1,2 @@
+# The fix of a violation of each contract type that `json` leaves out.
+check --format json --contract api-domain-layers --contract ai-public-surface --contract strategies-independent --contract mastra-protected

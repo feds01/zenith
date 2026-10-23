@@ -16,6 +16,8 @@ error[default-kinds]: `src/low` must not import `src/high`
   |
 1 | import h = require("../high/h");
   |                    ^^^^^^^^^^^ imports `src/high/h.ts`
+  |
+  = help: remove these imports
 
 error[all-kinds]: `src/low` must not import `src/high`
  --> src/low/all-type-specifiers.ts:1:36
@@ -34,6 +36,7 @@ error[all-kinds]: `src/low` must not import `src/high`
   |                                  ^^^^^^^^^^^ imports `src/high/h.ts`
   |
   = note: 7 direct imports in total; use `--format compact` to list them all
+  = help: remove these imports
 
 error[requires-only]: `src/low` must not import `src/high`
  --> src/low/common.cjs:1:26
@@ -45,6 +48,8 @@ error[requires-only]: `src/low` must not import `src/high`
   |
 1 | import h = require("../high/h");
   |                    ^^^^^^^^^^^ imports `src/high/h.ts`
+  |
+  = help: remove these imports
 
 Contracts
   ✗ default-kinds       forbidden  broken (3 violations)

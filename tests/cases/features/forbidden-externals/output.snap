@@ -11,18 +11,24 @@ error[no-io]: `src` must not import `node:fs`
   |
 1 | import { readFile } from "node:fs/promises";
   |                          ^^^^^^^^^^^^^^^^^^ imports `node:fs`
+  |
+  = help: remove these imports
 
 error[no-io]: `src` must not import `bun:sqlite`
  --> src/bun.ts:1:26
   |
 1 | import { Database } from "bun:sqlite";
   |                          ^^^^^^^^^^^^ imports `bun:sqlite`
+  |
+  = help: remove this import
 
 error[no-io]: `src` must not import `npm:lodash`
  --> src/npm-subpath.ts:1:17
   |
 1 | import get from "lodash/get";
   |                 ^^^^^^^^^^^^ imports `npm:lodash`
+  |
+  = help: remove this import
 
 Contracts
   ✗ no-io  forbidden  broken (4 violations)

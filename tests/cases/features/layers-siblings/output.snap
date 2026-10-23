@@ -6,6 +6,8 @@ error[independent-siblings]: `src/orders` must not import `src/billing`
   |
 1 | import { invoice } from "../billing";
   |                         ^^^^^^^^^^^^ imports `src/billing/index.ts`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 Contracts
   ✗ independent-siblings  layers  broken (1 violation)

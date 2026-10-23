@@ -6,6 +6,8 @@ error[package-tiers]: `pkg:@demo/utils` must not import `pkg:@demo/ui`
   |
 1 | import { Button } from "@demo/ui";
   |                        ^^^^^^^^^^ imports `packages/ui/index.ts`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 error[packages-acyclic]: dependency cycle in `pkg:*`
  --> packages/utils/index.ts:1:24
@@ -15,6 +17,7 @@ error[packages-acyclic]: dependency cycle in `pkg:*`
   |
   = note: it could be made acyclic by removing 1 dependency:
             @demo/utils -> @demo/ui (1 import)
+  = help: remove `@demo/utils` -> `@demo/ui` to break the cycle
 
 Contracts
   ✗ package-tiers     layers   broken (1 violation)

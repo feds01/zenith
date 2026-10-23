@@ -6,6 +6,8 @@ error[core-is-the-base]: `acme-core` must not import `acme-api`
    |
 12 |         return importlib.import_module("acme.api.models")
    |                                        ^^^^^^^^^^^^^^^^^ imports `services/api/src/acme/api/models.py`
+   |
+   = help: remove this import
 
 Contracts
   ✗ core-is-the-base              forbidden  broken (1 violation) · 1 suppressed

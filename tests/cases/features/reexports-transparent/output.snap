@@ -12,6 +12,7 @@ error[client-safety-opaque]: `src/client/button.tsx` must not import `node:fs`
             -> src/lib/index.ts:3
             -> src/lib/server.ts:1
             -> node:fs
+  = help: remove this import, or one further along the chain
 
 error[client-safety-opaque]: `src/client/report.tsx` must not import `node:fs`
  --> src/client/report.tsx:3:22
@@ -24,6 +25,7 @@ error[client-safety-opaque]: `src/client/report.tsx` must not import `node:fs`
             -> src/lib/index.ts:3
             -> src/lib/server.ts:1
             -> node:fs
+  = help: remove this import, or one further along the chain
 
 error[client-safety]: `src/client/report.tsx` must not import `node:fs`
  --> src/client/report.tsx:3:22
@@ -36,6 +38,7 @@ error[client-safety]: `src/client/report.tsx` must not import `node:fs`
             -> src/lib/index.ts:3
             -> src/lib/server.ts:1
             -> node:fs
+  = help: remove this import, or one further along the chain
 
 Contracts
   ✗ client-safety-opaque  forbidden  broken (2 violations)

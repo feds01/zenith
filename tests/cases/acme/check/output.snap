@@ -7,6 +7,7 @@ error[web-layers]: `web/src/components` must not import `web/src/app`
 3 | import { DASHBOARD_TABS } from "@/app/(dashboard)/tabs";
   |                                ^^^^^^^^^^^^^^^^^^^^^^^^ imports `web/src/app/(dashboard)/tabs.ts`
   |
+  = help: move the imported code into a module that may be imported here, or remove this import
   = help: Lower layers must not import higher ones. Move the shared code down a layer.
 
 error[web-layers]: `web/src/lib` must not import `web/src/domains`
@@ -15,6 +16,7 @@ error[web-layers]: `web/src/lib` must not import `web/src/domains`
 1 | import { CAMPAIGN_STATUS_LABELS } from "@/domains/campaigns/types";
   |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `web/src/domains/campaigns/types.ts`
   |
+  = help: move the imported code into a module that may be imported here, or remove this import
   = help: Lower layers must not import higher ones. Move the shared code down a layer.
 
 error[package-tiers]: `pkg:@acme/utils` must not import `pkg:@acme/api`
@@ -22,6 +24,8 @@ error[package-tiers]: `pkg:@acme/utils` must not import `pkg:@acme/api`
   |
 1 | import { campaigns } from "@acme/api";
   |                           ^^^^^^^^^^^ imports `packages/api/index.ts`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 error[packages-acyclic]: dependency cycle in `pkg:*`
  --> packages/utils/src/campaign-url.ts:1:27
@@ -31,6 +35,7 @@ error[packages-acyclic]: dependency cycle in `pkg:*`
   |
   = note: it could be made acyclic by removing 1 dependency:
             @acme/utils -> @acme/api (1 import)
+  = help: remove `@acme/utils` -> `@acme/api` to break the cycle
 
 error[client-safety]: `web/src/domains/analytics/components/AnalyticsChart.tsx` must not import `node:fs`
  --> web/src/domains/analytics/components/AnalyticsChart.tsx:3:36
@@ -42,6 +47,7 @@ error[client-safety]: `web/src/domains/analytics/components/AnalyticsChart.tsx` 
             web/src/domains/analytics/components/AnalyticsChart.tsx:3
             -> web/src/lib/files.ts:1
             -> node:fs
+  = help: remove this import, or one further along the chain
   = help: Keep server-only modules out of client bundles: import a narrower module, or move the call into a server action.
 
 error[client-safety]: `web/src/domains/campaigns/components/CampaignAiPanel.tsx` must not import `npm:sharp`
@@ -57,6 +63,7 @@ error[client-safety]: `web/src/domains/campaigns/components/CampaignAiPanel.tsx`
             -> packages/ai/src/domains/campaigns/summarize.ts:2
             -> packages/ai/src/utils/images/to-model-image.ts:2 (dynamic)
             -> npm:sharp
+  = help: remove this import, or one further along the chain
   = help: Keep server-only modules out of client bundles: import a narrower module, or move the call into a server action.
 
 error[client-safety]: `web/src/domains/campaigns/components/CampaignAiPanel.tsx` must not import `npm:@mastra/core`
@@ -70,6 +77,7 @@ error[client-safety]: `web/src/domains/campaigns/components/CampaignAiPanel.tsx`
             -> packages/ai/index.ts:3
             -> packages/ai/src/domains/research/index.ts:1
             -> npm:@mastra/core
+  = help: remove this import, or one further along the chain
   = help: Keep server-only modules out of client bundles: import a narrower module, or move the call into a server action.
 
 warning[ai-public-surface]: `@acme/ai` may only be imported through its entry points
@@ -82,24 +90,32 @@ warning[ai-public-surface]: `@acme/ai` may only be imported through its entry po
   |
 1 | import { briefSchema } from "@acme/ai/src/domains/campaigns/brief";
   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `packages/ai/src/domains/campaigns/brief.ts`, which is internal
+  |
+  = help: import `@acme/ai` through one of its entry points instead
 
 error[strategies-independent]: `packages/ai/src/domains/content/strategies/ads` must not import `packages/ai/src/domains/content/strategies/blueprints`
  --> packages/ai/src/domains/content/strategies/ads/index.ts:1:30
   |
 1 | import { blueprintFor } from "../blueprints";
   |                              ^^^^^^^^^^^^^^^ imports `packages/ai/src/domains/content/strategies/blueprints/index.ts`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 error[mastra-protected]: `web/src/mastra` may only be imported by its allowed importers
  --> web/src/components/assistant.tsx:1:32
   |
 1 | import { assistantAgent } from "@/mastra/agent";
   |                                ^^^^^^^^^^^^^^^^ imports `web/src/mastra/agent.ts`
+  |
+  = help: remove this import
 
 error[api-domain-layers]: `packages/api/src/domains/accounts/types` must not import `packages/api/src/domains/accounts/api`
  --> packages/api/src/domains/accounts/types.ts:1:35
   |
 1 | import { ACCOUNTS_ENDPOINT } from "./api";
   |                                   ^^^^^^^ imports `packages/api/src/domains/accounts/api.ts`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 error[legacy-freeze]: `@acme/ai` must not import `legacy-editor`
  --> packages/ai/src/connectors/editor.ts:1:32
@@ -107,6 +123,7 @@ error[legacy-freeze]: `@acme/ai` must not import `legacy-editor`
 1 | import { createDocument } from "legacy-editor";
   |                                ^^^^^^^^^^^^^^^ imports `packages/legacyEditor/index.ts`
   |
+  = help: remove this import
   = help: legacy-editor is frozen. Use the new editor APIs instead.
 
 warning: 1 import could not be resolved
@@ -135,6 +152,8 @@ error[package-tiers]: `pkg:@acme/utils` must not import `pkg:@acme/api`
   |
 1 | import { campaigns } from "@acme/api";
   |                           ^^^^^^^^^^^ imports `packages/api/index.ts`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
 
 warning: 1 import could not be resolved
   |
@@ -154,6 +173,7 @@ error[web-layers]: `web/src/components` must not import `web/src/app`
 3 | import { DASHBOARD_TABS } from "@/app/(dashboard)/tabs";
   |                                ^^^^^^^^^^^^^^^^^^^^^^^^ imports `web/src/app/(dashboard)/tabs.ts`
   |
+  = help: move the imported code into a module that may be imported here, or remove this import
   = help: Lower layers must not import higher ones. Move the shared code down a layer.
 
 error[web-layers]: `web/src/lib` must not import `web/src/domains`
@@ -162,6 +182,7 @@ error[web-layers]: `web/src/lib` must not import `web/src/domains`
 1 | import { CAMPAIGN_STATUS_LABELS } from "@/domains/campaigns/types";
   |                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `web/src/domains/campaigns/types.ts`
   |
+  = help: move the imported code into a module that may be imported here, or remove this import
   = help: Lower layers must not import higher ones. Move the shared code down a layer.
 
 warning: 1 import could not be resolved

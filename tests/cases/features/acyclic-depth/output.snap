@@ -9,6 +9,7 @@ error[no-cycles]: dependency cycle in `src/*`
   |
   = note: it could be made acyclic by removing 1 dependency:
             src/c -> src/a (1 import)
+  = help: remove `src/c` -> `src/a` to break the cycle
 
 error[no-cycles]: dependency cycle among the children of `src/a`
  --> src/a/two.ts:1:21
@@ -18,6 +19,7 @@ error[no-cycles]: dependency cycle among the children of `src/a`
   |
   = note: it could be made acyclic by removing 1 dependency:
             src/a/two.ts -> src/a/one.ts (1 import)
+  = help: remove `src/a/two.ts` -> `src/a/one.ts` to break the cycle
 
 Contracts
   ✗ no-cycles  acyclic  broken (2 violations)

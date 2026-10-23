@@ -8,15 +8,15 @@
 use std::{fmt, time::Duration};
 
 use serde::Serialize;
-use zenith_config::{AlertLevel, Severity};
-use zenith_diagnostics::{Position, ReportKind, SourceMap};
-use zenith_graph::{Graph, ImportKind};
+use zenith_config::{AlertLevel, ContractKind, Severity};
+use zenith_diagnostics::{Position, ReportKind, Source, SourceMap};
+use zenith_graph::{Graph, ImportDetail, ImportKind};
 use zenith_pipeline::{FileProblemJson, Session, UnresolvedJson};
 use zenith_reporting::Summary;
 
 use crate::{
-    Chain, ContractReport, CycleBreaker, CycleScope, Link, UnusedReason, UnusedSuppression,
-    Violation, reports::import_span,
+    Chain, ContractReport, CycleBreaker, CycleScope, Fix, FixAction, Link, UnusedReason,
+    UnusedSuppression, Violation, reports::import_span,
 };
 
 /// The version of the JSON output's schema.
@@ -197,14 +197,40 @@ enum ViolationJson<'a> {
     Dependency { importer: &'a str, imported: &'a str, chains: Vec<ChainJson<'a>> },
 
     /// The unit `module` is imported directly by code that may not import it.
-    IllegalImports { module: &'a str, imports: Vec<LinkJson<'a>> },
+    IllegalImports { module: &'a str, imports: Vec<IllegalImportJson<'a>> },
 
     /// The units of `scope` form cycles, which removing `breakers` would
     /// break.
     Cycle { scope: Scope<'a>, breakers: Vec<Breaker<'a>> },
 
-    /// The child `module` of `container` is not declared as a layer.
-    UndeclaredModule { container: &'a str, module: &'a str },
+    /// The child `module` of `container` is not declared as a layer, which
+    /// `fix` fixes.
+    UndeclaredModule { container: &'a str, module: &'a str, fix: FixJson<'a> },
+}
+
+/// How to fix a finding: a chain, an illegal import, a cycle breaker or an
+/// undeclared module.
+#[derive(Debug, Serialize)]
+struct FixJson<'a> {
+    /// What to do.
+    action: FixAction,
+
+    /// The import statement to change, if the fix is about one.
+    import: Option<FixImport<'a>>,
+
+    /// What to do, in a line of plain language.
+    hint: String,
+}
+
+/// The import statement that a fix changes, and its file.
+#[derive(Debug, Serialize)]
+struct FixImport<'a> {
+    /// The importing file.
+    file: &'a str,
+
+    /// The statement.
+    #[serde(flatten)]
+    statement: Statement<'a>,
 }
 
 /// The units that an `acyclic` contract finds cycles among: `{"modules":
@@ -232,6 +258,20 @@ struct ChainJson<'a> {
 
     /// The other imports from the second-to-last node of the chain.
     extra_tails: Vec<LinkJson<'a>>,
+
+    /// How to fix the chain.
+    fix: FixJson<'a>,
+}
+
+/// A direct import by code that may not import the module.
+#[derive(Debug, Serialize)]
+struct IllegalImportJson<'a> {
+    /// The import.
+    #[serde(flatten)]
+    link: LinkJson<'a>,
+
+    /// How to fix it.
+    fix: FixJson<'a>,
 }
 
 /// A dependency to remove to break cycles.
@@ -249,6 +289,9 @@ struct Breaker<'a> {
 
     /// The direct imports that make the dependency.
     imports: Vec<LinkJson<'a>>,
+
+    /// How to fix it.
+    fix: FixJson<'a>,
 }
 
 /// A direct import between two nodes.
@@ -329,7 +372,7 @@ impl ContractReport<'_> {
             violations: self
                 .violations
                 .iter()
-                .map(|violation| violation_json(graph, sources, violation))
+                .map(|violation| violation_json(graph, sources, violation, &config.kind))
                 .collect(),
             unmatched_ignore_imports: unmatched.iter().map(|entry| entry.as_str()).collect(),
             stale_baseline_entries: &self.stale_entries,
@@ -362,12 +405,15 @@ impl UnusedSuppression<'_> {
     }
 }
 
-/// `violation`, found in `graph`, as JSON.
+/// `violation`, found in `graph` by a contract of type `kind`, as JSON.
 fn violation_json<'r>(
     graph: &'r Graph,
     sources: &mut SourceMap,
     violation: &'r Violation,
+    kind: &ContractKind,
 ) -> ViolationJson<'r> {
+    let fixes: Vec<_> =
+        violation.fixes(kind).into_iter().map(|fix| fix.json(graph, sources)).collect();
     let mut links = |links: &'r [Link]| -> Vec<LinkJson<'r>> {
         links.iter().map(|link| link_json(graph, sources, link)).collect()
     };
@@ -377,16 +423,23 @@ fn violation_json<'r>(
             imported,
             chains: chains
                 .iter()
-                .map(|chain: &'r Chain| ChainJson {
+                .zip(fixes)
+                .map(|(chain, fix): (&'r Chain, _)| ChainJson {
                     links: links(&chain.links),
                     extra_heads: links(&chain.extra_heads),
                     extra_tails: links(&chain.extra_tails),
+                    fix,
                 })
                 .collect(),
         },
-        Violation::IllegalImports { module, imports } => {
-            ViolationJson::IllegalImports { module, imports: links(imports) }
-        }
+        Violation::IllegalImports { module, imports } => ViolationJson::IllegalImports {
+            module,
+            imports: links(imports)
+                .into_iter()
+                .zip(fixes)
+                .map(|(link, fix)| IllegalImportJson { link, fix })
+                .collect(),
+        },
         Violation::Cycle { scope, breakers } => ViolationJson::Cycle {
             scope: match scope {
                 CycleScope::Modules(selectors) => Scope::Modules(selectors),
@@ -394,7 +447,8 @@ fn violation_json<'r>(
             },
             breakers: breakers
                 .iter()
-                .map(|breaker: &'r CycleBreaker| Breaker {
+                .zip(fixes)
+                .map(|(breaker, fix): (&'r CycleBreaker, _)| Breaker {
                     importer: &breaker.importer,
                     imported: &breaker.imported,
                     cycle: breaker
@@ -404,12 +458,16 @@ fn violation_json<'r>(
                         .map(String::as_str)
                         .collect(),
                     imports: links(&breaker.imports),
+                    fix,
                 })
                 .collect(),
         },
-        Violation::UndeclaredModule { container, module } => {
-            ViolationJson::UndeclaredModule { container, module: graph.name(*module) }
-        }
+        // An undeclared module is the violation's one finding.
+        Violation::UndeclaredModule { container, module } => ViolationJson::UndeclaredModule {
+            container,
+            module: graph.name(*module),
+            fix: fixes.into_iter().next().expect("an undeclared module has a fix"),
+        },
     }
 }
 
@@ -418,17 +476,33 @@ fn violation_json<'r>(
 fn link_json<'r>(graph: &'r Graph, sources: &mut SourceMap, link: &'r Link) -> LinkJson<'r> {
     let importer = graph.name(link.importer);
     let source = sources.file(importer).map(|id| sources.get(id));
-    let imports = link
-        .imports
-        .iter()
-        .map(|import| {
-            let position =
-                source.map(|source| source.position(import_span(&source.contents, import).start()));
-            let (line, column) = split(position);
-            Statement { line, column, specifier: &import.specifier, kind: import.kind }
-        })
-        .collect();
+    let imports = link.imports.iter().map(|import| Statement::new(source, import)).collect();
     LinkJson { importer, imported: graph.name(link.imported), imports }
+}
+
+impl<'a> Statement<'a> {
+    /// `import` as JSON, with where its specifier is in `source`, the file
+    /// it is in, if that can be read.
+    fn new(source: Option<&Source>, import: &'a ImportDetail) -> Self {
+        let position =
+            source.map(|source| source.position(import_span(&source.contents, import).start()));
+        let (line, column) = split(position);
+        Statement { line, column, specifier: &import.specifier, kind: import.kind }
+    }
+}
+
+impl<'r> Fix<'r> {
+    /// The fix, of a violation found in `graph`, as JSON, with where the
+    /// specifier of the first statement of its import is in `sources`.
+    fn json(self, graph: &'r Graph, sources: &mut SourceMap) -> FixJson<'r> {
+        let statement = self.link.and_then(|link| Some((link, link.imports.first()?)));
+        let import = statement.map(|(link, import)| {
+            let file = graph.name(link.importer);
+            let source = sources.file(file).map(|id| sources.get(id));
+            FixImport { file, statement: Statement::new(source, import) }
+        });
+        FixJson { action: self.action, import, hint: self.hint }
+    }
 }
 
 /// `time` in milliseconds, as the JSON output shows durations.

@@ -21,7 +21,7 @@ contracts_imports = imports `{$imported}`
 contracts_internal_module = `{$module}` may only be imported through its entry points
     .label = imports `{$imported}`, which is internal
 contracts_protected_module = `{$module}` may only be imported by its allowed importers
-contracts_internal_import = `{$imported}` is internal to `{$module}`; import it through an entry point
+contracts_internal_import = `{$imported}` is internal to `{$module}`
 contracts_protected_import = `{$importer}` may not import the protected module `{$module}`
 contracts_more_imports = and {NUMBER($count)} more {$count ->
     [one] import
@@ -53,7 +53,7 @@ contracts_cycle_in = in `{$selectors}`
 contracts_cycle_among_children = among the children of `{$unit}`
 contracts_cycle = dependency cycle {$scope}
     .label = closes the cycle {$cycle}
-contracts_cycle_finding = dependency cycle {$scope}: {$cycle}; remove `{$importer}` -> `{$imported}` to break it
+contracts_cycle_finding = dependency cycle {$scope}: {$cycle}
 contracts_cycle_breakers = it could be made acyclic by removing {NUMBER($count)} {$count ->
     [one] dependency
    *[other] dependencies
@@ -63,6 +63,22 @@ contracts_cycle_breaker = {$importer} -> {$imported} ({NUMBER($count)} {$count -
    *[other] imports
 })
 contracts_more_breakers = and {NUMBER($count)} more
+
+## How to fix a finding of a violation, by the action that fixes it, and
+## how to fix all the findings of a violation that has several. Then a
+## finding's line with its fix.
+
+contracts_fix_remove_import = remove this import
+    .chain = remove this import, or one further along the chain
+    .all = remove these imports
+    .chains = remove these imports, or for a chain, one further along it
+contracts_fix_move_module = move the imported code into a module that may be imported here, or remove this import
+    .all = move the imported code into modules that may be imported here, or remove these imports
+contracts_fix_import_through_entry_point = import `{$module}` through one of its entry points instead
+contracts_fix_break_cycle = remove `{$importer}` -> `{$imported}` to break the cycle
+    .all = remove the dependencies listed above to break the cycles
+contracts_fix_declare_layer = declare the module in `layers`
+contracts_finding = {$finding}; {$hint}
 
 ## The `ignore_imports` entries that match nothing, with how to fix one when
 ## they are errors, and when they are warnings.

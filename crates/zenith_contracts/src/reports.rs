@@ -8,7 +8,7 @@ use zenith_graph::{Graph, ImportDetail, ImportKind};
 use zenith_reporting::{Count, Outcome, Summary, SummaryEntry};
 use zenith_utils::location::ByteRange;
 
-use crate::{Chain, ContractReport, CycleBreaker, Link, Violation, baseline::entry_ranges};
+use crate::{Chain, ContractReport, CycleBreaker, Fix, Link, Violation, baseline::entry_ranges};
 
 /// How many excerpts a report of chains or illegal imports shows.
 const MAX_EXCERPTS: usize = 3;
@@ -27,11 +27,12 @@ const MAX_STALE: usize = 10;
 
 impl ContractReport<'_> {
     /// The reports of what checking the contract found: one per violation,
-    /// with excerpts of its imports and the contract's guidance, one per
-    /// `ignore_imports` entry that matches nothing, unless they are not to be
-    /// reported, and one of its stale `baseline` entries. The excerpts are
-    /// read from `sources`, and the entries point into `config`, the
-    /// configuration file, if it is there, and the baseline file.
+    /// with excerpts of its imports, how to fix it and the contract's
+    /// guidance, one per `ignore_imports` entry that matches nothing, unless
+    /// they are not to be reported, and one of its stale `baseline` entries.
+    /// The excerpts are read from `sources`, and the entries point into
+    /// `config`, the configuration file, if it is there, and the baseline
+    /// file.
     pub fn reports(
         &self,
         graph: &Graph,
@@ -43,10 +44,11 @@ impl ContractReport<'_> {
     }
 
     /// What checking the contract found, a report each, for showing a line
-    /// each: one per chain, illegal import and cycle breaker, pointing at its
-    /// first import, with the contract's guidance, one per `ignore_imports`
-    /// entry that matches nothing, unless they are not to be reported, and
-    /// one per stale `baseline` entry.
+    /// each: one per chain, illegal import, cycle breaker and undeclared
+    /// module, pointing at its first import if it has one, with how to fix it
+    /// and the contract's guidance, one per `ignore_imports` entry that
+    /// matches nothing, unless they are not to be reported, and one per stale
+    /// `baseline` entry.
     pub fn findings(
         &self,
         graph: &Graph,
@@ -134,6 +136,7 @@ impl ReportBuilder<'_> {
             .iter()
             .map(|violation| {
                 let mut report = self.violation(kind, config, violation);
+                report.add_help(violation.hint(&config.kind));
                 if let Some(guidance) = &config.guidance {
                     report.add_help(guidance.trim());
                 }
@@ -221,50 +224,44 @@ impl ReportBuilder<'_> {
         let graph = self.graph;
         let mut findings = Vec::new();
         for violation in &report.violations {
-            match violation {
-                Violation::Dependency { importer, imported, chains } => {
-                    for chain in chains {
-                        let title = match chain.links.len() {
-                            1 => message!(contracts_must_not_import, importer, imported),
-                            _ => {
-                                let chain = chain_summary(graph, chain);
-                                message!(contracts_must_not_import_via, importer, imported, chain)
-                            }
-                        };
-                        findings.push(self.finding(kind, title, chain.links.first()));
-                    }
-                }
-                Violation::IllegalImports { module, imports } => {
-                    for link in imports {
-                        let title = if encapsulation {
+            let titles: Vec<_> = match violation {
+                Violation::Dependency { importer, imported, chains } => chains
+                    .iter()
+                    .map(|chain| match chain.links.len() {
+                        1 => message!(contracts_must_not_import, importer, imported),
+                        _ => {
+                            let chain = chain_summary(graph, chain);
+                            message!(contracts_must_not_import_via, importer, imported, chain)
+                        }
+                    })
+                    .collect(),
+                Violation::IllegalImports { module, imports } => imports
+                    .iter()
+                    .map(|link| {
+                        if encapsulation {
                             let imported = graph.name(link.imported);
                             message!(contracts_internal_import, imported, module)
                         } else {
                             let importer = graph.name(link.importer);
                             message!(contracts_protected_import, importer, module)
-                        };
-                        findings.push(self.finding(kind, title, Some(link)));
-                    }
-                }
-                Violation::Cycle { scope, breakers } => {
-                    for breaker in breakers {
+                        }
+                    })
+                    .collect(),
+                Violation::Cycle { scope, breakers } => breakers
+                    .iter()
+                    .map(|breaker| {
                         let mut cycle = breaker.cycle.clone();
                         cycle.push(breaker.importer.clone());
-                        let title = message!(
-                            contracts_cycle_finding,
-                            scope,
-                            cycle = cycle.join(" -> "),
-                            importer = breaker.importer,
-                            imported = breaker.imported
-                        );
-                        findings.push(self.finding(kind, title, breaker.imports.first()));
-                    }
-                }
+                        message!(contracts_cycle_finding, scope, cycle = cycle.join(" -> "))
+                    })
+                    .collect(),
                 Violation::UndeclaredModule { container, module } => {
                     let module = graph.name(*module);
-                    let title = message!(contracts_undeclared_module, module, container);
-                    findings.push(Report::new(kind, title));
+                    vec![message!(contracts_undeclared_module, module, container)]
                 }
+            };
+            for (title, fix) in titles.into_iter().zip(violation.fixes(&config.kind)) {
+                findings.push(self.finding(kind, title, fix));
             }
         }
         if let Some(guidance) = &config.guidance {
@@ -301,11 +298,13 @@ impl ReportBuilder<'_> {
         findings.into_iter().map(|finding| finding.with_id(&config.id)).collect()
     }
 
-    /// The report of a finding titled `title`, pointing at the first import of
-    /// `link` if there is one and its file can be read.
-    fn finding(&mut self, kind: ReportKind, title: String, link: Option<&Link>) -> Report {
-        let mut report = Report::new(kind, title);
-        if let Some(span) = link.and_then(|link| self.span(link)) {
+    /// The report of a finding titled `title`, followed by the hint of its
+    /// `fix`, pointing at the first import of the fix's link if there is one
+    /// and its file can be read.
+    fn finding(&mut self, kind: ReportKind, title: String, fix: Fix) -> Report {
+        let mut report =
+            Report::new(kind, message!(contracts_finding, finding = title, hint = fix.hint));
+        if let Some(span) = fix.link.and_then(|link| self.span(link)) {
             report.add_span(span);
         }
         report
@@ -353,9 +352,7 @@ impl ReportBuilder<'_> {
             Violation::UndeclaredModule { container, module } => {
                 let module = self.graph.name(*module);
                 let title = message!(contracts_undeclared_module, module, container);
-                let mut report = Report::new(kind, title);
-                report.add_help(message!(contracts_undeclared_module.help));
-                report
+                Report::new(kind, title)
             }
         }
     }
@@ -693,8 +690,9 @@ mod tests {
         assert_eq!(
             rendered,
             [
-                "a/x.ts:2:1: error[ab]: `a` must not import `b`",
-                "error[ab]: `a` must not import `b` (via a/z.ts -> c/w.ts -> b/y.ts)",
+                "a/x.ts:2:1: error[ab]: `a` must not import `b`; remove this import",
+                "error[ab]: `a` must not import `b` (via a/z.ts -> c/w.ts -> b/y.ts); \
+                 remove this import, or one further along the chain",
             ]
         );
     }
@@ -753,7 +751,8 @@ mod tests {
         assert_eq!(
             rendered,
             ["cmd/main.go:2:1: error[through-packages]: `cmd` must not import `internal/cache` \
-                 (via cmd/main.go -> internal/db -> internal/db/conn.go -> internal/cache)"]
+                 (via cmd/main.go -> internal/db -> internal/db/conn.go -> internal/cache); \
+                 remove this import, or one further along the chain"]
         );
     }
 }

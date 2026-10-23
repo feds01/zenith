@@ -1,10 +1,10 @@
 $ zenith check --format github --contract web-layers --contract ai-public-surface
 exit: 1
 --- stdout
-::error file=web/src/components/nav/Sidebar.tsx,line=3,col=32,title=zenith(web-layers)::`web/src/components` must not import `web/src/app`%0ALower layers must not import higher ones. Move the shared code down a layer.
-::error file=web/src/lib/format.ts,line=1,col=40,title=zenith(web-layers)::`web/src/lib` must not import `web/src/domains`%0ALower layers must not import higher ones. Move the shared code down a layer.
-::warning file=services/mcp/src/tools.ts,line=1,col=31,title=zenith(ai-public-surface)::`packages/ai/src/tools/index.ts` is internal to `@acme/ai`; import it through an entry point
-::warning file=web/src/domains/campaigns/hooks/use-campaign-brief.ts,line=1,col=29,title=zenith(ai-public-surface)::`packages/ai/src/domains/campaigns/brief.ts` is internal to `@acme/ai`; import it through an entry point
+::error file=web/src/components/nav/Sidebar.tsx,line=3,col=32,title=zenith(web-layers)::`web/src/components` must not import `web/src/app`; move the imported code into a module that may be imported here, or remove this import%0ALower layers must not import higher ones. Move the shared code down a layer.
+::error file=web/src/lib/format.ts,line=1,col=40,title=zenith(web-layers)::`web/src/lib` must not import `web/src/domains`; move the imported code into a module that may be imported here, or remove this import%0ALower layers must not import higher ones. Move the shared code down a layer.
+::warning file=services/mcp/src/tools.ts,line=1,col=31,title=zenith(ai-public-surface)::`packages/ai/src/tools/index.ts` is internal to `@acme/ai`; import `@acme/ai` through one of its entry points instead
+::warning file=web/src/domains/campaigns/hooks/use-campaign-brief.ts,line=1,col=29,title=zenith(ai-public-surface)::`packages/ai/src/domains/campaigns/brief.ts` is internal to `@acme/ai`; import `@acme/ai` through one of its entry points instead
 ::warning title=zenith::1 import could not be resolved%0Ause `--show-unresolved` to list them, or `[languages.js] ignore_unresolved` to silence expected ones
 0 kept, 1 broken, 1 warning · 78 files, 127 imports
 

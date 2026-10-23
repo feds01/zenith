@@ -1,0 +1,242 @@
+$ zenith check --format json --contract api-domain-layers --contract ai-public-surface --contract strategies-independent --contract mastra-protected
+exit: 1
+--- stdout
+{
+  "version": 1,
+  "passed": false,
+  "summary": {
+    "kept": 0,
+    "broken": 3,
+    "warnings": 1,
+    "stale_baseline_entries": 0,
+    "files": 78,
+    "imports": 127
+  },
+  "contracts": [
+    {
+      "id": "ai-public-surface",
+      "name": "@acme/ai is imported through its entry point",
+      "type": "encapsulation",
+      "severity": "warn",
+      "status": "broken",
+      "guidance": null,
+      "violations": [
+        {
+          "kind": "illegal_imports",
+          "module": "@acme/ai",
+          "imports": [
+            {
+              "importer": "services/mcp/src/tools.ts",
+              "imported": "packages/ai/src/tools/index.ts",
+              "imports": [
+                {
+                  "line": 1,
+                  "column": 31,
+                  "specifier": "@acme/ai/src/tools",
+                  "kind": "value"
+                }
+              ],
+              "fix": {
+                "action": "import_through_entry_point",
+                "import": {
+                  "file": "services/mcp/src/tools.ts",
+                  "line": 1,
+                  "column": 31,
+                  "specifier": "@acme/ai/src/tools",
+                  "kind": "value"
+                },
+                "hint": "import `@acme/ai` through one of its entry points instead"
+              }
+            },
+            {
+              "importer": "web/src/domains/campaigns/hooks/use-campaign-brief.ts",
+              "imported": "packages/ai/src/domains/campaigns/brief.ts",
+              "imports": [
+                {
+                  "line": 1,
+                  "column": 29,
+                  "specifier": "@acme/ai/src/domains/campaigns/brief",
+                  "kind": "value"
+                }
+              ],
+              "fix": {
+                "action": "import_through_entry_point",
+                "import": {
+                  "file": "web/src/domains/campaigns/hooks/use-campaign-brief.ts",
+                  "line": 1,
+                  "column": 29,
+                  "specifier": "@acme/ai/src/domains/campaigns/brief",
+                  "kind": "value"
+                },
+                "hint": "import `@acme/ai` through one of its entry points instead"
+              }
+            }
+          ]
+        }
+      ],
+      "unmatched_ignore_imports": [],
+      "stale_baseline_entries": [],
+      "ignored": 0,
+      "suppressed": 0,
+      "baselined": 0
+    },
+    {
+      "id": "strategies-independent",
+      "name": "Content strategies are independent",
+      "type": "independence",
+      "severity": "error",
+      "status": "broken",
+      "guidance": null,
+      "violations": [
+        {
+          "kind": "dependency",
+          "importer": "packages/ai/src/domains/content/strategies/ads",
+          "imported": "packages/ai/src/domains/content/strategies/blueprints",
+          "chains": [
+            {
+              "links": [
+                {
+                  "importer": "packages/ai/src/domains/content/strategies/ads/index.ts",
+                  "imported": "packages/ai/src/domains/content/strategies/blueprints/index.ts",
+                  "imports": [
+                    {
+                      "line": 1,
+                      "column": 30,
+                      "specifier": "../blueprints",
+                      "kind": "value"
+                    }
+                  ]
+                }
+              ],
+              "extra_heads": [],
+              "extra_tails": [],
+              "fix": {
+                "action": "move_module",
+                "import": {
+                  "file": "packages/ai/src/domains/content/strategies/ads/index.ts",
+                  "line": 1,
+                  "column": 30,
+                  "specifier": "../blueprints",
+                  "kind": "value"
+                },
+                "hint": "move the imported code into a module that may be imported here, or remove this import"
+              }
+            }
+          ]
+        }
+      ],
+      "unmatched_ignore_imports": [],
+      "stale_baseline_entries": [],
+      "ignored": 2,
+      "suppressed": 0,
+      "baselined": 0
+    },
+    {
+      "id": "mastra-protected",
+      "name": "Mastra agents are only imported by API routes",
+      "type": "protected",
+      "severity": "error",
+      "status": "broken",
+      "guidance": null,
+      "violations": [
+        {
+          "kind": "illegal_imports",
+          "module": "web/src/mastra",
+          "imports": [
+            {
+              "importer": "web/src/components/assistant.tsx",
+              "imported": "web/src/mastra/agent.ts",
+              "imports": [
+                {
+                  "line": 1,
+                  "column": 32,
+                  "specifier": "@/mastra/agent",
+                  "kind": "value"
+                }
+              ],
+              "fix": {
+                "action": "remove_import",
+                "import": {
+                  "file": "web/src/components/assistant.tsx",
+                  "line": 1,
+                  "column": 32,
+                  "specifier": "@/mastra/agent",
+                  "kind": "value"
+                },
+                "hint": "remove this import"
+              }
+            }
+          ]
+        }
+      ],
+      "unmatched_ignore_imports": [],
+      "stale_baseline_entries": [],
+      "ignored": 0,
+      "suppressed": 0,
+      "baselined": 0
+    },
+    {
+      "id": "api-domain-layers",
+      "name": "@acme/api domain internals",
+      "type": "layers",
+      "severity": "error",
+      "status": "broken",
+      "guidance": null,
+      "violations": [
+        {
+          "kind": "dependency",
+          "importer": "packages/api/src/domains/accounts/types",
+          "imported": "packages/api/src/domains/accounts/api",
+          "chains": [
+            {
+              "links": [
+                {
+                  "importer": "packages/api/src/domains/accounts/types.ts",
+                  "imported": "packages/api/src/domains/accounts/api.ts",
+                  "imports": [
+                    {
+                      "line": 1,
+                      "column": 35,
+                      "specifier": "./api",
+                      "kind": "value"
+                    }
+                  ]
+                }
+              ],
+              "extra_heads": [],
+              "extra_tails": [],
+              "fix": {
+                "action": "move_module",
+                "import": {
+                  "file": "packages/api/src/domains/accounts/types.ts",
+                  "line": 1,
+                  "column": 35,
+                  "specifier": "./api",
+                  "kind": "value"
+                },
+                "hint": "move the imported code into a module that may be imported here, or remove this import"
+              }
+            }
+          ]
+        }
+      ],
+      "unmatched_ignore_imports": [],
+      "stale_baseline_entries": [],
+      "ignored": 0,
+      "suppressed": 0,
+      "baselined": 0
+    }
+  ],
+  "unused_suppressions": [],
+  "unresolved": [
+    {
+      "file": "sdk/src/client.ts",
+      "line": 3,
+      "column": 1,
+      "specifier": "./does-not-exist",
+      "reason": "Cannot find module './does-not-exist'"
+    }
+  ],
+  "file_errors": []
+}
+

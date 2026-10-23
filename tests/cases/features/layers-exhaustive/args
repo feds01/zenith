@@ -1,0 +1,3 @@
+check
+check --format compact
+check --format json

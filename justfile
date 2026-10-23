@@ -147,6 +147,11 @@ book:
 clean:
     cargo clean
 
+# Write CHANGELOG.md with a section for the release `version`, e.g. `just changelog 0.5.0`: the pull requests merged since the last tag, by their titles
+changelog version:
+    @command -v git-cliff >/dev/null || { echo "git-cliff not found, install it with 'brew install git-cliff' or 'cargo install git-cliff'"; exit 1; }
+    git cliff --tag "v{{version}}" --output CHANGELOG.md
+
 # Tag and push a release from main, using the workspace version in Cargo.toml
 release:
     #!/usr/bin/env bash
@@ -175,6 +180,11 @@ release:
     tag="v$version"
     if git rev-parse --quiet --verify "refs/tags/$tag" >/dev/null; then
         fail "tag $tag already exists, bump the version first"
+    fi
+
+    # dist takes the release's notes from its section of the changelog.
+    if ! grep -q "^## \[$version\]" CHANGELOG.md; then
+        fail "CHANGELOG.md has no section for $version: run 'just changelog $version' and merge it"
     fi
 
     read -r -p "Release $tag? [y/N] " answer

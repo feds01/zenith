@@ -1,6 +1,7 @@
 # zenith
 
-An architecture linter for monorepos in JavaScript, TypeScript, Go and Rust.
+An architecture linter for monorepos in JavaScript, TypeScript, Go, Python and
+Rust.
 Zenith enforces *contracts* about which parts of a codebase may import which
 other parts, declared in `zenith.toml`, and `zenith check` fails when the code
 breaks them.

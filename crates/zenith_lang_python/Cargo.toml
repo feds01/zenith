@@ -1,0 +1,31 @@
+[package]
+name = "zenith_lang_python"
+version = { workspace = true }
+description = "Python support: package discovery from pyproject.toml, parsing with Ruff's parser, and module resolution"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = { workspace = true }
+
+[dependencies]
+zenith_config = { workspace = true }
+zenith_graph = { workspace = true }
+zenith_lang = { workspace = true }
+zenith_utils = { workspace = true }
+
+log = { workspace = true }
+ruff_python_ast = { workspace = true }
+ruff_python_parser = { workspace = true }
+ruff_text_size = { workspace = true }
+rustc-hash = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+thin-vec = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,69 @@
+$ zenith check
+exit: 1
+--- stdout
+error[core-is-the-base]: `acme-core` must not import `acme-api`
+  --> services/core/src/acme/core/db.py:12:40
+   |
+12 |         return importlib.import_module("acme.api.models")
+   |                                        ^^^^^^^^^^^^^^^^^ imports `services/api/src/acme/api/models.py`
+
+Contracts
+  ✗ core-is-the-base              forbidden  broken (1 violation) · 1 suppressed
+  ✓ api-is-not-billed-at-runtime  forbidden  kept
+
+1 kept, 1 broken · 8 files, 10 imports
+
+$ zenith graph services --depth 2
+exit: 0
+--- stdout
+services/ (6 files)
+├─api/ (3 files)
+│ └─src/ (3 files)
+├─billing/ (1 file)
+│ └─src/ (1 file)
+└─core/ (2 files)
+  └─src/ (2 files)
+
+dependencies between the children of `services`:
+  services/api -> services/billing (1 import)
+  services/api -> services/core (1 import)
+  services/core -> services/api (2 imports)
+
+$ zenith why services/api services/billing
+exit: 0
+--- stdout
+chain 1 of 1:
+  services/api/src/acme/api/handlers.py:12 (type)
+  -> services/billing/src/acme/billing/__init__.py
+
+
+$ zenith resolve services/api/src/acme/api/handlers.py acme.core.db
+exit: 0
+--- stdout
+internal: services/core/src/acme/core/db.py
+
+$ zenith resolve services/api/src/acme/api/handlers.py acme.core.db.Session
+exit: 0
+--- stdout
+internal: services/core/src/acme/core/db.py
+
+$ zenith resolve services/api/src/acme/api/handlers.py .models
+exit: 0
+--- stdout
+internal: services/api/src/acme/api/models.py
+
+$ zenith resolve services/api/src/acme/api/handlers.py typing.TYPE_CHECKING
+exit: 0
+--- stdout
+builtin: python:typing
+
+$ zenith resolve services/api/src/acme/api/handlers.py requests
+exit: 0
+--- stdout
+external: pypi:requests
+
+$ zenith resolve scripts/migrate.py helpers.run
+exit: 0
+--- stdout
+internal: scripts/helpers.py
+

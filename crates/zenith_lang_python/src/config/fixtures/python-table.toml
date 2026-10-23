@@ -1,0 +1,4 @@
+[languages.python]
+include = ["services/**"]
+roots = ["services/api/src", "."]
+ignore_unresolved = ["generated.*"]

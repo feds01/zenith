@@ -1,0 +1,17 @@
+# Python is enabled by its table. The packages of a uv workspace each keep
+# their modules in `src`, under the `acme` namespace package.
+[languages.python]
+
+# Core is the base: nothing in it imports the API, though one import is
+# suppressed and a dynamic one slips through.
+[contracts.core-is-the-base]
+type = "forbidden"
+from = ["pkg:acme-core"]
+to = ["pkg:acme-api"]
+
+# The API only names billing's types, under `if TYPE_CHECKING:`.
+[contracts.api-is-not-billed-at-runtime]
+type = "forbidden"
+from = ["pkg:acme-api"]
+to = ["pkg:acme-billing"]
+exclude_kinds = ["type"]

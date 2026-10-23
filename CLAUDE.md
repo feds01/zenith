@@ -74,6 +74,8 @@ a new kind of responsibility, not for each feature:
 - `zenith_lang_rust`: Rust support: crate discovery with Cargo or from the
   manifests, parsing with rust-analyzer's parser, and resolving imports along
   each target's module tree.
+- `zenith_lang_terraform`: Terraform and Terragrunt support: reading the
+  module sources and dependency paths of their files with tree-sitter.
 - `zenith_macros`: the macros through which code names the messages of
   the catalogue, `#[derive(Diagnostic)]` and `message!`, which check them
   when it compiles.

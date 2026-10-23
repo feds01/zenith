@@ -14,13 +14,22 @@
 //! name, with the directories that hold it. What is installed always wins.
 
 use std::{
-    borrow::Cow,
     fs, io,
     path::{Path, PathBuf},
 };
 
 use oxc_resolver::{FileMetadata, FileSystem, FileSystemOs, ResolveError};
 use rustc_hash::{FxHashMap, FxHashSet};
+use zenith_utils::{
+    path::{absolute_path, relative_posix},
+    specifier::package_name,
+};
+
+/// The metadata of a directory.
+const DIR: FileMetadata = FileMetadata::new(false, true, false);
+
+/// The metadata of a symlink.
+const SYMLINK: FileMetadata = FileMetadata::new(false, false, true);
 
 /// The operating system's file system, with the workspace packages linked
 /// into `<root>/node_modules` where nothing is installed.
@@ -39,16 +48,16 @@ pub(crate) struct LinkedFileSystem {
     scopes: FxHashSet<String>,
 }
 
-/// What the links add at a path where nothing exists.
+/// What the links put at a path.
 #[derive(Debug, PartialEq, Eq)]
-enum Entry<'a> {
-    /// `node_modules`, or a scope's directory in it.
+enum Linked<'a> {
+    /// `node_modules`, or the directory of a scope in it.
     Dir,
 
-    /// The link to a package, and the package's directory.
+    /// The link to a package, which points at this directory.
     Link(&'a Path),
 
-    /// A path inside a link, and where it really is.
+    /// A path inside a link, which is really this path.
     Inside(PathBuf),
 }
 
@@ -65,40 +74,29 @@ impl LinkedFileSystem {
         Self { os: FileSystemOs::new(), node_modules: root.join("node_modules"), packages, scopes }
     }
 
-    /// What the links add at `path`, if anything. Whether something is
-    /// installed there is up to the caller.
-    fn entry(&self, path: &Path) -> Option<Entry<'_>> {
-        let mut components = path.strip_prefix(&self.node_modules).ok()?.components();
-        let Some(first) = components.next() else { return Some(Entry::Dir) };
-        let first = first.as_os_str().to_str()?;
-        let name = if first.starts_with('@') {
-            match components.next() {
-                Some(second) => Cow::Owned(format!("{first}/{}", second.as_os_str().to_str()?)),
-                None => return self.scopes.contains(first).then_some(Entry::Dir),
-            }
-        } else {
-            Cow::Borrowed(first)
-        };
-        let dir = self.packages.get(name.as_ref())?;
-        match components.as_path() {
-            rest if rest.as_os_str().is_empty() => Some(Entry::Link(dir)),
-            rest => Some(Entry::Inside(dir.join(rest))),
-        }
+    /// What the links show at `path`, if anything. Something installed there
+    /// always wins.
+    fn linked(&self, path: &Path) -> Option<Linked<'_>> {
+        let linked = self.link_at(path)?;
+        // Ask the standard library rather than `oxc_resolver`, whose errors
+        // on Windows don't say that a path is missing.
+        let missing =
+            fs::symlink_metadata(path).is_err_and(|error| error.kind() == io::ErrorKind::NotFound);
+        missing.then_some(linked)
     }
 
-    /// What the links add at `path`, given that the operating system failed
-    /// with `error` there. Unless nothing exists there, `error` stands.
-    fn missing(&self, path: &Path, error: io::Error) -> io::Result<Entry<'_>> {
-        // On Windows, `oxc_resolver`'s errors don't say that a path is
-        // missing, so ask the standard library.
-        match self.entry(path) {
-            Some(entry)
-                if fs::symlink_metadata(path)
-                    .is_err_and(|error| error.kind() == io::ErrorKind::NotFound) =>
-            {
-                Ok(entry)
-            }
-            _ => Err(error),
+    /// What the links put at `path`, whatever is installed there.
+    fn link_at(&self, path: &Path) -> Option<Linked<'_>> {
+        // `@acme/ui/src/index.ts`, or `""` for `node_modules` itself.
+        let relative = relative_posix(&self.node_modules, path)?;
+        if relative.is_empty() || self.scopes.contains(&relative) {
+            return Some(Linked::Dir);
+        }
+        let name = package_name(&relative)?;
+        let dir = self.packages.get(name)?;
+        match relative[name.len()..].strip_prefix('/') {
+            None => Some(Linked::Link(dir)),
+            Some(inside) => Some(Linked::Inside(absolute_path(dir, inside))),
         }
     }
 }
@@ -110,10 +108,11 @@ impl FileSystem for LinkedFileSystem {
     }
 
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
-        self.os.read(path).or_else(|error| match self.missing(path, error)? {
-            Entry::Inside(real) => self.os.read(&real),
-            Entry::Dir | Entry::Link(_) => Err(io::ErrorKind::IsADirectory.into()),
-        })
+        match self.linked(path) {
+            None => self.os.read(path),
+            Some(Linked::Inside(real)) => self.os.read(&real),
+            Some(Linked::Dir | Linked::Link(_)) => Err(io::ErrorKind::IsADirectory.into()),
+        }
     }
 
     fn read_to_string(&self, path: &Path) -> io::Result<String> {
@@ -121,39 +120,39 @@ impl FileSystem for LinkedFileSystem {
     }
 
     fn metadata(&self, path: &Path) -> io::Result<FileMetadata> {
-        self.os.metadata(path).or_else(|error| match self.missing(path, error)? {
-            Entry::Dir => Ok(FileMetadata::new(false, true, false)),
-            Entry::Link(real) => self.os.metadata(real),
-            Entry::Inside(real) => self.os.metadata(&real),
-        })
+        match self.linked(path) {
+            None => self.os.metadata(path),
+            Some(Linked::Dir) => Ok(DIR),
+            Some(Linked::Link(dir)) => self.os.metadata(dir),
+            Some(Linked::Inside(real)) => self.os.metadata(&real),
+        }
     }
 
     fn symlink_metadata(&self, path: &Path) -> io::Result<FileMetadata> {
-        self.os.symlink_metadata(path).or_else(|error| match self.missing(path, error)? {
-            Entry::Dir => Ok(FileMetadata::new(false, true, false)),
-            Entry::Link(_) => Ok(FileMetadata::new(false, false, true)),
-            Entry::Inside(real) => self.os.symlink_metadata(&real),
-        })
+        match self.linked(path) {
+            None => self.os.symlink_metadata(path),
+            Some(Linked::Dir) => Ok(DIR),
+            Some(Linked::Link(_)) => Ok(SYMLINK),
+            Some(Linked::Inside(real)) => self.os.symlink_metadata(&real),
+        }
     }
 
     fn read_link(&self, path: &Path) -> Result<PathBuf, ResolveError> {
-        let entry = match self.os.symlink_metadata(path) {
-            Ok(_) => return self.os.read_link(path),
-            Err(error) => self.missing(path, error)?,
-        };
-        match entry {
-            Entry::Link(real) => Ok(real.to_path_buf()),
-            Entry::Inside(real) => self.os.read_link(&real),
-            Entry::Dir => Err(io::Error::from(io::ErrorKind::InvalidInput).into()),
+        match self.linked(path) {
+            None => self.os.read_link(path),
+            Some(Linked::Dir) => Err(io::Error::from(io::ErrorKind::InvalidInput).into()),
+            Some(Linked::Link(dir)) => Ok(dir.to_path_buf()),
+            Some(Linked::Inside(real)) => self.os.read_link(&real),
         }
     }
 
     fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
-        self.os.canonicalize(path).or_else(|error| match self.missing(path, error)? {
-            Entry::Dir => Ok(path.to_path_buf()),
-            Entry::Link(real) => self.os.canonicalize(real),
-            Entry::Inside(real) => self.os.canonicalize(&real),
-        })
+        match self.linked(path) {
+            None => self.os.canonicalize(path),
+            Some(Linked::Dir) => Ok(path.to_path_buf()),
+            Some(Linked::Link(dir)) => self.os.canonicalize(dir),
+            Some(Linked::Inside(real)) => self.os.canonicalize(&real),
+        }
     }
 }
 
@@ -163,66 +162,62 @@ mod tests {
 
     use super::*;
 
-    fn file_system() -> LinkedFileSystem {
+    fn file_system(root: &Path) -> LinkedFileSystem {
         let packages = [
-            ("@acme/ui".to_string(), PathBuf::from("/repo/packages/ui")),
-            ("tsconfig".to_string(), PathBuf::from("/repo/packages/tsconfig")),
+            ("@acme/ui".to_string(), root.join("packages/ui")),
+            ("tsconfig".to_string(), root.join("packages/tsconfig")),
         ];
-        LinkedFileSystem::new(Path::new("/repo"), packages.into_iter().collect())
+        LinkedFileSystem::new(root, packages.into_iter().collect())
     }
 
     #[test]
     fn links_packages_into_the_root_node_modules() {
-        let file_system = file_system();
-        let entry = |path: &str| file_system.entry(Path::new(path));
-        let ui = Path::new("/repo/packages/ui");
+        let root = Path::new("/repo");
+        let file_system = file_system(root);
+        let link_at = |path: &str| file_system.link_at(&root.join(path));
+        let ui = root.join("packages/ui");
 
-        assert_eq!(entry("/repo/node_modules"), Some(Entry::Dir));
-        assert_eq!(entry("/repo/node_modules/@acme"), Some(Entry::Dir));
-        assert_eq!(entry("/repo/node_modules/@acme/ui"), Some(Entry::Link(ui)));
+        assert_eq!(link_at("node_modules"), Some(Linked::Dir));
+        assert_eq!(link_at("node_modules/@acme"), Some(Linked::Dir));
+        assert_eq!(link_at("node_modules/@acme/ui"), Some(Linked::Link(&ui)));
         assert_eq!(
-            entry("/repo/node_modules/@acme/ui/src/index.ts"),
-            Some(Entry::Inside(ui.join("src/index.ts")))
+            link_at("node_modules/@acme/ui/src/index.ts"),
+            Some(Linked::Inside(ui.join("src/index.ts")))
         );
         assert_eq!(
-            entry("/repo/node_modules/tsconfig/base.json"),
-            Some(Entry::Inside(Path::new("/repo/packages/tsconfig").join("base.json")))
+            link_at("node_modules/tsconfig/base.json"),
+            Some(Linked::Inside(root.join("packages/tsconfig/base.json")))
         );
     }
 
     #[test]
     fn links_nothing_else() {
-        let file_system = file_system();
+        let root = Path::new("/repo");
+        let file_system = file_system(root);
         for path in [
-            "/repo/node_modules/@vendor",
-            "/repo/node_modules/@acme/sdk",
-            "/repo/node_modules/react",
-            "/repo/packages/ui/node_modules/@acme/ui",
-            "/node_modules/@acme/ui",
+            "node_modules/@vendor",
+            "node_modules/@acme/sdk",
+            "node_modules/@acme/uikit",
+            "node_modules/react",
+            "packages/ui/node_modules/@acme/ui",
         ] {
-            assert_eq!(file_system.entry(Path::new(path)), None, "{path}");
+            assert_eq!(file_system.link_at(&root.join(path)), None, "{path}");
         }
+        assert_eq!(file_system.link_at(Path::new("/node_modules/@acme/ui")), None);
     }
 
     #[test]
-    fn only_missing_paths_are_linked() {
+    fn what_is_installed_wins() {
         let dir = TempDir::new().unwrap();
         let root = dir.path();
         fs::create_dir_all(root.join("node_modules/@acme/ui")).unwrap();
-        let packages = [
-            ("@acme/ui".to_string(), root.join("packages/ui")),
-            ("@acme/api".to_string(), root.join("packages/api")),
-        ];
-        let file_system = LinkedFileSystem::new(root, packages.into_iter().collect());
-        // The error doesn't matter, only whether anything is there.
-        let error = || io::Error::other("failed");
+        let file_system = file_system(root);
 
-        let installed = root.join("node_modules/@acme/ui");
+        assert_eq!(file_system.linked(&root.join("node_modules")), None);
+        assert_eq!(file_system.linked(&root.join("node_modules/@acme/ui")), None);
         assert_eq!(
-            file_system.missing(&installed, error()).unwrap_err().kind(),
-            io::ErrorKind::Other
+            file_system.linked(&root.join("node_modules/tsconfig")),
+            Some(Linked::Link(&root.join("packages/tsconfig")))
         );
-        let linked = file_system.missing(&root.join("node_modules/@acme/api"), error()).unwrap();
-        assert_eq!(linked, Entry::Link(&root.join("packages/api")));
     }
 }

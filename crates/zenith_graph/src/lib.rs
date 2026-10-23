@@ -28,10 +28,12 @@
 //!
 //! A [`ModuleOverview`] shows the shape of part of a project: a node, its
 //! children, and the dependencies between them, as a tree, a Graphviz digraph,
-//! a Mermaid flowchart or JSON.
+//! a Mermaid flowchart or JSON. A [`DependencyDiff`] shows how those
+//! dependencies changed from one graph to another.
 
 mod builder;
 mod cycles;
+mod diff;
 mod exports;
 mod find;
 mod graph;
@@ -48,6 +50,7 @@ mod view;
 
 pub use builder::{FileHandle, GraphBuilder, GraphError, NodeHandle};
 pub use cycles::{UnitDependency, UnitGraph, UnitId};
+pub use diff::DependencyDiff;
 pub use exports::{Exports, ImportedName, ImportedNames, ReExport};
 pub use graph::{Graph, ImportDetail, ModuleId, Node, NodeKind};
 pub use kinds::{ImportKind, KindSet};

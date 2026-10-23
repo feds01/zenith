@@ -26,3 +26,13 @@ graph_overview_dependency = {$from} -> {$to} ({$imports ->
     [one] {$imports} import
    *[other] {$imports} imports
 })
+
+## How the dependencies between the nodes some levels below a module
+## changed from one graph to another: between its children at depth 1.
+
+graph_diff_nodes = {$depth ->
+    [1] the children of `{$module}`
+   *[other] the nodes {$depth} levels below `{$module}`
+}
+graph_diff_changed = dependencies between {graph_diff_nodes} that changed:
+graph_diff_unchanged = no dependencies between {graph_diff_nodes} changed

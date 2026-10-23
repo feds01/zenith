@@ -31,6 +31,14 @@ const ALWAYS_EXCLUDED_DIRS: &[&str] = &[
     ".mastra",
     "coverage",
     "storybook-static",
+    ".venv",
+    "site-packages",
+    "__pycache__",
+    ".tox",
+    ".nox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
 ];
 
 /// Files that are never scanned: Yarn Plug'n'Play's generated loaders.

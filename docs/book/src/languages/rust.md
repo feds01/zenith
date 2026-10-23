@@ -35,10 +35,13 @@ such as `zenith_lang_js::JS` written without a `use`. A `use` path that starts
 with a name that another `use` or an `extern crate` brought into scope imports
 what the name stands for: after `use smoltcp::socket::tcp;`, `use tcp::State;`
 imports `smoltcp::socket::tcp::State`. `mod a;` declares a module but doesn't
-import it. Some newer syntax that tree-sitter's Rust grammar doesn't know
-is read all the same: `safe` items in an `extern` block, several attributes on
-a parameter, and the `attr` and `derive` rules of a `macro_rules!`. [`zenith-ignore` comments](../suppressions.md) work as
-`//` or `/* */` comments.
+import it. [`zenith-ignore` comments](../suppressions.md) work as `//` or
+`/* */` comments.
+
+Files are parsed with [rust-analyzer](https://rust-analyzer.github.io)'s
+parser, in the edition of their crate, which Cargo or the crate's
+`Cargo.toml` gives (and Rust 2015 if it gives none). A file in no crate is
+parsed in the latest edition.
 
 ## Resolution
 

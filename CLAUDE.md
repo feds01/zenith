@@ -66,8 +66,8 @@ a new kind of responsibility, not for each feature:
   specifier resolution with `oxc_resolver`, workspace package discovery
   from `package.json`, and the `[languages.js]` table.
 - `zenith_lang_rust`: Rust support: crate discovery with Cargo or from the
-  manifests, parsing with tree-sitter, and resolving imports along each
-  target's module tree.
+  manifests, parsing with rust-analyzer's parser, and resolving imports along
+  each target's module tree.
 - `zenith_pipeline`: the stages that turn a project into its import graph,
   the session they share, and the registry of the languages zenith reads.
 - `zenith_reporting`: the output formats of `zenith check`.

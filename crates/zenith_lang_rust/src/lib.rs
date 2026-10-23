@@ -1,5 +1,6 @@
 //! Rust support: the crates of a Cargo workspace from its `Cargo.toml` files,
-//! the imports of each file read with tree-sitter, their resolution along the
+//! the imports of each file read with rust-analyzer's parser, in the edition
+//! of its crate, their resolution along the
 //! module tree of each crate, and the `[languages.rust]` table of the
 //! configuration.
 

@@ -6,7 +6,10 @@ use std::path::Path;
 use rustc_hash::FxHashMap;
 
 use super::{Crates, Found};
-use crate::{crates::TargetKind, manifest::Manifest};
+use crate::{
+    crates::{TargetKind, edition},
+    manifest::Manifest,
+};
 
 impl Crates {
     /// The crates of the packages in `manifests`, each with its directory.
@@ -27,6 +30,7 @@ impl Crates {
                 Some(Found {
                     name: package.name.clone(),
                     dir: dir.to_path_buf(),
+                    edition: edition(manifest.edition(workspace.map(|(_, manifest)| manifest))),
                     library: has_library.then(|| manifest.library_name()),
                     targets,
                     dependencies: manifest.declared(dir, workspace),

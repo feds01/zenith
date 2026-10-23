@@ -55,8 +55,26 @@ pub(crate) struct Package {
     /// The name of the package.
     pub(crate) name: String,
 
+    /// The edition of Rust that its code is written in.
+    edition: Option<Inheritable>,
+
     /// The build script: a path, or `false` for none.
     build: Option<Build>,
+}
+
+/// A key of a package that may take its value from the workspace's, with
+/// `{ workspace = true }`.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum Inheritable {
+    /// The value itself.
+    Value(String),
+
+    /// The workspace's value, if `workspace` is `true`.
+    Workspace {
+        /// Whether to take the workspace's value.
+        workspace: bool,
+    },
 }
 
 /// The `build` key of a package.
@@ -97,6 +115,17 @@ struct TargetTable {
 pub(crate) struct Workspace {
     /// The dependencies that its members share, by `workspace = true`.
     dependencies: BTreeMap<String, DependencySpec>,
+
+    /// The keys of `[package]` that its members share, by `workspace = true`.
+    package: WorkspacePackage,
+}
+
+/// The `[workspace.package]` table.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct WorkspacePackage {
+    /// The edition of Rust that the members' code is written in.
+    edition: Option<String>,
 }
 
 /// The tables that declare dependencies, at the top of a manifest or for a
@@ -162,6 +191,19 @@ impl Manifest {
                 }
             })
             .collect()
+    }
+
+    /// The edition of the package, such as `"2021"`, if it names one, from
+    /// `workspace`, the manifest of its workspace, if it takes the
+    /// workspace's.
+    pub(crate) fn edition<'m>(&'m self, workspace: Option<&'m Manifest>) -> Option<&'m str> {
+        match self.package.as_ref()?.edition.as_ref()? {
+            Inheritable::Value(edition) => Some(edition),
+            Inheritable::Workspace { workspace: false } => None,
+            Inheritable::Workspace { workspace: true } => {
+                workspace?.workspace.as_ref()?.package.edition.as_deref()
+            }
+        }
     }
 
     /// The name that the code uses for the library of the package, which is

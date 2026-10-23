@@ -9,6 +9,7 @@ mod tests;
 
 use std::path::{Path, PathBuf};
 
+use ra_ap_syntax::Edition;
 use rustc_hash::FxHashMap;
 use zenith_lang::{Workspace, WorkspacePackage};
 use zenith_utils::path::relative_posix;
@@ -36,6 +37,9 @@ pub(crate) struct Crate {
 
     /// Its directory, as an absolute path.
     pub(crate) dir: PathBuf,
+
+    /// The edition of Rust that its code is written in.
+    pub(crate) edition: Edition,
 
     /// Its targets, sorted by kind, then by root.
     pub(crate) targets: Vec<Target>,
@@ -95,6 +99,9 @@ pub(crate) struct Found {
 
     /// Its directory, as an absolute path.
     pub(crate) dir: PathBuf,
+
+    /// The edition of Rust that its code is written in.
+    pub(crate) edition: Edition,
 
     /// The name that code uses for its library, if it has one.
     pub(crate) library: Option<String>,
@@ -159,7 +166,8 @@ impl Crates {
                 let mut targets = found.targets;
                 targets.sort();
                 targets.dedup();
-                Crate { name: found.name, dir: found.dir, targets, dependencies }
+                let (name, dir, edition) = (found.name, found.dir, found.edition);
+                Crate { name, dir, edition, targets, dependencies }
             })
             .collect();
         Self { crates, by_dir }
@@ -173,6 +181,11 @@ impl Crates {
     /// The nearest crate whose directory contains `path`.
     pub(crate) fn containing(&self, path: &Path) -> Option<&Crate> {
         path.ancestors().find_map(|dir| self.by_dir.get(dir)).map(|&index| self.get(index))
+    }
+
+    /// The edition of each crate, by its directory.
+    pub(crate) fn editions(&self) -> Editions {
+        Editions(self.crates.iter().map(|krate| (krate.dir.clone(), krate.edition)).collect())
     }
 
     /// The crates as the workspace packages of the project at `root`, which
@@ -192,5 +205,27 @@ impl Crates {
         }
         workspace.packages.sort_by(|a, b| a.dir.cmp(&b.dir));
         workspace
+    }
+}
+
+/// The edition of each crate of a project, by its directory, which the
+/// parsers of every thread share.
+#[derive(Debug, Default)]
+pub(crate) struct Editions(pub(crate) FxHashMap<PathBuf, Edition>);
+
+impl Editions {
+    /// The edition of the code of the file at `path`: that of the nearest
+    /// crate whose directory contains it, or the latest for a file in none.
+    pub(crate) fn of(&self, path: &Path) -> Edition {
+        path.ancestors().find_map(|dir| self.0.get(dir).copied()).unwrap_or(Edition::LATEST)
+    }
+}
+
+/// The edition that a manifest or Cargo names, as `"2021"`. Cargo's default,
+/// 2015, if it names none, and the latest if it names one that is newer.
+pub(crate) fn edition(name: Option<&str>) -> Edition {
+    match name {
+        None => Edition::DEFAULT,
+        Some(name) => name.parse().unwrap_or(Edition::LATEST),
     }
 }

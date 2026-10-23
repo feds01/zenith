@@ -103,6 +103,12 @@ unimplemented = "warn"
 debug = "line-tables-only"
 incremental = false
 
+[patch.crates-io]
+# Ruff's parser takes the names of characters from `unicode_names2` only for
+# the `\N{…}` escapes of strings, which zenith doesn't read: the stand-in has
+# no table of names, which is most of a megabyte.
+unicode_names2 = { path = "vendor/unicode_names2" }
+
 [profile.release]
 opt-level = 3
 lto = "fat"

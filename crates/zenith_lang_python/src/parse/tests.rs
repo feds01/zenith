@@ -161,6 +161,12 @@ fn import_functions_with_any_other_module_are_not_literal() {
 }
 
 #[test]
+fn a_named_character_in_a_string_is_no_syntax_error() {
+    // The names of characters are not known, so each is U+FFFD.
+    assert_eq!(specifiers("x = \"\\N{BULLET} \\N{NO SUCH NAME}\"\nimport a\n"), ["a"]);
+}
+
+#[test]
 fn strings_and_comments_are_not_imports() {
     assert_eq!(
         specifiers("\"\"\"import a\"\"\"\n# import b\nx = 'from c import d'\n"),

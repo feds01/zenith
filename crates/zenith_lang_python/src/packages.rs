@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use log::warn;
 use serde::Deserialize;
+use zenith_diagnostics::message;
 use zenith_lang::{Workspace, WorkspacePackage};
 use zenith_utils::{fs::read_text, path::relative_posix};
 
@@ -36,7 +37,7 @@ impl Package {
                 let manifest: Manifest = match manifest {
                     Ok(manifest) => manifest,
                     Err(error) => {
-                        warn!("could not read `{}`: {error}", path.display());
+                        warn!("{}", message!(python_read, path = path.display(), error));
                         return None;
                     }
                 };

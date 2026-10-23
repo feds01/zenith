@@ -2758,6 +2758,7 @@ dependencies = [
  "thin-vec",
  "toml",
  "zenith_config",
+ "zenith_diagnostics",
  "zenith_graph",
  "zenith_lang",
  "zenith_utils",

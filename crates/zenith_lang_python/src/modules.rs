@@ -14,6 +14,7 @@ use std::{
 
 use log::warn;
 use rustc_hash::{FxHashMap, FxHashSet};
+use zenith_diagnostics::message;
 use zenith_utils::path::normalize_path;
 
 use crate::packages::Package;
@@ -50,7 +51,7 @@ impl Roots {
                 match dir.is_dir() {
                     true => Some(dir),
                     false => {
-                        warn!("the Python root `{name}` is not a directory");
+                        warn!("{}", message!(python_root_not_a_directory, name));
                         None
                     }
                 }

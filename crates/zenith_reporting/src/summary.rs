@@ -3,10 +3,7 @@
 use std::time::Duration;
 
 use zenith_diagnostics::{ReportKind, message};
-use zenith_utils::{
-    highlight::{Colour, Modifier, highlight},
-    printing::plural,
-};
+use zenith_utils::highlight::{Colour, Modifier, highlight};
 
 /// Whether a contract is kept or broken.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,8 +52,9 @@ pub struct SummaryEntry {
 /// A total of a check besides those of the outcomes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Count {
-    /// What is counted, in the singular, e.g. `stale baseline entry`.
-    pub noun: &'static str,
+    /// The count and what it counts, as the totals line shows it, e.g. `3
+    /// stale baseline entries`.
+    pub text: String,
 
     /// How many there are. The totals line leaves out a count of none.
     pub count: usize,
@@ -139,9 +137,9 @@ impl Summary {
             0 => message!(reporting_outcomes, kept, broken),
             warnings => message!(reporting_outcomes_with_warnings, kept, broken, warnings),
         };
-        for Count { noun, count, .. } in &self.counts {
+        for Count { text, count } in &self.counts {
             if *count > 0 {
-                line += &format!(" · {}", plural(*count, noun));
+                line += &format!(" · {text}");
             }
         }
         let checked = message!(reporting_checked, files = self.files, imports = self.imports);
@@ -221,8 +219,8 @@ mod tests {
             entry("a", "forbidden", Outcome::KeptWith { status, kind })
         };
         let mut warned = summary(vec![flagged(ReportKind::Warning)]);
-        let count = |count| Count { noun: "stale baseline entry", count };
-        warned.counts = vec![count(1)];
+        let count = |count, text: &str| Count { text: text.to_string(), count };
+        warned.counts = vec![count(1, "1 stale baseline entry")];
         assert_eq!(
             warned.totals(),
             "1 kept, 0 broken · 1 stale baseline entry · 1,234 files, 1 import"
@@ -230,7 +228,7 @@ mod tests {
         assert_eq!(warned.entry_lines(), ["! a  forbidden  kept, with a stale baseline"]);
         assert!(!warned.failed());
         assert!(summary(vec![flagged(ReportKind::Error)]).failed());
-        warned.counts = vec![count(0)];
+        warned.counts = vec![count(0, "0 stale baseline entries")];
         assert_eq!(warned.totals(), "1 kept, 0 broken · 1,234 files, 1 import");
     }
 

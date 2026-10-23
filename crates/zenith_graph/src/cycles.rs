@@ -3,7 +3,8 @@
 //!
 //! A [`UnitGraph`] aggregates the direct imports between the members of a
 //! list of units into weighted dependencies between the units, which are
-//! referred to by their [`UnitId`], the index in that list.
+//! referred to by their [`UnitId`], the index in that list. It also tells
+//! what each unit reaches, and whether the units stack in one strict order.
 
 use std::{cmp::Reverse, collections::VecDeque, iter, mem};
 
@@ -264,6 +265,54 @@ impl UnitGraph {
             }
         }
         None
+    }
+
+    /// The units that `from` depends on, directly or through other units, in
+    /// order. `from` is among them only if it is on a cycle.
+    pub fn reachable_from(&self, from: UnitId) -> Vec<UnitId> {
+        let mut reached: IndexVec<UnitId, bool> = index_vec![false; self.unit_count];
+        let mut stack = vec![from];
+        while let Some(unit) = stack.pop() {
+            for dependency in self.dependencies_of(unit) {
+                if !mem::replace(&mut reached[dependency.imported], true) {
+                    stack.push(dependency.imported);
+                }
+            }
+        }
+        reached.indices().filter(|unit| reached[*unit]).collect()
+    }
+
+    /// The units that take part in a dependency, importers first, when they
+    /// have only one such order: each unit depends directly on the next, so
+    /// they stack like layers. `None` when there is no dependency, when there
+    /// is a cycle, or when two of the units are not ordered, as when neither
+    /// depends on the other.
+    ///
+    /// The order is found as a topological sort is: it is the only one when,
+    /// at every step, exactly one unit is left that no unit left imports.
+    pub fn strict_order(&self) -> Option<Vec<UnitId>> {
+        let mut importers: IndexVec<UnitId, usize> = index_vec![0; self.unit_count];
+        let mut involved: IndexVec<UnitId, bool> = index_vec![false; self.unit_count];
+        for dependency in &self.dependencies {
+            importers[dependency.imported] += 1;
+            involved[dependency.importer] = true;
+            involved[dependency.imported] = true;
+        }
+        let count = involved.iter().filter(|involved| **involved).count();
+        let mut ready: Vec<_> =
+            self.units().filter(|unit| involved[*unit] && importers[*unit] == 0).collect();
+        let mut order = Vec::with_capacity(count);
+        while let [unit] = ready[..] {
+            ready.clear();
+            order.push(unit);
+            for dependency in self.dependencies_of(unit) {
+                importers[dependency.imported] -= 1;
+                if importers[dependency.imported] == 0 {
+                    ready.push(dependency.imported);
+                }
+            }
+        }
+        (count > 0 && order.len() == count).then_some(order)
     }
 
     /// Every unit, in order.
@@ -637,6 +686,51 @@ mod tests {
     fn unit_paths_need_units_at_both_ends() {
         let graph = graph_of(&[("a.ts", "b.ts")]);
         units_of(&graph, &["a.ts", "b.ts"]).find_path(UnitId::new(0), UnitId::new(2));
+    }
+
+    /// The units reachable from the unit at index `from`, as indices.
+    fn reachable(units: &UnitGraph, from: usize) -> Vec<usize> {
+        units.reachable_from(UnitId::new(from)).into_iter().map(UnitId::index).collect()
+    }
+
+    /// The strict order of `units`, as indices.
+    fn strict_order(units: &UnitGraph) -> Option<Vec<usize>> {
+        Some(units.strict_order()?.into_iter().map(UnitId::index).collect())
+    }
+
+    #[test]
+    fn units_reach_what_they_depend_on_through_other_units() {
+        let units = UnitGraph::new(5, vec![dependency(0, 1, 1), dependency(1, 3, 1)]);
+        assert_eq!(reachable(&units, 0), [1, 3]);
+        assert_eq!(reachable(&units, 1), [3]);
+        assert!(reachable(&units, 3).is_empty());
+        assert!(reachable(&units, 4).is_empty());
+
+        // A unit on a cycle reaches itself.
+        let units = UnitGraph::new(3, vec![dependency(0, 1, 1), dependency(1, 0, 1)]);
+        assert_eq!(reachable(&units, 0), [0, 1]);
+        assert!(reachable(&units, 2).is_empty());
+    }
+
+    #[test]
+    fn a_strict_order_is_the_only_order_of_the_units() {
+        // Each unit depends on the next, whatever else it depends on. The unit
+        // that takes part in no dependency is left out.
+        let units =
+            UnitGraph::new(4, vec![dependency(0, 3, 1), dependency(2, 0, 1), dependency(2, 3, 2)]);
+        assert_eq!(strict_order(&units), Some(vec![2, 0, 3]));
+
+        // `1` and `2` are not ordered: neither depends on the other.
+        let units = UnitGraph::new(3, vec![dependency(0, 1, 1), dependency(0, 2, 1)]);
+        assert_eq!(strict_order(&units), None);
+        let units = UnitGraph::new(3, vec![dependency(0, 2, 1), dependency(1, 2, 1)]);
+        assert_eq!(strict_order(&units), None);
+
+        // A cycle, and no dependency at all.
+        let units =
+            UnitGraph::new(3, vec![dependency(0, 1, 1), dependency(1, 2, 1), dependency(2, 1, 1)]);
+        assert_eq!(strict_order(&units), None);
+        assert_eq!(strict_order(&UnitGraph::new(2, Vec::new())), None);
     }
 
     #[test]

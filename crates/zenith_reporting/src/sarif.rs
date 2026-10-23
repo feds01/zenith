@@ -14,6 +14,7 @@ use std::{
 };
 
 use serde::Serialize;
+use serde_json::{Map, Value};
 use xxhash_rust::xxh3::xxh3_128;
 use zenith_diagnostics::{Report, ReportElement, ReportKind, SourceMap, Span};
 
@@ -106,7 +107,14 @@ impl Sarif {
     /// `identity` tells the result apart from the others of its rule, from
     /// run to run, wherever its lines move: the files and imports that it is
     /// about, say, but not their lines. Its fingerprint is a hash of it.
-    pub fn add_result(&mut self, report: &Report, identity: &str, sources: &SourceMap) {
+    /// `properties` tell tools more about it, such as how to fix it.
+    pub fn add_result(
+        &mut self,
+        report: &Report,
+        identity: &str,
+        properties: Map<String, Value>,
+        sources: &SourceMap,
+    ) {
         let rule_id = report.id.clone();
         let rule_index = self.rules.iter().position(|rule| Some(&rule.id) == rule_id.as_ref());
 
@@ -131,6 +139,7 @@ impl Sarif {
             locations,
             related_locations,
             partial_fingerprints: [(FINGERPRINT, fingerprint)].into(),
+            properties,
         });
     }
 
@@ -320,6 +329,10 @@ struct ResultJson {
 
     /// What tells it apart from other results from run to run.
     partial_fingerprints: BTreeMap<&'static str, String>,
+
+    /// More about it, for tools to read.
+    #[serde(skip_serializing_if = "Map::is_empty")]
+    properties: Map<String, Value>,
 }
 
 /// A problem of the run.
@@ -476,7 +489,7 @@ struct RegionJson {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{Value, json};
+    use serde_json::json;
     use zenith_utils::location::ByteRange;
 
     use super::*;
@@ -511,7 +524,8 @@ mod tests {
 
         let mut sarif = Sarif::new("apps/");
         sarif.add_rule(rule());
-        sarif.add_result(&report, "web/a.ts -> web/b.ts", &sources);
+        let properties = json!({ "fix": "keep it down" }).as_object().unwrap().clone();
+        sarif.add_result(&report, "web/a.ts -> web/b.ts", properties, &sources);
         let result = &parse(&sarif)["runs"][0]["results"][0];
         let location = |path: &str, line, start, end| {
             json!({
@@ -523,6 +537,7 @@ mod tests {
         assert_eq!(result["ruleIndex"], 0);
         assert_eq!(result["level"], "error");
         assert_eq!(result["message"]["text"], "`web` must not import `api`");
+        assert_eq!(result["properties"], json!({ "fix": "keep it down" }));
         assert_eq!(
             result["locations"],
             json!([{ "physicalLocation": location("apps/web/a.ts", 1, 8, 13) }])
@@ -548,13 +563,13 @@ mod tests {
         };
         let mut sarif = Sarif::default();
         sarif.add_rule(rule());
-        sarif.add_result(&report(0, "a"), "x", &sources);
-        sarif.add_result(&report(15, "a"), "y", &sources);
+        sarif.add_result(&report(0, "a"), "x", Map::new(), &sources);
+        sarif.add_result(&report(15, "a"), "y", Map::new(), &sources);
         let mut moved = Sarif::default();
         moved.add_rule(rule());
-        moved.add_result(&report(15, "a"), "x", &sources);
-        moved.add_result(&report(15, "a"), "x", &sources);
-        moved.add_result(&report(15, "b"), "x", &sources);
+        moved.add_result(&report(15, "a"), "x", Map::new(), &sources);
+        moved.add_result(&report(15, "a"), "x", Map::new(), &sources);
+        moved.add_result(&report(15, "b"), "x", Map::new(), &sources);
 
         let fingerprints = |sarif: &Sarif| -> Vec<String> {
             let results = parse(sarif)["runs"][0]["results"].as_array().unwrap().clone();

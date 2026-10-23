@@ -53,6 +53,17 @@ impl Git {
         self
     }
 
+    /// What the project's paths start with to be relative to the root of the
+    /// worktree that it is in: the root's POSIX path in it, ending in `/`,
+    /// or nothing if the project is rooted there. `None` outside a worktree.
+    pub fn root_prefix(&self) -> Option<String> {
+        if !self.worktree.join(".git").exists() {
+            return None;
+        }
+        let prefix = relative_posix(&self.worktree, &self.root)?;
+        Some(if prefix.is_empty() { prefix } else { format!("{prefix}/") })
+    }
+
     /// The files that git tracks in the worktree: those in its index, which
     /// is the next commit's while a pre-commit hook runs.
     pub fn tracked_files(&self) -> Result<TrackedFiles, GitError> {
@@ -306,6 +317,34 @@ mod tests {
         let tracked = Git::new(&root).tracked_files().unwrap();
         assert!(tracked.contains(&root.join("src/a.ts")));
         assert!(!tracked.contains(&root.join("b.ts")));
+    }
+
+    #[test]
+    fn a_root_inside_the_repository_has_its_path_as_a_prefix() {
+        let (_dir, repository) = repository(&["web/src/a.ts"], &["web/src/a.ts"]);
+        assert_eq!(Git::new(&repository).root_prefix().as_deref(), Some(""));
+        assert_eq!(Git::new(&repository.join("web")).root_prefix().as_deref(), Some("web/"));
+        let root = repository.join("web/src");
+        assert_eq!(Git::new(&root).root_prefix().as_deref(), Some("web/src/"));
+
+        let dir = TempDir::new().unwrap();
+        let root = adjust_canonicalisation(dir.path());
+        // A repository above the temporary directory would give it a prefix.
+        if !root.ancestors().any(|dir| dir.join(".git").exists()) {
+            assert_eq!(Git::new(&root).root_prefix(), None);
+        }
+    }
+
+    #[test]
+    fn a_worktree_or_submodule_with_a_git_file_is_where_the_prefix_starts() {
+        // The `.git` of a linked worktree or a submodule is a file naming its git
+        // directory, elsewhere.
+        let dir = TempDir::new().unwrap();
+        let worktree = adjust_canonicalisation(dir.path()).join("module");
+        fs::create_dir_all(worktree.join("web")).unwrap();
+        fs::write(worktree.join(".git"), "gitdir: ../.git/modules/module\n").unwrap();
+        assert_eq!(Git::new(&worktree).root_prefix().as_deref(), Some(""));
+        assert_eq!(Git::new(&worktree.join("web")).root_prefix().as_deref(), Some("web/"));
     }
 
     #[test]

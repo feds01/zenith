@@ -1,0 +1,15 @@
+[contracts.ab]
+type = "forbidden"
+from = ["a"]
+to = ["b"]
+ignore_imports = ["a/** -> b/gone.ts"]
+unmatched_ignore_imports = "warn"
+
+[contracts.b-protected]
+type = "protected"
+modules = ["b"]
+allowed_importers = []
+
+[contracts.cycles]
+type = "acyclic"
+modules = ["pkgs/*"]

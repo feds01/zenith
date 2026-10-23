@@ -1,0 +1,320 @@
+$ zenith check --format compact
+exit: 1
+--- stdout
+src/ui/page.ts:1:23: error[ui-not-db]: `src/ui` must not import `src/db`; remove this import
+src/ui/page.ts:2:22: error[ui-not-db]: `src/ui` must not import `src/db` (via src/ui/page.ts -> src/lib/load.ts -> src/db/query.ts); remove this import, or one further along the chain
+src/lib/load.ts:1:24: warning[api-protected]: `src/lib/load.ts` may not import the protected module `src/api`; remove this import
+error[src-layers]: `src/legacy` is not declared as a layer of `src`; declare the module in `layers`
+src/ui/legacy.ts:4:1: warning: unused suppression: no import on line 5 for the contracts it names
+warning: 1 import could not be resolved
+1 kept, 2 broken, 1 warning · 6 files, 5 imports
+
+$ zenith check --format sarif
+exit: 1
+--- stdout
+{
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "zenith",
+          "version": "$VERSION",
+          "informationUri": "https://github.com/feds01/zenith",
+          "rules": [
+            {
+              "id": "ui-not-db",
+              "shortDescription": {
+                "text": "The UI does not reach the database (forbidden contract)"
+              },
+              "help": {
+                "text": "Go through src/api."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "forbidden"
+                ]
+              }
+            },
+            {
+              "id": "api-protected",
+              "shortDescription": {
+                "text": "api-protected (protected contract)"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "protected"
+                ]
+              }
+            },
+            {
+              "id": "no-legacy",
+              "shortDescription": {
+                "text": "no-legacy (forbidden contract)"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "forbidden"
+                ]
+              }
+            },
+            {
+              "id": "src-layers",
+              "shortDescription": {
+                "text": "src-layers (layers contract)"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "layers"
+                ]
+              }
+            },
+            {
+              "id": "zenith/unused-suppression",
+              "shortDescription": {
+                "text": "`zenith-ignore` comments that have no effect"
+              },
+              "help": {
+                "text": "remove the comment, or name the contracts whose imports on its line it is for"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "suppression"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "invocations": [
+        {
+          "executionSuccessful": true,
+          "toolExecutionNotifications": [
+            {
+              "level": "warning",
+              "message": {
+                "text": "could not resolve `./missing`: Cannot find module './missing'"
+              },
+              "locations": [
+                {
+                  "id": 1,
+                  "physicalLocation": {
+                    "artifactLocation": {
+                      "uri": "src/lib/load.ts",
+                      "uriBaseId": "%SRCROOT%"
+                    },
+                    "region": {
+                      "startLine": 3,
+                      "startColumn": 1,
+                      "endLine": 3,
+                      "endColumn": 20
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "results": [
+        {
+          "ruleId": "ui-not-db",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "`src/ui` must not import `src/db`"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/ui/page.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 23,
+                  "endLine": 1,
+                  "endColumn": 36
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "zenith/v1": "cce81e57fb6ac3f5b5b263876e0c4d3b"
+          },
+          "properties": {
+            "fix": {
+              "action": "remove_import",
+              "hint": "remove this import"
+            }
+          }
+        },
+        {
+          "ruleId": "ui-not-db",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "`src/ui` must not import `src/db` (via src/ui/page.ts -> src/lib/load.ts -> src/db/query.ts)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/ui/page.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 22,
+                  "endLine": 2,
+                  "endColumn": 35
+                }
+              }
+            }
+          ],
+          "relatedLocations": [
+            {
+              "id": 2,
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/lib/load.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 23,
+                  "endLine": 2,
+                  "endColumn": 36
+                }
+              },
+              "message": {
+                "text": "imports `src/db/query.ts`"
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "zenith/v1": "5fc34ab3fb944d351da60d211a70b4c1"
+          },
+          "properties": {
+            "fix": {
+              "action": "remove_import",
+              "hint": "remove this import, or one further along the chain"
+            }
+          }
+        },
+        {
+          "ruleId": "api-protected",
+          "ruleIndex": 1,
+          "level": "warning",
+          "message": {
+            "text": "`src/lib/load.ts` may not import the protected module `src/api`"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/lib/load.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 24,
+                  "endLine": 1,
+                  "endColumn": 39
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "zenith/v1": "adf869db305e8497d32ac28f45ad2778"
+          },
+          "properties": {
+            "fix": {
+              "action": "remove_import",
+              "hint": "remove this import"
+            }
+          }
+        },
+        {
+          "ruleId": "src-layers",
+          "ruleIndex": 3,
+          "level": "error",
+          "message": {
+            "text": "`src/legacy` is not declared as a layer of `src`"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "zenith.toml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 19,
+                  "startColumn": 12,
+                  "endLine": 19,
+                  "endColumn": 22
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "zenith/v1": "4449185dfe04503528872ff5a145a91e"
+          },
+          "properties": {
+            "fix": {
+              "action": "declare_layer",
+              "hint": "declare the module in `layers`"
+            }
+          }
+        },
+        {
+          "ruleId": "zenith/unused-suppression",
+          "ruleIndex": 4,
+          "level": "warning",
+          "message": {
+            "text": "unused suppression: no import on line 5 for the contracts it names"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/ui/legacy.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 1,
+                  "endLine": 4,
+                  "endColumn": 27
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "zenith/v1": "5ec9bdb4cd8333c3e5a8de26acb0f3b6"
+          }
+        }
+      ],
+      "columnKind": "unicodeCodePoints"
+    }
+  ]
+}
+

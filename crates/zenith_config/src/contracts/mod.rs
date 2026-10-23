@@ -18,6 +18,7 @@ pub use protected::ProtectedConfig;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use zenith_graph::KindSet;
+use zenith_utils::location::ByteRange;
 
 use crate::selector::{IgnoreImport, Selector};
 
@@ -31,6 +32,10 @@ pub struct ContractConfig {
     /// The id, which `--contract`, the baseline and `zenith-ignore` comments
     /// refer to.
     pub id: String,
+
+    /// Where the id is in the configuration file, as the key of its table,
+    /// `[contracts.<id>]`.
+    pub range: ByteRange,
 
     /// The title shown in output. Defaults to the id.
     pub name: String,

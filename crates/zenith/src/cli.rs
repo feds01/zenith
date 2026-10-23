@@ -277,6 +277,8 @@ pub enum ReportFormat {
     Json,
     /// GitHub Actions annotations.
     Github,
+    /// A SARIF 2.1.0 log, for code scanning.
+    Sarif,
 }
 
 /// The output formats of `zenith graph`.

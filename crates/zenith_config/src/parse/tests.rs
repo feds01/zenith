@@ -77,7 +77,10 @@ fn every_contract_type_is_parsed() {
             _ => "modules = []",
         };
         let contents = format!("[contracts.c]\ntype = \"{name}\"\n{options}\n");
-        assert_eq!(valid(&contents).contracts[0].kind.type_name(), name);
+        let contract = &valid(&contents).contracts[0];
+        assert_eq!(contract.kind.type_name(), name);
+        // The contract is where its id is, in the header of its table.
+        assert_eq!(&contents[Range::from(contract.range)], "c");
     }
 }
 

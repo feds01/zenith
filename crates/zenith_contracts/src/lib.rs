@@ -18,7 +18,8 @@
 //! excerpts of the imports that break it, and [`Violation::fix`] into a
 //! [`Fix`] for each of their findings. The suppressions that had no effect
 //! on any contract are each an [`UnusedSuppression`]. [`CheckJson`] is all of
-//! it as the JSON output of `zenith check`.
+//! it as the JSON output of `zenith check`, and [`ContractReport::sarif`] as
+//! its SARIF output.
 
 mod baseline;
 mod contract;
@@ -28,6 +29,7 @@ mod findings;
 mod packages;
 mod reports;
 mod rules;
+mod sarif;
 mod schema;
 mod selection;
 mod suppressions;

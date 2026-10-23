@@ -207,16 +207,8 @@ impl Resolver {
     /// Resolve `specifier`, as imported by the file at the absolute path
     /// `file`.
     pub fn resolve(&self, file: &Path, specifier: &str) -> Resolved {
-        match self.resolve_specifier(file, specifier) {
-            Resolved::Unresolved(reason) => {
-                if self.ignore_unresolved.iter().any(|pattern| pattern.is_match(specifier)) {
-                    Resolved::Ignored(reason)
-                } else {
-                    Resolved::Unresolved(reason)
-                }
-            }
-            resolved => resolved,
-        }
+        self.resolve_specifier(file, specifier)
+            .ignoring_unresolved(specifier, &self.ignore_unresolved)
     }
 
     /// Resolve `specifier`, without applying `ignore_unresolved`.

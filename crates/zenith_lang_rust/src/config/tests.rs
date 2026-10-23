@@ -2,7 +2,7 @@
 //! errors, and the selector schemes it enables.
 
 use zenith_config::{Config, ContractKind, Languages, Selector};
-use zenith_utils::glob::Glob;
+use zenith_utils::glob::{Glob, NamePattern};
 
 use super::*;
 
@@ -17,20 +17,25 @@ fn rust(contents: &str) -> RustConfig {
 
 #[test]
 fn rust_is_enabled_by_writing_its_table() {
-    assert_eq!(rust("[languages.rust]\n").include, None);
+    let rust = rust("[languages.rust]\n");
+    assert_eq!((rust.include, rust.ignore_unresolved), (None, vec![]));
 }
 
 #[test]
 fn parses_the_rust_table() {
     let rust = rust(include_str!("fixtures/rust-table.toml"));
     assert_eq!(rust.include, Some(vec![Glob::new("crates/**").unwrap()]));
+    assert_eq!(rust.ignore_unresolved, [NamePattern::new("generated::*").unwrap()]);
 }
 
 #[test]
 fn an_unknown_key_is_an_error() {
     let errors = Config::parse(include_str!("fixtures/unknown-key.toml"), LANGUAGES).unwrap_err();
     assert_eq!(errors.len(), 1, "{errors:#?}");
-    assert_eq!(errors[0].to_string(), "unknown key `zzz`, expected `include`");
+    assert_eq!(
+        errors[0].to_string(),
+        "unknown key `zzz`, expected `include` or `ignore_unresolved`"
+    );
 }
 
 #[test]

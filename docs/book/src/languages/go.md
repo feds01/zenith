@@ -3,11 +3,13 @@
 ```toml
 [languages.go]             # off unless the table is written
 include = ["**/*.go"]      # the default
+ignore_unresolved = ["example.com/generated/*"]   # import paths not to warn about
 ```
 
 | Option | |
 |---|---|
 | `include` | Globs of the files to scan. |
+| `ignore_unresolved` | Name patterns of the import paths that are expected not to resolve, so are not reported as unresolved. |
 
 ## Packages
 

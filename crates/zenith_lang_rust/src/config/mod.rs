@@ -10,7 +10,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use zenith_config::{Language, LanguageOptions, LanguageTable, Located};
 use zenith_lang::{Backend, BackendSettings};
-use zenith_utils::glob::Glob;
+use zenith_utils::glob::{Glob, NamePattern};
 
 use crate::backend::RustBackend;
 
@@ -37,6 +37,10 @@ pub struct RustConfig {
     /// Globs of the files to scan. `None` scans every file with one of the
     /// [`RUST`] source extensions.
     pub include: Option<Vec<Glob>>,
+
+    /// Patterns of specifiers that are expected not to resolve, so are not
+    /// reported as unresolved.
+    pub ignore_unresolved: Vec<NamePattern>,
 }
 
 impl RustConfig {
@@ -46,7 +50,10 @@ impl RustConfig {
         let Some(parsed) = table.deserialize::<RustTable>() else {
             return Self::default();
         };
-        Self { include: parsed.include.map(|include| table.patterns(&include, Glob::new)) }
+        Self {
+            include: parsed.include.map(|include| table.patterns(&include, Glob::new)),
+            ignore_unresolved: table.patterns(&parsed.ignore_unresolved, NamePattern::new),
+        }
     }
 }
 
@@ -56,7 +63,7 @@ impl LanguageOptions for RustConfig {
     }
 
     fn backend(&self, settings: BackendSettings<'_>) -> Box<dyn Backend> {
-        Box::new(RustBackend::new(settings.root))
+        Box::new(RustBackend::new(settings.root, self.ignore_unresolved.clone()))
     }
 }
 
@@ -67,4 +74,9 @@ impl LanguageOptions for RustConfig {
 struct RustTable {
     /// Globs of the files to scan. Defaults to every Rust file, `**/*.rs`.
     include: Option<Vec<Located<String>>>,
+
+    /// Name patterns of paths that are expected not to resolve, so are not
+    /// reported as unresolved, e.g. `"generated::*"` for a module that a
+    /// macro declares.
+    ignore_unresolved: Vec<Located<String>>,
 }

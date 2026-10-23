@@ -99,6 +99,14 @@
             "type": "string"
           },
           "description": "Globs of the files to scan. Defaults to every Go file, `**/*.go`."
+        },
+        "ignore_unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Name patterns of import paths that are expected not to resolve, so\nare not reported as unresolved.",
+          "default": []
         }
       },
       "description": "Go."
@@ -113,6 +121,14 @@
             "type": "string"
           },
           "description": "Globs of the files to scan. Defaults to every Rust file, `**/*.rs`."
+        },
+        "ignore_unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Name patterns of paths that are expected not to resolve, so are not\nreported as unresolved, e.g. `\"generated::*\"` for a module that a\nmacro declares.",
+          "default": []
         }
       },
       "description": "Rust."

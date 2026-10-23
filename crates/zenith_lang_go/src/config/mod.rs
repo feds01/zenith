@@ -10,7 +10,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use zenith_config::{Language, LanguageOptions, LanguageTable, Located};
 use zenith_lang::{Backend, BackendSettings};
-use zenith_utils::glob::Glob;
+use zenith_utils::glob::{Glob, NamePattern};
 
 use crate::backend::GoBackend;
 
@@ -37,6 +37,10 @@ pub struct GoConfig {
     /// Globs of the files to scan. `None` scans every file with one of the
     /// [`GO`] source extensions.
     pub include: Option<Vec<Glob>>,
+
+    /// Patterns of import paths that are expected not to resolve, so are not
+    /// reported as unresolved.
+    pub ignore_unresolved: Vec<NamePattern>,
 }
 
 impl GoConfig {
@@ -46,7 +50,10 @@ impl GoConfig {
         let Some(parsed) = table.deserialize::<GoTable>() else {
             return Self::default();
         };
-        Self { include: parsed.include.map(|include| table.patterns(&include, Glob::new)) }
+        Self {
+            include: parsed.include.map(|include| table.patterns(&include, Glob::new)),
+            ignore_unresolved: table.patterns(&parsed.ignore_unresolved, NamePattern::new),
+        }
     }
 }
 
@@ -56,7 +63,7 @@ impl LanguageOptions for GoConfig {
     }
 
     fn backend(&self, settings: BackendSettings<'_>) -> Box<dyn Backend> {
-        Box::new(GoBackend::new(settings.root))
+        Box::new(GoBackend::new(settings.root, self.ignore_unresolved.clone()))
     }
 }
 
@@ -67,4 +74,8 @@ impl LanguageOptions for GoConfig {
 struct GoTable {
     /// Globs of the files to scan. Defaults to every Go file, `**/*.go`.
     include: Option<Vec<Located<String>>>,
+
+    /// Name patterns of import paths that are expected not to resolve, so
+    /// are not reported as unresolved.
+    ignore_unresolved: Vec<Located<String>>,
 }

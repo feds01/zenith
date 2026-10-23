@@ -2,7 +2,7 @@
 //! and the selector schemes it enables.
 
 use zenith_config::{Config, ContractKind, Languages, Selector};
-use zenith_utils::glob::Glob;
+use zenith_utils::glob::{Glob, NamePattern};
 
 use super::*;
 
@@ -25,7 +25,8 @@ fn only_error(contents: &str) -> String {
 #[test]
 fn go_is_enabled_by_its_table_alone() {
     assert!(Config::defaults(LANGUAGES).languages.options::<GoConfig>().is_none());
-    assert_eq!(go("[languages.go]\n").include, None);
+    let go = go("[languages.go]\n");
+    assert_eq!((go.include, go.ignore_unresolved), (None, vec![]));
 }
 
 #[test]
@@ -35,12 +36,16 @@ fn parses_the_go_table() {
         go.include,
         Some(vec![Glob::new("cmd/**").unwrap(), Glob::new("internal/**/*.go").unwrap()])
     );
+    assert_eq!(go.ignore_unresolved, [NamePattern::new("example.com/generated/*").unwrap()]);
 }
 
 #[test]
 fn invalid_tables_are_errors() {
     for (contents, expected) in [
-        (include_str!("fixtures/unknown-key.toml"), "unknown key `zzz`, expected `include`"),
+        (
+            include_str!("fixtures/unknown-key.toml"),
+            "unknown key `zzz`, expected `include` or `ignore_unresolved`",
+        ),
         (
             include_str!("fixtures/invalid-pattern.toml"),
             "invalid pattern `internal/{`: unclosed `{`",

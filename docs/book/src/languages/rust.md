@@ -3,11 +3,13 @@
 ```toml
 [languages.rust]           # off unless the table is written
 include = ["**/*.rs"]      # the default
+ignore_unresolved = ["generated::*"]   # paths not to warn about
 ```
 
 | Option | |
 |---|---|
 | `include` | Globs of the files to scan. |
+| `ignore_unresolved` | Name patterns of the paths that are expected not to resolve, so are not reported as unresolved, such as a module that a macro declares. |
 
 ## Packages
 

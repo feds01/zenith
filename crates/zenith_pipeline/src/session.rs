@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use rustc_hash::FxHashSet;
 use thin_vec::ThinVec;
 use zenith_cache::CacheSettings;
 use zenith_config::{Config, ContractConfig, Reexports};
@@ -219,6 +220,25 @@ impl Session {
         (sources, config)
     }
 
+    /// The `ignore_unresolved` option of each language whose imports couldn't
+    /// all be resolved, as the help about them names it, e.g.
+    /// "`[languages.js] ignore_unresolved`".
+    fn ignore_unresolved_options(&self) -> String {
+        let files: FxHashSet<&str> =
+            self.unresolved.iter().map(|import| import.file.as_str()).collect();
+        let languages: FxHashSet<usize> = self
+            .files
+            .iter()
+            .filter(|file| files.contains(file.name.as_str()))
+            .map(|file| usize::from(file.language))
+            .collect();
+        let options: Vec<_> = (self.config.languages.enabled().enumerate())
+            .filter(|(position, _)| languages.contains(position))
+            .map(|(_, language)| format!("`[languages.{}] ignore_unresolved`", language.name))
+            .collect();
+        options.join(" or ")
+    }
+
     /// The warning about the imports that couldn't be resolved, listing
     /// where each is if `list` is set, or `None` if there are none.
     pub fn unresolved_report(&self, sources: &mut SourceMap, list: bool) -> Option<Report> {
@@ -238,9 +258,10 @@ impl Session {
                 .collect();
             report.add_note(lines.join("\n"));
         } else {
-            report.add_help(
-                "use `--show-unresolved` to list them, or `[languages.js] ignore_unresolved` to silence expected ones",
-            );
+            report.add_help(format!(
+                "use `--show-unresolved` to list them, or {} to silence expected ones",
+                self.ignore_unresolved_options()
+            ));
         }
         // A `tsconfig.json` that extends one from a package can't be loaded until
         // the package is installed, and then none of its `paths` resolve.

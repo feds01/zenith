@@ -16,7 +16,7 @@ mod tests;
 use std::path::Path;
 
 use zenith_lang::{Resolved, UnresolvedReason};
-use zenith_utils::path::relative_posix;
+use zenith_utils::{glob::NamePattern, path::relative_posix};
 
 use crate::{
     crates::{Crate, Crates, Dependency, STANDARD_CRATES, Target},
@@ -35,17 +35,31 @@ pub(crate) struct Resolver<'a> {
 
     /// The crates of the project.
     crates: &'a Crates,
+
+    /// Patterns of the paths that are expected not to resolve.
+    ignore_unresolved: &'a [NamePattern],
 }
 
 impl<'a> Resolver<'a> {
-    /// A resolver of the project at `root`, which must be canonical.
-    pub(crate) fn new(root: &'a Path, crates: &'a Crates) -> Self {
-        Self { root, crates }
+    /// A resolver of the project at `root`, which must be canonical, which
+    /// expects the paths that match `ignore_unresolved` not to resolve.
+    pub(crate) fn new(
+        root: &'a Path,
+        crates: &'a Crates,
+        ignore_unresolved: &'a [NamePattern],
+    ) -> Self {
+        Self { root, crates, ignore_unresolved }
     }
 
     /// What `specifier`, a path written with `::`, refers to when the file at
     /// `path` imports it.
     pub(crate) fn resolve(&self, path: &Path, specifier: &str) -> Resolved {
+        self.resolve_specifier(path, specifier)
+            .ignoring_unresolved(specifier, self.ignore_unresolved)
+    }
+
+    /// Resolve `specifier`, without applying `ignore_unresolved`.
+    fn resolve_specifier(&self, path: &Path, specifier: &str) -> Resolved {
         // 1. Find the package of the importing file.
         let Some(krate) = self.crates.containing(path) else {
             return Resolved::failed("the file is in no Cargo package");

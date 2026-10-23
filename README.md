@@ -2,7 +2,7 @@
 
 # Zenith
 
-> An architecture linter for monorepos in JavaScript, TypeScript, Go, Python and Rust.
+> A language-agnostic architecture linter for monorepos.
 
 Zenith checks which parts of a codebase may import which others.
 
@@ -12,8 +12,7 @@ the import, or the chain of imports, that does.
 
 If you have used [import-linter](https://github.com/seddonym/import-linter) in
 Python, the contracts will feel familiar: Zenith brings the same ideas to
-monorepos, in Python as in JavaScript, TypeScript, Go and Rust, and to
-repositories that mix them.
+monorepos, whatever their languages.
 
 ## Installation
 

@@ -4,8 +4,7 @@
 
 # Zenith
 
-zenith is an architecture linter for monorepos in JavaScript, TypeScript, Go,
-Python and Rust.
+zenith is a language-agnostic architecture linter for monorepos.
 
 You write down how the parts of your codebase may depend on each other, as
 **contracts** in a `zenith.toml`, and `zenith check` reports every import, or
@@ -14,7 +13,7 @@ files takes well under a second.
 
 If you have used [import-linter](https://import-linter.readthedocs.io/) in
 Python, the contracts will feel familiar: zenith brings the same ideas to
-monorepos, in Python as in JavaScript, TypeScript, Go and Rust.
+monorepos, whatever their languages.
 
 <figure class="diagram">
 {{#include diagrams/how-it-works.svg}}

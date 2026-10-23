@@ -27,6 +27,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use toml::Spanned;
+use zenith_config::ContractConfig;
 use zenith_diagnostics::message;
 use zenith_graph::{EdgeSet, Graph, ModuleId};
 use zenith_lang::Workspace;
@@ -255,9 +256,7 @@ fn entry(graph: &Graph, importer: ModuleId, imported: ModuleId) -> String {
 
 /// The contract `id` as a TOML key: bare, as valid ids are, or else quoted.
 fn key(id: &str) -> String {
-    let bare = !id.is_empty()
-        && id.chars().all(|char| char.is_ascii_alphanumeric() || char == '-' || char == '_');
-    match bare {
+    match ContractConfig::is_valid_id(id) {
         true => id.to_string(),
         false => toml::Value::String(id.to_string()).to_string(),
     }

@@ -1,0 +1,3 @@
+[contracts.directories-acyclic]
+type = "acyclic"
+modules = ["app", "domain"]

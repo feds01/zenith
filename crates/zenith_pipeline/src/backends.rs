@@ -14,10 +14,10 @@ pub struct Backends(Vec<Box<dyn Backend>>);
 
 impl Backends {
     /// The backends of the languages that `config` enables, set up for the
-    /// project at `root`, which must be canonical.
-    pub fn new(config: &Config, root: &Path) -> Self {
-        let settings =
-            BackendSettings { root, record_exports: config.needs_graph_through_reexports() };
+    /// project at `root`, which must be canonical. With `record_exports`,
+    /// they record what each file exports, for the graph through re-exports.
+    pub fn new(config: &Config, root: &Path, record_exports: bool) -> Self {
+        let settings = BackendSettings { root, record_exports };
         Self(config.languages.iter().map(|(_, options)| options.backend(settings)).collect())
     }
 

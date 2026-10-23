@@ -111,6 +111,19 @@ impl Config {
         parse::parse(contents, languages)
     }
 
+    /// Parse and validate contracts written as in a configuration file, in
+    /// `[contracts]` tables, as contracts of this configuration: they default
+    /// to the options of its `[analysis]`, and may use the selector schemes of
+    /// the languages it enables, of the `languages` it may enable. On failure,
+    /// returns the errors, as [`Config::parse`] does.
+    pub fn parse_contracts(
+        &self,
+        contents: &str,
+        languages: Languages,
+    ) -> Result<Vec<ContractConfig>, Vec<ConfigError>> {
+        parse::parse_contracts(contents, self, languages)
+    }
+
     /// The contract with the given id.
     pub fn contract(&self, id: &str) -> Option<&ContractConfig> {
         self.contracts.iter().find(|contract| contract.id == id)

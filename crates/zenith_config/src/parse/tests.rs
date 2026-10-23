@@ -896,6 +896,41 @@ fn reexports_default_to_the_analysis_and_encapsulation_never_sees_through_them()
 }
 
 #[test]
+fn contracts_parsed_for_a_config_default_to_its_analysis() {
+    let config = valid(include_str!("fixtures/analysis-defaults.toml"));
+    let contracts =
+        config.parse_contracts(include_str!("fixtures/contracts-only.toml"), LANGUAGES).unwrap();
+    let defaults: Vec<_> = contracts
+        .iter()
+        .map(|contract| (contract.id.as_str(), contract.exclude_kinds, contract.reexports))
+        .collect();
+    assert_eq!(
+        defaults,
+        [
+            ("inherits", KindSet::TYPE, Reexports::Transparent),
+            ("overrides", KindSet::empty(), Reexports::Opaque),
+        ]
+    );
+}
+
+#[test]
+fn contracts_parsed_for_a_config_have_only_contracts_and_its_languages() {
+    let contents = include_str!("fixtures/contracts-with-a-table.toml");
+    let errors = match Config::defaults(LANGUAGES).parse_contracts(contents, LANGUAGES) {
+        Ok(contracts) => panic!("expected errors, got {contracts:?}"),
+        Err(errors) => render(contents, &errors),
+    };
+    assert_eq!(
+        errors,
+        [
+            "1:2: unknown key `files`, expected `contracts` [files]",
+            "7:7: in contract `other-scheme`: `oth:x` uses the `oth:` scheme of the `other` \
+             language, which is not enabled [\"oth:x\"]",
+        ]
+    );
+}
+
+#[test]
 fn encapsulation_that_sees_through_reexports_is_an_error() {
     let contents = include_str!("fixtures/reexports-on-encapsulation.toml");
     assert_eq!(

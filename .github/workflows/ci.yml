@@ -61,6 +61,79 @@ jobs:
       - name: Check zenith's contracts
         run: cargo run --locked -q -p zenith -- check --format github
 
+  # The action, on the fixtures in tests/cases. Their annotations show in the
+  # runs of zenith's own pull requests too, unattached to any line, as their
+  # paths are relative to the fixtures rather than to this repository.
+  #
+  # No case uploads to code scanning (`upload-sarif: true`), which this job
+  # doesn't exercise: the fixtures' results would become alerts of this
+  # repository, and pull requests from forks can't upload.
+  action:
+    name: GitHub Action
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v7
+      - name: Install Rust
+        run: rustup toolchain install
+      - name: Dependency caching
+        uses: Swatinem/rust-cache@v2
+      # The action runs the zenith of this checkout, so that it is tested with
+      # the zenith that the change makes.
+      - name: Build zenith
+        run: cargo build --locked -q -p zenith
+      - name: Check a kept project
+        uses: ./
+        with:
+          binary: target/debug/zenith
+          config: tests/cases/features/severity-warn/zenith.toml
+          upload-sarif: false
+      - name: Check a broken project
+        id: broken
+        continue-on-error: true
+        uses: ./
+        with:
+          binary: target/debug/zenith
+          config: tests/cases/features/sarif/zenith.toml
+          upload-sarif: false
+      - name: Expect the broken project to fail the check
+        if: steps.broken.outcome != 'failure' || steps.broken.outputs.exit-code != '1'
+        run: |
+          echo "The action didn't fail with 1 on a broken contract." >&2
+          exit 1
+      - name: Check with a binary that doesn't exist
+        id: missing
+        continue-on-error: true
+        uses: ./
+        with:
+          binary: does/not/exist
+          upload-sarif: false
+      - name: Expect the missing binary to fail, but not as a broken contract
+        if: steps.missing.outcome != 'failure' || steps.missing.outputs.exit-code == '1'
+        run: |
+          echo "The action didn't fail, or took a missing binary for a broken contract." >&2
+          exit 1
+
+  # The action, with zenith installed from npm, on each kind of runner.
+  action-npm:
+    name: GitHub Action with npm (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v7
+      # Pinned, so that a release can't break unrelated pull requests. Bump it
+      # to the release on npm now and then.
+      - name: Check a kept project
+        uses: ./
+        with:
+          version: 0.4.0
+          config: tests/cases/features/severity-warn/zenith.toml
+          upload-sarif: false
+
   deny:
     name: Dependency policy
     runs-on: ubuntu-latest

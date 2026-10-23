@@ -28,7 +28,7 @@ pub use report::{
     Report, ReportCodeBlock, ReportElement, ReportKind, ReportNote, ReportNoteKind, ReportSpan,
 };
 pub use reporter::Reporter;
-pub use source::{Location, Position, Source, SourceId, SourceMap, Span};
+pub use source::{Columns, Location, Position, Source, SourceId, SourceMap, Span};
 pub use store::DiagnosticStore;
 pub use zenith_macros::{Diagnostic, message};
 

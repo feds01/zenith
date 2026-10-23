@@ -80,6 +80,9 @@ a new kind of responsibility, not for each feature:
   module sources and dependency paths with tree-sitter, resolving them to
   directories or registry and repository modules, and the
   `[languages.terraform]` table.
+- `zenith_lsp`: the language server of `zenith lsp`: the protocol over
+  stdio, and reports as the diagnostics it publishes to an editor. It knows
+  nothing of what is checked.
 - `zenith_macros`: the macros through which code names the messages of
   the catalogue, `#[derive(Diagnostic)]` and `message!`, which check them
   when it compiles.

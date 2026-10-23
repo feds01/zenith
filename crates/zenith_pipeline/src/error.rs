@@ -19,7 +19,8 @@ pub enum PipelineError {
     /// A file could not be added to the graph.
     Graph(GraphError),
 
-    /// The files that git tracks could not be listed, to scan only those.
+    /// Git could not list the files that it tracks, to scan only those, or
+    /// the files that changed since a commit, to report on only those.
     Git(GitError),
 
     /// A path to scope the session to is not inside the project root.

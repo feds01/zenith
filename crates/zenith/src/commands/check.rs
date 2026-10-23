@@ -22,10 +22,10 @@ use crate::{
 /// if a contract of `error` severity is broken, or has stale baseline entries
 /// that are errors.
 pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
-    // 1. Open the project, scoped to the paths if any are given, and build its
-    //    graph.
+    // 1. Open the project, scoped to the paths and to the files changed since the
+    //    commit of `--since`, if any are given, and build its graph.
     let mut session = project::open(global)?;
-    session.scope_to(&args.paths)?;
+    session.scope_to(&args.paths, args.since.as_deref())?;
     let pipeline = project::run_until(&mut session, StageKind::Graph)?;
 
     // 2. Compile the contracts to check: every one, or those of `--contract`.

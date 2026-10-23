@@ -173,6 +173,13 @@ pub struct CheckCommand {
     #[arg(value_name = "PATH")]
     pub paths: Vec<PathBuf>,
 
+    /// Only report what involves the files that the branch changed since it
+    /// left this git commit, e.g. `main` or `HEAD~1`, as if they were paths:
+    /// those that differ between its merge base with `HEAD` and the working
+    /// tree. Untracked files count too, unless `--tracked` is given.
+    #[arg(long, value_name = "REF")]
+    pub since: Option<String>,
+
     /// Only check the contracts with these ids.
     #[arg(long = "contract", value_name = "ID")]
     pub contracts: Vec<String>,
@@ -399,6 +406,7 @@ mod tests {
     fn parses_check_options() {
         let cli = parse("zenith check --contract a --contract b --format json --no-baseline");
         let Command::Check(check) = cli.command else { panic!("expected `check`") };
+        assert_eq!(check.since, None);
         assert_eq!(check.contracts, ["a", "b"]);
         assert_eq!(check.format, ReportFormat::Json);
         assert!(check.no_baseline);
@@ -451,7 +459,7 @@ mod tests {
     fn parses_every_flag() {
         // Every command, with every flag set.
         for line in [
-            "zenith check --contract a --format github --no-baseline --show-unresolved --show-timings",
+            "zenith check src --since main --contract a --format github --no-baseline --show-unresolved --show-timings",
             "zenith baseline --contract a --prune",
             "zenith graph web/src --depth 3 --format dot --exclude-kind type --exclude-kind require",
             "zenith why web/src pkg:@acme/api --exclude-kind dynamic --exclude-kind value --limit 5",

@@ -15,6 +15,7 @@ use zenith_graph::{Graph, ImportKind, ModuleId, NodeKind};
 use zenith_lang::{ParsedFile, ResolveFailure, UnresolvedReason};
 use zenith_lang_js::ResolverError;
 use zenith_utils::path::adjust_canonicalisation;
+use zenith_workspace::testing::{commit, git};
 
 use crate::{FileErrorKind, LANGUAGES, Pipeline, PipelineError, Session, StageKind};
 
@@ -572,4 +573,27 @@ fn a_cache_that_cannot_be_written_is_skipped() {
         assert_eq!(session.stats.cached_files, 0);
         assert_eq!(findings(&session), findings(&project.build("").unwrap()));
     }
+}
+
+#[test]
+fn the_scope_is_the_paths_and_the_files_changed_since_a_commit() {
+    let project = Project::new(&[("web/a.ts", b""), ("web/b.ts", b""), ("api/c.ts", b"")]);
+    let root = &project.root;
+    git(root, &["init", "--quiet"]);
+    commit(root);
+    let mut session = project.session("");
+
+    // With nothing changed, the scope is no file, rather than every file.
+    session.scope_to(&[], Some("HEAD")).unwrap();
+    assert!(!session.scope.is_everything() && !session.scope.contains("web/a.ts"));
+
+    // The changed files, and the paths.
+    fs::write(root.join("web/b.ts"), "export {};\n").unwrap();
+    session.scope_to(&[root.join("api")], Some("HEAD")).unwrap();
+    assert!(session.scope.contains("web/b.ts") && session.scope.contains("api/c.ts"));
+    assert!(!session.scope.contains("web/a.ts"));
+
+    // Neither is every file.
+    session.scope_to(&[], None).unwrap();
+    assert!(session.scope.is_everything());
 }

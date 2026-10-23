@@ -1,0 +1,10 @@
+$ zenith check --since main
+exit: 2
+--- stderr
+error: the project root `$ROOT` is not in a git repository
+
+$ zenith check --tracked
+exit: 2
+--- stderr
+error: the project root `$ROOT` is not in a git repository
+

@@ -1,7 +1,8 @@
 # Command line
 
 ```text
-zenith check [<path>…] [--contract <id>]… [--format pretty|compact|json|github|sarif]
+zenith check [<path>…] [--since <ref>] [--contract <id>]…
+             [--format pretty|compact|json|github|sarif]
              [--no-baseline] [--show-unresolved] [--show-timings]
 zenith baseline [--contract <id>]… [--prune]
 zenith graph [<selector>] [--depth <n>] [--format tree|dot|mermaid|json] [--exclude-kind <kind>]…
@@ -13,7 +14,7 @@ zenith version
 
 | Command | |
 |---|---|
-| `check` | Checks the contracts, or only those of `--contract`. With paths, it only reports what involves the files under them. `--format` picks one of the [output formats](output.md), such as `sarif` for code scanning. |
+| `check` | Checks the contracts, or only those of `--contract`. With paths, or [`--since`](#checking-what-a-branch-changed), it only reports what involves the files under them. `--format` picks one of the [output formats](output.md), such as `sarif` for code scanning. |
 | `baseline` | Records the current violations in the [baseline](baseline.md). |
 | `graph` | Shows the module tree under a selector, and the dependencies between each node's children, as a tree, Graphviz, Mermaid or JSON. |
 | `why` | Shows the shortest import chains from one selector to another. |
@@ -64,6 +65,31 @@ still count.
 A cycle is reported on the imports zenith suggests removing, so one that a
 change closes can be left out if those imports are elsewhere. A full
 `zenith check`, as in CI, still finds it.
+
+To report on the files that a branch changed, without listing them, use
+[`--since`](#checking-what-a-branch-changed).
+
+## Checking what a branch changed
+
+`zenith check --since <ref>` reports as if the paths were every file that the
+branch changed since it left `<ref>`: every file that differs between the
+merge base of `<ref>` and `HEAD` and the working tree, as in
+`git diff <ref>...` and a pull request's diff. So what has landed on `<ref>`
+since the branch left it is not reported. The files are those added, copied,
+modified, renamed or deleted, a renamed file under both its names, and the
+untracked files that git doesn't ignore, unless `--tracked` is given. `<ref>`
+is anything git names a commit by, such as a branch, a tag, `HEAD~1` or a
+hash:
+
+```sh
+zenith check --since main --format github
+```
+
+With paths too, it reports on the files under either. A ref that names no
+commit, as in a shallow clone that hasn't fetched it, and a project outside a
+git repository, are errors. Where git finds no merge base, as in a shallow
+clone that hasn't fetched enough history to reach the merge base, the working
+tree is compared with `<ref>` itself, with a warning.
 
 ## Code scanning
 

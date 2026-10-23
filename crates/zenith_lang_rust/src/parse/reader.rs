@@ -1,7 +1,7 @@
 //! Reads a [`ParsedFile`] from the syntax tree that rust-analyzer's parser
 //! parses a Rust source into.
 
-use std::{borrow::Cow, cmp::Ordering, ops::Range};
+use std::{borrow::Cow, cmp::Ordering, iter, ops::Range};
 
 use compact_str::CompactString;
 use ra_ap_syntax::{
@@ -22,6 +22,12 @@ const PRIMITIVES: &[&str] = &[
     "bool", "char", "str", "f16", "f32", "f64", "f128", "i8", "i16", "i32", "i64", "i128", "isize",
     "u8", "u16", "u32", "u64", "u128", "usize",
 ];
+
+/// The macros whose bodies are code that a procedural macro generates for the
+/// crates that use it, matched by the last segment of their path. The paths in
+/// a body are written for those crates, so are not imports of the crate that
+/// holds it.
+const QUOTE_MACROS: &[&str] = &["quote", "quote_spanned", "parse_quote", "parse_quote_spanned"];
 
 /// What has been read of one file so far.
 pub(super) struct Reader<'s> {
@@ -68,6 +74,9 @@ pub(super) struct Reader<'s> {
     /// Where each inline module that the node being read is in ends, from the
     /// outermost.
     inline: Vec<usize>,
+
+    /// The last body of a [`QUOTE_MACROS`] macro that was read.
+    quoted: Range<usize>,
 }
 
 /// A token of a token tree, as a path in it is read.
@@ -82,8 +91,9 @@ enum Token {
     /// `:`, which may be half of a `::`.
     Colon,
 
-    /// `$`, which starts a macro variable.
-    Dollar,
+    /// `$`, which starts a macro variable, or `#`, which starts an
+    /// interpolation of `quote!`.
+    Sigil,
 
     /// Any other token, or a nested token tree.
     Other,
@@ -110,6 +120,7 @@ impl<'s> Reader<'s> {
             declaration: 0,
             use_end: 0,
             inline: Vec::new(),
+            quoted: 0..0,
         };
         // The walk doesn't recurse, so that deeply nested code can't overflow the
         // stack.
@@ -305,8 +316,12 @@ impl<'s> Reader<'s> {
 
     /// Read the paths that the tokens of a macro call, or of an attribute,
     /// make. The parser doesn't read them as paths, since it doesn't know
-    /// what the macro does with them.
+    /// what the macro does with them. Those of a `quote!` body are not read.
     fn token_tree(&mut self, node: &SyntaxNode) {
+        if self.enter_quote(node) {
+            return;
+        }
+
         // 1. The tokens, with a `::` as one, though a token tree may have it as two
         //    `:`s.
         let mut tokens: Vec<(Token, TextRange)> = Vec::new();
@@ -322,7 +337,7 @@ impl<'s> Reader<'s> {
                     | SyntaxKind::SUPER_KW => Token::Name,
                     SyntaxKind::COLON2 => Token::Separator,
                     SyntaxKind::COLON => Token::Colon,
-                    SyntaxKind::DOLLAR => Token::Dollar,
+                    SyntaxKind::DOLLAR | SyntaxKind::POUND => Token::Sigil,
                     _ => Token::Other,
                 },
             };
@@ -355,14 +370,47 @@ impl<'s> Reader<'s> {
             }
             next = last + 1;
 
-            // `$crate::a` and `$module::a` start with a macro variable.
-            let variable = first > 0 && tokens[first - 1].0 == Token::Dollar;
+            // `$crate::a` and `$module::a` start with a macro variable, and `#krate::a`
+            // with an interpolation.
+            let variable = first > 0 && tokens[first - 1].0 == Token::Sigil;
             // A single name after `::` is the end of a longer path, such as `<T>::new`.
             if !variable && last > first + usize::from(rooted) {
                 let range = tokens[first].1.cover(tokens[last].1);
                 self.path(location(range), &strip_blanks(&self.source[byte_range(range)]));
             }
         }
+    }
+
+    /// Record the token tree `tree` as the body that
+    /// [`quoted`](Self::quoted) holds if it is the body of one of the
+    /// [`QUOTE_MACROS`], and say whether it is that body or in it.
+    fn enter_quote(&mut self, tree: &SyntaxNode) -> bool {
+        let range = byte_range(tree.text_range());
+        if self.quoted.contains(&range.start) {
+            return true;
+        }
+        // A body follows the `!` after the path of its macro, which is a node of its
+        // own, or, in another token tree, the tokens of the path.
+        let mut before = iter::successors(tree.prev_sibling_or_token(), |element| {
+            element.prev_sibling_or_token()
+        })
+        .filter(|element| !element.kind().is_trivia());
+        if before.next().is_none_or(|bang| bang.kind() != SyntaxKind::BANG) {
+            return false;
+        }
+        let is_quote = match before.next() {
+            Some(NodeOrToken::Node(path)) => ast::Path::cast(path)
+                .and_then(|path| path.segment()?.name_ref())
+                .is_some_and(|name| QUOTE_MACROS.contains(&name.text())),
+            Some(NodeOrToken::Token(name)) => {
+                name.kind() == SyntaxKind::IDENT && QUOTE_MACROS.contains(&name.text())
+            }
+            None => false,
+        };
+        if is_quote {
+            self.quoted = range;
+        }
+        is_quote
     }
 
     /// Record the path in code `text`, at `range`, as an import of the modules

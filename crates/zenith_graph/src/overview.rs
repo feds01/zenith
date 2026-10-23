@@ -1,6 +1,6 @@
 //! Overviews of the module tree: a node, its children, and the dependencies
 //! between them, for showing the shape of part of a project as a tree, a
-//! Graphviz digraph, or JSON.
+//! Graphviz digraph, a Mermaid flowchart, or JSON.
 
 use std::fmt;
 
@@ -13,9 +13,9 @@ use crate::{Graph, GraphView, ModuleId, NodeKind, NodeSet, UnitGraph};
 /// A node of the module tree, its children, and the dependencies between
 /// the children in a [`GraphView`].
 ///
-/// It is shown with [`Self::tree`] or [`Self::dot`], and serialises as
-/// `{"module", "children": [{"name", "kind", "files"}], "dependencies":
-/// [{"from", "to", "imports"}]}`.
+/// It is shown with [`Self::tree`], [`Self::dot`] or [`Self::mermaid`], and
+/// serialises as `{"module", "children": [{"name", "kind", "files"}],
+/// "dependencies": [{"from", "to", "imports"}]}`.
 #[derive(Clone, Serialize)]
 pub struct ModuleOverview<'g> {
     /// The graph that the node is in.
@@ -125,6 +125,40 @@ impl<'g> ModuleOverview<'g> {
     pub fn dot(&self) -> OverviewDot<'_, 'g> {
         OverviewDot { overview: self }
     }
+
+    /// A Mermaid flowchart of the children of each overview and the
+    /// dependencies between them, with a subgraph per overview when there are
+    /// several.
+    pub fn mermaid<'a>(overviews: &'a [Self]) -> OverviewMermaid<'a, 'g> {
+        OverviewMermaid { overviews }
+    }
+
+    /// Writes the children as Mermaid nodes whose ids are `prefix` and their
+    /// position, then the dependencies between them, each line indented by
+    /// `indent`.
+    fn write_mermaid(&self, f: &mut fmt::Formatter<'_>, indent: &str, prefix: &str) -> fmt::Result {
+        let Self { graph, children, dependencies, .. } = self;
+        for (index, child) in children.iter().enumerate() {
+            writeln!(f, "{indent}{prefix}{index}[{}]", mermaid_label(&child.label(graph)))?;
+        }
+        let position = |name: &str| children.iter().position(|child| child.name == name);
+        for ChildDependency { from, to, imports } in dependencies {
+            let (Some(from), Some(to)) = (position(from), position(to)) else { continue };
+            writeln!(f, "{indent}{prefix}{from} -->|{imports}| {prefix}{to}")?;
+        }
+        Ok(())
+    }
+}
+
+impl OverviewChild<'_> {
+    /// The base name of the child, with a trailing `/` for a directory.
+    fn label(&self, graph: &Graph) -> String {
+        let base_name = graph.node(self.id).base_name();
+        match self.kind {
+            NodeKind::Directory => format!("{base_name}/"),
+            _ => base_name.to_string(),
+        }
+    }
 }
 
 /// Shows a [`ModuleOverview`] as its module tree, followed by the
@@ -164,17 +198,38 @@ impl fmt::Display for OverviewDot<'_, '_> {
         writeln!(f, "digraph {} {{", quote(module))?;
         writeln!(f, "  rankdir=LR;\n  node [shape=box];")?;
         for child in children {
-            let base_name = graph.node(child.id).base_name();
-            let label = match child.kind {
-                NodeKind::Directory => format!("{base_name}/"),
-                _ => base_name.to_string(),
-            };
-            writeln!(f, "  {} [label={}];", quote(child.name), quote(&label))?;
+            writeln!(f, "  {} [label={}];", quote(child.name), quote(&child.label(graph)))?;
         }
         for ChildDependency { from, to, imports } in dependencies {
             writeln!(f, "  {} -> {} [label=\"{imports}\"];", quote(from), quote(to))?;
         }
         writeln!(f, "}}")
+    }
+}
+
+/// Shows [`ModuleOverview`]s as one Mermaid flowchart, through
+/// [`fmt::Display`]. A single overview is titled with its node; several are
+/// each a subgraph titled with theirs. Each child is a node whose id is its
+/// position, `n0`, `n1`, …, or `n0_0`, `n0_1`, … in the first subgraph, so
+/// that the id is valid whatever the child's path holds.
+pub struct OverviewMermaid<'a, 'g> {
+    /// The overviews to show.
+    overviews: &'a [ModuleOverview<'g>],
+}
+
+impl fmt::Display for OverviewMermaid<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let [overview] = self.overviews {
+            writeln!(f, "---\ntitle: {}\n---\nflowchart LR", quote(overview.module))?;
+            return overview.write_mermaid(f, "  ", "n");
+        }
+        writeln!(f, "flowchart LR")?;
+        for (index, overview) in self.overviews.iter().enumerate() {
+            writeln!(f, "  subgraph m{index}[{}]", mermaid_label(overview.module))?;
+            overview.write_mermaid(f, "    ", &format!("n{index}_"))?;
+            writeln!(f, "  end")?;
+        }
+        Ok(())
     }
 }
 
@@ -204,9 +259,26 @@ fn display_name(graph: &Graph, id: ModuleId) -> &str {
     if id == ModuleId::ROOT { "." } else { graph.name(id) }
 }
 
-/// A Graphviz string.
+/// A Graphviz string, which is also a YAML one.
 fn quote(text: &str) -> String {
     format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// A Mermaid label: quoted, with the characters that Mermaid reads as markup
+/// written as entity codes.
+fn mermaid_label(text: &str) -> String {
+    let mut label = String::from('"');
+    for c in text.chars() {
+        match c {
+            '#' => label.push_str("#35;"),
+            '"' => label.push_str("#quot;"),
+            '<' => label.push_str("#lt;"),
+            '>' => label.push_str("#gt;"),
+            _ => label.push(c),
+        }
+    }
+    label.push('"');
+    label
 }
 
 #[cfg(test)]
@@ -303,6 +375,63 @@ mod tests {
         ];
         assert_eq!(overview(&graph, "web/src").dot().to_string(), expected.join("\n") + "\n");
         assert_eq!(quote(r#"a"b\c"#), r#""a\"b\\c""#);
+    }
+
+    #[test]
+    fn shows_a_flowchart_of_the_children() {
+        let graph = graph();
+        let expected = [
+            "---",
+            "title: \"web/src\"",
+            "---",
+            "flowchart LR",
+            "  n0[\"app.ts\"]",
+            "  n1[\"lib/\"]",
+            "  n2[\"types.ts\"]",
+            "  n0 -->|2| n1",
+            "  n1 -->|2| n2",
+        ];
+        let overviews = [overview(&graph, "web/src")];
+        assert_eq!(ModuleOverview::mermaid(&overviews).to_string(), expected.join("\n") + "\n");
+
+        let graph = graph_of(&[
+            ("app/@acme/ui-kit/index.ts", "app/v1.2:beta.ts"),
+            ("app/v1.2:beta.ts", "app/#1 <b> \"x\".ts"),
+        ]);
+        let expected = [
+            "---",
+            "title: \"app\"",
+            "---",
+            "flowchart LR",
+            "  n0[\"#35;1 #lt;b#gt; #quot;x#quot;.ts\"]",
+            "  n1[\"@acme/\"]",
+            "  n2[\"v1.2:beta.ts\"]",
+            "  n1 -->|1| n2",
+            "  n2 -->|1| n0",
+        ];
+        let overviews = [overview(&graph, "app")];
+        assert_eq!(ModuleOverview::mermaid(&overviews).to_string(), expected.join("\n") + "\n");
+    }
+
+    #[test]
+    fn shows_several_overviews_as_subgraphs_of_one_flowchart() {
+        let graph = graph();
+        let expected = [
+            "flowchart LR",
+            "  subgraph m0[\"web/src\"]",
+            "    n0_0[\"app.ts\"]",
+            "    n0_1[\"lib/\"]",
+            "    n0_2[\"types.ts\"]",
+            "    n0_0 -->|2| n0_1",
+            "    n0_1 -->|2| n0_2",
+            "  end",
+            "  subgraph m1[\"web/src/lib\"]",
+            "    n1_0[\"a.ts\"]",
+            "    n1_1[\"b.ts\"]",
+            "  end",
+        ];
+        let overviews = [overview(&graph, "web/src"), overview(&graph, "web/src/lib")];
+        assert_eq!(ModuleOverview::mermaid(&overviews).to_string(), expected.join("\n") + "\n");
     }
 
     #[test]

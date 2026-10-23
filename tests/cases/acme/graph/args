@@ -10,5 +10,7 @@ graph "web/src/app/(dashboard)" --depth 3
 graph "web/src/domains/*" --depth 0
 graph pkg:@acme/api --format json
 graph packages/ui --format dot
+graph packages --format mermaid
+graph "web/src/domains/*" --format mermaid
 graph web/src/nope
 graph "web/{src"

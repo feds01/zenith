@@ -1,0 +1,16 @@
+# Third-party dependencies that only one directory may import. Only
+# `web/src/images` may import `sharp`, so `web/src/app/profile/avatar.ts` is
+# flagged; importing `web/src/images` instead is fine.
+[languages.js]
+[languages.go]
+
+[contracts.sharp-only-in-images]
+type = "protected"
+modules = ["npm:sharp"]
+allowed_importers = ["web/src/images"]
+
+# The same with a Go module: only the `resize` package may import `imaging`.
+[contracts.imaging-only-in-resize]
+type = "protected"
+modules = ["gomod:github.com/disintegration/imaging"]
+allowed_importers = ["services/thumbs/internal/resize"]

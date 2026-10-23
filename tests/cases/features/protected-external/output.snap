@@ -1,0 +1,21 @@
+$ zenith check
+exit: 1
+--- stdout
+error[sharp-only-in-images]: `npm:sharp` may only be imported by its allowed importers
+ --> web/src/app/profile/avatar.ts:1:19
+  |
+1 | import sharp from "sharp";
+  |                   ^^^^^^^ imports `npm:sharp`
+
+error[imaging-only-in-resize]: `gomod:github.com/disintegration/imaging` may only be imported by its allowed importers
+ --> services/thumbs/cmd/thumbs/main.go:6:2
+  |
+6 |     "github.com/disintegration/imaging"
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `gomod:github.com/disintegration/imaging`
+
+Contracts
+  ✗ sharp-only-in-images    protected  broken (1 violation)
+  ✗ imaging-only-in-resize  protected  broken (1 violation)
+
+0 kept, 2 broken · 4 files, 8 imports
+

@@ -1,7 +1,7 @@
 # Command line
 
 ```text
-zenith check [<path>…] [--contract <id>]… [--format pretty|compact|json|github]
+zenith check [<path>…] [--contract <id>]… [--format pretty|compact|json|github|sarif]
              [--no-baseline] [--show-unresolved] [--show-timings]
 zenith baseline [--contract <id>]… [--prune]
 zenith graph [<selector>] [--depth <n>] [--format tree|dot|mermaid|json] [--exclude-kind <kind>]…
@@ -13,7 +13,7 @@ zenith version
 
 | Command | |
 |---|---|
-| `check` | Checks the contracts, or only those of `--contract`. With paths, it only reports what involves the files under them. |
+| `check` | Checks the contracts, or only those of `--contract`. With paths, it only reports what involves the files under them. `--format` picks one of the [output formats](output.md), such as `sarif` for code scanning. |
 | `baseline` | Records the current violations in the [baseline](baseline.md). |
 | `graph` | Shows the module tree under a selector, and the dependencies between each node's children, as a tree, Graphviz, Mermaid or JSON. |
 | `why` | Shows the shortest import chains from one selector to another. |
@@ -64,6 +64,14 @@ still count.
 A cycle is reported on the imports zenith suggests removing, so one that a
 change closes can be left out if those imports are elsewhere. A full
 `zenith check`, as in CI, still finds it.
+
+## Code scanning
+
+`zenith check --format sarif > zenith.sarif` writes a SARIF log, for GitHub
+code scanning and other dashboards, which is then uploaded, as in
+[the workflow of the `sarif` format](output.md#sarif). Its paths are relative
+to the root of the git repository, so a project in a subdirectory of one works
+too. The exit code is the same as with any other format.
 
 ## Exit codes
 

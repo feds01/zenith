@@ -55,8 +55,8 @@ enum Piece {
     Question,
 }
 
-/// Why a glob or name pattern is invalid. The message doesn't repeat the
-/// pattern, so callers can name it with its context.
+/// Why a glob or name pattern is invalid. It has no text of its own: the
+/// crates that show it to users give it one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GlobError {
     /// The pattern is empty.
@@ -86,24 +86,6 @@ pub enum GlobError {
     /// A `{` without its `}`.
     UnclosedBrace,
 }
-
-impl fmt::Display for GlobError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Empty => "the pattern is empty",
-            Self::EmptyPath => "empty path",
-            Self::EmptySegment => "empty path segment",
-            Self::LeadingSlash => "leading `/`; globs are relative to the project root",
-            Self::TrailingSlash => "trailing `/`",
-            Self::EscapedSlash => "`/` cannot be escaped",
-            Self::TrailingBackslash => "trailing `\\`",
-            Self::DoubleStar => "`**` must be a whole path segment; use `*` within a segment",
-            Self::UnclosedBrace => "unclosed `{`",
-        })
-    }
-}
-
-impl std::error::Error for GlobError {}
 
 impl fmt::Debug for Glob {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -543,18 +525,6 @@ mod tests {
         ] {
             assert_eq!(Glob::new(pattern).unwrap_err(), error, "{pattern}");
         }
-    }
-
-    #[test]
-    fn errors_explain_the_fix() {
-        assert_eq!(
-            GlobError::LeadingSlash.to_string(),
-            "leading `/`; globs are relative to the project root"
-        );
-        assert_eq!(
-            GlobError::DoubleStar.to_string(),
-            "`**` must be a whole path segment; use `*` within a segment"
-        );
     }
 
     #[test]

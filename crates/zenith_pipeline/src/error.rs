@@ -4,7 +4,7 @@
 use std::{fmt, io, path::PathBuf};
 
 use thin_vec::ThinVec;
-use zenith_diagnostics::{Report, ReportKind, SourceId, SourceMap, Span};
+use zenith_diagnostics::{Diagnostic, Report, ReportKind, SourceId, SourceMap, Span};
 use zenith_graph::{GraphError, ImportDetail};
 use zenith_lang::{ResolveFailure, SyntaxError, UnresolvedReason};
 use zenith_utils::{location::Located, printing::plural};
@@ -92,8 +92,8 @@ impl FileError {
             return report;
         };
 
-        let mut report = first.value.report(Span::new(source, first.range));
-        report.kind = ReportKind::Warning;
+        let mut report = first.value.report_in(ReportKind::Warning, Some(source));
+        report.add_span(first.range);
         report.add_note("some of the file's imports may be missing from the graph");
         if errors.len() > 1 {
             let count = plural(errors.len(), "syntax error");

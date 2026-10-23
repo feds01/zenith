@@ -2,12 +2,12 @@
 //! directory, for reading the project as it was at that commit.
 
 use std::{
-    fs,
+    fs, io, mem,
     path::{Path, PathBuf},
+    sync::{Mutex, MutexGuard, PoisonError},
 };
 
 use log::warn;
-use tempfile::TempDir;
 use zenith_diagnostics::message;
 use zenith_utils::path::{adjust_canonicalisation, relative_posix};
 
@@ -29,11 +29,14 @@ const ISOLATED: [&str; 10] = [
     "filter.lfs.required=false",
 ];
 
+/// The temporary directories of the checkouts that haven't been dropped yet.
+static HELD: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
 impl Git {
     /// Check out the commit that `reference` names, e.g. `main` or `HEAD~2`,
     /// into a new temporary directory, which is removed when the
-    /// [`Checkout`] is dropped. The reference is resolved as by
-    /// [`Self::resolve_commit`], with its errors.
+    /// [`Checkout`] is dropped, or by [`remove_checkouts`]. The reference is
+    /// resolved as by [`Self::resolve_commit`], with its errors.
     ///
     /// The files are written from an index of the checkout's own, so neither
     /// the repository's index nor its list of worktrees changes: nothing is
@@ -44,22 +47,19 @@ impl Git {
         // 1. Find the commit, so that a reference that names none says so.
         let commit = self.resolve_commit(reference)?;
 
-        // 2. Make the temporary directory, whose guard removes it from here on.
-        let temporary = |error: std::io::Error| GitError::Checkout(error.to_string());
+        // 2. Make the temporary directory, which the checkout removes from here on.
+        let temporary = |error: io::Error| GitError::Checkout(error.to_string());
         let dir = tempfile::Builder::new().prefix("zenith-").tempdir().map_err(temporary)?;
-        let (tree, index) = (dir.path().join("tree"), dir.path().join("index"));
-        fs::create_dir(&tree).map_err(temporary)?;
-        let checkout = Checkout {
-            root: adjust_canonicalisation(&tree),
-            worktree: self.worktree.clone(),
-            commit,
-            dir: Some(dir),
-        };
+        let dir = adjust_canonicalisation(dir.keep());
+        held().push(dir.clone());
+        let checkout =
+            Checkout { commit, worktree: self.worktree.clone(), root: dir.join("tree"), dir };
+        fs::create_dir(&checkout.root).map_err(temporary)?;
 
         // 3. Read the commit's tree into the checkout's index, and write its files out
         //    of it into the checkout's root.
         let mut git = self.clone();
-        git.variables.push(("GIT_INDEX_FILE", index.into_os_string()));
+        git.variables.push(("GIT_INDEX_FILE", checkout.dir.join("index").into_os_string()));
         git.variables.push(("GIT_WORK_TREE", checkout.root.clone().into_os_string()));
         let mut read_tree = ISOLATED.to_vec();
         read_tree.extend(["read-tree", &checkout.commit]);
@@ -71,9 +71,24 @@ impl Git {
     }
 }
 
+/// Remove the directory of every checkout that hasn't been dropped, as a
+/// crash handler that exits without unwinding the stack, and so without
+/// dropping them, must.
+pub fn remove_checkouts() {
+    for dir in mem::take(&mut *held()) {
+        let _ = fs::remove_dir_all(dir);
+    }
+}
+
+/// The directories of the checkouts that haven't been dropped yet.
+fn held() -> MutexGuard<'static, Vec<PathBuf>> {
+    HELD.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 /// A commit of a project's repository, checked out into a temporary directory
 /// by [`Git::checkout`]. The directory is removed when the checkout is
-/// dropped, on every path out of the code that holds it, a panic's included.
+/// dropped, on every path out of the code that holds it, an error's or a
+/// panic's included.
 #[derive(Debug)]
 pub struct Checkout {
     /// The id of the commit.
@@ -86,9 +101,9 @@ pub struct Checkout {
     /// is at the same path relative to it as relative to the worktree's root.
     root: PathBuf,
 
-    /// The temporary directory, which holds the checkout and its index, until
-    /// the checkout is dropped.
-    dir: Option<TempDir>,
+    /// The temporary directory, which holds the checkout's root and its
+    /// index, and is removed with them when the checkout is dropped.
+    dir: PathBuf,
 }
 
 impl Checkout {
@@ -112,10 +127,10 @@ impl Checkout {
 
 impl Drop for Checkout {
     fn drop(&mut self) {
-        let Some(dir) = self.dir.take() else { return };
-        let path = dir.path().to_owned();
-        if let Err(error) = dir.close() {
-            warn!("{}", message!(workspace_checkout_not_removed, path = path.display(), error));
+        held().retain(|dir| *dir != self.dir);
+        if let Err(error) = fs::remove_dir_all(&self.dir) {
+            let path = self.dir.display();
+            warn!("{}", message!(workspace_checkout_not_removed, path, error));
         }
     }
 }
@@ -152,9 +167,12 @@ mod tests {
         assert_eq!(worktrees(&root), before);
         git(&root, &["diff", "--cached", "--quiet"]);
 
-        let temporary = checkout.dir.as_ref().unwrap().path().to_owned();
+        // The crash handler would remove it until it is dropped.
+        let temporary = checkout.dir.clone();
+        assert!(held().contains(&temporary));
         drop(checkout);
         assert!(!temporary.exists());
+        assert!(!held().contains(&temporary));
     }
 
     #[test]

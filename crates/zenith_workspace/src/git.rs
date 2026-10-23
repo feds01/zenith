@@ -14,7 +14,7 @@ use std::{
     process::Command,
 };
 
-pub use checkout::Checkout;
+pub use checkout::{Checkout, remove_checkouts};
 use log::{debug, warn};
 use rustc_hash::{FxHashMap, FxHashSet};
 use zenith_diagnostics::message;

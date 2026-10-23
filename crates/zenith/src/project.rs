@@ -7,7 +7,7 @@ use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
 use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
 use zenith_contracts::Contract;
-use zenith_diagnostics::SourceMap;
+use zenith_diagnostics::{Diagnostic, ReportKind, SourceMap};
 use zenith_pipeline::{FileError, FileErrorKind, LANGUAGES, Pipeline, Session, StageKind};
 use zenith_utils::{path::adjust_canonicalisation, printing::plural};
 
@@ -147,7 +147,10 @@ fn load(path: &Path, root: &Path) -> Result<Config> {
         Err(LoadError::Invalid { path, contents, errors }) => {
             let mut sources = SourceMap::with_root(root);
             let source = sources.add_file(&path, contents);
-            let reports: Vec<_> = errors.iter().map(|error| error.report(source)).collect();
+            let reports: Vec<_> = errors
+                .iter()
+                .map(|error| error.report_in(ReportKind::Error, Some(source)))
+                .collect();
             reporting::emit(&sources, &reports);
             Err(Reported.into())
         }

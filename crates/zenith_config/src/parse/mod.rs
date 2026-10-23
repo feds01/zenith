@@ -32,7 +32,7 @@ use zenith_utils::{glob::GlobError, location::ByteRange};
 
 use crate::{
     config::Config,
-    error::{ConfigError, ConfigErrorKind, PatternError, classify},
+    error::{ConfigError, ConfigErrorKind, InContract, PatternError, classify},
     language::{Language, Languages},
     schema::{ConfigFile, Located},
 };
@@ -66,7 +66,7 @@ struct Parser {
     diagnostics: DiagnosticStore<ConfigError>,
 
     /// The id of the contract being parsed, which errors are attributed to.
-    contract: Option<String>,
+    contract: Option<InContract>,
 
     /// The languages that the file may enable.
     languages: Languages,
@@ -169,7 +169,7 @@ impl Parser {
 
     /// Run `parse`, attributing its errors to the contract `id`.
     fn in_contract<T>(&mut self, id: &str, parse: impl FnOnce(&mut Self) -> T) -> T {
-        self.contract = Some(id.to_string());
+        self.contract = Some(InContract(id.to_string()));
         let value = parse(self);
         self.contract = None;
         value

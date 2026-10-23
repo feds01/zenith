@@ -4,38 +4,40 @@
 use std::{fmt, io, path::PathBuf};
 
 use zenith_diagnostics::{
-    Diagnostic, Report, Reporter, SourceId, SourceMap, Span, Subdiagnostic, message,
+    Diagnostic, Report, ReportKind, Reporter, SourceMap, Subdiagnostic, message,
 };
 use zenith_utils::{glob::GlobError, location::ByteRange};
 
 use crate::language::Languages;
 
-/// An error in a configuration file.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// An error in a configuration file. Its report is made in the source of
+/// the file, which its range is in: the excerpt, then what its other fields
+/// add in their order, the contract before what the kind of the error adds.
+#[derive(Debug, Clone, PartialEq, Eq, Diagnostic)]
 pub struct ConfigError {
+    /// The contract the error is in, if any.
+    #[subdiagnostic]
+    pub contract: Option<InContract>,
+
     /// What is wrong.
+    #[diag]
     pub kind: ConfigErrorKind,
 
-    /// The id of the contract the error is in, if any.
-    pub contract: Option<String>,
-
     /// The byte range of the offending key or value, when it is known.
+    #[primary_span]
     pub range: Option<ByteRange>,
 }
 
-impl ConfigError {
-    /// The report of the error, which points into `source`, the
-    /// configuration file.
-    pub fn report(&self, source: SourceId) -> Report {
-        let mut report = Report::error(self.kind.title());
-        if let Some(range) = self.range {
-            report.add_span(Span::new(source, range));
-        }
-        if let Some(contract) = &self.contract {
-            report.add_note(message!(config_in_contract, contract));
-        }
-        self.kind.add_to(&mut report);
-        report
+/// The contract that an error is in, which its report notes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InContract(
+    /// The id of the contract.
+    pub String,
+);
+
+impl Subdiagnostic for InContract {
+    fn add_to(&self, report: &mut Report) {
+        report.add_note(message!(config_in_contract, contract = self.0));
     }
 }
 
@@ -328,7 +330,7 @@ impl fmt::Display for ConfigErrorKind {
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.contract {
-            Some(contract) => {
+            Some(InContract(contract)) => {
                 f.write_str(&message!(config_in_contract_inline, contract, error = self.kind))
             }
             None => write!(f, "{}", self.kind),
@@ -374,7 +376,10 @@ impl fmt::Display for LoadError {
             Self::Invalid { path, contents, errors } => {
                 let mut sources = SourceMap::new();
                 let source = sources.add(path.display().to_string(), contents.as_str());
-                let reports: Vec<_> = errors.iter().map(|error| error.report(source)).collect();
+                let reports: Vec<_> = errors
+                    .iter()
+                    .map(|error| error.report_in(ReportKind::Error, Some(source)))
+                    .collect();
                 write!(f, "{}", Reporter::new(&sources, &reports))
             }
         }
@@ -732,7 +737,7 @@ mod tests {
         let source = sources.add("zenith.toml", "[contracts.c]\nfromm = []\n");
         let error = ConfigError {
             kind: classify("unknown field `fromm`, expected one of `from`, `to`"),
-            contract: Some("c".into()),
+            contract: Some(InContract("c".into())),
             range: Some(ByteRange::new(14, 19)),
         };
         assert_eq!(error.to_string(), "in contract `c`: unknown key `fromm`; did you mean `from`?");
@@ -747,7 +752,7 @@ mod tests {
             "  = note: in contract `c`",
             "  = help: did you mean `from`?",
         ];
-        let reports = [error.report(source)];
+        let reports = [error.report_in(ReportKind::Error, Some(source))];
         assert_eq!(Reporter::new(&sources, &reports).to_string(), expected.join("\n"));
     }
 
@@ -759,7 +764,7 @@ mod tests {
             range: None,
         };
         let mut sources = SourceMap::new();
-        let report = error.report(sources.add("zenith.toml", ""));
+        let report = error.report_in(ReportKind::Error, Some(sources.add("zenith.toml", "")));
         let expected =
             ["error: unknown value `fatal`", "  |", "  = help: expected `error` or `warn`"];
         assert_eq!(Reporter::new(&sources, &[report]).to_string(), expected.join("\n"));

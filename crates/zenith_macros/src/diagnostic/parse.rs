@@ -56,12 +56,7 @@ impl DiagnosticVariant {
                 return Err(Error::new_spanned(attr, "this attribute goes on a field"));
             }
         }
-        let Some(message) = message else {
-            let error = "a diagnostic needs its message, `#[diag(message_id)]`";
-            return Err(Error::new(ident.span(), error));
-        };
-
-        let fields = match fields {
+        let fields: Vec<DiagnosticField> = match fields {
             Fields::Named(fields) => {
                 fields.named.iter().map(DiagnosticField::parse).collect::<Result<_>>()?
             }
@@ -72,6 +67,28 @@ impl DiagnosticVariant {
                 return Err(Error::new_spanned(fields, error));
             }
         };
+
+        // The title comes from the message, or else from one field.
+        let mut titles = fields.iter().filter(|field| field.gives_title());
+        match (&message, titles.next(), titles.next()) {
+            (Some(_), Some(field), _) | (None, Some(_), Some(field)) => {
+                return Err(Error::new(field.ident.span(), "a diagnostic has one `#[diag]`"));
+            }
+            (None, None, _) => {
+                let error = "a diagnostic needs its message, `#[diag(message_id)]`, or a field \
+                             that gives its title, `#[diag]`";
+                return Err(Error::new(ident.span(), error));
+            }
+            _ => {}
+        }
+        if message.is_none()
+            && let Some(note) =
+                notes.iter().chain(fields.iter().flat_map(DiagnosticField::notes)).next()
+        {
+            let error = "notes and labels are attributes of the message of `#[diag(message_id)]`, \
+                         which a diagnostic whose title comes from a field doesn't have";
+            return Err(Error::new(note.attribute.span(), error));
+        }
         Ok(Self { ident: ident.clone(), is_variant, message, notes, fields })
     }
 }
@@ -95,7 +112,15 @@ impl DiagnosticField {
             } else if let Some(kind) = NoteKind::of(attr) {
                 FieldPart::Note(Note::parse(kind, attr)?)
             } else if path.is_ident("diag") {
-                return Err(Error::new_spanned(attr, "`#[diag]` goes on a struct or a variant"));
+                if attr.meta.require_path_only().is_err() {
+                    let error = "on a field, `#[diag]` names no message: the field gives the title";
+                    return Err(Error::new_spanned(attr, error));
+                }
+                if shape == FieldShape::Option {
+                    let error = "the field that gives the title can't be an `Option`";
+                    return Err(Error::new_spanned(attr, error));
+                }
+                FieldPart::Diagnostic
             } else {
                 continue;
             };

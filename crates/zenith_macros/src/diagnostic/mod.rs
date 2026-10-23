@@ -24,8 +24,9 @@ struct DiagnosticVariant {
     is_variant: bool,
 
     /// The message whose value is the title of the report, from
-    /// `#[diag(...)]`, and whose attributes the other messages are.
-    message: Ident,
+    /// `#[diag(...)]`, and whose attributes the other messages are. `None`
+    /// when a field marked `#[diag]` gives the title.
+    message: Option<Ident>,
 
     /// The notes on the struct or variant, in order.
     notes: Vec<Note>,
@@ -82,6 +83,22 @@ struct DiagnosticField {
     parts: Vec<FieldPart>,
 }
 
+impl DiagnosticField {
+    /// Whether the field gives the report its title: `#[diag]`.
+    fn gives_title(&self) -> bool {
+        self.parts.iter().any(|part| matches!(part, FieldPart::Diagnostic))
+    }
+
+    /// The notes and labels of the field, in order.
+    fn notes(&self) -> impl Iterator<Item = &Note> {
+        self.parts.iter().filter_map(|part| match part {
+            FieldPart::Span(label) => label.as_ref(),
+            FieldPart::Note(note) => Some(note),
+            FieldPart::Subdiagnostic | FieldPart::Diagnostic => None,
+        })
+    }
+}
+
 /// The type of a field, as far as it decides when the field adds to the
 /// report.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -107,4 +124,8 @@ enum FieldPart {
 
     /// What the field, a `Subdiagnostic`, adds: `#[subdiagnostic]`.
     Subdiagnostic,
+
+    /// The title of the field, a `Diagnostic`, which is the report's, and
+    /// what it adds: `#[diag]`.
+    Diagnostic,
 }

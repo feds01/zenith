@@ -1,0 +1,29 @@
+error: a diagnostic has one `#[diag]`
+  --> tests/compile-fail/title_from_a_field.rs:15:5
+   |
+15 |     error: Empty,
+   |     ^^^^^
+
+error: a diagnostic needs its message, `#[diag(message_id)]`, or a field that gives its title, `#[diag]`
+  --> tests/compile-fail/title_from_a_field.rs:19:8
+   |
+19 | struct NoTitle {
+   |        ^^^^^^^
+
+error: on a field, `#[diag]` names no message: the field gives the title
+  --> tests/compile-fail/title_from_a_field.rs:25:5
+   |
+25 |     #[diag(test_empty)]
+   |     ^^^^^^^^^^^^^^^^^^^
+
+error: the field that gives the title can't be an `Option`
+  --> tests/compile-fail/title_from_a_field.rs:31:5
+   |
+31 |     #[diag]
+   |     ^^^^^^^
+
+error: notes and labels are attributes of the message of `#[diag(message_id)]`, which a diagnostic whose title comes from a field doesn't have
+  --> tests/compile-fail/title_from_a_field.rs:36:3
+   |
+36 | #[note]
+   |   ^^^^

@@ -24,7 +24,9 @@ mod source;
 mod store;
 
 pub use diagnostic::{Diagnostic, Subdiagnostic};
-pub use report::{Report, ReportCodeBlock, ReportElement, ReportKind, ReportNote, ReportNoteKind};
+pub use report::{
+    Report, ReportCodeBlock, ReportElement, ReportKind, ReportNote, ReportNoteKind, ReportSpan,
+};
 pub use reporter::Reporter;
 pub use source::{Location, Position, Source, SourceId, SourceMap, Span};
 pub use store::DiagnosticStore;

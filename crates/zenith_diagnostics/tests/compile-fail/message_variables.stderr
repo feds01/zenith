@@ -1,0 +1,11 @@
+error: the message needs the variable `$byte`
+ --> tests/compile-fail/message_variables.rs:7:14
+  |
+7 |     message!(test_position);
+  |              ^^^^^^^^^^^^^
+
+error: the message has no variable `$byte`
+ --> tests/compile-fail/message_variables.rs:8:26
+  |
+8 |     message!(test_empty, byte = 1);
+  |                          ^^^^

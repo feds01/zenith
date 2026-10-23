@@ -26,7 +26,7 @@ pub(super) fn impl_diagnostic(
     let mut contents = Vec::new();
     for variant in variants {
         let pattern = variant.pattern();
-        let title = variant.format(None, None)?;
+        let title = variant.title()?;
         titles.push(quote! { #pattern => #title, });
         let statements = variant.statements(&report)?;
         contents.push(quote! { #pattern => { #(#statements)* } });
@@ -64,6 +64,18 @@ impl DiagnosticVariant {
         }
     }
 
+    /// The expression that formats the title of the variant: the value of its
+    /// message, or the title of the field that gives it.
+    fn title(&self) -> Result<TokenStream> {
+        match self.fields.iter().find(|field| field.gives_title()) {
+            Some(field) => {
+                let ident = &field.ident;
+                Ok(quote! { ::zenith_diagnostics::Diagnostic::title(#ident) })
+            }
+            None => self.format(None, None),
+        }
+    }
+
     /// The statements that add the excerpts and notes of the variant to
     /// `report`: the excerpts, then the notes on the variant, then those of
     /// its fields.
@@ -98,7 +110,7 @@ impl DiagnosticVariant {
                     FieldPart::Note(note) => {
                         note.add(self.format(Some(note), Some(field))?, report)
                     }
-                    FieldPart::Subdiagnostic => {
+                    FieldPart::Subdiagnostic | FieldPart::Diagnostic => {
                         quote! { ::zenith_diagnostics::Subdiagnostic::add_to(#ident, #report); }
                     }
                 };
@@ -113,10 +125,8 @@ impl DiagnosticVariant {
     /// names. `own` is the field that the note is on, if any: an `Option`
     /// field is only shown by its own notes, in which it is the value inside.
     fn format(&self, note: Option<&Note>, own: Option<&DiagnosticField>) -> Result<TokenStream> {
-        let message = MessageName {
-            id: self.message.clone(),
-            attribute: note.map(|note| note.attribute.clone()),
-        };
+        let id = self.message.clone().expect("only a diagnostic with a message has notes");
+        let message = MessageName { id, attribute: note.map(|note| note.attribute.clone()) };
         let variables = message.variables()?;
         for name in variables.names.keys() {
             let Some(field) = self.field(name) else {
@@ -149,14 +159,13 @@ impl DiagnosticVariant {
         self.fields.iter().find(|field| field.ident.unraw() == name)
     }
 
-    /// Check that the variant shows each attribute of its message, once.
+    /// Check that the variant shows each attribute of its message, if it has
+    /// one, once.
     fn check_attributes(&self) -> Result<()> {
-        let notes =
-            self.fields.iter().flat_map(|field| &field.parts).filter_map(|part| match part {
-                FieldPart::Span(label) => label.as_ref(),
-                FieldPart::Note(note) => Some(note),
-                FieldPart::Subdiagnostic => None,
-            });
+        let Some(message) = &self.message else {
+            return Ok(());
+        };
+        let notes = self.fields.iter().flat_map(DiagnosticField::notes);
         let mut shown = BTreeSet::new();
         for note in self.notes.iter().chain(notes) {
             if !shown.insert(note.attribute.to_string()) {
@@ -166,8 +175,8 @@ impl DiagnosticVariant {
             }
         }
 
-        let catalogue = Catalogue::get().map_err(|error| Error::new(self.message.span(), error))?;
-        let id = self.message.to_string();
+        let catalogue = Catalogue::get().map_err(|error| Error::new(message.span(), error))?;
+        let id = message.to_string();
         let attributes = catalogue.attributes(&id);
         if let Some(unshown) = attributes.into_iter().find(|name| !shown.contains(*name)) {
             let fix = match unshown {
@@ -178,7 +187,7 @@ impl DiagnosticVariant {
                 "the message has `.{unshown}`, which `{}` doesn't show: add {fix}",
                 self.ident
             );
-            return Err(Error::new(self.message.span(), error));
+            return Err(Error::new(message.span(), error));
         }
         Ok(())
     }

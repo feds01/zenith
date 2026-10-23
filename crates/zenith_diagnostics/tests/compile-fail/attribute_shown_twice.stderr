@@ -1,0 +1,5 @@
+error: another note or label shows this attribute; name another, e.g. `#[help(other)]`
+  --> tests/compile-fail/attribute_shown_twice.rs:11:7
+   |
+11 |     #[help]
+   |       ^^^^

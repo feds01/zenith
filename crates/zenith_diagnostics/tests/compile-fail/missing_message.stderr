@@ -1,0 +1,11 @@
+error: the catalogue has no message `test_missing`
+ --> tests/compile-fail/missing_message.rs:6:8
+  |
+6 | #[diag(test_missing)]
+  |        ^^^^^^^^^^^^
+
+error: the catalogue has no message `test_missing`
+  --> tests/compile-fail/missing_message.rs:10:14
+   |
+10 |     message!(test_missing);
+   |              ^^^^^^^^^^^^

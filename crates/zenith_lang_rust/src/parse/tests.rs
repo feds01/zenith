@@ -212,6 +212,14 @@ macro_rules! m {
 }
 
 #[test]
+fn a_path_in_a_macro_does_not_start_at_an_interpolation() {
+    // As after `$generics`, a path written right after an interpolation is read as
+    // its continuation, so `::a::B` is left out too.
+    let source = "fn f() { m!(impl #generics ::a::B for #ty, #krate::c::d(), e::f()); }";
+    assert_eq!(specifiers(source), ["e::f"]);
+}
+
+#[test]
 fn the_end_of_a_longer_path_in_a_macro_is_not_a_path() {
     assert_eq!(
         specifiers("fn f() { assert_eq!(<T>::new(), Vec::<u8>::new().len()); }"),

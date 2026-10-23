@@ -38,6 +38,11 @@ imports `smoltcp::socket::tcp::State`. `mod a;` declares a module but doesn't
 import it. [`zenith-ignore` comments](../suppressions.md) work as `//` or
 `/* */` comments.
 
+The tokens of a macro call or an attribute aren't parsed as code, so zenith
+reads the paths in them: `vec![crate::a::b()]` imports `crate::a::b`. A path
+that starts at a macro variable, such as `$crate::a` or `$module::a`, or at an
+interpolation of `quote!`, such as `#krate::a`, imports nothing.
+
 Files are parsed with [rust-analyzer](https://rust-analyzer.github.io)'s
 parser, in the edition of their crate, which Cargo or the crate's
 `Cargo.toml` gives (and Rust 2015 if it gives none). A file in no crate is

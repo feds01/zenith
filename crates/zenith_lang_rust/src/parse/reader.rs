@@ -82,8 +82,9 @@ enum Token {
     /// `:`, which may be half of a `::`.
     Colon,
 
-    /// `$`, which starts a macro variable.
-    Dollar,
+    /// `$`, which starts a macro variable, or `#`, which starts an
+    /// interpolation of `quote!`.
+    Sigil,
 
     /// Any other token, or a nested token tree.
     Other,
@@ -322,7 +323,7 @@ impl<'s> Reader<'s> {
                     | SyntaxKind::SUPER_KW => Token::Name,
                     SyntaxKind::COLON2 => Token::Separator,
                     SyntaxKind::COLON => Token::Colon,
-                    SyntaxKind::DOLLAR => Token::Dollar,
+                    SyntaxKind::DOLLAR | SyntaxKind::POUND => Token::Sigil,
                     _ => Token::Other,
                 },
             };
@@ -355,8 +356,9 @@ impl<'s> Reader<'s> {
             }
             next = last + 1;
 
-            // `$crate::a` and `$module::a` start with a macro variable.
-            let variable = first > 0 && tokens[first - 1].0 == Token::Dollar;
+            // `$crate::a` and `$module::a` start with a macro variable, and `#krate::a`
+            // with an interpolation.
+            let variable = first > 0 && tokens[first - 1].0 == Token::Sigil;
             // A single name after `::` is the end of a longer path, such as `<T>::new`.
             if !variable && last > first + usize::from(rooted) {
                 let range = tokens[first].1.cover(tokens[last].1);

@@ -40,6 +40,10 @@ name = "lang_python"
 harness = false
 
 [[bench]]
+name = "lang_terraform"
+harness = false
+
+[[bench]]
 name = "pipeline"
 harness = false
 
@@ -64,6 +68,7 @@ zenith_contracts = { workspace = true }
 zenith_lang = { workspace = true }
 zenith_lang_go = { workspace = true }
 zenith_lang_python = { workspace = true }
+zenith_lang_terraform = { workspace = true }
 zenith_pipeline = { workspace = true }
 
 divan = { workspace = true }

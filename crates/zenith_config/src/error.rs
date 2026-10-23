@@ -288,6 +288,22 @@ impl Alternatives {
             (None, None) => title,
         }
     }
+
+    /// [`inline`](Self::inline) for schemes: each is written with its `:`,
+    /// and the allowed ones are always "one of" them.
+    fn inline_schemes(&self, title: String) -> String {
+        match &self.suggestion {
+            Some(suggestion) => {
+                let suggestion = format!("{suggestion}:");
+                message!(config_did_you_mean_inline, title, suggestion)
+            }
+            None => {
+                let names: Vec<_> = self.expected.iter().map(|name| format!("`{name}:`")).collect();
+                let names = message!(config_many_names, names = names.join(", "));
+                message!(config_expected_inline, title, names)
+            }
+        }
+    }
 }
 
 impl Subdiagnostic for Alternatives {
@@ -406,11 +422,9 @@ pub enum SelectorError {
         /// The scheme as written, without the `:`.
         scheme: String,
 
-        /// The schemes that zenith knows, without the `:`.
-        expected: Vec<String>,
-
-        /// The scheme closest to it, if any is close.
-        suggestion: Option<String>,
+        /// The schemes that zenith knows, without the `:`, and the closest
+        /// to it.
+        alternatives: Alternatives,
     },
 
     /// A path goes up with `..`, out of the project root.
@@ -424,21 +438,8 @@ impl fmt::Display for SelectorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Pattern(error) => write!(f, "{}", PatternError(*error)),
-            Self::UnknownScheme { scheme, expected, suggestion } => {
-                let title = message!(config_unknown_scheme, scheme);
-                let text = match suggestion {
-                    Some(suggestion) => {
-                        let suggestion = format!("{suggestion}:");
-                        message!(config_did_you_mean_inline, title, suggestion)
-                    }
-                    None => {
-                        let names: Vec<_> =
-                            expected.iter().map(|name| format!("`{name}:`")).collect();
-                        let names = message!(config_many_names, names = names.join(", "));
-                        message!(config_expected_inline, title, names)
-                    }
-                };
-                f.write_str(&text)
+            Self::UnknownScheme { scheme, alternatives } => {
+                f.write_str(&alternatives.inline_schemes(message!(config_unknown_scheme, scheme)))
             }
             Self::ParentDir => f.write_str(&message!(config_parent_dir)),
             Self::DirectiveWithoutFiles => f.write_str(&message!(config_directive_without_files)),
@@ -452,9 +453,9 @@ impl SelectorError {
     /// The error for a selector that starts with `scheme`, which none of the
     /// `languages` knows.
     pub(crate) fn unknown_scheme(scheme: &str, languages: Languages) -> Self {
-        let expected: Vec<String> = languages.schemes().map(String::from).collect();
-        let suggestion = suggest(scheme, languages.schemes()).map(String::from);
-        Self::UnknownScheme { scheme: scheme.to_string(), expected, suggestion }
+        let alternatives =
+            Alternatives::new(scheme, languages.schemes().map(String::from).collect());
+        Self::UnknownScheme { scheme: scheme.to_string(), alternatives }
     }
 }
 

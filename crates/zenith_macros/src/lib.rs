@@ -42,7 +42,8 @@ mod message;
 ///
 /// A variable of a message, such as `{$key}`, is the field of that name,
 /// shown with `Display`, or given as a number when the message chooses a
-/// plural by it. The fields must be named, or there must be none.
+/// plural by it or calls a function with it, as in `{NUMBER($count)}`. The
+/// fields must be named, or there must be none.
 ///
 /// On the struct, or on each variant of an enum:
 /// - `#[diag(message_id)]` names the message whose value is the title of the
@@ -86,8 +87,9 @@ pub fn derive_diagnostic(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 /// or `message!(config_unknown_key, key)` for a binding named like the
 /// variable, and `message!(config_no_languages.help, example)` for an
 /// attribute. Each variable is shown with `Display`, or given as a number
-/// when the message chooses a plural by it. The message must exist and be
-/// given exactly its variables.
+/// when the message chooses a plural by it or calls a function with it. The
+/// message must exist and be given exactly its variables, and call only the
+/// functions that zenith_diagnostics registers: `NUMBER`.
 #[proc_macro]
 pub fn message(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let call = parse_macro_input!(input as message::MessageCall);

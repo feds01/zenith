@@ -16,3 +16,12 @@ test_position = at byte {$byte}
 test_braces = expected `{"{"}{"}"}`
 test_disallowed = `{$value}` is not allowed
     .label = not allowed here
+test_files = {NUMBER($count)} {$count ->
+    [one] file
+   *[other] files
+}
+test_checked = checked {$count ->
+    [one] one file
+   *[other] {$count} files
+}
+test_year = in {NUMBER($year, useGrouping: "false")}

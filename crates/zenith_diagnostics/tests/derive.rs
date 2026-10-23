@@ -253,3 +253,11 @@ fn takes_the_title_from_the_field_that_gives_it() {
     let report = located.report_in(ReportKind::Error, Some(source));
     assert_eq!(render(&sources, report), expected.join("\n"));
 }
+
+#[test]
+fn formats_numbers_with_their_digits_grouped() {
+    assert_eq!(message!(test_files, count = 1), "1 file");
+    assert_eq!(message!(test_files, count = 1234), "1,234 files");
+    assert_eq!(message!(test_checked, count = 1_234_567_usize), "checked 1,234,567 files");
+    assert_eq!(message!(test_year, year = 2026), "in 2026");
+}

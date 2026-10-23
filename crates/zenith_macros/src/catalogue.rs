@@ -19,6 +19,10 @@ use fluent_syntax::{
 const SOURCES: &[(&str, &str)] =
     &[("config.ftl", include_str!("../../zenith_diagnostics/messages/en-US/config.ftl"))];
 
+/// The functions that a message can call: those that zenith_diagnostics
+/// registers, fluent-bundle's builtins.
+const FUNCTIONS: &[&str] = &["NUMBER"];
+
 /// The messages that the tests of zenith_diagnostics use.
 #[cfg(feature = "test-messages")]
 const TEST_SOURCES: &[(&str, &str)] =
@@ -55,11 +59,11 @@ struct Message {
 #[derive(Default)]
 pub(crate) struct Variables {
     /// Each variable, by name, and whether it must be a number: one that a
-    /// plural is chosen by.
+    /// plural is chosen by, or that a function is called with.
     pub(crate) names: BTreeMap<String, bool>,
 
     /// What the pattern uses that the catalogue can't format: a message
-    /// that is not in it, a function or a term.
+    /// or a function that is not in it, or a term.
     errors: Vec<String>,
 }
 
@@ -192,11 +196,25 @@ impl Catalogue {
             InlineExpression::VariableReference { id } => {
                 *variables.names.entry(id.name.to_string()).or_default() |= number;
             }
-            // zenith_diagnostics registers no function, so a call, such as
-            // to `NUMBER`, would show as text.
-            InlineExpression::FunctionReference { id, .. } => {
-                let error = format!("the catalogue can't call `{}` yet", id.name);
-                variables.errors.push(error);
+            // A function formats its arguments, which are numbers. One that
+            // is not registered would show as text.
+            InlineExpression::FunctionReference { id, arguments } => {
+                if !FUNCTIONS.contains(&id.name) {
+                    let functions: Vec<_> =
+                        FUNCTIONS.iter().map(|name| format!("`{name}`")).collect();
+                    let error = format!(
+                        "the catalogue has no function `{}`; a message can call {}",
+                        id.name,
+                        functions.join(", ")
+                    );
+                    variables.errors.push(error);
+                }
+                for argument in &arguments.positional {
+                    self.add_inline(argument, true, variables, seen);
+                }
+                for argument in &arguments.named {
+                    self.add_inline(&argument.value, false, variables, seen);
+                }
             }
             // A message that this one refers to is formatted with its
             // variables.

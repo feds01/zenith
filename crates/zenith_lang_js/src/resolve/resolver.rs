@@ -8,8 +8,8 @@ use std::{
 };
 
 use oxc_resolver::{
-    AliasValue, Resolution, ResolveError, ResolveOptions, TsconfigDiscovery, TsconfigOptions,
-    TsconfigReferences,
+    AliasValue, Resolution, ResolveError, ResolveOptions, ResolverGeneric, TsconfigDiscovery,
+    TsconfigOptions, TsconfigReferences,
 };
 use rustc_hash::FxHashMap;
 use serde_json::Value;
@@ -23,6 +23,7 @@ use zenith_utils::{
 
 use super::{
     exports,
+    links::LinkedFileSystem,
     settings::{ResolverSettings, TsconfigMode},
 };
 
@@ -91,12 +92,13 @@ impl std::error::Error for ResolverError {}
 /// caches are internally synchronised.
 #[derive(Debug)]
 pub struct Resolver {
-    /// The configured `oxc_resolver`.
-    inner: oxc_resolver::Resolver,
+    /// The configured `oxc_resolver`, which sees the workspace packages
+    /// linked into the root `node_modules`.
+    inner: ResolverGeneric<LinkedFileSystem>,
 
     /// The same, sharing its caches, but without `tsconfig.json` files, for
     /// files whose `tsconfig.json` can't be loaded.
-    without_tsconfig: oxc_resolver::Resolver,
+    without_tsconfig: ResolverGeneric<LinkedFileSystem>,
 
     /// The files whose `tsconfig.json` couldn't be loaded, and why.
     tsconfig_errors: Mutex<FxHashMap<PathBuf, ResolveError>>,
@@ -114,7 +116,8 @@ pub struct Resolver {
     ignore_unresolved: Vec<NamePattern>,
 }
 
-/// A workspace package, for resolving its imports without `node_modules`.
+/// A workspace package, for resolving its imports that the links in
+/// `node_modules` don't, and for saying which subpaths it doesn't export.
 #[derive(Debug)]
 struct WorkspaceEntry {
     /// Its `package.json`, which its subpaths are resolved from.
@@ -179,20 +182,25 @@ impl Resolver {
             ..ResolveOptions::default()
         };
 
-        let mut workspace = FxHashMap::default();
+        let mut packages = FxHashMap::default();
         for (name, dir) in workspace_packages {
-            workspace.entry(name).or_insert_with(|| {
+            packages.entry(name).or_insert(dir);
+        }
+        let workspace = packages
+            .iter()
+            .map(|(name, dir)| {
                 let manifest = dir.join("package.json");
                 let exports = read_json(&manifest)
                     .ok()
                     .and_then(|mut json| json.get_mut("exports").map(Value::take))
                     .filter(|exports| !exports.is_null());
-                WorkspaceEntry { manifest, exports }
-            });
-        }
+                (name.clone(), WorkspaceEntry { manifest, exports })
+            })
+            .collect();
+        let file_system = LinkedFileSystem::new(&root, packages);
 
         let without_tsconfig = ResolveOptions { tsconfig: None, ..options.clone() };
-        let inner = oxc_resolver::Resolver::new(options);
+        let inner = ResolverGeneric::new_with_file_system(file_system, options);
         Ok(Self {
             without_tsconfig: inner.clone_with_options(without_tsconfig),
             inner,
@@ -556,6 +564,98 @@ mod tests {
             );
         }
         assert!(is_unresolved(&resolve("./missing")));
+    }
+
+    #[test]
+    fn tsconfigs_extend_workspace_packages_without_node_modules() {
+        let project = Project::new(&[
+            ("packages/tsconfig/package.json", r#"{ "name": "@acme/tsconfig" }"#),
+            ("packages/tsconfig/base.json", "{}"),
+            ("packages/config/package.json", r#"{ "name": "tsconfig" }"#),
+            ("packages/config/base.json", "{}"),
+            (
+                "web/tsconfig.json",
+                r#"{ "extends": "@acme/tsconfig/base.json", "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }"#,
+            ),
+            ("web/src/main.ts", ""),
+            ("web/src/util.ts", ""),
+            (
+                "admin/tsconfig.json",
+                r#"{ "extends": "tsconfig/base.json", "compilerOptions": { "paths": { "@/*": ["./app/*"] } } }"#,
+            ),
+            ("admin/app/main.ts", ""),
+            ("admin/app/util.ts", ""),
+        ]);
+        let resolver = Resolver::new(project.with_packages(&[
+            ("@acme/tsconfig", "packages/tsconfig"),
+            ("tsconfig", "packages/config"),
+        ]))
+        .unwrap();
+
+        assert_eq!(
+            resolver.resolve(&project.path("web/src/main.ts"), "@/util"),
+            internal("web/src/util.ts")
+        );
+        assert_eq!(
+            resolver.resolve(&project.path("admin/app/main.ts"), "@/util"),
+            internal("admin/app/util.ts")
+        );
+    }
+
+    #[test]
+    fn workspace_packages_win_over_a_parent_node_modules() {
+        // The project is a git worktree inside the main checkout, which has
+        // its own copy of each package installed.
+        let project = Project::nested(
+            "main/.worktrees/wt",
+            &[
+                ("main/.worktrees/wt/packages/a/src/index.ts", ""),
+                (
+                    "main/.worktrees/wt/packages/b/package.json",
+                    r#"{ "name": "@acme/b", "exports": "./src/index.ts" }"#,
+                ),
+                ("main/.worktrees/wt/packages/b/src/index.ts", ""),
+                (
+                    "main/node_modules/@acme/b/package.json",
+                    r#"{ "name": "@acme/b", "main": "index.js" }"#,
+                ),
+                ("main/node_modules/@acme/b/index.js", ""),
+                (
+                    "main/node_modules/chart-kit/package.json",
+                    r#"{ "name": "chart-kit", "main": "index.js" }"#,
+                ),
+                ("main/node_modules/chart-kit/index.js", ""),
+            ],
+        );
+        let resolver = Resolver::new(project.with_packages(&[("@acme/b", "packages/b")])).unwrap();
+        let from = project.path("packages/a/src/index.ts");
+
+        assert_eq!(resolver.resolve(&from, "@acme/b"), internal("packages/b/src/index.ts"));
+        // Other packages still resolve where they are installed.
+        assert_eq!(resolver.resolve(&from, "chart-kit"), external("chart-kit", true));
+    }
+
+    #[test]
+    fn installed_packages_win_over_workspace_packages() {
+        let project = Project::new(&[
+            ("web/main.ts", ""),
+            ("packages/ui/package.json", r#"{ "name": "@acme/ui", "exports": "./src/index.ts" }"#),
+            ("packages/ui/src/index.ts", ""),
+            (
+                "packages/api/package.json",
+                r#"{ "name": "@acme/api", "exports": "./src/index.ts" }"#,
+            ),
+            ("packages/api/src/index.ts", ""),
+            ("node_modules/@acme/ui/package.json", r#"{ "name": "@acme/ui", "main": "index.js" }"#),
+            ("node_modules/@acme/ui/index.js", ""),
+        ]);
+        let settings =
+            project.with_packages(&[("@acme/ui", "packages/ui"), ("@acme/api", "packages/api")]);
+        let resolver = Resolver::new(settings).unwrap();
+        let from = project.path("web/main.ts");
+
+        assert_eq!(resolver.resolve(&from, "@acme/ui"), external("@acme/ui", true));
+        assert_eq!(resolver.resolve(&from, "@acme/api"), internal("packages/api/src/index.ts"));
     }
 
     #[test]

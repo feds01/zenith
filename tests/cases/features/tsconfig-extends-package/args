@@ -1,4 +1,5 @@
 # The app's tsconfig.json extends one from the `tsconfig` workspace package,
-# which can't be loaded without node_modules, so its `@/` alias is lost.
+# which loads without node_modules. Legacy's extends one from a package that
+# isn't installed, so its `@/` alias is lost.
 check
 check --show-unresolved

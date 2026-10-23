@@ -1,7 +1,7 @@
 //! The kinds of address that a module source is written as, and the name of
 //! the module that each remote one refers to.
 
-use zenith_utils::path::is_local_path;
+use zenith_utils::{glob::NamePattern, path::is_local_path};
 
 use crate::parse::Dialect;
 
@@ -10,55 +10,77 @@ use crate::parse::Dialect;
 const PUBLIC_REGISTRIES: &[&str] = &["registry.terraform.io", "registry.opentofu.org"];
 
 /// The hosts of the repositories that Terraform reads without a scheme.
-const PUBLIC_REPOSITORY_HOSTS: &[&str] = &["github.com", "bitbucket.org"];
+const PUBLIC_REPOSITORIES: &[&str] = &["github.com", "bitbucket.org"];
 
-/// The hosts that module sources may name, beyond what their addresses say.
+/// The hosts of the buckets that Terraform reads without a scheme: S3's in
+/// every region, and GCS's.
+const PUBLIC_BUCKETS: &[&str] = &["*.amazonaws.com", "www.googleapis.com"];
+
+/// The hosts that module sources may name without saying what they are, as
+/// name patterns over hosts in lowercase.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hosts {
     /// The hosts that serve the public registry's modules, such as a mirror,
     /// whose modules are named without them.
-    registries: Vec<String>,
+    registries: Vec<NamePattern>,
 
     /// The hosts of the repositories that may be written without a scheme, as
     /// `github.com/acme/modules`, where the repository is the first two
     /// segments of the path and the rest a subdirectory of it.
-    repositories: Vec<String>,
+    repositories: Vec<NamePattern>,
+
+    /// The hosts of the buckets that may be written without a scheme, as
+    /// `acme.s3.amazonaws.com/vpc.zip`, where the path names the module.
+    buckets: Vec<NamePattern>,
 }
 
 impl Hosts {
-    /// The public hosts, with `registries`, more hosts that serve the public
-    /// registry's modules, and `repositories`, more hosts of repositories that
-    /// may be written without a scheme, such as a GitHub Enterprise server.
-    pub fn new<'a>(
-        registries: impl IntoIterator<Item = &'a str>,
-        repositories: impl IntoIterator<Item = &'a str>,
+    /// The public hosts, with more `registries`, `repositories` and `buckets`,
+    /// such as a mirror of the public registry or a GitHub Enterprise server.
+    pub fn new(
+        registries: Vec<NamePattern>,
+        repositories: Vec<NamePattern>,
+        buckets: Vec<NamePattern>,
     ) -> Self {
-        fn hosts<'a>(public: &[&'a str], more: impl IntoIterator<Item = &'a str>) -> Vec<String> {
-            public.iter().copied().chain(more).map(str::to_owned).collect()
-        }
+        let hosts = |public: &[&str], more: Vec<NamePattern>| {
+            let public = public.iter().map(|host| NamePattern::new(host).expect("a valid pattern"));
+            public.chain(more).collect()
+        };
         Self {
             registries: hosts(PUBLIC_REGISTRIES, registries),
-            repositories: hosts(PUBLIC_REPOSITORY_HOSTS, repositories),
+            repositories: hosts(PUBLIC_REPOSITORIES, repositories),
+            buckets: hosts(PUBLIC_BUCKETS, buckets),
         }
     }
 
     /// Whether `host` serves the public registry's modules.
     fn is_registry(&self, host: &str) -> bool {
-        self.registries.iter().any(|registry| registry.eq_ignore_ascii_case(host))
+        matches_host(&self.registries, host)
     }
 
     /// Whether `host` holds repositories that may be written without a
     /// scheme.
     fn is_repository(&self, host: &str) -> bool {
-        self.repositories.iter().any(|repository| repository.eq_ignore_ascii_case(host))
+        matches_host(&self.repositories, host)
+    }
+
+    /// Whether `host` holds buckets that may be written without a scheme.
+    fn is_bucket(&self, host: &str) -> bool {
+        matches_host(&self.buckets, host)
     }
 }
 
 impl Default for Hosts {
     /// The public hosts alone.
     fn default() -> Self {
-        Self::new([], [])
+        Self::new(Vec::new(), Vec::new(), Vec::new())
     }
+}
+
+/// Whether one of `patterns` matches `host`, in lowercase.
+fn matches_host(patterns: &[NamePattern], host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    patterns.iter().any(|pattern| pattern.is_match(&host))
 }
 
 /// A module source, by the kind of address it is.
@@ -259,9 +281,9 @@ impl<'a> RemoteAddress<'a> {
     }
 
     /// The name of the module: its host, in lowercase, and its path, without
-    /// a `.git` suffix. Without a scheme, only a repository on one of `hosts`
-    /// and a bucket are remote, and the repository is the first two segments
-    /// of the path, the rest being a subdirectory of it.
+    /// a `.git` suffix. Without a scheme, only a repository or a bucket on one
+    /// of `hosts` is remote, and the repository is the first two segments of
+    /// the path, the rest being a subdirectory of it.
     fn name(&self, hosts: &Hosts) -> Option<String> {
         let path = match self.explicit {
             true => self.path,
@@ -269,7 +291,7 @@ impl<'a> RemoteAddress<'a> {
                 Some((end, _)) => &self.path[..end],
                 None => self.path,
             },
-            false if is_bucket(self.host) => self.path,
+            false if hosts.is_bucket(self.host) => self.path,
             false => return None,
         };
         let host = self.host.to_ascii_lowercase();
@@ -278,13 +300,6 @@ impl<'a> RemoteAddress<'a> {
             path => format!("{host}/{path}"),
         })
     }
-}
-
-/// Whether `host` serves the buckets of S3 or GCS, which Terraform reads
-/// without a scheme.
-fn is_bucket(host: &str) -> bool {
-    let host = host.to_ascii_lowercase();
-    host.ends_with(".amazonaws.com") || host == "www.googleapis.com"
 }
 
 /// Whether `name` could be a getter or a URL scheme: lowercase letters and
@@ -316,6 +331,11 @@ mod tests {
     /// `source`, as a Terragrunt file writes it.
     fn terragrunt(source: &str) -> Option<Address<'_>> {
         Address::parse(source, Dialect::Terragrunt, &Hosts::default())
+    }
+
+    /// The name patterns `raw`.
+    fn patterns(raw: &[&str]) -> Vec<NamePattern> {
+        raw.iter().map(|pattern| NamePattern::new(pattern).unwrap()).collect()
     }
 
     fn registry(name: &str) -> Option<Address<'static>> {
@@ -440,7 +460,8 @@ mod tests {
 
     #[test]
     fn more_hosts_may_serve_registry_modules_and_repositories() {
-        let hosts = Hosts::new(["Mirror.Acme.com"], ["github.acme.com"]);
+        let hosts =
+            Hosts::new(patterns(&["mirror.acme.com"]), patterns(&["github.acme.com"]), vec![]);
         let parse = |source| Address::parse(source, Dialect::Terraform, &hosts);
         // A mirror of the public registry names its modules as the public one does.
         assert_eq!(parse("mirror.acme.com/hashicorp/consul/aws"), registry("hashicorp/consul/aws"));
@@ -467,6 +488,27 @@ mod tests {
             terraform("github.acme.com/platform/modules/vpc"),
             registry("github.acme.com/platform/modules/vpc")
         );
+    }
+
+    #[test]
+    fn hosts_are_patterns_and_buckets_are_hosts_too() {
+        let hosts =
+            Hosts::new(vec![], patterns(&["*.ghe.acme.com"]), patterns(&["minio.acme.com"]));
+        let parse = |source| Address::parse(source, Dialect::Terraform, &hosts);
+        assert_eq!(
+            parse("Code.GHE.acme.com/platform/modules//vpc"),
+            remote("code.ghe.acme.com/platform/modules")
+        );
+        assert_eq!(
+            parse("minio.acme.com/modules/vpc.zip"),
+            remote("minio.acme.com/modules/vpc.zip")
+        );
+        // S3 in any region, and GCS, are buckets of their own.
+        assert_eq!(
+            parse("acme.s3-eu-west-1.amazonaws.com/vpc.zip"),
+            remote("acme.s3-eu-west-1.amazonaws.com/vpc.zip")
+        );
+        assert_eq!(terraform("minio.acme.com/modules/vpc.zip"), None);
     }
 
     #[test]

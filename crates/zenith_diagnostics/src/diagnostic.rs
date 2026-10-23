@@ -2,7 +2,10 @@
 //! derived, with its attributes naming the messages of the catalogue that
 //! make the report, and the fields of the type giving their variables.
 
-use crate::report::{Report, ReportKind};
+use crate::{
+    report::{Report, ReportKind},
+    source::SourceId,
+};
 
 /// A part of a report: excerpts and notes, which a type adds to a report
 /// that it doesn't make, such as a field marked `#[subdiagnostic]` of a
@@ -22,9 +25,17 @@ pub trait Diagnostic: Subdiagnostic {
     /// What is wrong, in a line.
     fn title(&self) -> String;
 
-    /// The report of `kind`.
+    /// The report of `kind`, whose source is not known, so that excerpts of
+    /// byte ranges are left out of it.
     fn report(&self, kind: ReportKind) -> Report {
+        self.report_in(kind, None)
+    }
+
+    /// The report of `kind`, whose excerpts of byte ranges are in `source`,
+    /// or are left out when it is `None`.
+    fn report_in(&self, kind: ReportKind, source: Option<SourceId>) -> Report {
         let mut report = Report::new(kind, self.title());
+        report.source = source;
         self.add_to(&mut report);
         report
     }

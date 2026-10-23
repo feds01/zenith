@@ -1,7 +1,9 @@
 //! Reports: what is shown to the user about an error or a warning,
 //! independently of how it is rendered.
 
-use crate::source::Span;
+use zenith_utils::location::ByteRange;
+
+use crate::source::{SourceId, Span};
 
 /// How severe a [`Report`] is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -70,12 +72,36 @@ pub struct Report {
 
     /// The excerpts and notes, in the order that they are shown.
     pub contents: Vec<ReportElement>,
+
+    /// The source that the byte ranges added to the report are in, if it is
+    /// known.
+    pub source: Option<SourceId>,
+}
+
+/// What an excerpt of a [`Report`] marks: a [`Span`], or a [`ByteRange`] of
+/// the report's source.
+pub trait ReportSpan {
+    /// The span that it is in a report whose source is `source`. A range has
+    /// none when the source is not known.
+    fn span_in(self, source: Option<SourceId>) -> Option<Span>;
+}
+
+impl ReportSpan for Span {
+    fn span_in(self, _: Option<SourceId>) -> Option<Span> {
+        Some(self)
+    }
+}
+
+impl ReportSpan for ByteRange {
+    fn span_in(self, source: Option<SourceId>) -> Option<Span> {
+        source.map(|source| Span::new(source, self))
+    }
 }
 
 impl Report {
     /// A report with a title, and no excerpts or notes yet.
     pub fn new(kind: ReportKind, title: impl Into<String>) -> Self {
-        Self { kind, title: title.into(), id: None, contents: Vec::new() }
+        Self { kind, title: title.into(), id: None, contents: Vec::new(), source: None }
     }
 
     /// An error report.
@@ -99,17 +125,30 @@ impl Report {
         self.kind == ReportKind::Error
     }
 
-    /// Add an excerpt that marks `span` without a label.
-    pub fn add_span(&mut self, span: Span) -> &mut Self {
-        self.add_element(ReportElement::CodeBlock(ReportCodeBlock { span, label: None }))
+    /// Add an excerpt that marks `span` without a label. A byte range is in
+    /// the report's source, and is left out when that is not known.
+    pub fn add_span(&mut self, span: impl ReportSpan) -> &mut Self {
+        self.add_code_block(span, None)
     }
 
-    /// Add an excerpt that labels `span`.
-    pub fn add_labelled_span(&mut self, span: Span, label: impl Into<String>) -> &mut Self {
-        self.add_element(ReportElement::CodeBlock(ReportCodeBlock {
-            span,
-            label: Some(label.into()),
-        }))
+    /// Add an excerpt that labels `span`, as [`add_span`](Self::add_span)
+    /// does.
+    pub fn add_labelled_span(
+        &mut self,
+        span: impl ReportSpan,
+        label: impl Into<String>,
+    ) -> &mut Self {
+        self.add_code_block(span, Some(label.into()))
+    }
+
+    /// Add an excerpt that marks `span`, with a label if any.
+    fn add_code_block(&mut self, span: impl ReportSpan, label: Option<String>) -> &mut Self {
+        match span.span_in(self.source) {
+            Some(span) => {
+                self.add_element(ReportElement::CodeBlock(ReportCodeBlock { span, label }))
+            }
+            None => self,
+        }
     }
 
     /// Add a note on how to fix the problem.
@@ -136,8 +175,6 @@ impl Report {
 
 #[cfg(test)]
 mod tests {
-    use zenith_utils::location::ByteRange;
-
     use super::*;
     use crate::source::SourceMap;
 
@@ -164,5 +201,23 @@ mod tests {
             ]
         );
         assert!(!Report::warning("unused entry").is_error());
+    }
+
+    #[test]
+    fn marks_ranges_in_its_source_when_it_is_known() {
+        let mut sources = SourceMap::new();
+        let source = sources.add("zenith.toml", "[files]\n");
+        let range = ByteRange::new(1, 6);
+
+        let mut report = Report::error("unknown table");
+        report.add_span(range);
+        assert_eq!(report.contents, []);
+        report.source = Some(source);
+        report.add_labelled_span(range, "here");
+        let span = Span::new(source, range);
+        assert_eq!(
+            report.contents,
+            [ReportElement::CodeBlock(ReportCodeBlock { span, label: Some("here".into()) })]
+        );
     }
 }

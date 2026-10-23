@@ -55,6 +55,27 @@ struct Disallowed<T: std::fmt::Display> {
     span: Span,
 }
 
+/// A struct that labels a byte range of the source that it is reported in.
+#[derive(Diagnostic)]
+#[diag(test_disallowed)]
+struct DisallowedHere {
+    value: String,
+    #[label]
+    range: Option<ByteRange>,
+}
+
+/// A struct whose title, and the notes under it, come from a field, after
+/// those of the fields before it.
+#[derive(Diagnostic)]
+struct Located {
+    #[primary_span]
+    range: ByteRange,
+    #[subdiagnostic]
+    position: Position,
+    #[diag]
+    error: ReadError,
+}
+
 /// A part of a report, implemented by hand.
 struct Position(usize);
 
@@ -181,4 +202,54 @@ fn formats_a_message_with_its_variables() {
     let rename = "c";
     assert_eq!(message!(test_duplicate.help, rename), "rename it to `c`");
     assert_eq!(message!(test_empty), "the file is empty");
+}
+
+#[test]
+fn marks_byte_ranges_in_the_source_of_the_report() {
+    let (sources, source) = source();
+    let disallowed = DisallowedHere { value: "a".into(), range: Some(ByteRange::new(4, 5)) };
+    let expected = [
+        "error: `a` is not allowed",
+        " --> a.txt:1:5",
+        "  |",
+        "1 | let a = 1;",
+        "  |     ^ not allowed here",
+    ];
+    let report = disallowed.report_in(ReportKind::Error, Some(source));
+    assert_eq!(render(&sources, report), expected.join("\n"));
+
+    // Without a source, or a range, there is no excerpt.
+    let expected = "error: `a` is not allowed";
+    assert_eq!(render(&sources, disallowed.report(ReportKind::Error)), expected);
+    let disallowed = DisallowedHere { value: "a".into(), range: None };
+    let report = disallowed.report_in(ReportKind::Error, Some(source));
+    assert_eq!(render(&sources, report), expected);
+}
+
+#[test]
+fn takes_the_title_from_the_field_that_gives_it() {
+    let (sources, source) = source();
+    let located = Located {
+        range: ByteRange::new(4, 5),
+        position: Position(4),
+        error: ReadError::Mismatch {
+            expected: '"',
+            found: '\'',
+            position: Position(3),
+            hint: None,
+        },
+    };
+    let expected = [
+        "error: expected \", found '",
+        " --> a.txt:1:5",
+        "  |",
+        "1 | let a = 1;",
+        "  |     ^",
+        "  |",
+        "  = note: at byte 4",
+        "  = help: quote it",
+        "  = note: at byte 3",
+    ];
+    let report = located.report_in(ReportKind::Error, Some(source));
+    assert_eq!(render(&sources, report), expected.join("\n"));
 }

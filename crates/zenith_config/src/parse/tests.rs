@@ -12,7 +12,7 @@ use zenith_utils::{
 use crate::{
     config::{Config, StaleLevel},
     contracts::{AlertLevel, CONTRACT_TYPES, ContractKind, Reexports, Severity},
-    error::{ConfigError, ConfigErrorKind, LoadError, SelectorError},
+    error::{ConfigError, ConfigErrorKind, InContract, LoadError, SelectorError},
     selector::{Selector, SelectorTarget},
     testing::{LANGUAGES, OTHER, TEST, TestOptions},
 };
@@ -950,7 +950,7 @@ fn errors_are_structured() {
                 selector: "/a".into(),
                 error: SelectorError::Pattern(GlobError::LeadingSlash),
             },
-            contract: Some("c".into()),
+            contract: Some(InContract("c".into())),
             range: Some(ByteRange::new(41, 45)),
         }]
     );

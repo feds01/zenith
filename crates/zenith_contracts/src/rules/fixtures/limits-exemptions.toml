@@ -1,0 +1,11 @@
+[contracts.l]
+type = "limits"
+modules = ["web/lib"]
+max_fan_in = 2
+exclude_kinds = ["type"]
+ignore_imports = ["web/ui -> web/lib"]
+
+[contracts.all]
+type = "limits"
+modules = ["web/lib"]
+max_fan_in = 2

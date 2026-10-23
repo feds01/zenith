@@ -1,0 +1,3 @@
+[contracts.l]
+type = "limits"
+modules = ["web/src/*"]

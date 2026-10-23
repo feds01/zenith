@@ -34,7 +34,8 @@ pub use config::{
 };
 pub use contracts::{
     AcyclicConfig, AlertLevel, ContractConfig, ContractKind, EncapsulationConfig, ForbiddenConfig,
-    IndependenceConfig, Layer, LayerMember, LayersConfig, ProtectedConfig, Reexports, Severity,
+    IndependenceConfig, Layer, LayerMember, LayersConfig, LimitsConfig, ProtectedConfig, Reexports,
+    Severity,
 };
 pub use error::{
     Alternatives, ConfigError, ConfigErrorKind, IgnoreImportError, InContract, LayerError,

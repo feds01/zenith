@@ -7,6 +7,7 @@ mod encapsulation;
 mod forbidden;
 mod independence;
 mod layers;
+mod limits;
 mod protected;
 
 pub use acyclic::AcyclicConfig;
@@ -14,6 +15,7 @@ pub use encapsulation::EncapsulationConfig;
 pub use forbidden::ForbiddenConfig;
 pub use independence::IndependenceConfig;
 pub use layers::{Layer, LayerMember, LayersConfig};
+pub use limits::LimitsConfig;
 pub use protected::ProtectedConfig;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -23,8 +25,8 @@ use zenith_utils::location::ByteRange;
 use crate::selector::{IgnoreImport, Selector};
 
 /// The contract types, as written in `type`.
-pub(crate) const CONTRACT_TYPES: [&str; 6] =
-    ["forbidden", "independence", "layers", "protected", "acyclic", "encapsulation"];
+pub(crate) const CONTRACT_TYPES: [&str; 7] =
+    ["forbidden", "independence", "layers", "protected", "acyclic", "encapsulation", "limits"];
 
 /// A contract, with the options that every contract type shares.
 #[derive(Debug, Clone)]
@@ -85,6 +87,9 @@ pub enum ContractKind {
 
     /// The modules may only be imported through their entry points.
     Encapsulation(EncapsulationConfig),
+
+    /// Each module may only be imported by, and import, so many others.
+    Limits(LimitsConfig),
 }
 
 impl ContractKind {
@@ -97,6 +102,7 @@ impl ContractKind {
             Self::Protected(_) => "protected",
             Self::Acyclic(_) => "acyclic",
             Self::Encapsulation(_) => "encapsulation",
+            Self::Limits(_) => "limits",
         }
     }
 
@@ -107,7 +113,7 @@ impl ContractKind {
             Self::Forbidden(ForbiddenConfig { boundaries, .. })
             | Self::Independence(IndependenceConfig { boundaries, .. })
             | Self::Layers(LayersConfig { boundaries, .. }) => boundaries,
-            Self::Protected(_) | Self::Acyclic(_) | Self::Encapsulation(_) => &[],
+            Self::Protected(_) | Self::Acyclic(_) | Self::Encapsulation(_) | Self::Limits(_) => &[],
         }
     }
 }

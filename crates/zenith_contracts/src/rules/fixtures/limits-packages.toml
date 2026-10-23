@@ -1,0 +1,5 @@
+[contracts.l]
+type = "limits"
+modules = ["cmd", "internal/db"]
+max_fan_in = 2
+max_fan_out = 1

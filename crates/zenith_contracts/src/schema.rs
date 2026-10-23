@@ -206,10 +206,22 @@ enum ViolationJson<'a> {
     /// The child `module` of `container` is not declared as a layer, which
     /// `fix` fixes.
     UndeclaredModule { container: &'a str, module: &'a str, fix: FixJson<'a> },
+
+    /// The unit `module` counts `count` distinct nodes outside it, more than
+    /// the `max` of its `limit`, `fan_in` or `fan_out`, through `imports`,
+    /// which `fix` fixes.
+    LimitExceeded {
+        module: &'a str,
+        limit: &'static str,
+        count: usize,
+        max: usize,
+        imports: Vec<LinkJson<'a>>,
+        fix: FixJson<'a>,
+    },
 }
 
-/// How to fix a finding: a chain, an illegal import, a cycle breaker or an
-/// undeclared module.
+/// How to fix a finding: a chain, an illegal import, a cycle breaker, an
+/// undeclared module or a unit over a limit.
 #[derive(Debug, Serialize)]
 struct FixJson<'a> {
     /// What to do.
@@ -462,12 +474,22 @@ fn violation_json<'r>(
                 })
                 .collect(),
         },
-        // An undeclared module is the violation's one finding.
+        // An undeclared module and a unit over a limit are each their violation's one finding.
         Violation::UndeclaredModule { container, module } => ViolationJson::UndeclaredModule {
             container,
             module: graph.name(*module),
             fix: fixes.into_iter().next().expect("an undeclared module has a fix"),
         },
+        Violation::LimitExceeded { module, limit, count, max, imports } => {
+            ViolationJson::LimitExceeded {
+                module,
+                limit: limit.name(),
+                count: *count,
+                max: *max,
+                imports: links(imports),
+                fix: fixes.into_iter().next().expect("a unit over a limit has a fix"),
+            }
+        }
     }
 }
 

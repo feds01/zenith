@@ -1,0 +1,5 @@
+[contracts.l]
+type = "limits"
+modules = ["web/*"]
+max_fan_in = 2
+max_fan_out = 2

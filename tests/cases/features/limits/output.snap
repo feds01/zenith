@@ -1,0 +1,518 @@
+$ zenith check
+exit: 1
+--- stdout
+error[small-surface]: `src/app` imports 3 modules, over its limit of 2
+ --> src/app/main.ts:3:24
+  |
+3 | import { format } from "../lib/format";
+  |                        ^^^^^^^^^^^^^^^ imports `src/lib/format.ts`
+  |
+ ::: src/app/main.ts:2:21
+  |
+2 | import { log } from "../lib/log";
+  |                     ^^^^^^^^^^^^ imports `src/lib/log.ts`
+  |
+ ::: src/app/page.ts:2:21
+  |
+2 | import { log } from "../lib/log";
+  |                     ^^^^^^^^^^^^ imports `src/lib/log.ts`
+  |
+ ::: src/app/main.ts:4:24
+  |
+4 | import { Button } from "../ui/button";
+  |                        ^^^^^^^^^^^^^^ imports `src/ui/button.ts`
+  |
+  = help: split the module, or remove some of the imports above so that it imports fewer modules
+
+error[small-surface]: `src/lib` is imported by 3 files, over its limit of 2
+ --> src/app/main.ts:3:24
+  |
+3 | import { format } from "../lib/format";
+  |                        ^^^^^^^^^^^^^^^ imports `src/lib/format.ts`
+  |
+ ::: src/app/main.ts:2:21
+  |
+2 | import { log } from "../lib/log";
+  |                     ^^^^^^^^^^^^ imports `src/lib/log.ts`
+  |
+ ::: src/app/page.ts:2:21
+  |
+2 | import { log } from "../lib/log";
+  |                     ^^^^^^^^^^^^ imports `src/lib/log.ts`
+  |
+ ::: src/ui/button.ts:1:21
+  |
+1 | import { log } from "../lib/log";
+  |                     ^^^^^^^^^^^^ imports `src/lib/log.ts`
+  |
+  = help: split the module, or remove some of the imports above so that fewer files import it
+
+Contracts
+  ✗ small-surface  limits  broken (2 violations)
+
+0 kept, 1 broken · 5 files, 8 imports
+
+$ zenith check --format compact
+exit: 1
+--- stdout
+error[small-surface]: `src/app` imports 3 modules, over its limit of 2; split the module, or have it import fewer modules
+error[small-surface]: `src/lib` is imported by 3 files, over its limit of 2; split the module, or have fewer files import it
+0 kept, 1 broken · 5 files, 8 imports
+
+$ zenith check --format github
+exit: 1
+--- stdout
+::error title=zenith(small-surface)::`src/app` imports 3 modules, over its limit of 2; split the module, or have it import fewer modules
+::error title=zenith(small-surface)::`src/lib` is imported by 3 files, over its limit of 2; split the module, or have fewer files import it
+0 kept, 1 broken · 5 files, 8 imports
+
+$ zenith check --format json
+exit: 1
+--- stdout
+{
+  "version": 1,
+  "passed": false,
+  "summary": {
+    "kept": 0,
+    "broken": 1,
+    "warnings": 0,
+    "stale_baseline_entries": 0,
+    "files": 5,
+    "imports": 8
+  },
+  "contracts": [
+    {
+      "id": "small-surface",
+      "name": "small-surface",
+      "type": "limits",
+      "severity": "error",
+      "status": "broken",
+      "guidance": null,
+      "violations": [
+        {
+          "kind": "limit_exceeded",
+          "module": "src/app",
+          "limit": "fan_out",
+          "count": 3,
+          "max": 2,
+          "imports": [
+            {
+              "importer": "src/app/main.ts",
+              "imported": "src/lib/format.ts",
+              "imports": [
+                {
+                  "line": 3,
+                  "column": 24,
+                  "specifier": "../lib/format",
+                  "kind": "value"
+                }
+              ]
+            },
+            {
+              "importer": "src/app/main.ts",
+              "imported": "src/lib/log.ts",
+              "imports": [
+                {
+                  "line": 2,
+                  "column": 21,
+                  "specifier": "../lib/log",
+                  "kind": "value"
+                }
+              ]
+            },
+            {
+              "importer": "src/app/page.ts",
+              "imported": "src/lib/log.ts",
+              "imports": [
+                {
+                  "line": 2,
+                  "column": 21,
+                  "specifier": "../lib/log",
+                  "kind": "value"
+                }
+              ]
+            },
+            {
+              "importer": "src/app/main.ts",
+              "imported": "src/ui/button.ts",
+              "imports": [
+                {
+                  "line": 4,
+                  "column": 24,
+                  "specifier": "../ui/button",
+                  "kind": "value"
+                }
+              ]
+            }
+          ],
+          "fix": {
+            "action": "split_module",
+            "import": null,
+            "hint": "split the module, or have it import fewer modules"
+          }
+        },
+        {
+          "kind": "limit_exceeded",
+          "module": "src/lib",
+          "limit": "fan_in",
+          "count": 3,
+          "max": 2,
+          "imports": [
+            {
+              "importer": "src/app/main.ts",
+              "imported": "src/lib/format.ts",
+              "imports": [
+                {
+                  "line": 3,
+                  "column": 24,
+                  "specifier": "../lib/format",
+                  "kind": "value"
+                }
+              ]
+            },
+            {
+              "importer": "src/app/main.ts",
+              "imported": "src/lib/log.ts",
+              "imports": [
+                {
+                  "line": 2,
+                  "column": 21,
+                  "specifier": "../lib/log",
+                  "kind": "value"
+                }
+              ]
+            },
+            {
+              "importer": "src/app/page.ts",
+              "imported": "src/lib/log.ts",
+              "imports": [
+                {
+                  "line": 2,
+                  "column": 21,
+                  "specifier": "../lib/log",
+                  "kind": "value"
+                }
+              ]
+            },
+            {
+              "importer": "src/ui/button.ts",
+              "imported": "src/lib/log.ts",
+              "imports": [
+                {
+                  "line": 1,
+                  "column": 21,
+                  "specifier": "../lib/log",
+                  "kind": "value"
+                }
+              ]
+            }
+          ],
+          "fix": {
+            "action": "split_module",
+            "import": null,
+            "hint": "split the module, or have fewer files import it"
+          }
+        }
+      ],
+      "unmatched_ignore_imports": [],
+      "stale_baseline_entries": [],
+      "ignored": 0,
+      "suppressed": 0,
+      "baselined": 0
+    }
+  ],
+  "unused_suppressions": [],
+  "unresolved": [],
+  "file_errors": []
+}
+
+$ zenith check --format sarif
+exit: 1
+--- stdout
+{
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "zenith",
+          "version": "$VERSION",
+          "informationUri": "https://github.com/feds01/zenith",
+          "rules": [
+            {
+              "id": "small-surface",
+              "shortDescription": {
+                "text": "small-surface (limits contract)"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "limits"
+                ]
+              }
+            },
+            {
+              "id": "zenith/unused-suppression",
+              "shortDescription": {
+                "text": "`zenith-ignore` comments that have no effect"
+              },
+              "help": {
+                "text": "remove the comment, or name the contracts whose imports on its line it is for"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "suppression"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "invocations": [
+        {
+          "executionSuccessful": true,
+          "toolExecutionNotifications": []
+        }
+      ],
+      "results": [
+        {
+          "ruleId": "small-surface",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "`src/app` imports 3 modules, over its limit of 2"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "zenith.toml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 7,
+                  "startColumn": 12,
+                  "endLine": 7,
+                  "endColumn": 25
+                }
+              }
+            }
+          ],
+          "relatedLocations": [
+            {
+              "id": 2,
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/app/main.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 24,
+                  "endLine": 3,
+                  "endColumn": 39
+                }
+              },
+              "message": {
+                "text": "imports `src/lib/format.ts`"
+              }
+            },
+            {
+              "id": 3,
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/app/main.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 21,
+                  "endLine": 2,
+                  "endColumn": 33
+                }
+              },
+              "message": {
+                "text": "imports `src/lib/log.ts`"
+              }
+            },
+            {
+              "id": 4,
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/app/page.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 21,
+                  "endLine": 2,
+                  "endColumn": 33
+                }
+              },
+              "message": {
+                "text": "imports `src/lib/log.ts`"
+              }
+            },
+            {
+              "id": 5,
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/app/main.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 4,
+                  "startColumn": 24,
+                  "endLine": 4,
+                  "endColumn": 38
+                }
+              },
+              "message": {
+                "text": "imports `src/ui/button.ts`"
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "zenith/v1": "9647af1d750e18395952c6ea2180cfb0"
+          },
+          "properties": {
+            "fix": {
+              "action": "split_module",
+              "hint": "split the module, or have it import fewer modules"
+            }
+          }
+        },
+        {
+          "ruleId": "small-surface",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "`src/lib` is imported by 3 files, over its limit of 2"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "zenith.toml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 7,
+                  "startColumn": 12,
+                  "endLine": 7,
+                  "endColumn": 25
+                }
+              }
+            }
+          ],
+          "relatedLocations": [
+            {
+              "id": 2,
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/app/main.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 24,
+                  "endLine": 3,
+                  "endColumn": 39
+                }
+              },
+              "message": {
+                "text": "imports `src/lib/format.ts`"
+              }
+            },
+            {
+              "id": 3,
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/app/main.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 21,
+                  "endLine": 2,
+                  "endColumn": 33
+                }
+              },
+              "message": {
+                "text": "imports `src/lib/log.ts`"
+              }
+            },
+            {
+              "id": 4,
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/app/page.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 21,
+                  "endLine": 2,
+                  "endColumn": 33
+                }
+              },
+              "message": {
+                "text": "imports `src/lib/log.ts`"
+              }
+            },
+            {
+              "id": 5,
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/ui/button.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 21,
+                  "endLine": 1,
+                  "endColumn": 33
+                }
+              },
+              "message": {
+                "text": "imports `src/lib/log.ts`"
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "zenith/v1": "cc1a16e94b28ab49c5555b0b0e427464"
+          },
+          "properties": {
+            "fix": {
+              "action": "split_module",
+              "hint": "split the module, or have fewer files import it"
+            }
+          }
+        }
+      ],
+      "columnKind": "unicodeCodePoints"
+    }
+  ]
+}
+
+$ zenith baseline
+exit: 0
+--- stdout
+Wrote 2 baseline entries for 1 contract to `zenith.baseline.toml` (was 0).
+--- stderr
+warning: the baseline gained 2 entries; review them before committing
+
+$ zenith check
+exit: 0
+--- stdout
+Contracts
+  ✓ small-surface  limits  kept · 2 baselined
+
+1 kept, 0 broken · 5 files, 8 imports
+

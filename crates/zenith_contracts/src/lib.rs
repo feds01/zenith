@@ -40,7 +40,7 @@ mod view;
 pub use baseline::{BASELINE_VERSION, Baseline, BaselineError};
 pub use contract::{Contract, ContractReport, Exemptions};
 pub use error::{ContractError, ContractErrorKind};
-pub use findings::{Chain, CycleBreaker, CycleScope, Fix, FixAction, Link, Violation};
+pub use findings::{Chain, CycleBreaker, CycleScope, Fix, FixAction, Limit, Link, Violation};
 pub use schema::{CheckJson, JSON_VERSION};
 pub use selection::{Selection, UnmatchedSelector};
 pub use suppressions::{UnusedReason, UnusedSuppression};

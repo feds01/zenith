@@ -193,17 +193,37 @@ pub enum Violation {
         /// The child that no layer declares.
         module: ModuleId,
     },
+
+    /// The unit `module` has more importers, or imports more nodes, than a
+    /// `limits` contract allows.
+    LimitExceeded {
+        /// The label of the unit.
+        module: String,
+
+        /// The limit that it is over.
+        limit: Limit,
+
+        /// The number of distinct nodes outside the unit that the limit counts.
+        count: usize,
+
+        /// The most that the limit allows, which `count` is over.
+        max: usize,
+
+        /// The imports that make up the count, in the order of the node that
+        /// they count, then of their other node. There is at least one.
+        imports: Vec<Link>,
+    },
 }
 
 impl Violation {
     /// The number of findings in the violation: its chains, its imports, its
-    /// cycle breakers, or the one undeclared module.
+    /// cycle breakers, or the one undeclared module or unit over its limit.
     pub fn finding_count(&self) -> usize {
         match self {
             Self::Dependency { chains, .. } => chains.len(),
             Self::IllegalImports { imports, .. } => imports.len(),
             Self::Cycle { breakers, .. } => breakers.len(),
-            Self::UndeclaredModule { .. } => 1,
+            Self::UndeclaredModule { .. } | Self::LimitExceeded { .. } => 1,
         }
     }
 
@@ -214,7 +234,9 @@ impl Violation {
     ///   or tail;
     /// - the illegal imports from or into it;
     /// - the cycle breakers with an import from or into it;
-    /// - an undeclared module in it, or with a node of it inside.
+    /// - an undeclared module in it, or with a node of it inside;
+    /// - a unit over its limit, with every import that makes up the count, if
+    ///   one of them is from or into it.
     pub(crate) fn narrow(&mut self, graph: &Graph, scope: &Scope) -> bool {
         let touches = |link: &Link| link.touches(graph, scope);
         match self {
@@ -238,12 +260,14 @@ impl Violation {
                 !breakers.is_empty()
             }
             Self::UndeclaredModule { module, .. } => scope.overlaps(graph.name(*module)),
+            Self::LimitExceeded { imports, .. } => imports.iter().any(touches),
         }
     }
 
     /// The direct imports that a baseline records to leave the violation
     /// out: the first links of its chains, made by the importing unit's own
-    /// code, the illegal imports, or the imports of the cycle breakers. An
+    /// code, the illegal imports, the imports of the cycle breakers, or the
+    /// imports of the counted nodes over the limit, the last ones. An
     /// undeclared module has none, as it is not about imports.
     pub(crate) fn baseline_links(&self) -> Vec<&Link> {
         match self {
@@ -256,24 +280,31 @@ impl Violation {
                 breakers.iter().flat_map(|breaker| &breaker.imports).collect()
             }
             Self::UndeclaredModule { .. } => Vec::new(),
+            Self::LimitExceeded { limit, max, imports, .. } => {
+                limit.groups(imports).skip(*max).flatten().collect()
+            }
         }
     }
 
     /// How to fix each finding of the violation, which a contract of type
     /// `kind` found, in order: a chain at its first import, which the
     /// importing unit's own code makes; an illegal import at it; a cycle
-    /// breaker at its first import; and an undeclared module at no import.
+    /// breaker at its first import; and an undeclared module and a unit over
+    /// a limit at no import.
     pub fn fixes(&self, kind: &ContractKind) -> Vec<Fix<'_>> {
         let action = match self {
             Self::Dependency { .. } | Self::IllegalImports { .. } => match kind {
                 ContractKind::Forbidden(_) | ContractKind::Protected(_) => FixAction::RemoveImport,
                 ContractKind::Independence(_) | ContractKind::Layers(_) => FixAction::MoveModule,
                 ContractKind::Encapsulation(_) => FixAction::ImportThroughEntryPoint,
-                // An `acyclic` contract finds cycles only.
+                // An `acyclic` contract finds cycles only, and a `limits` contract
+                // units over a limit.
                 ContractKind::Acyclic(_) => FixAction::BreakCycle,
+                ContractKind::Limits(_) => FixAction::SplitModule,
             },
             Self::Cycle { .. } => FixAction::BreakCycle,
             Self::UndeclaredModule { .. } => FixAction::DeclareLayer,
+            Self::LimitExceeded { .. } => FixAction::SplitModule,
         };
         let fix = |link, hint| Fix { action, link, hint };
         match self {
@@ -309,6 +340,7 @@ impl Violation {
                 })
                 .collect(),
             Self::UndeclaredModule { .. } => vec![fix(None, message!(contracts_fix_declare_layer))],
+            Self::LimitExceeded { limit, .. } => vec![fix(None, limit.hint())],
         }
     }
 
@@ -319,6 +351,7 @@ impl Violation {
         let mut fixes = self.fixes(kind);
         match self {
             Self::UndeclaredModule { .. } => message!(contracts_undeclared_module.help),
+            Self::LimitExceeded { limit, .. } => limit.hint_all(),
             _ if fixes.len() == 1 => fixes.remove(0).hint,
             Self::Dependency { chains, .. } => match fixes[0].action {
                 FixAction::MoveModule => message!(contracts_fix_move_module.all),
@@ -332,6 +365,70 @@ impl Violation {
                 _ => message!(contracts_fix_remove_import.all),
             },
             Self::Cycle { .. } => message!(contracts_fix_break_cycle.all),
+        }
+    }
+}
+
+/// A limit of a `limits` contract: what it counts of a unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Limit {
+    /// The files outside the unit that import it.
+    FanIn,
+
+    /// The files and packages of the project outside the unit that it
+    /// imports.
+    FanOut,
+}
+
+impl Limit {
+    /// The node of `link`, an import into or from a unit, that the limit
+    /// counts: its importer for fan-in, and the node it imports for fan-out.
+    pub(crate) fn counted(self, link: &Link) -> ModuleId {
+        match self {
+            Self::FanIn => link.importer,
+            Self::FanOut => link.imported,
+        }
+    }
+
+    /// The name of the limit, as JSON and SARIF show it: `fan_in` or
+    /// `fan_out`.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::FanIn => "fan_in",
+            Self::FanOut => "fan_out",
+        }
+    }
+
+    /// `imports`, sorted by the node that the limit counts, in groups by that
+    /// node. Each group counts once, so the count is the number of groups.
+    pub(crate) fn groups(self, imports: &[Link]) -> impl Iterator<Item = &[Link]> {
+        imports.chunk_by(move |a, b| self.counted(a) == self.counted(b))
+    }
+
+    /// What it says of the unit `module` that `count` is over the `max` of
+    /// the limit.
+    pub(crate) fn title(self, module: &str, count: usize, max: usize) -> String {
+        match self {
+            Self::FanIn => message!(contracts_fan_in, module, count, max),
+            Self::FanOut => message!(contracts_fan_out, module, count, max),
+        }
+    }
+
+    /// How to fix a unit over the limit, in a line. It never suggests
+    /// raising the limit.
+    fn hint(self) -> String {
+        match self {
+            Self::FanIn => message!(contracts_fix_split_module),
+            Self::FanOut => message!(contracts_fix_split_module.fan_out),
+        }
+    }
+
+    /// How to fix a unit over the limit, under the imports that a report of
+    /// it lists.
+    fn hint_all(self) -> String {
+        match self {
+            Self::FanIn => message!(contracts_fix_split_module.all),
+            Self::FanOut => message!(contracts_fix_split_module.all_fan_out),
         }
     }
 }
@@ -373,6 +470,10 @@ pub enum FixAction {
     /// Declare the module as a layer of an exhaustive `layers` contract, or
     /// ignore it.
     DeclareLayer,
+
+    /// Split the unit of a `limits` contract, or remove some of the imports
+    /// that make it go over its limit.
+    SplitModule,
 }
 
 /// A dependency of one unit on another whose removal, with the other
@@ -451,5 +552,6 @@ mod tests {
         assert_eq!(fix("protected"), (FixAction::RemoveImport, a.clone()));
         assert_eq!(fix("acyclic"), (FixAction::BreakCycle, Some("b/y.ts".into())));
         assert_eq!(fix("encapsulation"), (FixAction::ImportThroughEntryPoint, a));
+        assert_eq!(fix("limits"), (FixAction::SplitModule, None));
     }
 }

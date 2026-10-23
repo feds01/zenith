@@ -225,6 +225,11 @@ pub enum ConfigErrorKind {
     /// allows.
     #[diag(config_transparent_encapsulation)]
     TransparentEncapsulation,
+
+    /// A `limits` contract sets neither `max_fan_in` nor `max_fan_out`, so it
+    /// limits nothing.
+    #[diag(config_no_limits)]
+    NoLimits,
 }
 
 impl ConfigErrorKind {

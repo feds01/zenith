@@ -220,6 +220,10 @@ pub(crate) enum ContractTable {
 
     /// Code outside each module may only import it through its entry points.
     Encapsulation(EncapsulationTable),
+
+    /// Each module may only be imported by so many other modules, and import
+    /// so many.
+    Limits(LimitsTable),
 }
 
 impl ContractTable {
@@ -232,6 +236,7 @@ impl ContractTable {
             Self::Protected(table) => table.shared(),
             Self::Acyclic(table) => table.shared(),
             Self::Encapsulation(table) => table.shared(),
+            Self::Limits(table) => table.shared(),
         }
     }
 }
@@ -274,8 +279,8 @@ macro_rules! contract_table {
             )*
         }
     ) => {
-        $(#[$meta])*
         #[derive(Debug, Deserialize, JsonSchema)]
+        $(#[$meta])*
         #[serde(deny_unknown_fields, expecting = "a contract table")]
         pub(crate) struct $name {
             $(
@@ -466,6 +471,25 @@ contract_table! {
         /// tests.
         #[serde(default)]
         allowed_importers: Vec<Located<SelectorValue>>,
+    }
+}
+
+contract_table! {
+    /// A `limits` contract, with `max_fan_in`, `max_fan_out` or both.
+    #[schemars(extend("anyOf" = [{ "required": ["max_fan_in"] }, { "required": ["max_fan_out"] }]))]
+    LimitsTable {
+        /// The modules whose imports are counted, each on its own.
+        modules: Vec<Located<SelectorValue>>,
+
+        /// The most files outside each module that may import it. A file
+        /// counts once, however many of the module's files it imports.
+        max_fan_in: Option<usize>,
+
+        /// The most files and packages of the project outside each module
+        /// that it may import. External packages and builtins don't count. A
+        /// file or package counts once, however many of the module's files
+        /// import it.
+        max_fan_out: Option<usize>,
     }
 }
 

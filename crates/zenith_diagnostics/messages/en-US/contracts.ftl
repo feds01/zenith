@@ -29,6 +29,14 @@ contracts_more_imports = and {NUMBER($count)} more {$count ->
 }
 contracts_undeclared_module = `{$module}` is not declared as a layer of `{$container}`
     .help = the contract is exhaustive: declare it in `layers`, or add it to `exhaustive_ignores`
+contracts_fan_in = `{$module}` is imported by {NUMBER($count)} {$count ->
+    [one] file
+   *[other] files
+}, over its limit of {NUMBER($max)}
+contracts_fan_out = `{$module}` imports {NUMBER($count)} {$count ->
+    [one] module
+   *[other] modules
+}, over its limit of {NUMBER($max)}
 
 ## The chains of imports through which a module imports one it must not.
 
@@ -78,6 +86,10 @@ contracts_fix_import_through_entry_point = import `{$module}` through one of its
 contracts_fix_break_cycle = remove `{$importer}` -> `{$imported}` to break the cycle
     .all = remove the dependencies listed above to break the cycles
 contracts_fix_declare_layer = declare the module in `layers`
+contracts_fix_split_module = split the module, or have fewer files import it
+    .fan_out = split the module, or have it import fewer modules
+    .all = split the module, or remove some of the imports above so that fewer files import it
+    .all_fan_out = split the module, or remove some of the imports above so that it imports fewer modules
 contracts_finding = {$finding}; {$hint}
 
 ## The `ignore_imports` entries that match nothing, with how to fix one when

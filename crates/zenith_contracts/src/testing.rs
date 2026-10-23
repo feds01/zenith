@@ -149,8 +149,10 @@ impl Project {
     /// The findings of the contract `id`, one line each: a chain as
     /// `<importer unit> -> <imported unit>: a.ts -> b.ts -> npm:c`, an
     /// illegal import as `<unit>: a.ts -> b.ts`, a cycle breaker as `<scope>:
-    /// break <importer> -> <imported> (<imports>) in <cycle>`, and an
-    /// undeclared module as ``<container>: `<module>` is not a layer``.
+    /// break <importer> -> <imported> (<imports>) in <cycle>`, an undeclared
+    /// module as ``<container>: `<module>` is not a layer``, and a unit over
+    /// its limit as `<unit>: FanIn <count> > <max>: a.ts -> b.ts, c.ts ->
+    /// b.ts`.
     pub(crate) fn findings(&self, id: &str) -> Vec<String> {
         let report = self.check(id);
         report.violations.iter().flat_map(|violation| self.describe(violation)).collect()
@@ -188,6 +190,10 @@ impl Project {
             }
             Violation::UndeclaredModule { container, module } => {
                 vec![format!("{container}: `{}` is not a layer", self.graph.name(*module))]
+            }
+            Violation::LimitExceeded { module, limit, count, max, imports } => {
+                let links: Vec<_> = imports.iter().map(|link| self.link(link)).collect();
+                vec![format!("{module}: {limit:?} {count} > {max}: {}", links.join(", "))]
             }
         }
     }

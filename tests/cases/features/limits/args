@@ -1,0 +1,8 @@
+check
+check --format compact
+check --format github
+check --format json
+check --format sarif
+# The baseline records the imports of the nodes over each limit, the last ones.
+baseline
+check

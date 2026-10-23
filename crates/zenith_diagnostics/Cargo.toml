@@ -9,11 +9,16 @@ repository = { workspace = true }
 publish = { workspace = true }
 
 [dependencies]
+zenith_macros = { workspace = true }
 zenith_utils = { workspace = true }
 
 annotate-snippets = { workspace = true }
+fluent-bundle = { workspace = true }
+unic-langid = { workspace = true }
 
 [dev-dependencies]
+zenith_macros = { workspace = true, features = ["test-messages"] }
+
 tempfile = { workspace = true }
 
 [lints]

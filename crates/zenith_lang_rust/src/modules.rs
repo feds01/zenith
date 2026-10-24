@@ -28,9 +28,11 @@ impl Target {
     /// The file of the module that `modules`, the names of the modules from
     /// the root, name in `file_system`, and how many of them it takes to name
     /// it. A module is in `a.rs` or `a/mod.rs`, in the directory of its
-    /// parent. Only the longest prefix of `modules` that is a file counts, as
-    /// the rest are items in it, or modules that it declares inline. With no
-    /// such prefix, the module is the root.
+    /// parent, spelt as the module is even where names ignore case, so that
+    /// the type `Config` is not the module `config`. Only the longest prefix
+    /// of `modules` that is a file counts, as the rest are items in it, or
+    /// modules that it declares inline. With no such prefix, the module is
+    /// the root.
     pub(crate) fn module_file(
         &self,
         file_system: &dyn FileSystem,
@@ -40,8 +42,15 @@ impl Target {
         let mut found = (self.root.clone(), 0);
         for (depth, module) in modules.iter().enumerate() {
             dir.push(module);
-            let files = [dir.with_extension("rs"), dir.join("mod.rs")];
-            let Some(file) = files.into_iter().find(|file| file_system.is_file(file)) else {
+            // Each file, with the entry that is named after the module.
+            let files = [
+                (dir.with_extension("rs"), dir.with_extension("rs")),
+                (dir.join("mod.rs"), dir.clone()),
+            ];
+            let Some((file, _)) = files
+                .into_iter()
+                .find(|(file, named)| file_system.is_file(file) && file_system.is_listed(named))
+            else {
                 break;
             };
             found = (file, depth + 1);

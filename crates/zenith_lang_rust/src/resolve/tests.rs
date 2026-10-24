@@ -2,7 +2,9 @@
 //! from the crate, the module and its parents, from other crates, and from
 //! the standard library.
 
-use zenith_utils::fs::disk;
+use std::{io, path::PathBuf};
+
+use zenith_utils::fs::{DirEntry, FileKind, OsFileSystem, disk};
 
 use super::*;
 use crate::testing::Project;
@@ -233,6 +235,69 @@ fn paths_that_match_ignore_unresolved_are_ignored() {
     let resolve = |specifier| resolver.resolve(&fixture.project.path(AB), specifier);
     assert!(matches!(resolve("generated::Thing"), Resolved::Ignored(_)));
     assert!(matches!(resolve("missing::Thing"), Resolved::Unresolved(_)));
+}
+
+/// The disk, with names that ignore case, as macOS's and Windows' do by
+/// default, wherever the tests run.
+#[derive(Debug)]
+struct IgnoringCase;
+
+impl IgnoringCase {
+    /// `path`, with each component spelt as its directory lists it.
+    fn spelt(path: &Path) -> PathBuf {
+        let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+            return path.to_path_buf();
+        };
+        let dir = Self::spelt(dir);
+        let entries = OsFileSystem.read_dir(&dir).unwrap_or_default();
+        (entries.into_iter())
+            .find(|entry| entry.path.file_name().is_some_and(|it| it.eq_ignore_ascii_case(name)))
+            .map_or_else(|| dir.join(name), |entry| entry.path)
+    }
+}
+
+impl FileSystem for IgnoringCase {
+    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        OsFileSystem.read(&Self::spelt(path))
+    }
+
+    fn kind(&self, path: &Path) -> io::Result<FileKind> {
+        OsFileSystem.kind(&Self::spelt(path))
+    }
+
+    fn link_kind(&self, path: &Path) -> io::Result<FileKind> {
+        OsFileSystem.link_kind(&Self::spelt(path))
+    }
+
+    fn read_dir(&self, path: &Path) -> io::Result<Vec<DirEntry>> {
+        OsFileSystem.read_dir(&Self::spelt(path))
+    }
+
+    fn read_link(&self, path: &Path) -> io::Result<PathBuf> {
+        OsFileSystem.read_link(&Self::spelt(path))
+    }
+
+    fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
+        OsFileSystem.canonicalize(&Self::spelt(path))
+    }
+}
+
+#[test]
+fn a_module_is_spelt_as_its_file_where_names_ignore_case() {
+    let fixture = Fixture::new();
+    let resolver = Resolver::new(fixture.project.root(), &IgnoringCase, &fixture.crates, &[]);
+    let file = |from, specifier| match resolver.resolve(&fixture.project.path(from), specifier) {
+        Resolved::Internal(name) => name,
+        other => panic!("{from}: {specifier} resolved to {other:?}"),
+    };
+    // A type that the root re-exports, not `a.rs` or `c/mod.rs`.
+    assert_eq!(file(AB, "crate::A"), LIB);
+    assert_eq!(file(AB, "crate::C::d"), LIB);
+    assert_eq!(file(CD, "crate::a::B"), A);
+    assert_eq!(file(LIB, "core_lib::Model"), "crates/core-lib/src/lib.rs");
+    // The modules themselves still are.
+    assert_eq!(file(LIB, "crate::a::b"), AB);
+    assert_eq!(file(LIB, "crate::c::d"), CD);
 }
 
 #[test]

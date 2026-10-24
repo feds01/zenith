@@ -56,7 +56,9 @@ parsed in the latest edition.
 
 A path imports the file of the last module on it: `a.rs` or `a/mod.rs` for the
 module `a`, in the module tree of the importing file's target. The rest of the
-path is items in that file. A crate's own dependencies, from its
+path is items in that file. The file is spelt as the module is, even where
+names ignore case, as they do by default on macOS and Windows, so `crate::Config`
+is the type `Config` in the crate root, not the module in `config.rs`. A crate's own dependencies, from its
 `[dependencies]`, `[dev-dependencies]` and `[build-dependencies]`, including
 renamed ones and those that `workspace = true` takes from the workspace, are
 the crates that its code may name.

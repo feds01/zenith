@@ -3,14 +3,13 @@
 
 use std::{
     collections::BTreeMap,
-    fs,
     path::{Path, PathBuf},
 };
 
 use log::warn;
 use serde::{Deserialize, de::IgnoredAny};
 use zenith_diagnostics::message;
-use zenith_utils::{fs::read_text, path::normalize_path};
+use zenith_utils::{fs::FileSystem, path::normalize_path};
 
 use crate::crates::{Declared, Target, TargetKind};
 
@@ -174,13 +173,17 @@ struct DependencyTable {
 }
 
 impl Manifest {
-    /// The manifests at `paths` that can be read, each with its directory.
-    /// Those that can't are warned about, and left out.
-    pub(crate) fn read_all(paths: &[PathBuf]) -> Vec<(&Path, Manifest)> {
+    /// The manifests at `paths` in `file_system` that can be read, each with
+    /// its directory. Those that can't are warned about, and left out.
+    pub(crate) fn read_all<'p>(
+        file_system: &dyn FileSystem,
+        paths: &'p [PathBuf],
+    ) -> Vec<(&'p Path, Manifest)> {
         paths
             .iter()
             .filter_map(|path| {
-                let manifest = read_text(path)
+                let manifest = file_system
+                    .read_text(path)
                     .map_err(|error| error.to_string())
                     .and_then(|text| toml::from_str(&text).map_err(|error| error.to_string()));
                 match manifest {
@@ -217,9 +220,10 @@ impl Manifest {
         })
     }
 
-    /// The targets of the package in `dir`: those that Cargo finds by itself,
-    /// in the places that it looks, and those that the manifest gives a path.
-    pub(crate) fn targets(&self, dir: &Path) -> Vec<Target> {
+    /// The targets of the package in `dir` in `file_system`: those that
+    /// Cargo finds by itself, in the places that it looks, and those that the
+    /// manifest gives a path.
+    pub(crate) fn targets(&self, file_system: &dyn FileSystem, dir: &Path) -> Vec<Target> {
         let mut targets = Vec::new();
         let mut add = |kind: TargetKind, root: PathBuf| targets.push(Target { kind, root });
 
@@ -227,7 +231,7 @@ impl Manifest {
         let default = dir.join("src/lib.rs");
         let lib = match &self.lib {
             Some(lib) => Some(lib.path.as_ref().map_or(default, |path| dir.join(path))),
-            None => default.is_file().then_some(default),
+            None => file_system.is_file(&default).then_some(default),
         };
         if let Some(root) = lib {
             add(TargetKind::Lib, root);
@@ -235,7 +239,7 @@ impl Manifest {
 
         // 2. The binaries, tests, benchmarks and examples.
         let main = dir.join("src/main.rs");
-        if main.is_file() {
+        if file_system.is_file(&main) {
             add(TargetKind::Bin, main);
         }
         let kinds = [
@@ -245,7 +249,7 @@ impl Manifest {
             (TargetKind::Example, "examples", &self.example),
         ];
         for (kind, subdir, tables) in kinds {
-            for root in discover_roots(&dir.join(subdir)) {
+            for root in discover_roots(file_system, &dir.join(subdir)) {
                 add(kind, root);
             }
             for path in tables.iter().filter_map(|table| table.path.as_ref()) {
@@ -260,7 +264,7 @@ impl Manifest {
             Some(Build::Path(path)) => add(TargetKind::Build, dir.join(path)),
             _ => {
                 let script = dir.join("build.rs");
-                if script.is_file() {
+                if file_system.is_file(&script) {
                     add(TargetKind::Build, script);
                 }
             }
@@ -309,23 +313,22 @@ impl Manifest {
     }
 }
 
-/// The roots of the targets in `dir`, one of the directories in which Cargo
-/// looks for targets: each `.rs` file in it, and the `main.rs` of each of its
-/// directories.
-fn discover_roots(dir: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = fs::read_dir(dir) else {
+/// The roots of the targets in `dir` in `file_system`, one of the
+/// directories in which Cargo looks for targets: each `.rs` file in it, and
+/// the `main.rs` of each of its directories.
+fn discover_roots(file_system: &dyn FileSystem, dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = file_system.read_dir(dir) else {
         return Vec::new();
     };
     entries
-        .flatten()
+        .into_iter()
         .filter_map(|entry| {
-            let path = entry.path();
-            let root = match path.is_dir() {
-                true => path.join("main.rs"),
-                false => path,
+            let root = match file_system.is_dir(&entry.path) {
+                true => entry.path.join("main.rs"),
+                false => entry.path,
             };
-            (root.extension().is_some_and(|extension| extension == "rs") && root.is_file())
-                .then_some(root)
+            let is_rust = root.extension().is_some_and(|extension| extension == "rs");
+            (is_rust && file_system.is_file(&root)).then_some(root)
         })
         .collect()
 }

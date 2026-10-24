@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use ra_ap_syntax::Edition;
 use rustc_hash::FxHashMap;
 use zenith_lang::{Workspace, WorkspacePackage};
-use zenith_utils::path::relative_posix;
+use zenith_utils::{fs::FileSystem, path::relative_posix};
 
 use crate::manifest::Manifest;
 
@@ -126,14 +126,22 @@ pub(crate) struct Declared {
 }
 
 impl Crates {
-    /// The crates of the project at `root`, which must be canonical, in the
-    /// packages of the `manifests` that the walk found. Cargo says what they
-    /// are, or, if it can't, the manifests do.
-    pub(crate) fn discover(root: &Path, manifests: &[PathBuf]) -> Self {
-        let manifests = Manifest::read_all(manifests);
+    /// The crates of the project at `root` in `file_system`, which must be
+    /// canonical there, in the packages of the `manifests` that the walk
+    /// found. Cargo says what they are, or, if it can't, or the project is
+    /// not on the disk, where Cargo would read it, the manifests do.
+    pub(crate) fn discover(
+        file_system: &dyn FileSystem,
+        root: &Path,
+        manifests: &[PathBuf],
+    ) -> Self {
+        let manifests = Manifest::read_all(file_system, manifests);
+        if !file_system.on_disk() {
+            return Self::from_manifests(file_system, &manifests);
+        }
         Self::from_cargo(root, &manifests).unwrap_or_else(|error| {
             error.log();
-            Self::from_manifests(&manifests)
+            Self::from_manifests(file_system, &manifests)
         })
     }
 

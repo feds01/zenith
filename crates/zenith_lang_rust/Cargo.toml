@@ -27,6 +27,7 @@ toml = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+zenith_utils = { workspace = true, features = ["testing"] }
 
 [lints]
 workspace = true

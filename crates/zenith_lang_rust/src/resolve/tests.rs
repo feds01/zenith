@@ -2,6 +2,8 @@
 //! from the crate, the module and its parents, from other crates, and from
 //! the standard library.
 
+use zenith_utils::fs::disk;
+
 use super::*;
 use crate::testing::Project;
 
@@ -21,7 +23,7 @@ impl Fixture {
     /// What `specifier` resolves to when the file `from` imports it, both
     /// relative to the root of the project.
     fn resolve(&self, from: &str, specifier: &str) -> Resolved {
-        Resolver::new(self.project.root(), &self.crates, &[])
+        Resolver::new(self.project.root(), disk().as_ref(), &self.crates, &[])
             .resolve(&self.project.path(from), specifier)
     }
 
@@ -226,7 +228,8 @@ fn a_raw_identifier_names_what_it_spells() {
 fn paths_that_match_ignore_unresolved_are_ignored() {
     let fixture = Fixture::new();
     let patterns = [NamePattern::new("generated::*").unwrap()];
-    let resolver = Resolver::new(fixture.project.root(), &fixture.crates, &patterns);
+    let resolver =
+        Resolver::new(fixture.project.root(), disk().as_ref(), &fixture.crates, &patterns);
     let resolve = |specifier| resolver.resolve(&fixture.project.path(AB), specifier);
     assert!(matches!(resolve("generated::Thing"), Resolved::Ignored(_)));
     assert!(matches!(resolve("missing::Thing"), Resolved::Unresolved(_)));
@@ -275,7 +278,7 @@ fn a_crate_without_a_library_does_not_resolve() {
         ("user/src/lib.rs", ""),
     ]);
     let crates = project.crates();
-    let resolved = Resolver::new(project.root(), &crates, &[])
+    let resolved = Resolver::new(project.root(), disk().as_ref(), &crates, &[])
         .resolve(&project.path("user/src/lib.rs"), "bin_only::a");
     assert_eq!(resolved, Resolved::failed("`bin-only` has no library"));
 }

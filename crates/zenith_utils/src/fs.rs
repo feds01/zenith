@@ -36,6 +36,12 @@ pub trait FileSystem: fmt::Debug + Send + Sync {
     /// with every link resolved.
     fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
 
+    /// Whether the files are the disk's, so that another program, such as
+    /// Cargo, sees them as zenith does.
+    fn on_disk(&self) -> bool {
+        false
+    }
+
     /// The file at `path` as text, without a leading byte order mark, as
     /// [`read_text`] reads it.
     fn read_text(&self, path: &Path) -> io::Result<String> {
@@ -158,6 +164,10 @@ impl FileSystem for OsFileSystem {
 
     fn read_text(&self, path: &Path) -> io::Result<String> {
         read_text(path)
+    }
+
+    fn on_disk(&self) -> bool {
+        true
     }
 }
 

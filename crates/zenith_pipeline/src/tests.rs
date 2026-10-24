@@ -522,6 +522,29 @@ fn the_cache_never_changes_what_a_build_finds() {
 }
 
 #[test]
+fn a_session_off_the_disk_reads_the_cache_without_writing_it() {
+    let project = Project::new(&[
+        ("a.ts", b"export const a = 1;\n"),
+        ("b.ts", b"import { a } from './a';\n"),
+    ]);
+    project.build_cached("1.0.0");
+    let path = project.cache().path::<ParsedFile>();
+    let written = fs::read(&path).unwrap();
+
+    let contents = "export const b = 2;\n";
+    let file_system = Arc::new(Overlay::default().with(project.root.join("b.ts"), contents));
+    let config = Config::defaults(LANGUAGES);
+    let mut session = Session::with_file_system(project.root.clone(), file_system, config);
+    session.cache = session.cache_settings("1.0.0");
+    Pipeline::standard().run_until(&mut session, StageKind::Graph).unwrap();
+
+    // `a.ts` is the same, and `b.ts` is parsed as the file system has it.
+    assert_eq!(session.stats.cached_files, 1);
+    assert!(imports_of(&session.graph, "b.ts").is_empty());
+    assert_eq!(fs::read(&path).unwrap(), written);
+}
+
+#[test]
 fn changed_added_and_removed_files_are_found() {
     let project =
         Project::new(&[("a.ts", b"import './b';\n"), ("b.ts", b"import './c';\n"), ("c.ts", b"")]);

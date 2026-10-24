@@ -41,7 +41,7 @@ use log::debug;
 use rustc_hash::FxHashMap;
 use tempfile::NamedTempFile;
 use xxhash_rust::xxh3::{Xxh3, xxh3_128};
-use zenith_utils::fs::read_text_with_metadata;
+use zenith_utils::fs::{FileSystem, read_text_with_metadata};
 
 use crate::encoding::Rejected;
 
@@ -245,19 +245,23 @@ impl<T: Cached> Cache<T> {
         self.entries.remove(name)
     }
 
-    /// The value of the file at `path`: from `entry`, its entry in this
-    /// cache, if that shows the file is unchanged, or else from `compute`,
-    /// given its contents.
+    /// The value of the file at `path` in `file_system`: from `entry`, its
+    /// entry in this cache, if that shows the file is unchanged, or else from
+    /// `compute`, given its contents. Off the disk, a file has no metadata to
+    /// trust, so it is always read, and its entry used if its contents hash
+    /// the same.
     pub fn lookup(
         &self,
+        file_system: &dyn FileSystem,
         path: &Path,
         entry: Option<Entry<T>>,
         compute: impl FnOnce(&str) -> T,
     ) -> Lookup<T> {
         // 1. Reuse the entry without reading the file if its fingerprint is unchanged
         //    and old enough to trust.
+        let on_disk = file_system.on_disk();
         let entry = match entry {
-            Some(entry) if self.is_unchanged(path, entry.stamp) => {
+            Some(entry) if on_disk && self.is_unchanged(path, entry.stamp) => {
                 let Entry { stamp, value } = entry;
                 return Lookup { value: Ok(value), stamp: Some(stamp), origin: Origin::Unchanged };
             }
@@ -266,7 +270,11 @@ impl<T: Cached> Cache<T> {
 
         // 2. Otherwise read the file, taking its fingerprint first, so that a change
         //    made while it is read makes it differ next time.
-        let (source, metadata) = match read_text_with_metadata(path) {
+        let read = match on_disk {
+            true => read_text_with_metadata(path),
+            false => file_system.read_text(path).map(|source| (source, None)),
+        };
+        let (source, metadata) = match read {
             Ok(read) => read,
             Err(error) => return Lookup::uncached(Err(error)),
         };
@@ -333,6 +341,7 @@ fn nanos_since_epoch(time: SystemTime) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use tempfile::TempDir;
+    use zenith_utils::{fs::OsFileSystem, testing::Overlay};
 
     use super::*;
     use crate::encoding::tests::Value;
@@ -368,10 +377,30 @@ mod tests {
 
     /// The value of the file at `path`, computed from its contents.
     fn lookup(cache: &Cache<Value>, path: &Path, entry: Option<Entry<Value>>) -> Lookup<Value> {
-        cache.lookup(path, entry, |source| Value(source.to_string(), 1))
+        cache.lookup(&OsFileSystem, path, entry, |source| Value(source.to_string(), 1))
     }
 
     const SOURCE: &str = "import './a';\n";
+
+    #[test]
+    fn off_the_disk_a_file_is_read_and_its_contents_compared() {
+        let (_dir, path, fingerprint) = file(SOURCE);
+        // The disk's files, but not on the disk, as a commit's aren't.
+        let off_disk = Overlay::default();
+        let compute = |source: &str| Value(source.to_string(), 1);
+        let cache = cache_written(fingerprint, RACY_WINDOW + Duration::from_millis(1));
+
+        // On the disk, the fingerprint alone would be trusted.
+        let stale = Some(entry(Some(fingerprint), 0));
+        let found = cache.lookup(&off_disk, &path, stale, compute);
+        assert_eq!(found.origin, Origin::Computed);
+        assert_eq!(found.stamp.unwrap().fingerprint, None);
+
+        let same = Some(entry(Some(fingerprint), xxh3_128(SOURCE.as_bytes())));
+        let found = cache.lookup(&off_disk, &path, same, compute);
+        assert_eq!(found.origin, Origin::Verified);
+        assert_eq!(found.value.unwrap(), Value("from the cache".into(), 0));
+    }
 
     #[test]
     fn an_unchanged_fingerprint_is_trusted_once_it_is_old_enough() {

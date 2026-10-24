@@ -36,23 +36,45 @@ and logs to stderr, which editors keep in a log of the server.
 
 Known limits:
 
-- Of an editor's workspace folders, only the first is checked.
+- Of an editor's workspace folders, only the first is checked. The VS Code
+  extension runs a server for each project that its folders are in.
 - Each save is checked in turn, so saving several files in quick succession
   checks the project once for each.
 
 ## VS Code
 
-zenith has no extension of its own yet. A generic client such as
-[Generic LSP Client](https://marketplace.visualstudio.com/items?itemName=llllvvuu.llllvvuu-glspc)
-starts it for one language, in `settings.json`:
+Install the [zenith extension](https://marketplace.visualstudio.com/items?itemName=feds01.zenith)
+from the Marketplace, or from [Open VSX](https://open-vsx.org/extension/feds01/zenith)
+in editors that use it, such as Cursor and VSCodium. It checks each folder of
+the workspace that has a `zenith.toml`, in it or in a folder above it, and
+starts or stops checking a folder as it gains or loses one. It runs a server
+for each project: folders under the same `zenith.toml`, such as the packages
+of a monorepo, share one, which shows each finding once.
 
-```json
-{
-  "glspc.serverCommand": "zenith",
-  "glspc.serverCommandArguments": ["lsp"],
-  "glspc.languageId": "typescript"
-}
-```
+It runs the first of these binaries that it finds, and that has `zenith lsp`,
+which a zenith that a project pins may predate:
+
+1. the one that the `zenith.path` setting names, absolute or relative to the
+   folder;
+2. the project's own, if it has `@feds01/zenith` among its
+   [npm](installation.md#npm) dependencies, so that the editor runs the
+   version that the project pins;
+3. the one that comes with the extension, for macOS, Linux (ARM64 and
+   x86-64) and Windows (x86-64);
+4. `zenith` on the `PATH`.
+
+It runs only in a trusted workspace, as the project's binary is the
+workspace's own, and zenith runs tools such as `cargo` and `git` in it.
+
+| Setting | |
+|---|---|
+| `zenith.path` | The path of the binary to run. |
+| `zenith.args` | More arguments for `zenith lsp`, such as `["--config", "tools/zenith.toml"]`. A folder is also checked when they name its configuration file or its root. |
+| `zenith.trace.server` | Logs the messages between VS Code and the server: `off`, `messages` or `verbose`. |
+
+**zenith: Restart the server** finds the binary and the configuration anew,
+and **zenith: Show the server's output** shows its log, which says which
+binary it runs.
 
 ## Neovim
 

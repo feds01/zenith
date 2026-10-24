@@ -1,0 +1,48 @@
+# Publish the VS Code extension of a release to the VS Code Marketplace and
+# Open VSX: a VSIX per platform with that platform's binary, from the
+# release's archives, and a universal one without, for the other platforms.
+# It publishes with the tokens in the repository's secrets VSCE_PAT and
+# OVSX_PAT. The release workflow that dist generates calls it with the
+# release's plan.
+name: Publish the VS Code extension
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  publish-vscode-extension:
+    runs-on: ubuntu-22.04
+    env:
+      PLAN: ${{ inputs.plan }}
+    steps:
+      # This repository, for its justfile and the extension in editors/vscode.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: zenith
+      # The release's artifacts, the archive of each platform's binary among
+      # them.
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: artifacts-*
+          path: artifacts/
+          merge-multiple: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      # Pinned, as it isn't GitHub's own, and each step here could publish the
+      # extension.
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      # Without the tokens: this installs the extension's dependencies, and
+      # runs their install scripts.
+      - name: Package the extension
+        run: just --justfile zenith/justfile vscode-release artifacts vsix
+      - name: Publish the extension
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: just --justfile zenith/justfile publish-vscode vsix

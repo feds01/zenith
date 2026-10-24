@@ -64,3 +64,22 @@ builds them locally. They are staged rather than published: approve them on
 npmjs.com, under Staged Packages, or with `npm stage approve <id>` (npm 11.15
 or later), the platform packages before `@feds01/zenith`. The release run
 shows the ids, and so does `npm stage list <package>`.
+
+The VS Code extension is packaged by `just vscode-release`, from the same
+archives: a VSIX per platform with its binary, and a universal one without,
+for the other platforms. `just publish-vscode` publishes them to the VS Code
+Marketplace and to Open VSX with the tokens in the repository's secrets
+`VSCE_PAT` and `OVSX_PAT`, which only that step sees. A pre-release version isn't published, as the Marketplace takes
+none. `just vscode-packages` builds the VSIX files locally.
+
+Before the first release that publishes it:
+
+1. Create the `feds01` publisher on the
+   [Marketplace](https://marketplace.visualstudio.com/manage), and an Azure
+   DevOps personal access token with the *Marketplace (Manage)* scope, for
+   all accessible organisations, as `VSCE_PAT`.
+2. Sign in to [Open VSX](https://open-vsx.org) with GitHub, sign the
+   publisher agreement, create an access token as `OVSX_PAT`, and create the
+   namespace with `npx ovsx create-namespace feds01 -p <token>`.
+
+Both tokens expire: renew them before they do.

@@ -60,7 +60,8 @@ runs:
         echo "path=$PREFIX/node_modules/.bin/zenith" >> "$GITHUB_OUTPUT"
 
     # zenith runs once: with a SARIF log, code scanning annotates the results
-    # once it is uploaded; without, zenith does, with workflow commands.
+    # once it is uploaded; without, zenith does, with workflow commands. The
+    # script explains each stage.
     #
     # Follow-up: once `zenith check --since` (#111) is released, pass it the
     # base of a pull request here, so that only what the PR changes is checked.
@@ -74,60 +75,7 @@ runs:
         ARGS: ${{ inputs.args }}
         SARIF_FILE: ${{ runner.temp }}/zenith.sarif
         LOG: ${{ runner.temp }}/zenith.log
-      run: |
-        # 1. Pick the output once, for this step and the ones after it.
-        case "$(printf '%s' "$UPLOAD_SARIF" | tr '[:upper:]' '[:lower:]')" in
-          true) sarif=true where="code scanning alerts" ;;
-          false) sarif=false where="annotations" ;;
-          *)
-            echo "error: \`upload-sarif\` must be \`true\` or \`false\`, not \`$UPLOAD_SARIF\`" >&2
-            echo "exit-code=2" >> "$GITHUB_OUTPUT"
-            exit 2
-            ;;
-        esac
-        echo "sarif=$sarif" >> "$GITHUB_OUTPUT"
-
-        # 2. Check, unless there is no zenith to run: some shells, as macOS's
-        #    bash 3.2, exit with 1 for a missing command, as zenith does for a
-        #    broken contract.
-        code=0
-        : > "$LOG"
-        if ! command -v "$ZENITH" > /dev/null; then
-          echo "error: no zenith to run at \`$ZENITH\`: it doesn't exist, or isn't executable" >&2
-          code=2
-        else
-          # The arguments, split on spaces and newlines.
-          read -r -d '' -a options <<< "$ARGS" || true
-          if [ -n "$CONFIG" ]; then
-            options+=(--config "$CONFIG")
-          fi
-          if [ "$sarif" = true ]; then
-            "$ZENITH" check --format sarif "${options[@]}" > "$SARIF_FILE" || code=$?
-            echo "sarif-file=$SARIF_FILE" >> "$GITHUB_OUTPUT"
-          else
-            "$ZENITH" check --format github "${options[@]}" | tee "$LOG" || code=$?
-          fi
-        fi
-        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
-
-        # 3. Summarise the run, which a push to a branch shows nowhere else.
-        case "$code" in
-          0) result="No contract of \`error\` severity is broken." ;;
-          1) result="A contract is broken: see the $where." ;;
-          *) result="zenith couldn't check the contracts: see the log of this step." ;;
-        esac
-        {
-          printf '### zenith\n\n%s\n' "$result"
-          if [ -s "$LOG" ]; then
-            printf "\n\`%s\`\n" "$(tail -n 1 "$LOG")"
-          fi
-        } >> "$GITHUB_STEP_SUMMARY"
-
-        # Above 1, the configuration or the command line is invalid, or zenith
-        # failed: there are no results to upload.
-        if [ "$code" -gt 1 ]; then
-          exit "$code"
-        fi
+      run: bash "$GITHUB_ACTION_PATH/action/check.sh"
 
     - name: Upload the results to code scanning
       if: steps.check.outputs.sarif == 'true'

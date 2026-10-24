@@ -154,11 +154,12 @@ impl FileSystem for OsFileSystem {
     }
 
     fn read_link(&self, path: &Path) -> io::Result<PathBuf> {
-        fs::read_link(path)
+        // Without the `\\?\` prefix on Windows, where that is safe.
+        Ok(dunce::simplified(&fs::read_link(path)?).to_path_buf())
     }
 
     fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
-        // Without the `\\?\` prefix on Windows where that is safe.
+        // Without the `\\?\` prefix on Windows, where that is safe.
         dunce::canonicalize(path)
     }
 
@@ -228,11 +229,6 @@ impl std::error::Error for ReadJsonError {
     }
 }
 
-/// Read a JSON file from the disk, as [`FileSystem::read_json`] does.
-pub fn read_json(path: &Path) -> Result<Value, ReadJsonError> {
-    OsFileSystem.read_json(path)
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -249,7 +245,7 @@ mod tests {
         fs::write(&path, "\u{feff}{ \"name\": \"web\" }").unwrap();
 
         assert_eq!(read_text(&path).unwrap(), "{ \"name\": \"web\" }");
-        assert_eq!(read_json(&path).unwrap(), json!({ "name": "web" }));
+        assert_eq!(OsFileSystem.read_json(&path).unwrap(), json!({ "name": "web" }));
     }
 
     #[test]
@@ -271,12 +267,12 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("a.json");
         assert!(matches!(
-            read_json(&path),
+            OsFileSystem.read_json(&path),
             Err(ReadJsonError::Read(error)) if error.kind() == io::ErrorKind::NotFound
         ));
 
         fs::write(&path, "{ not json").unwrap();
-        let error = read_json(&path).unwrap_err();
+        let error = OsFileSystem.read_json(&path).unwrap_err();
         assert!(matches!(error, ReadJsonError::Parse(_)));
         assert!(error.to_string().starts_with("invalid JSON: "), "{error}");
     }

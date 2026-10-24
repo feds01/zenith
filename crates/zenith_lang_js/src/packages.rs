@@ -14,24 +14,28 @@ use zenith_config::PatternError;
 use zenith_diagnostics::message;
 use zenith_lang::{Workspace, WorkspacePackage};
 use zenith_utils::{
-    fs::{ReadJsonError, read_json, read_text},
+    fs::{FileSystem, ReadJsonError},
     glob::Glob,
     path::relative_posix,
 };
 
-/// Discover the workspace packages of the project at `root`, given the
-/// `package.json` files found by the walk.
+/// Discover the workspace packages of the project at `root` in
+/// `file_system`, given the `package.json` files found by the walk.
 ///
 /// The packages are declared by the `workspaces` field of the root
 /// `package.json` (an array, or `{ "packages": [...] }`) and by the `packages`
 /// list of `pnpm-workspace.yaml`. Patterns starting with `!` exclude
 /// directories. A matching directory is a package if its `package.json` has a
 /// `name`.
-pub fn discover_packages(root: &Path, package_jsons: &[PathBuf]) -> Workspace {
-    let root_json = read_manifest(&root.join("package.json"));
+pub fn discover_packages(
+    file_system: &dyn FileSystem,
+    root: &Path,
+    package_jsons: &[PathBuf],
+) -> Workspace {
+    let root_json = read_manifest(file_system, &root.join("package.json"));
 
     let mut patterns = root_json.as_ref().map(workspace_patterns).unwrap_or_default();
-    patterns.extend(pnpm_patterns(&root.join("pnpm-workspace.yaml")));
+    patterns.extend(pnpm_patterns(file_system, &root.join("pnpm-workspace.yaml")));
 
     let mut includes = Vec::new();
     let mut excludes = Vec::new();
@@ -68,7 +72,8 @@ pub fn discover_packages(root: &Path, package_jsons: &[PathBuf]) -> Workspace {
         {
             continue;
         }
-        let Some(name) = read_manifest(manifest).as_ref().and_then(package_name) else {
+        let Some(name) = read_manifest(file_system, manifest).as_ref().and_then(package_name)
+        else {
             continue;
         };
         packages.push(WorkspacePackage { name, dir, path: path.to_path_buf() });
@@ -113,10 +118,10 @@ fn display_dir(dir: &str) -> &str {
     if dir.is_empty() { "." } else { dir }
 }
 
-/// Read a manifest, or `None` if it doesn't exist. Warns if it exists but
-/// can't be read or parsed.
-fn read_manifest(path: &Path) -> Option<Value> {
-    match read_json(path) {
+/// Read a manifest from `file_system`, or `None` if it doesn't exist. Warns
+/// if it exists but can't be read or parsed.
+fn read_manifest(file_system: &dyn FileSystem, path: &Path) -> Option<Value> {
+    match file_system.read_json(path) {
         Ok(value) => Some(value),
         Err(ReadJsonError::Read(error)) if error.kind() == io::ErrorKind::NotFound => None,
         Err(error) => {
@@ -143,9 +148,10 @@ fn workspace_patterns(json: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The `packages` list of a `pnpm-workspace.yaml`.
-fn pnpm_patterns(path: &Path) -> Vec<String> {
-    let contents = match read_text(path) {
+/// The `packages` list of the `pnpm-workspace.yaml` at `path` in
+/// `file_system`.
+fn pnpm_patterns(file_system: &dyn FileSystem, path: &Path) -> Vec<String> {
+    let contents = match file_system.read_text(path) {
         Ok(contents) => contents,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Vec::new(),
         Err(error) => {
@@ -173,7 +179,7 @@ mod tests {
     use std::fs;
 
     use tempfile::TempDir;
-    use zenith_utils::path::adjust_canonicalisation;
+    use zenith_utils::{fs::disk, path::adjust_canonicalisation};
 
     use super::*;
 
@@ -214,7 +220,7 @@ mod tests {
             ("pnpm-workspace.yaml", "packages:\n  - 'services/*'\n"),
         ]);
 
-        let workspace = discover_packages(&root, &manifests);
+        let workspace = discover_packages(disk().as_ref(), &root, &manifests);
         assert_eq!(
             found(&workspace),
             [
@@ -237,7 +243,7 @@ mod tests {
             ("tools/package.json", r#"{ "name": "tools" }"#),
         ]);
 
-        let workspace = discover_packages(&root, &manifests);
+        let workspace = discover_packages(disk().as_ref(), &root, &manifests);
         assert_eq!(found(&workspace), [("site", "apps/site"), ("tools", "tools")]);
         assert_eq!(workspace.root_package, None);
     }
@@ -252,7 +258,7 @@ mod tests {
             ("pnpm-workspace.yaml", "packages:\n  - 'packages/**'\n  - '!**/test'\n"),
         ]);
 
-        let workspace = discover_packages(&root, &manifests);
+        let workspace = discover_packages(disk().as_ref(), &root, &manifests);
         assert_eq!(found(&workspace), [("a", "packages/a"), ("b", "packages/group/b")]);
     }
 
@@ -265,7 +271,7 @@ mod tests {
             ("pnpm-workspace.yaml", "\u{feff}packages:\n  - 'services/*'\n"),
         ]);
 
-        let workspace = discover_packages(&root, &manifests);
+        let workspace = discover_packages(disk().as_ref(), &root, &manifests);
         assert_eq!(found(&workspace), [("api", "services/api"), ("web", "web")]);
         assert_eq!(workspace.root_package.map(|p| p.name), Some("root".to_string()));
     }
@@ -279,7 +285,7 @@ mod tests {
             ("pnpm-workspace.yaml", "packages: [unclosed"),
         ]);
 
-        let workspace = discover_packages(&root, &manifests);
+        let workspace = discover_packages(disk().as_ref(), &root, &manifests);
         assert_eq!(found(&workspace), [("site", "apps/site")]);
     }
 
@@ -287,7 +293,7 @@ mod tests {
     fn without_a_root_manifest_there_are_no_packages() {
         let (_dir, root, manifests) = project(&[("web/package.json", r#"{ "name": "web" }"#)]);
 
-        let workspace = discover_packages(&root, &manifests);
+        let workspace = discover_packages(disk().as_ref(), &root, &manifests);
         assert!(workspace.packages.is_empty());
         assert_eq!(workspace.root_package, None);
     }

@@ -12,15 +12,20 @@
 //! So wherever nothing is installed, [`LinkedFileSystem`] shows
 //! `<root>/node_modules/<name>` as a symlink to the workspace package of that
 //! name, with the directories that hold it. What is installed always wins.
+//!
+//! It shows the project as the session's file system does, which `oxc_resolver`
+//! reads through its own [`FileSystem`] trait.
 
 use std::{
-    fs, io,
+    io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use oxc_resolver::{FileMetadata, FileSystem, FileSystemOs, ResolveError};
 use rustc_hash::{FxHashMap, FxHashSet};
 use zenith_utils::{
+    fs::{self, FileKind, disk},
     path::{absolute_path, relative_posix},
     specifier::package_name,
 };
@@ -31,12 +36,12 @@ const DIR: FileMetadata = FileMetadata::new(false, true, false);
 /// The metadata of a symlink.
 const SYMLINK: FileMetadata = FileMetadata::new(false, false, true);
 
-/// The operating system's file system, with the workspace packages linked
-/// into `<root>/node_modules` where nothing is installed.
+/// The session's file system, with the workspace packages linked into
+/// `<root>/node_modules` where nothing is installed.
 #[derive(Debug)]
 pub(crate) struct LinkedFileSystem {
-    /// The operating system's file system.
-    os: FileSystemOs,
+    /// The session's file system.
+    file_system: Arc<dyn fs::FileSystem>,
 
     /// The `node_modules` directory in the project root.
     node_modules: PathBuf,
@@ -63,26 +68,44 @@ enum Linked<'a> {
 
 impl LinkedFileSystem {
     /// Link `packages`, by name, with their absolute directories, into
-    /// `node_modules` in the canonical `root`.
-    pub(crate) fn new(root: &Path, packages: FxHashMap<String, PathBuf>) -> Self {
+    /// `node_modules` in `root`, which is canonical in `file_system`.
+    pub(crate) fn new(
+        root: &Path,
+        file_system: Arc<dyn fs::FileSystem>,
+        packages: FxHashMap<String, PathBuf>,
+    ) -> Self {
         let scopes = packages
             .keys()
             .filter_map(|name| name.split_once('/'))
             .filter(|(scope, _)| scope.starts_with('@'))
             .map(|(scope, _)| scope.to_string())
             .collect();
-        Self { os: FileSystemOs::new(), node_modules: root.join("node_modules"), packages, scopes }
+        let node_modules = root.join("node_modules");
+        Self { file_system, node_modules, packages, scopes }
     }
 
     /// What the links show at `path`, if anything. Something installed there
     /// always wins.
     fn linked(&self, path: &Path) -> Option<Linked<'_>> {
         let linked = self.link_at(path)?;
-        // Ask the standard library rather than `oxc_resolver`, whose errors
-        // on Windows don't say that a path is missing.
-        let missing =
-            fs::symlink_metadata(path).is_err_and(|error| error.kind() == io::ErrorKind::NotFound);
+        let missing = (self.file_system.link_kind(path))
+            .is_err_and(|error| error.kind() == io::ErrorKind::NotFound);
         missing.then_some(linked)
+    }
+
+    /// The metadata of `path` in the session's file system, following links
+    /// if `follow` is set.
+    fn metadata_of(&self, path: &Path, follow: bool) -> io::Result<FileMetadata> {
+        let kind = match follow {
+            true => self.file_system.kind(path)?,
+            false => self.file_system.link_kind(path)?,
+        };
+        Ok(match kind {
+            FileKind::File => FileMetadata::new(true, false, false),
+            FileKind::Directory => DIR,
+            FileKind::Symlink => SYMLINK,
+            FileKind::Other => FileMetadata::new(false, false, false),
+        })
     }
 
     /// What the links put at `path`, whatever is installed there.
@@ -102,15 +125,16 @@ impl LinkedFileSystem {
 }
 
 impl FileSystem for LinkedFileSystem {
-    /// No packages are linked, since there is no root to link them into.
+    /// The disk, with no packages linked, since there is no root to link
+    /// them into.
     fn new() -> Self {
-        Self::new(Path::new(""), FxHashMap::default())
+        Self::new(Path::new(""), disk().clone(), FxHashMap::default())
     }
 
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         match self.linked(path) {
-            None => self.os.read(path),
-            Some(Linked::Inside(real)) => self.os.read(&real),
+            None => self.file_system.read(path),
+            Some(Linked::Inside(real)) => self.file_system.read(&real),
             Some(Linked::Dir | Linked::Link(_)) => Err(io::ErrorKind::IsADirectory.into()),
         }
     }
@@ -121,37 +145,37 @@ impl FileSystem for LinkedFileSystem {
 
     fn metadata(&self, path: &Path) -> io::Result<FileMetadata> {
         match self.linked(path) {
-            None => self.os.metadata(path),
+            None => self.metadata_of(path, true),
             Some(Linked::Dir) => Ok(DIR),
-            Some(Linked::Link(dir)) => self.os.metadata(dir),
-            Some(Linked::Inside(real)) => self.os.metadata(&real),
+            Some(Linked::Link(dir)) => self.metadata_of(dir, true),
+            Some(Linked::Inside(real)) => self.metadata_of(&real, true),
         }
     }
 
     fn symlink_metadata(&self, path: &Path) -> io::Result<FileMetadata> {
         match self.linked(path) {
-            None => self.os.symlink_metadata(path),
+            None => self.metadata_of(path, false),
             Some(Linked::Dir) => Ok(DIR),
             Some(Linked::Link(_)) => Ok(SYMLINK),
-            Some(Linked::Inside(real)) => self.os.symlink_metadata(&real),
+            Some(Linked::Inside(real)) => self.metadata_of(&real, false),
         }
     }
 
     fn read_link(&self, path: &Path) -> Result<PathBuf, ResolveError> {
         match self.linked(path) {
-            None => self.os.read_link(path),
+            None => Ok(self.file_system.read_link(path)?),
             Some(Linked::Dir) => Err(io::Error::from(io::ErrorKind::InvalidInput).into()),
             Some(Linked::Link(dir)) => Ok(dir.to_path_buf()),
-            Some(Linked::Inside(real)) => self.os.read_link(&real),
+            Some(Linked::Inside(real)) => Ok(self.file_system.read_link(&real)?),
         }
     }
 
     fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
         match self.linked(path) {
-            None => self.os.canonicalize(path),
+            None => self.file_system.canonicalize(path),
             Some(Linked::Dir) => Ok(path.to_path_buf()),
-            Some(Linked::Link(dir)) => self.os.canonicalize(dir),
-            Some(Linked::Inside(real)) => self.os.canonicalize(&real),
+            Some(Linked::Link(dir)) => self.file_system.canonicalize(dir),
+            Some(Linked::Inside(real)) => self.file_system.canonicalize(&real),
         }
     }
 }
@@ -167,7 +191,7 @@ mod tests {
             ("@acme/ui".to_string(), root.join("packages/ui")),
             ("tsconfig".to_string(), root.join("packages/tsconfig")),
         ];
-        LinkedFileSystem::new(root, packages.into_iter().collect())
+        LinkedFileSystem::new(root, disk().clone(), packages.into_iter().collect())
     }
 
     #[test]
@@ -210,7 +234,7 @@ mod tests {
     fn what_is_installed_wins() {
         let dir = TempDir::new().unwrap();
         let root = dir.path();
-        fs::create_dir_all(root.join("node_modules/@acme/ui")).unwrap();
+        std::fs::create_dir_all(root.join("node_modules/@acme/ui")).unwrap();
         let file_system = file_system(root);
 
         assert_eq!(file_system.linked(&root.join("node_modules")), None);

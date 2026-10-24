@@ -1,7 +1,7 @@
 //! Finding the project and its configuration, and running the pipeline on
 //! it.
 
-use std::{env, path::Path, sync::Arc};
+use std::{env, path::Path};
 
 use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
@@ -10,7 +10,7 @@ use zenith_contracts::Contract;
 use zenith_diagnostics::{Diagnostic, ReportKind, SourceMap, message};
 use zenith_pipeline::{FileError, FileErrorKind, LANGUAGES, Pipeline, Session, StageKind};
 use zenith_utils::{
-    fs::{FileSystem, OsFileSystem},
+    fs::{FileSystem, disk},
     path::adjust_canonicalisation,
 };
 use zenith_workspace::Checkout;
@@ -28,7 +28,7 @@ use crate::{Reported, cli::GlobalArgs, reporting, version::version};
 /// turns it off.
 pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
     // 1. Find the configuration file, if there is one.
-    let file_system: Arc<dyn FileSystem> = Arc::new(OsFileSystem);
+    let file_system = disk().clone();
     let cwd = env::current_dir().with_context(|| message!(cli_current_dir))?;
     let config_path = match (&global.config, &global.root) {
         (Some(config), _) if !file_system.is_file(config) => {

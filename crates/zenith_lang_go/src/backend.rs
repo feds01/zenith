@@ -1,13 +1,16 @@
 //! Go as the pipeline runs it: modules from `go.mod` and `go.work` files,
 //! parsing with tree-sitter, and resolving against the modules.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use log::warn;
 use zenith_lang::{
     Backend, ImportResolver, ParsedFile, ResolveFailure, Resolved, SourceParser, Workspace,
 };
-use zenith_utils::{fs::read_text, glob::NamePattern, path::relative_posix};
+use zenith_utils::{fs::FileSystem, glob::NamePattern, path::relative_posix};
 
 use crate::{parse::Parser, resolve::GoModules};
 
@@ -15,6 +18,9 @@ use crate::{parse::Parser, resolve::GoModules};
 pub(crate) struct GoBackend {
     /// The canonical project root.
     root: PathBuf,
+
+    /// The file system that the project's files are read from.
+    file_system: Arc<dyn FileSystem>,
 
     /// The modules of the project, once they are discovered.
     modules: GoModules,
@@ -24,11 +30,17 @@ pub(crate) struct GoBackend {
 }
 
 impl GoBackend {
-    /// The backend of the project at `root`, which must be canonical, which
-    /// expects the import paths that match `ignore_unresolved` not to
-    /// resolve. It has no modules until it discovers them.
-    pub(crate) fn new(root: &Path, ignore_unresolved: Vec<NamePattern>) -> Self {
-        Self { root: root.to_path_buf(), modules: GoModules::default(), ignore_unresolved }
+    /// The backend of the project at `root` in `file_system`, which must be
+    /// canonical there, which expects the import paths that match
+    /// `ignore_unresolved` not to resolve. It has no modules until it
+    /// discovers them.
+    pub(crate) fn new(
+        root: &Path,
+        file_system: Arc<dyn FileSystem>,
+        ignore_unresolved: Vec<NamePattern>,
+    ) -> Self {
+        let modules = GoModules::default();
+        Self { root: root.to_path_buf(), file_system, modules, ignore_unresolved }
     }
 }
 
@@ -43,7 +55,8 @@ impl Backend for GoBackend {
 
     fn discover(&mut self, manifests: &[PathBuf]) -> Workspace {
         let files = manifests.iter().filter_map(|manifest| relative_posix(&self.root, manifest));
-        let found = GoModules::discover(files, |file| read_text(&self.root.join(file)));
+        let read = |file: &str| self.file_system.read_text(&self.root.join(file));
+        let found = GoModules::discover(files, read);
         for error in &found.errors {
             warn!("{error}");
         }
@@ -98,6 +111,7 @@ mod tests {
     use tempfile::TempDir;
     use zenith_config::LanguageOptions;
     use zenith_lang::BackendSettings;
+    use zenith_utils::fs::disk;
 
     use super::*;
     use crate::GoConfig;
@@ -114,7 +128,7 @@ mod tests {
             "module example.com/api\nrequire github.com/pkg/errors v0.9.1\n",
         )
         .unwrap();
-        let settings = BackendSettings { root: &root, record_exports: false };
+        let settings = BackendSettings { root: &root, file_system: disk(), record_exports: false };
         let mut backend = GoConfig::default().backend(settings);
         let manifests = [root.join("api/go.mod"), root.join("go.mod")];
         let workspace = backend.discover(&manifests);
@@ -145,7 +159,8 @@ mod tests {
     #[test]
     fn a_project_without_modules_has_no_packages() {
         let dir = TempDir::new().unwrap();
-        let settings = BackendSettings { root: dir.path(), record_exports: false };
+        let settings =
+            BackendSettings { root: dir.path(), file_system: disk(), record_exports: false };
         let workspace = GoConfig::default().backend(settings).discover(&[]);
         assert!(workspace.packages.is_empty() && workspace.root_package.is_none());
     }

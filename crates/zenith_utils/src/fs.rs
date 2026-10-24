@@ -6,6 +6,7 @@ use std::{
     fs::{self, File, FileType, Metadata},
     io::{self, Read},
     path::{Path, PathBuf},
+    sync::{Arc, LazyLock},
 };
 
 use serde_json::Value;
@@ -118,6 +119,12 @@ pub struct DirEntry {
 /// The disk, as the operating system shows it.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OsFileSystem;
+
+/// The disk, as a shared [`FileSystem`].
+pub fn disk() -> &'static Arc<dyn FileSystem> {
+    static DISK: LazyLock<Arc<dyn FileSystem>> = LazyLock::new(|| Arc::new(OsFileSystem));
+    &DISK
+}
 
 impl FileSystem for OsFileSystem {
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {

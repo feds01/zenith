@@ -13,7 +13,7 @@ use zenith_diagnostics::{Report, SourceId, SourceMap, message};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_lang::{ParsedFile, Resolved, Suppression, Workspace};
 use zenith_utils::{
-    fs::{FileSystem, OsFileSystem},
+    fs::{FileSystem, disk},
     location::Located,
     path::{absolute_path, adjust_canonicalisation, relative_posix},
 };
@@ -209,7 +209,7 @@ impl Session {
     /// A session for the project on the disk at `root`, which must be
     /// canonical, configured by `config`. Nothing has been found in it yet.
     pub fn new(root: PathBuf, config: Config) -> Self {
-        Self::with_file_system(root, Arc::new(OsFileSystem), config)
+        Self::with_file_system(root, disk().clone(), config)
     }
 
     /// A session for the project at `root` in `file_system`, as
@@ -222,7 +222,7 @@ impl Session {
     ) -> Self {
         let builds_graph_through_reexports = config.needs_graph_through_reexports();
         Self {
-            backends: Backends::new(&config, &root, builds_graph_through_reexports),
+            backends: Backends::new(&config, &root, &file_system, builds_graph_through_reexports),
             root,
             file_system,
             config,
@@ -249,7 +249,7 @@ impl Session {
     /// records what files export for it.
     pub fn build_graph_through_reexports(&mut self) {
         self.builds_graph_through_reexports = true;
-        self.backends = Backends::new(&self.config, &self.root, true);
+        self.backends = Backends::new(&self.config, &self.root, &self.file_system, true);
     }
 
     /// Whether the [`Graph`](crate::StageKind::Graph) stage builds the graph

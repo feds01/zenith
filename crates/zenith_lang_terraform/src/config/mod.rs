@@ -74,7 +74,9 @@ impl LanguageOptions for TerraformConfig {
 
     fn backend(&self, settings: BackendSettings<'_>) -> Box<dyn Backend> {
         let ignore_unresolved = self.ignore_unresolved.clone();
-        Box::new(TerraformBackend::new(settings.root, self.hosts.clone(), ignore_unresolved))
+        let file_system = settings.file_system.clone();
+        let hosts = self.hosts.clone();
+        Box::new(TerraformBackend::new(settings.root, file_system, hosts, ignore_unresolved))
     }
 }
 

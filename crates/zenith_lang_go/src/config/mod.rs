@@ -64,7 +64,8 @@ impl LanguageOptions for GoConfig {
     }
 
     fn backend(&self, settings: BackendSettings<'_>) -> Box<dyn Backend> {
-        Box::new(GoBackend::new(settings.root, self.ignore_unresolved.clone()))
+        let file_system = settings.file_system.clone();
+        Box::new(GoBackend::new(settings.root, file_system, self.ignore_unresolved.clone()))
     }
 }
 

@@ -1,12 +1,15 @@
 //! Terraform as the pipeline runs it: parsing with tree-sitter, and resolving
 //! module sources and dependency paths from the directory of each file.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use zenith_lang::{
     Backend, ImportResolver, ParsedFile, ResolveFailure, Resolved, SourceParser, Workspace,
 };
-use zenith_utils::{glob::NamePattern, path::relative_posix};
+use zenith_utils::{fs::FileSystem, glob::NamePattern, path::relative_posix};
 
 use crate::{
     parse::{Dialect, Parser},
@@ -27,11 +30,18 @@ pub(crate) struct TerraformBackend {
 }
 
 impl TerraformBackend {
-    /// The backend of the project at `root`, which must be canonical, whose
-    /// module sources may name `hosts`, and which expects the module sources
-    /// that match `ignore_unresolved` not to resolve.
-    pub(crate) fn new(root: &Path, hosts: Hosts, ignore_unresolved: Vec<NamePattern>) -> Self {
-        Self { root: root.to_path_buf(), resolver: Resolver::new(root, hosts), ignore_unresolved }
+    /// The backend of the project at `root` in `file_system`, which must be
+    /// canonical there, whose module sources may name `hosts`, and which
+    /// expects the module sources that match `ignore_unresolved` not to
+    /// resolve.
+    pub(crate) fn new(
+        root: &Path,
+        file_system: Arc<dyn FileSystem>,
+        hosts: Hosts,
+        ignore_unresolved: Vec<NamePattern>,
+    ) -> Self {
+        let resolver = Resolver::new(root, file_system, hosts);
+        Self { root: root.to_path_buf(), resolver, ignore_unresolved }
     }
 }
 
@@ -98,6 +108,7 @@ mod tests {
     use tempfile::TempDir;
     use zenith_config::LanguageOptions;
     use zenith_lang::BackendSettings;
+    use zenith_utils::fs::disk;
 
     use super::*;
     use crate::TerraformConfig;
@@ -111,7 +122,7 @@ mod tests {
         for unit in ["modules/vpc", "live/vpc", "live/app"] {
             fs::create_dir_all(root.join(unit)).unwrap();
         }
-        let settings = BackendSettings { root: &root, record_exports: false };
+        let settings = BackendSettings { root: &root, file_system: disk(), record_exports: false };
         let config = TerraformConfig {
             ignore_unresolved: vec![NamePattern::new("../shared/*").unwrap()],
             ..TerraformConfig::default()
@@ -176,7 +187,7 @@ mod tests {
     fn the_configured_hosts_are_resolved_against() {
         let dir = TempDir::new().unwrap();
         let root = dir.path().canonicalize().unwrap();
-        let settings = BackendSettings { root: &root, record_exports: false };
+        let settings = BackendSettings { root: &root, file_system: disk(), record_exports: false };
         let config = TerraformConfig {
             hosts: Hosts::new(
                 vec![NamePattern::new("mirror.acme.com").unwrap()],

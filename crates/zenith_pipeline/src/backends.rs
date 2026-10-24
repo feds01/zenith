@@ -1,9 +1,10 @@
 //! The backends of the enabled languages, which the stages run.
 
-use std::{fmt, path::Path};
+use std::{fmt, path::Path, sync::Arc};
 
 use zenith_config::Config;
 use zenith_lang::{Backend, BackendSettings, ImportResolver, ResolveFailure, SourceParser};
+use zenith_utils::fs::FileSystem;
 
 use crate::SourceFile;
 
@@ -14,10 +15,16 @@ pub struct Backends(Vec<Box<dyn Backend>>);
 
 impl Backends {
     /// The backends of the languages that `config` enables, set up for the
-    /// project at `root`, which must be canonical. With `record_exports`,
-    /// they record what each file exports, for the graph through re-exports.
-    pub fn new(config: &Config, root: &Path, record_exports: bool) -> Self {
-        let settings = BackendSettings { root, record_exports };
+    /// project at `root` in `file_system`, which must be canonical there.
+    /// With `record_exports`, they record what each file exports, for the
+    /// graph through re-exports.
+    pub fn new(
+        config: &Config,
+        root: &Path,
+        file_system: &Arc<dyn FileSystem>,
+        record_exports: bool,
+    ) -> Self {
+        let settings = BackendSettings { root, file_system, record_exports };
         Self(config.languages.iter().map(|(_, options)| options.backend(settings)).collect())
     }
 

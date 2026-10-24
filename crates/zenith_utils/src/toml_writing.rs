@@ -8,7 +8,7 @@
 //! assert_eq!(toml_writing::array("modules", &values), "modules = [\"web\", \"api\"]\n");
 //! ```
 
-/// The longest line that [`array`] writes an array on; a longer array is
+/// The longest line that [`array()`] writes an array on; a longer array is
 /// written a value per line.
 pub const LINE_WIDTH: usize = 80;
 

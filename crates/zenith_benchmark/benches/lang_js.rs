@@ -35,7 +35,7 @@ fn main() {
 #[divan::bench(args = SIZES)]
 fn discover_packages(bencher: Bencher, source_files: usize) {
     let repo = TempRepo::shared(source_files);
-    let found = zenith_workspace::walk(&repo.root, &default_walk_settings());
+    let found = zenith_workspace::walk(disk().as_ref(), &repo.root, &default_walk_settings());
 
     // CodSpeed has no counters, and warns about each one.
     #[cfg(not(codspeed))]

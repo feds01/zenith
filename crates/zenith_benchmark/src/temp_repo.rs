@@ -52,13 +52,14 @@ impl TempRepo {
     ///
     /// ```
     /// use zenith_benchmark::{TempRepo, default_walk_settings};
+    /// use zenith_utils::fs::disk;
     ///
     /// // In `main`, around `divan::main()`.
     /// let _remove_shared = TempRepo::remove_shared_on_drop();
     ///
     /// // In each benchmark.
     /// let repo = TempRepo::shared(1_000);
-    /// let found = zenith_workspace::walk(&repo.root, &default_walk_settings());
+    /// let found = zenith_workspace::walk(disk().as_ref(), &repo.root, &default_walk_settings());
     /// ```
     ///
     /// # Panics
@@ -139,7 +140,7 @@ mod tests {
     #[test]
     fn walk_finds_the_source_files_and_manifests() {
         let temp = TempRepo::new(500).unwrap();
-        let found = walk(&temp.root, &without_ignore_files());
+        let found = walk(disk().as_ref(), &temp.root, &without_ignore_files());
 
         // Without ignore files, the `.gitignore`d generated code is found too.
         let gitignored: Vec<String> = paths_of(&temp.repo, FileKind::Skipped)
@@ -164,7 +165,7 @@ mod tests {
     #[test]
     fn walk_respects_the_gitignore() {
         let temp = TempRepo::new(500).unwrap();
-        let found = walk(&temp.root, &default_walk_settings());
+        let found = walk(disk().as_ref(), &temp.root, &default_walk_settings());
 
         let sources: BTreeSet<String> =
             paths_of(&temp.repo, FileKind::Source).into_iter().collect();
@@ -178,7 +179,7 @@ mod tests {
     #[test]
     fn discovers_every_package() {
         let temp = TempRepo::new(1_000).unwrap();
-        let found = walk(&temp.root, &without_ignore_files());
+        let found = walk(disk().as_ref(), &temp.root, &without_ignore_files());
         let workspace = discover_packages(disk().as_ref(), &temp.root, &found.manifests);
 
         let discovered: Vec<(&str, &str)> = workspace

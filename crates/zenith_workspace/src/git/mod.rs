@@ -6,6 +6,7 @@
 //! [`Checkout`].
 
 mod checkout;
+mod commit_files;
 mod commits;
 mod renames;
 mod tracked;
@@ -18,6 +19,7 @@ use std::{
 };
 
 pub use checkout::Checkout;
+pub use commit_files::CommitFileSystem;
 pub use renames::Renames;
 pub use tracked::TrackedFiles;
 use zenith_diagnostics::message;
@@ -98,14 +100,18 @@ impl Git {
         name.strip_prefix(self.prefix.as_deref()?).map(str::to_owned)
     }
 
+    /// A command that runs git with `args` in the worktree's root.
+    fn command(&self, args: &[&str]) -> Command {
+        let mut command = Command::new("git");
+        command.current_dir(&self.worktree).args(args);
+        command.envs(self.variables.iter().map(|(name, value)| (name, value)));
+        command
+    }
+
     /// Run git with `args` in the worktree's root, returning what it printed.
     fn run(&self, args: &[&str]) -> Result<String, GitError> {
-        let output = Command::new("git")
-            .current_dir(&self.worktree)
-            .args(args)
-            .envs(self.variables.iter().map(|(name, value)| (name, value)))
-            .output()
-            .map_err(|error| GitError::Run(error.to_string()))?;
+        let output =
+            self.command(args).output().map_err(|error| GitError::Run(error.to_string()))?;
         if !output.status.success() {
             return Err(GitError::Failed {
                 command: args.join(" "),

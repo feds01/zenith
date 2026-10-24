@@ -21,7 +21,7 @@ impl Stage for Discover {
     fn run(&self, session: &mut Session) -> Result<(), PipelineError> {
         // 1. Walk the project.
         let root = &session.root;
-        let mut found = walk(root, &session.walk_settings());
+        let mut found = walk(&*session.file_system, root, &session.walk_settings());
         if session.tracked_only {
             found.retain_tracked(&Git::new(root).tracked_files()?);
         }

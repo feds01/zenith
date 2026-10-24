@@ -10,5 +10,5 @@ mod git;
 pub mod testing;
 mod walk;
 
-pub use git::{Checkout, Git, GitError, Renames, TrackedFiles};
+pub use git::{Checkout, CommitFileSystem, Git, GitError, Renames, TrackedFiles};
 pub use walk::{WalkResult, WalkSettings, walk};

@@ -42,6 +42,15 @@ pub trait FileSystem: fmt::Debug + Send + Sync {
         false
     }
 
+    /// Every file under the directory `dir`, if this file system holds a
+    /// list of them, as a commit's tree does, so that they needn't be walked:
+    /// each with what it is, without following links. `None` for one to
+    /// walk, such as the disk.
+    fn listed_files(&self, dir: &Path) -> Option<Vec<DirEntry>> {
+        let _ = dir;
+        None
+    }
+
     /// The file at `path` as text, without a leading byte order mark, as
     /// [`read_text`] reads it.
     fn read_text(&self, path: &Path) -> io::Result<String> {

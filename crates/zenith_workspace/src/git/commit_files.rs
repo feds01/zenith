@@ -408,6 +408,24 @@ mod tests {
     use super::*;
     use crate::{git::tests::committed, testing::commit};
 
+    /// Stop `process`, and the processes that it started. On Windows, `git`
+    /// is Git for Windows' launcher, which runs git as a process of its own:
+    /// killing the launcher alone leaves git running, and answering.
+    fn stop(process: &mut Child) {
+        #[cfg(windows)]
+        {
+            let pid = process.id().to_string();
+            let taskkill = std::process::Command::new("taskkill")
+                .args(["/F", "/T", "/PID", &pid])
+                .status()
+                .unwrap();
+            assert!(taskkill.success());
+        }
+        #[cfg(not(windows))]
+        process.kill().unwrap();
+        process.wait().unwrap();
+    }
+
     /// The paths and kinds of `entries`, sorted.
     fn sorted(entries: Vec<DirEntry>) -> Vec<(PathBuf, FileKind)> {
         let mut entries: Vec<_> =
@@ -508,7 +526,7 @@ mod tests {
         assert!(files.is_file(&root.join("a.ts")) && files.read(&root.join("a.ts")).is_ok());
 
         // Without the process, no file can be read, and none is taken for missing.
-        files.objects.lock().unwrap().process.kill().unwrap();
+        stop(&mut files.objects.lock().unwrap().process);
         for _ in 0..2 {
             let error = files.read(&root.join("a.ts")).unwrap_err();
             assert_ne!(error.kind(), io::ErrorKind::NotFound, "{error}");

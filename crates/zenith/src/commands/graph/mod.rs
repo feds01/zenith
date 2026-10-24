@@ -1,5 +1,7 @@
 //! `zenith graph`.
 
+mod diff;
+
 use anyhow::{Result, bail};
 use zenith_contracts::Selection;
 use zenith_diagnostics::message;
@@ -8,13 +10,17 @@ use zenith_pipeline::StageKind;
 
 use crate::{
     ExitStatus,
-    cli::{GlobalArgs, GraphCommand, GraphFormat},
+    cli::{GlobalArgs, GraphAction, GraphCommand, GraphFormat},
     project,
 };
 
 /// Show the module tree under a selector, and the dependencies between its
-/// children.
+/// children, or what a subcommand such as `diff` shows instead.
 pub fn graph(global: &GlobalArgs, args: GraphCommand) -> Result<ExitStatus> {
+    if let Some(GraphAction::Diff(args)) = args.action {
+        return diff::diff(global, args);
+    }
+
     // 1. Open the project, and build its graph.
     let mut session = project::open(global)?;
     project::run_until(&mut session, StageKind::Graph)?;

@@ -15,7 +15,7 @@ use crate::{
 
 /// Show the dependencies between the children of a selector that were added
 /// and removed from one git ref to another.
-pub fn graph_diff(global: &GlobalArgs, args: GraphDiffCommand) -> Result<ExitStatus> {
+pub fn diff(global: &GlobalArgs, args: GraphDiffCommand) -> Result<ExitStatus> {
     // 1. Open the project in the working tree, which finds its root and
     //    configuration, and find where the head left the base: their merge base, as
     //    in a pull request's diff, so that what the base gained since is not the

@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 418" role="img" aria-label="The six contract types, each with the rule it enforces">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 616" role="img" aria-label="The seven contract types, each with the rule it enforces">
 <defs>
 <marker id="ov-a" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
 <marker id="ov-bad" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head bad" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
 <marker id="ov-ok" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head ok" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
 </defs>
-<path class="edge" d="M508,404 L536,404" marker-end="url(#ov-a)"/>
+<path class="edge" d="M508,602 L536,602" marker-end="url(#ov-a)"/>
 <a href="forbidden.html"><g transform="translate(0,0)">
 <rect class="card" x="0" y="0" width="226" height="180" rx="10"/>
 <path class="edge bad" d="M66,128 L163,128" marker-end="url(#ov-bad)"/>
@@ -89,13 +89,29 @@
 <g class="badge ok" transform="translate(102,101.5)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
 <g class="badge bad" transform="translate(102,128.5)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
 </g></a>
-<g class="badge ok" transform="translate(140,404)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
-<text x="154" y="408" class="small muted">allowed</text>
-<g class="badge bad" transform="translate(240,404)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
-<text x="254" y="408" class="small muted">violation</text>
-<g class="badge warn" transform="translate(340,404)"><circle r="8"/><path d="M0,-3.8 L0,0.6 M0,3.6 L0,3.7"/></g>
-<text x="354" y="408" class="small muted">warning</text>
-<rect class="unit" x="432" y="397" width="22" height="14" rx="4"/>
-<text x="462" y="408" class="small muted">unit</text>
-<text x="546" y="408" class="small muted">import</text>
+<a href="limits.html"><g transform="translate(0,396)">
+<rect class="card" x="0" y="0" width="226" height="180" rx="10"/>
+<rect class="unit solid" x="88" y="70" width="50" height="84" rx="10"/>
+<path class="edge ok" d="M47.5,78 C72.2,78 72.2,112 97,112" marker-end="url(#ov-ok)"/>
+<path class="edge ok" d="M47.5,112 L97,112" marker-end="url(#ov-ok)"/>
+<path class="edge bad" d="M47.5,146 C72.2,146 72.2,112 97,112" marker-end="url(#ov-bad)"/>
+<path class="edge ok" d="M125.5,112 L175,112" marker-end="url(#ov-ok)"/>
+<g class="node dir"><rect x="100.5" y="101" width="25" height="22" rx="6"/><text x="113" y="112" style="font-size:11px">m</text></g>
+<g class="node file"><rect x="22.5" y="67" width="25" height="22" rx="6"/><text x="35" y="78" style="font-size:11px">a</text></g>
+<g class="node file"><rect x="22.5" y="101" width="25" height="22" rx="6"/><text x="35" y="112" style="font-size:11px">b</text></g>
+<g class="node file"><rect x="22.5" y="135" width="25" height="22" rx="6"/><text x="35" y="146" style="font-size:11px">c</text></g>
+<g class="node file"><rect x="178.5" y="101" width="25" height="22" rx="6"/><text x="191" y="112" style="font-size:11px">x</text></g>
+<text x="14" y="27" class="title mono">limits</text>
+<text x="14" y="44" class="small muted">only so many importers and imports</text>
+<g class="badge bad" transform="translate(72.2,129)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+</g></a>
+<g class="badge ok" transform="translate(140,602)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<text x="154" y="606" class="small muted">allowed</text>
+<g class="badge bad" transform="translate(240,602)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+<text x="254" y="606" class="small muted">violation</text>
+<g class="badge warn" transform="translate(340,602)"><circle r="8"/><path d="M0,-3.8 L0,0.6 M0,3.6 L0,3.7"/></g>
+<text x="354" y="606" class="small muted">warning</text>
+<rect class="unit" x="432" y="595" width="22" height="14" rx="4"/>
+<text x="462" y="606" class="small muted">unit</text>
+<text x="546" y="606" class="small muted">import</text>
 </svg>

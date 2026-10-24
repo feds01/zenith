@@ -1,0 +1,11 @@
+# Each directory of `src` may be imported by at most two files outside it,
+# and import at most two files or packages outside it. Three files import
+# `src/lib`: `src/app/main.ts` counts once, though it imports both of its
+# files, and `src/lib/format.ts` not at all, as it is inside. `src/app`
+# imports three files of the project; `npm:react`, an external package,
+# doesn't count. `src/ui` is within both limits.
+[contracts.small-surface]
+type = "limits"
+modules = ["src/*"]
+max_fan_in = 2
+max_fan_out = 2

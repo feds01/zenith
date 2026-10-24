@@ -76,10 +76,11 @@ Contracts
 
 ## What it does
 
-- **Six contract types:** [`forbidden`](contracts/forbidden.md),
+- **Seven contract types:** [`forbidden`](contracts/forbidden.md),
   [`independence`](contracts/independence.md), [`layers`](contracts/layers.md),
-  [`protected`](contracts/protected.md), [`acyclic`](contracts/acyclic.md) and
-  [`encapsulation`](contracts/encapsulation.md).
+  [`protected`](contracts/protected.md), [`acyclic`](contracts/acyclic.md),
+  [`encapsulation`](contracts/encapsulation.md) and
+  [`limits`](contracts/limits.md).
 - **Several languages:** JavaScript and TypeScript, Go, Python, Rust and
   Terraform, in one [import graph](languages.md), with the same contracts for
   each.

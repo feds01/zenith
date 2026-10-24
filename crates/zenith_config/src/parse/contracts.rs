@@ -16,12 +16,13 @@ use crate::{
     config::AnalysisConfig,
     contracts::{
         AcyclicConfig, CONTRACT_TYPES, ContractConfig, ContractKind, EncapsulationConfig,
-        ForbiddenConfig, IndependenceConfig, LayersConfig, ProtectedConfig, Reexports,
+        ForbiddenConfig, IndependenceConfig, LayersConfig, LimitsConfig, ProtectedConfig,
+        Reexports,
     },
     error::{Alternatives, ConfigErrorKind},
     schema::{
         AcyclicTable, ContractTable, EncapsulationTable, ForbiddenTable, IndependenceTable,
-        LayersTable, Located, ProtectedTable, SelectorValue,
+        LayersTable, LimitsTable, Located, ProtectedTable, SelectorValue,
     },
     selector::Selector,
 };
@@ -92,6 +93,7 @@ impl Parser {
             "encapsulation" => {
                 EncapsulationTable::deserialize(value).map(ContractTable::Encapsulation)
             }
+            "limits" => LimitsTable::deserialize(value).map(ContractTable::Limits),
             name => {
                 let expected = CONTRACT_TYPES.map(String::from).to_vec();
                 let kind = ConfigErrorKind::UnknownContractType {
@@ -155,6 +157,16 @@ impl Parser {
                     modules: self.parse_selectors(&table.modules),
                     entrypoints: self.parse_patterns(&table.entrypoints, Glob::new),
                     allowed_importers: self.parse_selectors(&table.allowed_importers),
+                })
+            }
+            ContractTable::Limits(table) => {
+                if table.max_fan_in.is_none() && table.max_fan_out.is_none() {
+                    self.add_error(ConfigErrorKind::NoLimits, Some(range));
+                }
+                ContractKind::Limits(LimitsConfig {
+                    modules: self.parse_selectors(&table.modules),
+                    max_fan_in: table.max_fan_in,
+                    max_fan_out: table.max_fan_out,
                 })
             }
         };

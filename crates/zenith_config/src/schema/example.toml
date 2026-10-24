@@ -67,3 +67,9 @@ type = "encapsulation"
 modules = ["pkg:@acme/ui"]
 entrypoints = ["index", "src/components/*/index"]
 severity = "warn"
+
+[contracts.small-surface]
+type = "limits"
+modules = ["web/src/*"]
+max_fan_in = 20
+max_fan_out = 12

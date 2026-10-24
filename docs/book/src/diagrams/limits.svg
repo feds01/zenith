@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="A limits contract: three files import web/src/lib, one more than max_fan_in allows, and it imports two files, within max_fan_out">
+<defs>
+<marker id="li-a" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+<marker id="li-bad" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head bad" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+<marker id="li-ok" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="head ok" d="M0.5,1 L9.5,5 L0.5,9 L2.5,5 z"/></marker>
+</defs>
+<rect class="unit solid" x="255" y="26" width="210" height="230" rx="12"/>
+<path class="edge" d="M360,187 L360,126.5" marker-end="url(#li-a)"/>
+<path class="edge ok" d="M144.5,70 C236.5,70 236.5,110 325,110" marker-end="url(#li-ok)"/>
+<path class="edge ok" d="M144.5,70 C230,70 230,200 314,200" marker-end="url(#li-ok)"/>
+<path class="edge ok" d="M144.5,150 C236.5,150 236.5,110 325,110" marker-end="url(#li-ok)"/>
+<path class="edge bad" d="M148,230 C236.5,230 236.5,110 325,110" marker-end="url(#li-bad)"/>
+<path class="edge ok" d="M391.5,110 L559.5,110" marker-end="url(#li-ok)"/>
+<path class="edge ok" d="M402.5,200 L563.5,200" marker-end="url(#li-ok)"/>
+<g class="tag"><rect x="42" y="31" width="106" height="18" rx="9"/><text x="95" y="40">max_fan_in = 2</text></g>
+<g class="node file"><rect x="45.5" y="57" width="99" height="26" rx="6"/><text x="95" y="70">app/main.ts</text></g>
+<g class="node file"><rect x="45.5" y="137" width="99" height="26" rx="6"/><text x="95" y="150">app/page.ts</text></g>
+<g class="node file"><rect x="42" y="217" width="106" height="26" rx="6"/><text x="95" y="230">ui/button.ts</text></g>
+<text x="271" y="51" class="unit-label mono">web/src/lib</text>
+<g class="node file"><rect x="328.5" y="97" width="63" height="26" rx="6"/><text x="360" y="110">log.ts</text></g>
+<g class="node file"><rect x="317.5" y="187" width="85" height="26" rx="6"/><text x="360" y="200">format.ts</text></g>
+<text x="372" y="160" class="small muted">inside: not counted</text>
+<g class="tag"><rect x="563.5" y="31" width="113" height="18" rx="9"/><text x="620" y="40">max_fan_out = 3</text></g>
+<g class="node file"><rect x="563" y="97" width="114" height="26" rx="6"/><text x="620" y="110">config/env.ts</text></g>
+<g class="node file"><rect x="563" y="187" width="114" height="26" rx="6"/><text x="620" y="200">utils/date.ts</text></g>
+<text x="152" y="60" class="small muted halo">counts once</text>
+<g class="badge bad" transform="translate(236.5,170)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+<g class="badge bad" transform="translate(50,282)"><circle r="8"/><path d="M-2.8,-2.8 L2.8,2.8 M2.8,-2.8 L-2.8,2.8"/></g>
+<text x="64" y="286" class="small t-bad">fan-in 3, over its limit of 2</text>
+<g class="badge ok" transform="translate(567,282)"><circle r="8"/><path d="M-3.6,0.2 L-1.2,2.6 L3.6,-2.4"/></g>
+<text x="581" y="286" class="small t-ok">fan-out 2, within 3</text>
+</svg>

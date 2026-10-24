@@ -12,3 +12,8 @@ type = "layers"
 containers = ["domains/*"]
 layers = ["types"]
 exhaustive = true
+
+[contracts.n]
+type = "limits"
+modules = ["api"]
+max_fan_in = 1

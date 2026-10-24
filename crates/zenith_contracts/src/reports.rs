@@ -46,11 +46,11 @@ impl ContractReport<'_> {
     }
 
     /// What checking the contract found, a report each, for showing a line
-    /// each: one per chain, illegal import, cycle breaker and undeclared
-    /// module, pointing at its first import if it has one, with how to fix it
-    /// and the contract's guidance, one per `ignore_imports` entry that
-    /// matches nothing, unless they are not to be reported, and one per stale
-    /// `baseline` entry.
+    /// each: one per chain, illegal import, cycle breaker, undeclared module
+    /// and unit over a limit, pointing at its first import if it has one,
+    /// with how to fix it and the contract's guidance, one per
+    /// `ignore_imports` entry that matches nothing, unless they are not to be
+    /// reported, and one per stale `baseline` entry.
     pub fn findings(
         &self,
         graph: &Graph,
@@ -324,6 +324,13 @@ impl ReportBuilder<'_> {
                     let title = message!(contracts_undeclared_module, module, container);
                     vec![(title, identity(&["undeclared-module", container, module]), &[][..])]
                 }
+                // The finding is at no import, so each import that makes up the count is
+                // related to it.
+                Violation::LimitExceeded { module, limit, count, max, imports } => {
+                    let title = limit.title(module, *count, *max);
+                    let identity = identity(&["limit-exceeded", module, limit.name()]);
+                    vec![(title, identity, &imports[..imports.len().min(MAX_IMPORTS)])]
+                }
             };
             for ((title, identity, related), fix) in
                 parts.into_iter().zip(violation.fixes(&config.kind))
@@ -410,22 +417,13 @@ impl ReportBuilder<'_> {
                 } else {
                     message!(contracts_protected_module, module)
                 };
-                let mut report = Report::new(kind, title);
-                for link in imports.iter().take(MAX_IMPORTS) {
-                    let imported = self.graph.name(link.imported);
-                    let label = if encapsulation {
+                self.imports(Report::new(kind, title), imports, |imported| {
+                    if encapsulation {
                         message!(contracts_internal_module.label, imported)
                     } else {
                         message!(contracts_imports, imported)
-                    };
-                    self.excerpt(&mut report, link, label);
-                }
-                if imports.len() > MAX_IMPORTS {
-                    let more =
-                        message!(contracts_more_imports, count = imports.len() - MAX_IMPORTS);
-                    report.add_note(more);
-                }
-                report
+                    }
+                })
             }
             Violation::Cycle { scope, breakers } => {
                 self.cycle(Report::new(kind, message!(contracts_cycle, scope)), breakers)
@@ -435,7 +433,30 @@ impl ReportBuilder<'_> {
                 let title = message!(contracts_undeclared_module, module, container);
                 Report::new(kind, title)
             }
+            Violation::LimitExceeded { module, limit, count, max, imports } => {
+                let report = Report::new(kind, limit.title(module, *count, *max));
+                self.imports(report, imports, |imported| message!(contracts_imports, imported))
+            }
         }
+    }
+
+    /// Add `imports` to `report`: excerpts of the first ones, each labelled
+    /// by `label` from the name of the node it imports, and how many more
+    /// there are.
+    fn imports(
+        &mut self,
+        mut report: Report,
+        imports: &[Link],
+        label: impl Fn(&str) -> String,
+    ) -> Report {
+        for link in imports.iter().take(MAX_IMPORTS) {
+            let label = label(self.graph.name(link.imported));
+            self.excerpt(&mut report, link, label);
+        }
+        if imports.len() > MAX_IMPORTS {
+            report.add_note(message!(contracts_more_imports, count = imports.len() - MAX_IMPORTS));
+        }
+        report
     }
 
     /// Add `chains` to `report`: excerpts of the first link of the first

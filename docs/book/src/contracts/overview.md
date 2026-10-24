@@ -6,7 +6,7 @@ letters, digits, `-` and `_`, and is kebab-case by convention.
 
 <figure class="diagram">
 {{#include ../diagrams/contracts.svg}}
-<figcaption>The six contract types. Each diagram leads to its page.</figcaption>
+<figcaption>The seven contract types. Each diagram leads to its page.</figcaption>
 </figure>
 
 | Type | Rule |
@@ -17,6 +17,7 @@ letters, digits, `-` and `_`, and is kebab-case by convention.
 | [`protected`](protected.md) | Only some importers may import a unit directly. |
 | [`acyclic`](acyclic.md) | Units must not depend on each other in cycles. |
 | [`encapsulation`](encapsulation.md) | A unit may only be imported through its entry points. |
+| [`limits`](limits.md) | A unit may only be imported by so many files, and import so many modules. |
 
 ## Common options
 

@@ -1,0 +1,5 @@
+[contracts.l]
+type = "limits"
+modules = ["npm:*"]
+max_fan_in = 1
+max_fan_out = 0

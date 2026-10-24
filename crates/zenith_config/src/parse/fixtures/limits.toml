@@ -1,0 +1,10 @@
+[contracts.small-surface]
+type = "limits"
+modules = ["web/src/*"]
+max_fan_in = 20
+max_fan_out = 12
+
+[contracts.leaf]
+type = "limits"
+modules = ["web/src/lib"]
+max_fan_out = 0

@@ -74,6 +74,7 @@ fn every_contract_type_is_parsed() {
             "forbidden" => "from = []\nto = []",
             "layers" => "layers = [\"a\"]",
             "protected" => "modules = []\nallowed_importers = []",
+            "limits" => "modules = []\nmax_fan_in = 1",
             _ => "modules = []",
         };
         let contents = format!("[contracts.c]\ntype = \"{name}\"\n{options}\n");
@@ -482,6 +483,25 @@ allowed_importers = ["**/*.test.ts"]
 }
 
 #[test]
+fn parses_a_limits_contract() {
+    let config = valid(include_str!("fixtures/limits.toml"));
+    let ContractKind::Limits(both) = &config.contracts[0].kind else { panic!("expected `limits`") };
+    assert_eq!(selectors(&both.modules), ["web/src/*"]);
+    assert_eq!((both.max_fan_in, both.max_fan_out), (Some(20), Some(12)));
+    let ContractKind::Limits(one) = &config.contracts[1].kind else { panic!("expected `limits`") };
+    assert_eq!((one.max_fan_in, one.max_fan_out), (None, Some(0)));
+}
+
+#[test]
+fn a_limits_contract_must_set_a_limit() {
+    assert_eq!(
+        only_error(include_str!("fixtures/limits-without-limits.toml")),
+        "1:12: in contract `l`: `limits` contracts must set `max_fan_in`, `max_fan_out` or both \
+         [l]"
+    );
+}
+
+#[test]
 fn contracts_have_defaults() {
     let config = valid(
         r#"
@@ -667,7 +687,8 @@ fn unknown_values_are_errors() {
         (
             "[contracts.c]\ntype = \"graph\"\n",
             "2:8: in contract `c`: unknown contract type `graph`, expected one of `forbidden`, \
-             `independence`, `layers`, `protected`, `acyclic`, `encapsulation` [\"graph\"]",
+             `independence`, `layers`, `protected`, `acyclic`, `encapsulation`, `limits` \
+             [\"graph\"]",
         ),
         (
             "[analysis]\nexclude_kinds = [\"types\"]\n",

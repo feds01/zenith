@@ -826,6 +826,89 @@
             "modules"
           ],
           "description": "Code outside each module may only import it through its entry points."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "modules": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SelectorValue"
+              },
+              "description": "The modules whose imports are counted, each on its own."
+            },
+            "max_fan_in": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0,
+              "description": "The most files outside each module that may import it. A file\ncounts once, however many of the module's files it imports."
+            },
+            "max_fan_out": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0,
+              "description": "The most files and packages of the project outside each module\nthat it may import. External packages and builtins don't count. A\nfile or package counts once, however many of the module's files\nimport it."
+            },
+            "name": {
+              "type": "string",
+              "description": "The title shown in output. Defaults to the contract id."
+            },
+            "severity": {
+              "$ref": "#/$defs/Severity",
+              "description": "`\"warn\"` reports the contract without failing the check when it\nis broken, for gradual rollout.",
+              "default": "error"
+            },
+            "exclude_kinds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ImportKind"
+              },
+              "description": "Import kinds to ignore, e.g. `[\"type\"]` to exempt type-only\nimports. Defaults to `[analysis] exclude_kinds`."
+            },
+            "reexports": {
+              "$ref": "#/$defs/Reexports",
+              "description": "How to see the imports of pass-through modules, the files that only\nre-export other modules: `\"opaque\"`, an import of a pass-through module\nimports every module it re-exports, or `\"transparent\"`, an\nimport of names from it imports the modules that define them.\nDefaults to `[analysis] reexports`."
+            },
+            "ignore_imports": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Imports to ignore, as `\"<selector> -> <selector>\"`: the direct\nimports from the first selector's modules to the second's are\nremoved before checking.",
+              "default": []
+            },
+            "unmatched_ignore_imports": {
+              "$ref": "#/$defs/AlertLevel",
+              "description": "How to report an `ignore_imports` entry that matches no import:\n`\"error\"` breaks the contract, `\"warn\"` reports a warning, and\n`\"none\"` says nothing.",
+              "default": "error"
+            },
+            "guidance": {
+              "type": "string",
+              "description": "Text shown under the violations, e.g. how to fix them."
+            },
+            "type": {
+              "type": "string",
+              "const": "limits"
+            }
+          },
+          "required": [
+            "type",
+            "modules"
+          ],
+          "description": "Each module may only be imported by so many other modules, and import\nso many.",
+          "anyOf": [
+            {
+              "required": [
+                "max_fan_in"
+              ]
+            },
+            {
+              "required": [
+                "max_fan_out"
+              ]
+            }
+          ]
         }
       ],
       "description": "An architecture contract. Its `type` says what it checks."

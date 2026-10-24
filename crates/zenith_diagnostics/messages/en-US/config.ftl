@@ -27,6 +27,7 @@ config_no_layers = `layers` must list at least one layer
 config_exhaustive_without_containers = `exhaustive` requires `containers`
 config_boundaries_without_chains = `boundaries` has no effect with `allow_indirect_imports = true`, since direct imports pass through nothing
 config_transparent_encapsulation = `encapsulation` contracts can't see through re-exports, since importing through an entry point, which often only re-exports, is what they allow
+config_no_limits = `limits` contracts must set `max_fan_in`, `max_fan_out` or both
 
 ## What a value is, and what it should have been, in an "invalid type"
 ## error. serde's own names for other types, such as "a boolean", are shown

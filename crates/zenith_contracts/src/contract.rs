@@ -333,7 +333,7 @@ mod tests {
                 paths => Scope::new(paths.iter().map(|path| path.to_string()).collect()),
             };
             let mut found = Vec::new();
-            for id in ["f", "c", "l"] {
+            for id in ["f", "c", "l", "n"] {
                 let mut report = project.check(id);
                 report.narrow(&project.graph, &scope);
                 found.extend(report.violations.iter().flat_map(|v| project.describe(v)));
@@ -343,7 +343,8 @@ mod tests {
         };
 
         // An importing file, a directory with a file of a cycle breaker in it,
-        // and a file inside an undeclared module.
+        // and a file inside an undeclared module. A unit over its limit keeps every
+        // import that makes up its count.
         assert_eq!(
             narrowed(&["web/a.ts", "m/a", "domains/orders/helpers/a.ts"]),
             [
@@ -351,13 +352,25 @@ mod tests {
                 "stale web/a.ts -> api/z.ts",
                 "m/*: break m/b -> m/a (m/b/y.ts -> m/a/x.ts) in m/b -> m/a",
                 "domains/orders: `domains/orders/helpers` is not a layer",
+                "api: FanIn 2 > 1: web/a.ts -> api/x.ts, web/b.ts -> api/y.ts",
             ]
         );
         // An imported file.
-        assert_eq!(narrowed(&["api/y.ts"]), ["web -> api: web/b.ts -> api/y.ts"]);
+        assert_eq!(
+            narrowed(&["api/y.ts"]),
+            [
+                "web -> api: web/b.ts -> api/y.ts",
+                "api: FanIn 2 > 1: web/a.ts -> api/x.ts, web/b.ts -> api/y.ts",
+            ]
+        );
+        // A directory in none of the imports of the unit over its limit.
+        assert_eq!(
+            narrowed(&["m/b"]),
+            ["m/*: break m/b -> m/a (m/b/y.ts -> m/a/x.ts) in m/b -> m/a"]
+        );
         // Nothing, and everything.
         assert!(narrowed(&["other"]).is_empty());
-        assert_eq!(narrowed(&[]).len(), 6);
+        assert_eq!(narrowed(&[]).len(), 7);
     }
 
     #[test]

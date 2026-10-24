@@ -24,7 +24,9 @@ checked.
 ## compact
 
 A line for each finding, `path:line:column: level[contract]: message; hint`,
-where the hint says how to fix it, then the summary line.
+where the hint says how to fix it, then the summary line. A finding about no
+single import, such as an undeclared module or an exceeded limit, has no
+`path:line:column: ` prefix.
 
 ## json
 
@@ -37,7 +39,8 @@ removed or change meaning.
 ### Fixes
 
 Each finding of a violation says how to fix it: each chain, illegal import
-and cycle breaker has a `fix`, and so does an undeclared module's violation:
+and cycle breaker has a `fix`, and so does the violation of an undeclared
+module or of a unit over a limit:
 
 ```json
 "fix": {
@@ -62,7 +65,8 @@ and cycle breaker has a `fix`, and so does an undeclared module's violation:
   `compact` show it.
 
 A fix never loosens a contract: every action but `declare_layer` changes
-code, and `declare_layer` adds the module to the architecture.
+code, and `declare_layer` adds the module to the architecture. No fix raises
+a limit.
 
 | Action | Contract types | What to do |
 | --- | --- | --- |
@@ -71,6 +75,7 @@ code, and `declare_layer` adds the module to the architecture.
 | `import_through_entry_point` | `encapsulation` | Import the module through one of its entry points. |
 | `break_cycle` | `acyclic` | Remove the dependency, which breaks the cycle. |
 | `declare_layer` | `layers` | Declare a module that an exhaustive contract doesn't know in `layers`. It has no `import`. |
+| `split_module` | `limits` | Split the unit, or remove some of the imports that put it over its limit. It has no `import`. |
 
 zenith doesn't apply fixes itself.
 
@@ -78,7 +83,8 @@ zenith doesn't apply fixes itself.
 
 A GitHub Actions workflow command for each finding, which GitHub shows as an
 annotation on the line in a pull request, with the hint on how to fix it, then
-the summary line:
+the summary line. A finding about no single import, such as an undeclared
+module or an exceeded limit, is an annotation on no line:
 
 ```yaml
 - run: npx zenith check --format github
@@ -102,8 +108,9 @@ Security tab, and closes each one once a later upload no longer has it.
   to ten. Stale baseline entries and unmatched `ignore_imports` entries are
   results of their contract too. A finding without an import,
   such as an undeclared layer, points at its contract's table in
-  `zenith.toml`. What suppressions and the baseline leave out is not a
-  result.
+  `zenith.toml`; a unit over a limit does too, with the imports that make up
+  its count as related locations. What suppressions and the baseline leave
+  out is not a result.
 - Each result has a fingerprint, `zenith/v1`, made from its contract and
   what it is about, such as the files of its chain, but not their lines. An
   alert stays the same alert when the code around its import moves.

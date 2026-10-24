@@ -48,7 +48,10 @@ For contracts that only check direct imports (`protected`, `encapsulation`,
 and any with `allow_indirect_imports`), the entries are the offending imports.
 For the others, zenith records the first import of each chain, the one made by
 the importing unit's own code, then checks the contract again, until it is
-kept. For `acyclic`, the entries are the imports of the cycle breakers.
+kept. For `acyclic`, the entries are the imports of the cycle breakers. For
+`limits`, they are the imports of the counted nodes over the limit, the last
+ones by path, so the unit is left at its limit and any new importer (or
+imported node) breaks it.
 
 ## Updating it
 

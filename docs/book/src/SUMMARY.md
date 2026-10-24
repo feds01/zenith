@@ -24,6 +24,7 @@
   - [protected](contracts/protected.md)
   - [acyclic](contracts/acyclic.md)
   - [encapsulation](contracts/encapsulation.md)
+  - [limits](contracts/limits.md)
 
 # Living with violations
 

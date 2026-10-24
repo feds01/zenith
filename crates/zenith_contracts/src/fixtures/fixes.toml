@@ -29,3 +29,8 @@ modules = ["a", "b"]
 [contracts.encapsulation]
 type = "encapsulation"
 modules = ["b"]
+
+[contracts.limits]
+type = "limits"
+modules = ["b"]
+max_fan_in = 0

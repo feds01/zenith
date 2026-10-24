@@ -5,6 +5,7 @@ mod encapsulation;
 mod forbidden;
 mod independence;
 mod layers;
+mod limits;
 mod protected;
 
 use zenith_config::ContractKind;
@@ -31,6 +32,9 @@ pub(crate) enum Rule {
     /// Higher layers may import lower layers, never the reverse.
     Layers(layers::Layers),
 
+    /// Each module may only be imported by, and import, so many others.
+    Limits(limits::Limits),
+
     /// Only the allowed importers may directly import the modules.
     Protected(protected::Protected),
 }
@@ -53,6 +57,7 @@ impl Rule {
                 Self::Independence(independence::Independence::compile(config, units))
             }
             ContractKind::Layers(config) => Self::Layers(layers::Layers::compile(config, units)),
+            ContractKind::Limits(config) => Self::Limits(limits::Limits::compile(config, units)),
             ContractKind::Protected(config) => {
                 Self::Protected(protected::Protected::compile(config, units))
             }
@@ -68,6 +73,7 @@ impl Rule {
             Self::Forbidden(rule) => rule.check(view, statements),
             Self::Independence(rule) => rule.check(view, statements),
             Self::Layers(rule) => rule.check(view, statements),
+            Self::Limits(rule) => rule.check(view, statements),
             Self::Protected(rule) => rule.check(view, statements),
         }
     }

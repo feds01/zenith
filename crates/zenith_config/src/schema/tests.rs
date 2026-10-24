@@ -157,7 +157,16 @@ fn the_example_is_valid() {
     let types: Vec<_> = config.contracts.iter().map(|contract| contract.kind.type_name()).collect();
     assert_eq!(
         types,
-        ["forbidden", "independence", "layers", "layers", "protected", "acyclic", "encapsulation"]
+        [
+            "forbidden",
+            "independence",
+            "layers",
+            "layers",
+            "protected",
+            "acyclic",
+            "encapsulation",
+            "limits"
+        ]
     );
     assert_eq!(schema_errors(&example()), Vec::<String>::new());
 }
@@ -179,7 +188,7 @@ fn the_schema_rejects_what_parsing_rejects() {
     /// A change to the example that makes it invalid.
     type Mutation = fn(&mut Value);
 
-    let mutations: [(&str, Mutation); 12] = [
+    let mutations: [(&str, Mutation); 13] = [
         ("an unknown table", |config| config["filez"] = json!({})),
         ("an unknown key in a table", |config| config["files"]["exclud"] = json!([])),
         ("an unknown language", |config| config["languages"]["go"] = json!({})),
@@ -208,6 +217,12 @@ fn the_schema_rejects_what_parsing_rejects() {
         ("a missing required key", |config| {
             if let Some(contract) = config["contracts"]["agents-are-api-only"].as_object_mut() {
                 contract.remove("allowed_importers");
+            }
+        }),
+        ("a `limits` contract without limits", |config| {
+            if let Some(contract) = config["contracts"]["small-surface"].as_object_mut() {
+                contract.remove("max_fan_in");
+                contract.remove("max_fan_out");
             }
         }),
     ];

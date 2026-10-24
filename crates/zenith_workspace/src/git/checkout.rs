@@ -2,9 +2,8 @@
 //! directory, for reading the project as it was at that commit.
 
 use std::{
-    fs, io, mem,
+    fs, io,
     path::{Path, PathBuf},
-    sync::{Mutex, MutexGuard, PoisonError},
 };
 
 use log::warn;
@@ -29,14 +28,11 @@ const ISOLATED: [&str; 10] = [
     "filter.lfs.required=false",
 ];
 
-/// The temporary directories of the checkouts that haven't been dropped yet.
-static HELD: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
-
 impl Git {
     /// Check out the commit that `reference` names, e.g. `main` or `HEAD~2`,
     /// into a new temporary directory, which is removed when the
-    /// [`Checkout`] is dropped, or by [`remove_checkouts`]. The reference is
-    /// resolved as by [`Self::resolve_commit`], with its errors.
+    /// [`Checkout`] is dropped. The reference is resolved as by
+    /// [`Self::resolve_commit`], with its errors.
     ///
     /// The files are written from an index of the checkout's own, so neither
     /// the repository's index nor its list of worktrees changes: nothing is
@@ -51,7 +47,6 @@ impl Git {
         let temporary = |error: io::Error| GitError::Checkout(error.to_string());
         let dir = tempfile::Builder::new().prefix("zenith-").tempdir().map_err(temporary)?;
         let dir = adjust_canonicalisation(dir.keep());
-        held().push(dir.clone());
         let checkout =
             Checkout { commit, worktree: self.worktree.clone(), root: dir.join("tree"), dir };
         fs::create_dir(&checkout.root).map_err(temporary)?;
@@ -71,24 +66,10 @@ impl Git {
     }
 }
 
-/// Remove the directory of every checkout that hasn't been dropped, as a
-/// crash handler that exits without unwinding the stack, and so without
-/// dropping them, must.
-pub fn remove_checkouts() {
-    for dir in mem::take(&mut *held()) {
-        let _ = fs::remove_dir_all(dir);
-    }
-}
-
-/// The directories of the checkouts that haven't been dropped yet.
-fn held() -> MutexGuard<'static, Vec<PathBuf>> {
-    HELD.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
 /// A commit of a project's repository, checked out into a temporary directory
 /// by [`Git::checkout`]. The directory is removed when the checkout is
-/// dropped, on every path out of the code that holds it, an error's or a
-/// panic's included.
+/// dropped, on every path out of the code that holds it, an error's
+/// included. A crash exits without dropping it, and leaves it behind.
 #[derive(Debug)]
 pub struct Checkout {
     /// The id of the commit.
@@ -127,7 +108,6 @@ impl Checkout {
 
 impl Drop for Checkout {
     fn drop(&mut self) {
-        held().retain(|dir| *dir != self.dir);
         if let Err(error) = fs::remove_dir_all(&self.dir) {
             let path = self.dir.display();
             warn!("{}", message!(workspace_checkout_not_removed, path, error));
@@ -167,12 +147,9 @@ mod tests {
         assert_eq!(worktrees(&root), before);
         git(&root, &["diff", "--cached", "--quiet"]);
 
-        // The crash handler would remove it until it is dropped.
         let temporary = checkout.dir.clone();
-        assert!(held().contains(&temporary));
         drop(checkout);
         assert!(!temporary.exists());
-        assert!(!held().contains(&temporary));
     }
 
     #[test]

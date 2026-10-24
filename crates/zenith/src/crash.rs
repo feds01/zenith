@@ -2,8 +2,6 @@
 
 use std::{io::Write, panic::PanicHookInfo, process::exit, sync::atomic, thread};
 
-use zenith_workspace::remove_checkouts;
-
 const BUG_REPORT_MSG: &str = "This is a bug in zenith, please file a bug report at";
 const BUG_REPORT_URI: &str = "https://github.com/feds01/zenith/issues/new?labels=bug";
 
@@ -65,8 +63,6 @@ pub fn crash_handler(info: &PanicHookInfo) {
         );
     }
 
-    // Exiting drops nothing, so remove the temporary checkouts first, then exit
-    // after we have printed all the relevant info.
-    remove_checkouts();
+    // Now call exit after we have printed all the relevant info
     exit(2);
 }

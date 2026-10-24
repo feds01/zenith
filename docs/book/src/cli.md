@@ -179,9 +179,9 @@ working tree's to fix.
 
 Each ref is checked out into a temporary directory, which is removed
 afterwards, without touching the repository's index or worktrees, and
-without fetching Git LFS files. Interrupting zenith, as with Ctrl-C, can leave
-a `zenith-*` directory in the system's temporary directory, but never
-anything in the repository. The checkout holds only the files that git
+without fetching Git LFS files. Interrupting zenith, as with Ctrl-C, or a
+crash can leave a `zenith-*` directory in the system's temporary directory,
+but never anything in the repository. The checkout holds only the files that git
 tracks, so a dependency that resolves through an untracked file, such as one
 in `node_modules`, may resolve differently there than in the working tree.
 The project's root and configuration file are those at the same paths in the

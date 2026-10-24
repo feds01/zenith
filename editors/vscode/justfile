@@ -1,0 +1,127 @@
+# The VS Code extension, whose recipes the root justfile runs as
+# `just vscode::<recipe>`, e.g. `just vscode::test`.
+
+set positional-arguments
+
+# The name of zenith's binary on this platform
+binary := "zenith" + if os_family() == "windows" { ".exe" } else { "" }
+
+# Test the extension in a VS Code that it downloads, with the zenith of this checkout as the binary that it comes with
+test:
+    cargo build -q -p zenith
+    mkdir -p bin
+    cp "${CARGO_TARGET_DIR:-{{justfile_directory()}}/target}/debug/{{binary}}" bin/
+    bun install --frozen-lockfile
+    bun run check
+    bun run test
+
+# Package the extension into `out`, from the release archives in `archives`: a VSIX per platform with its binary, and a universal one without, at the workspace version in Cargo.toml unless given another, and only for `targets` if given any
+[no-cd]
+packages archives out version="" *targets:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shift 3
+    version="{{version}}"
+    if [ -z "$version" ]; then
+        version="$(sed -n 's/^version = "\(.*\)"/\1/p' "{{justfile_directory()}}/Cargo.toml" | head -1)"
+    fi
+    out="$(mkdir -p "{{out}}" && cd "{{out}}" && pwd)"
+
+    # 1. The binaries, as the npm packages of each platform have them.
+    binaries="$(mktemp -d)"
+    node "{{justfile_directory()}}/npm/assemble.mjs" "$version" "{{archives}}" "$binaries" "$@" >/dev/null
+
+    # 2. The extension, built from its locked dependencies, and staged with the
+    #    files that .vscodeignore keeps, so that its own bin/ is left alone.
+    cd "{{source_directory()}}"
+    bun install --frozen-lockfile
+    bun run build
+    vsce="$PWD/node_modules/.bin/vsce"
+    stage="$(mktemp -d)"
+    cp -R package.json README.md icon.png .vscodeignore dist "$stage"
+    cp "{{justfile_directory()}}/LICENSE" "$stage"
+    cd "$stage"
+
+    # 3. A VSIX for each platform that a binary runs on, with the binary, and a
+    #    universal one without. The Linux binaries are static, so they run on
+    #    Alpine too.
+    package() {
+        "$vsce" package "$version" --no-update-package-json --no-git-tag-version --no-dependencies \
+            --out "$out/zenith-$1-$version.vsix" "${@:2}" >/dev/null
+        echo "$out/zenith-$1-$version.vsix"
+    }
+    for dir in "$binaries"/zenith-*-*/; do
+        platform="$(basename "$dir")"
+        platform="${platform#zenith-}"
+        # The package has the binary, `zenith` or `zenith.exe`, and nothing else
+        # named after it.
+        rm -rf bin && mkdir bin && cp "$dir"/zenith* bin/
+        targets=("$platform")
+        if [[ "$platform" == linux-* ]]; then
+            targets+=("alpine-${platform#linux-}")
+        fi
+        for target in "${targets[@]}"; do
+            package "$target" --target "$target"
+        done
+    done
+    rm -rf bin
+    package universal
+
+# Package the extension of the release in $PLAN, dist's plan, into `out`, from the archives in `dir`, for `just vscode::publish` (run by the release workflow)
+[no-cd]
+release dir out:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The version that the plan releases zenith at, if it releases it.
+    version="$(jq --raw-output '.releases[] | select(.app_name == "zenith") | .app_version' <<<"$PLAN")"
+    mkdir -p "{{out}}"
+    if [ -z "$version" ]; then
+        echo "The release has no zenith to package"
+        exit 0
+    fi
+    # The Marketplace takes no pre-release versions, and the extension is
+    # published to both registries or neither.
+    if [[ "$version" == *-* ]]; then
+        echo "::notice title=VS Code::$version is a pre-release, which the VS Code Marketplace doesn't take, so the extension isn't published."
+        exit 0
+    fi
+    "{{just_executable()}}" --justfile "{{justfile()}}" vscode::packages "{{dir}}" "{{out}}" "$version"
+
+# Publish the VSIX files in `dir`, which `just vscode::release` packaged, to the VS Code Marketplace and Open VSX with the tokens in $VSCE_PAT and $OVSX_PAT, skipping what they already have (run by the release workflow)
+[no-cd]
+publish dir:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+    vsix_files=("{{dir}}"/zenith-*.vsix)
+    if [ "${#vsix_files[@]}" -eq 0 ]; then
+        echo "There is no VS Code extension to publish"
+        exit 0
+    fi
+    : "${VSCE_PAT:?is the token to publish to the VS Code Marketplace with, from the secrets of the repository}"
+    : "${OVSX_PAT:?is the token to publish to Open VSX with, from the secrets of the repository}"
+
+    # Each VSIX that a registry doesn't have yet is published, so that the job
+    # can be re-run. The Marketplace lists a universal VSIX without a platform.
+    bin="{{source_directory()}}/node_modules/.bin"
+    for vsix in "${vsix_files[@]}"; do
+        # Named `zenith-<platform>-<version>.vsix`, as `packages` names it.
+        name="$(basename "$vsix" ".vsix")"
+        version="${name##*-}"
+        platform="${name#zenith-}"
+        platform="${platform%-"$version"}"
+
+        marketplace="$("$bin/vsce" show feds01.zenith --json 2>/dev/null \
+            | jq --raw-output --arg version "$version" '.versions[] | select(.version == $version) | .targetPlatform // "universal"' \
+            || true)"
+        if grep --quiet --line-regexp --fixed-strings "$platform" <<<"$marketplace"; then
+            echo "feds01.zenith@$version for $platform is already on the VS Code Marketplace"
+        else
+            "$bin/vsce" publish --packagePath "$vsix"
+        fi
+        if curl --silent --fail --output /dev/null "https://open-vsx.org/api/feds01/zenith/$platform/$version"; then
+            echo "feds01.zenith@$version for $platform is already on Open VSX"
+        else
+            "$bin/ovsx" publish "$vsix"
+        fi
+    done

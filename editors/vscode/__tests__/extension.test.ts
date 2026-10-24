@@ -1,4 +1,4 @@
-// The tests of the extension in VS Code, on the workspace of test/fixture: the
+// The tests of the extension in VS Code, on the workspace of __tests__/fixture: the
 // projects `web-api`, `app-db`, `nested`, whose folders are its packages, and
 // `pinned`, which each break a contract, and `plain`, which zenith doesn't
 // check.

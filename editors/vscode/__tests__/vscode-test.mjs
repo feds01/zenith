@@ -1,25 +1,31 @@
-// The extension's tests, which `npm test` runs in a VS Code that it downloads,
-// on a copy of test/fixture: a workspace of projects, and a folder that zenith
-// doesn't check. The extension runs the binary in bin/, as it would
-// once packaged, which `just vscode-test` copies there.
+// The configuration of the extension's tests, which `bun run test` runs in a
+// VS Code that it downloads, on a copy of the fixture: a workspace of
+// projects, and a folder that zenith doesn't check. The extension runs the
+// binary in bin/, as it would once packaged, which `just vscode::test` copies
+// there.
 
 import { cpSync, existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "@vscode/test-cli";
 
-const binary = join("bin", process.platform === "win32" ? "zenith.exe" : "zenith");
+/** The directory of the tests, and of the extension above it. */
+const here = dirname(fileURLToPath(import.meta.url));
+const extension = dirname(here);
+
+const binary = join(extension, "bin", process.platform === "win32" ? "zenith.exe" : "zenith");
 if (!existsSync(binary)) {
   throw new Error(
-    `there is no ${binary} for the extension to run: build zenith, and copy it there, as \`just vscode-test\` does`,
+    `there is no ${binary} for the extension to run: build zenith, and copy it there, as \`just vscode::test\` does`,
   );
 }
 
 // A copy, so that the tests can change its files. `realpathSync`, as the
 // temporary directory is a symlink on macOS.
 const workspace = realpathSync(mkdtempSync(join(tmpdir(), "zenith-vscode-")));
-cpSync("test/fixture", workspace, { recursive: true });
+cpSync(join(here, "fixture"), workspace, { recursive: true });
 
 // The project `pinned` depends on a zenith that predates `zenith lsp`: its
 // binary, for this platform, fails as such a zenith would.
@@ -38,8 +44,10 @@ writeFileSync(join(platformPackage, basename(binary)), "#!/bin/sh\nexit 2\n", { 
 // must be short enough for macOS, which the default, under this one, may not be.
 const userData = realpathSync(mkdtempSync(join(tmpdir(), "zenith-vscode-data-")));
 
+// Paths are relative to this file.
 export default defineConfig({
-  files: "out/test/**/*.test.js",
+  extensionDevelopmentPath: "..",
+  files: "../out/__tests__/**/*.test.js",
   workspaceFolder: join(workspace, "workspace.code-workspace"),
   // The workspace is trusted, as the extension runs in no other. Other
   // extensions are left out.

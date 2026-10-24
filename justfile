@@ -2,6 +2,9 @@
 
 set positional-arguments
 
+# The VS Code extension's recipes, e.g. `just vscode::test`
+mod vscode 'editors/vscode'
+
 # List available recipes
 default:
     @just --list --unsorted
@@ -288,96 +291,3 @@ publish-npm dir:
         echo "::notice title=npm::Staged $spec. Approve it on npmjs.com, under Staged Packages, or with npm stage approve ${id:-<id>}."
     done
 
-# Test the VS Code extension in a VS Code that it downloads, with the zenith of this checkout as the binary that it comes with
-vscode-test:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cargo build -q -p zenith
-    binary="zenith{{ if os_family() == "windows" { ".exe" } else { "" } }}"
-    mkdir -p editors/vscode/bin
-    cp "${CARGO_TARGET_DIR:-target}/debug/$binary" "editors/vscode/bin/$binary"
-    cd editors/vscode
-    npm ci --no-audit --no-fund
-    npm run check
-    npm test
-
-# Package the VS Code extension into `out`, from the release archives in `archives`: a VSIX per platform with its binary, and a universal one without, at the workspace version in Cargo.toml unless given another, and only for `targets` if given any
-[no-cd]
-vscode-packages archives out version="" *targets:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    shift 3
-    version="{{version}}"
-    if [ -z "$version" ]; then
-        version="$(sed -n 's/^version = "\(.*\)"/\1/p' "{{justfile_directory()}}/Cargo.toml" | head -1)"
-    fi
-    out="$(mkdir -p "{{out}}" && cd "{{out}}" && pwd)"
-    extension="{{justfile_directory()}}/editors/vscode"
-
-    # 1. The binaries, as the npm packages of each platform have them.
-    packages="$(mktemp -d)"
-    node "{{justfile_directory()}}/npm/assemble.mjs" "$version" "{{archives}}" "$packages" "$@" >/dev/null
-
-    # 2. The extension, built from its locked dependencies, and packaged with them.
-    npm ci --prefix "$extension" --no-audit --no-fund
-    npm run --prefix "$extension" build
-    node "$extension/package.mjs" "$version" "$packages" "$out"
-
-# Package the VS Code extension of the release in $PLAN, dist's plan, into `out`, from the archives in `dir`, for `just publish-vscode` (run by the release workflow)
-[no-cd]
-vscode-release dir out:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # The version that the plan releases zenith at, if it releases it.
-    version="$(jq --raw-output '.releases[] | select(.app_name == "zenith") | .app_version' <<<"$PLAN")"
-    mkdir -p "{{out}}"
-    if [ -z "$version" ]; then
-        echo "The release has no zenith to package"
-        exit 0
-    fi
-    # The Marketplace takes no pre-release versions, and the extension is
-    # published to both registries or neither.
-    if [[ "$version" == *-* ]]; then
-        echo "::notice title=VS Code::$version is a pre-release, which the VS Code Marketplace doesn't take, so the extension isn't published."
-        exit 0
-    fi
-    "{{just_executable()}}" --justfile "{{justfile()}}" vscode-packages "{{dir}}" "{{out}}" "$version"
-
-# Publish the VSIX files in `dir`, which `just vscode-release` packaged, to the VS Code Marketplace and Open VSX with the tokens in $VSCE_PAT and $OVSX_PAT, skipping what they already have (run by the release workflow)
-[no-cd]
-publish-vscode dir:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    shopt -s nullglob
-    vsix_files=("{{dir}}"/zenith-*.vsix)
-    if [ "${#vsix_files[@]}" -eq 0 ]; then
-        echo "There is no VS Code extension to publish"
-        exit 0
-    fi
-    : "${VSCE_PAT:?is the token to publish to the VS Code Marketplace with, from the secrets of the repository}"
-    : "${OVSX_PAT:?is the token to publish to Open VSX with, from the secrets of the repository}"
-
-    # Each VSIX that a registry doesn't have yet is published, so that the job
-    # can be re-run. The Marketplace lists a universal VSIX without a platform.
-    bin="{{justfile_directory()}}/editors/vscode/node_modules/.bin"
-    for vsix in "${vsix_files[@]}"; do
-        # Named `zenith-<platform>-<version>.vsix`, as `vscode-packages` names it.
-        name="$(basename "$vsix" ".vsix")"
-        version="${name##*-}"
-        platform="${name#zenith-}"
-        platform="${platform%-"$version"}"
-
-        marketplace="$("$bin/vsce" show feds01.zenith --json 2>/dev/null \
-            | jq --raw-output --arg version "$version" '.versions[] | select(.version == $version) | .targetPlatform // "universal"' \
-            || true)"
-        if grep --quiet --line-regexp --fixed-strings "$platform" <<<"$marketplace"; then
-            echo "feds01.zenith@$version for $platform is already on the VS Code Marketplace"
-        else
-            "$bin/vsce" publish --packagePath "$vsix"
-        fi
-        if curl --silent --fail --output /dev/null "https://open-vsx.org/api/feds01/zenith/$platform/$version"; then
-            echo "feds01.zenith@$version for $platform is already on Open VSX"
-        else
-            "$bin/ovsx" publish "$vsix"
-        fi
-    done

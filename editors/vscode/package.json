@@ -1,55 +1,60 @@
 {
   "name": "zenith",
   "displayName": "Zenith Linter",
-  "description": "Shows where the code breaks its architecture contracts, as you save",
   "version": "0.0.0",
   "private": true,
-  "publisher": "feds01",
-  "license": "MIT",
-  "author": "Alexander Fedotov <alexander.fedotov.uk@gmail.com>",
-  "homepage": "https://feds01.github.io/zenith/editors.html",
-  "bugs": "https://github.com/feds01/zenith/issues",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/feds01/zenith.git",
-    "directory": "editors/vscode"
-  },
+  "description": "Shows where the code breaks its architecture contracts, as you save",
   "categories": [
     "Linters"
   ],
   "keywords": [
     "architecture",
-    "linter",
-    "imports",
-    "monorepo",
-    "typescript",
     "go",
+    "imports",
+    "linter",
+    "monorepo",
     "python",
     "rust",
-    "terraform"
+    "terraform",
+    "typescript"
   ],
-  "icon": "icon.png",
-  "galleryBanner": {
-    "color": "#14163a",
-    "theme": "dark"
+  "homepage": "https://feds01.github.io/zenith/editors.html",
+  "bugs": "https://github.com/feds01/zenith/issues",
+  "license": "MIT",
+  "author": "Alexander Fedotov <alexander.fedotov.uk@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/feds01/zenith.git",
+    "directory": "editors/vscode"
   },
-  "engines": {
-    "vscode": "^1.91.0"
-  },
+  "publisher": "feds01",
   "main": "./dist/extension.js",
-  "activationEvents": [
-    "workspaceContains:**/zenith.toml",
-    "onStartupFinished"
-  ],
-  "capabilities": {
-    "untrustedWorkspaces": {
-      "supported": false,
-      "description": "zenith runs a binary that may be the workspace's own, and that runs tools such as cargo and git in the workspace."
-    },
-    "virtualWorkspaces": {
-      "supported": false,
-      "description": "zenith reads the project's files from disk."
-    }
+  "scripts": {
+    "build": "bun build src/extension.ts --outdir dist --target node --format cjs --external vscode --sourcemap=linked --minify",
+    "watch": "bun build src/extension.ts --outdir dist --target node --format cjs --external vscode --sourcemap=linked --watch",
+    "format": "oxfmt",
+    "check": "oxfmt --check && oxlint --deny-warnings && tsc --noEmit && tsc --noEmit -p __tests__",
+    "pretest": "bun run build && tsc -p __tests__",
+    "test": "vscode-test --config __tests__/vscode-test.mjs"
+  },
+  "dependencies": {
+    "vscode-languageclient": "11.0.0"
+  },
+  "devDependencies": {
+    "@types/mocha": "10.0.10",
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.91.0",
+    "@vscode/test-cli": "0.0.15",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.0.0",
+    "mocha": "12.0.3",
+    "ovsx": "1.3.0",
+    "oxfmt": "0.74.0",
+    "oxlint": "1.89.0",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "mocha": "12.0.3"
   },
   "contributes": {
     "configuration": {
@@ -96,31 +101,29 @@
       }
     ]
   },
-  "scripts": {
-    "build": "node esbuild.mjs",
-    "watch": "node esbuild.mjs --watch",
-    "format": "prettier --write .",
-    "check": "prettier --check . && tsc --noEmit && tsc --noEmit -p test",
-    "pretest": "npm run build && tsc -p test",
-    "test": "vscode-test"
+  "activationEvents": [
+    "onStartupFinished",
+    "workspaceContains:**/zenith.toml"
+  ],
+  "icon": "icon.png",
+  "galleryBanner": {
+    "color": "#14163a",
+    "theme": "dark"
   },
-  "dependencies": {
-    "vscode-languageclient": "11.0.0"
+  "engines": {
+    "vscode": "^1.91.0"
   },
-  "devDependencies": {
-    "@types/mocha": "10.0.10",
-    "@types/node": "22.20.5",
-    "@types/vscode": "1.91.0",
-    "@vscode/test-cli": "0.0.15",
-    "@vscode/test-electron": "3.1.0",
-    "@vscode/vsce": "4.0.0",
-    "esbuild": "0.28.2",
-    "mocha": "12.0.3",
-    "ovsx": "1.3.0",
-    "prettier": "3.9.10",
-    "typescript": "7.0.2"
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "zenith runs a binary that may be the workspace's own, and that runs tools such as cargo and git in the workspace."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "zenith reads the project's files from disk."
+    }
   },
-  "overrides": {
-    "mocha": "$mocha"
-  }
+  "trustedDependencies": [
+    "@vscode/vsce-sign"
+  ]
 }

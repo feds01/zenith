@@ -31,18 +31,21 @@ jobs:
           pattern: artifacts-*
           path: artifacts/
           merge-multiple: true
+      # Node assembles the binaries as the npm packages have them, and Bun builds
+      # the extension.
       - uses: actions/setup-node@v6
         with:
           node-version: 24
       # Pinned, as it isn't GitHub's own, and each step here could publish the
       # extension.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       # Without the tokens: this installs the extension's dependencies, and
       # runs their install scripts.
       - name: Package the extension
-        run: just --justfile zenith/justfile vscode-release artifacts vsix
+        run: just --justfile zenith/justfile vscode::release artifacts vsix
       - name: Publish the extension
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: just --justfile zenith/justfile publish-vscode vsix
+        run: just --justfile zenith/justfile vscode::publish vsix

@@ -16,7 +16,7 @@ installers = ["shell", "powershell", "homebrew"]
 tap = "feds01/homebrew-tap"
 # Publish the npm packages, the Homebrew formula and the VS Code extension with
 # each release, by our own jobs, which run `just publish-npm`,
-# `just publish-formula` and `just publish-vscode`. The npm packages are staged
+# `just publish-formula` and `just vscode::publish`. The npm packages are staged
 # with npm's trusted publishing, without a token, and go live once a
 # maintainer approves them.
 publish-jobs = ["./publish-homebrew", "./publish-npm", "./publish-vscode"]

@@ -147,26 +147,33 @@ jobs:
         run: rustup toolchain install
       - name: Dependency caching
         uses: Swatinem/rust-cache@v2
+      # Node runs VS Code's test runner, and the script that assembles the npm
+      # packages that the extension takes its binaries from.
       - name: Install Node
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: editors/vscode/package-lock.json
+      # Pinned, as it isn't GitHub's own.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       # VS Code needs a display, which xvfb-run gives it.
       - name: Test the extension
-        run: xvfb-run -a just vscode-test
+        run: xvfb-run -a just vscode::test
+      # From an archive of the binary, as a release has for each target: the
+      # runner's, x86-64 or ARM64.
       - name: Package the extension
         run: |
-          mkdir -p archives/zenith-x86_64-unknown-linux-musl
-          cp target/debug/zenith archives/zenith-x86_64-unknown-linux-musl/
-          tar -cJf archives/zenith-x86_64-unknown-linux-musl.tar.xz -C archives zenith-x86_64-unknown-linux-musl
-          just vscode-packages archives vsix "" x86_64-unknown-linux-musl
+          target="$(uname -m)-unknown-linux-musl"
+          cpu="$(uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/')"
+          mkdir -p "archives/zenith-$target"
+          cp target/debug/zenith "archives/zenith-$target/"
+          tar -cJf "archives/zenith-$target.tar.xz" -C archives "zenith-$target"
+          just vscode::packages archives vsix "" "$target"
           # The binary's platforms, and the universal VSIX.
-          for platform in linux-x64 alpine-x64 universal; do
-            ls vsix/zenith-$platform-*.vsix
+          for platform in "linux-$cpu" "alpine-$cpu" universal; do
+            ls vsix/zenith-"$platform"-*.vsix
           done
 
   deny:

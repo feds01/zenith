@@ -1,7 +1,7 @@
 //! Finding the project and its configuration, and running the pipeline on
 //! it.
 
-use std::{env, path::Path};
+use std::{env, path::Path, sync::Arc};
 
 use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
@@ -13,7 +13,6 @@ use zenith_utils::{
     fs::{FileSystem, disk},
     path::adjust_canonicalisation,
 };
-use zenith_workspace::Checkout;
 
 use crate::{Reported, cli::GlobalArgs, reporting, version::version};
 
@@ -27,8 +26,12 @@ use crate::{Reported, cli::GlobalArgs, reporting, version::version};
 /// The session keeps a parse cache, unless `--no-cache` or the configuration
 /// turns it off.
 pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
+    open_in(global, disk().clone())
+}
+
+/// [`open`] the project in `file_system`.
+fn open_in(global: &GlobalArgs, file_system: Arc<dyn FileSystem>) -> Result<Session> {
     // 1. Find the configuration file, if there is one.
-    let file_system = disk().clone();
     let cwd = env::current_dir().with_context(|| message!(cli_current_dir))?;
     let config_path = match (&global.config, &global.root) {
         (Some(config), _) if !file_system.is_file(config) => {
@@ -77,44 +80,37 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
     Ok(session)
 }
 
-/// Build the graph of the project of `project` as it is in `checkout`, the
-/// commit that `reference` names: rooted at the same path in the checkout,
+/// Build the graph of the project of `project` as it is in `commit`, the
+/// file system of the commit that `reference` names: rooted at the same path,
 /// and configured by the configuration file at the same path, or by the one
 /// in that root, or else by the defaults. A configuration file outside the
 /// repository configures it as it is.
 ///
-/// Every file of the commit is scanned, without a parse cache, and nothing is
-/// said of them: what is wrong with another commit's files is not the working
-/// tree's to fix. The errors name the reference, not the checkout's temporary
-/// directory.
+/// Every file of the commit is scanned, and nothing is said of them: what is
+/// wrong with another commit's files is not the working tree's to fix. The
+/// parse cache is only read, so the working tree's entries stay. The errors
+/// name the reference.
 pub(crate) fn build_at(
     global: &GlobalArgs,
     project: &Session,
-    checkout: &Checkout,
+    commit: Arc<dyn FileSystem>,
     reference: &str,
 ) -> Result<Session> {
-    // 1. Find the root and the configuration file at the same paths in the
-    //    checkout.
-    let root = checkout.path_of(&project.root);
-    if !root.is_dir() {
+    // 1. Find the root and the configuration file at the same paths in the commit.
+    if !commit.is_dir(&project.root) {
         bail!(message!(cli_graph_diff_no_root, reference));
     }
-    let config = project
-        .config
-        .file
-        .as_ref()
-        .map(|file| checkout.path_of(&adjust_canonicalisation(&file.path)));
+    let config = project.config.file.as_ref().map(|file| adjust_canonicalisation(&file.path));
     let global = GlobalArgs {
-        config: config.filter(|path| path.is_file()),
-        root: Some(root),
+        config: config.filter(|path| commit.is_file(path)),
+        root: Some(project.root.clone()),
         tracked: false,
-        no_cache: true,
         ..global.clone()
     };
 
     // 2. Build the graph, without reporting on the files.
     let failed = || message!(cli_graph_diff_failed, reference);
-    let mut session = open(&global).with_context(failed)?;
+    let mut session = open_in(&global, commit).with_context(failed)?;
     Pipeline::standard().run_until(&mut session, StageKind::Graph).with_context(failed)?;
     session.narrow();
     if session.files.is_empty() {

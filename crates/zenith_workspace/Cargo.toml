@@ -16,9 +16,11 @@ testing = []
 ignore = { workspace = true }
 log = { workspace = true }
 rustc-hash = { workspace = true }
-tempfile = { workspace = true }
 zenith_diagnostics = { workspace = true }
 zenith_utils = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

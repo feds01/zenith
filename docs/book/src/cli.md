@@ -177,13 +177,18 @@ repository, are errors. Only the head's unresolved imports and unreadable
 files are reported, as `zenith graph` reports them; the base's are not the
 working tree's to fix.
 
-Each ref is checked out into a temporary directory, which is removed
-afterwards, without touching the repository's index or worktrees, and
-without fetching Git LFS files. Interrupting zenith, as with Ctrl-C, or a
-crash can leave a `zenith-*` directory in the system's temporary directory,
-but never anything in the repository. The checkout holds only the files that git
-tracks, so a dependency that resolves through an untracked file, such as one
-in `node_modules`, may resolve differently there than in the working tree.
+Each ref is read straight from git, without checking it out: nothing is
+written, neither in the repository nor anywhere else, and Git LFS files are
+read as their pointers, without fetching them. The files scanned at a ref
+are those that git tracks at it, even with `respect_gitignore = false`. An
+import that leads to what git ignores in the working tree, such as an
+installed `node_modules`, is resolved there, so that it resolves at the ref
+as it does now; the working tree's other untracked files are not part of
+the ref. Rust crates are found from their `Cargo.toml` files at a ref,
+without asking Cargo, which can only read the working tree. The files that
+are the same at the ref as in the working tree reuse the parse cache, which
+the ref never writes.
+
 The project's root and configuration file are those at the same paths in the
 ref; without that file, the ref's project uses the `zenith.toml` in its root,
 or else the defaults. A configuration file outside the repository is used as

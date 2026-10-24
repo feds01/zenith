@@ -2,10 +2,9 @@
 //! it tracks, for scanning only those, as in a pre-commit hook, where
 //! untracked files aren't part of the commit, the files that it sees
 //! renamed, for following them, the files that changed since a commit, for
-//! reporting on only those, and the project at another commit, through a
-//! [`Checkout`].
+//! reporting on only those, and the project at another commit, as a
+//! [`CommitFileSystem`].
 
-mod checkout;
 mod commit_files;
 mod commits;
 mod renames;
@@ -18,7 +17,6 @@ use std::{
     process::Command,
 };
 
-pub use checkout::Checkout;
 pub use commit_files::CommitFileSystem;
 pub use renames::Renames;
 pub use tracked::TrackedFiles;
@@ -149,10 +147,6 @@ pub enum GitError {
 
     /// No commit has this name.
     UnknownCommit(String),
-
-    /// The temporary directory to check a commit out into could not be made,
-    /// with this message.
-    Checkout(String),
 }
 
 impl fmt::Display for GitError {
@@ -168,7 +162,6 @@ impl fmt::Display for GitError {
             Self::UnknownCommit(reference) => {
                 f.write_str(&message!(workspace_unknown_commit, reference))
             }
-            Self::Checkout(error) => f.write_str(&message!(workspace_checkout_failed, error)),
         }
     }
 }

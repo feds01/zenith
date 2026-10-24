@@ -3,57 +3,26 @@
 //!
 //! The suggestions are about the [modules](modules::Modules): the workspace
 //! packages, or the top-level directories when there are fewer than two
-//! packages. Each kind of contract is proposed by its own [`Pass`] over the
-//! dependencies between them:
+//! packages. Each kind of contract is proposed by its own
+//! [pass](passes::Pass) over the dependencies between them.
 //!
-//! - [`acyclic`], when they depend on each other in no cycle;
-//! - [`layers`], when those that take part in a dependency stack in one strict
-//!   order;
-//! - [`independence`], for each set of siblings that don't depend on each
-//!   other.
-//!
-//! A new kind of suggestion is a new pass, added to [`PASSES`]. Each contract
-//! that a pass proposes is written as TOML, parsed back as a contract of the
-//! configuration, and checked against the same graph that it was found in, so
-//! a suggestion that would be broken is never made.
+//! Each contract that a pass proposes is written as TOML, parsed back as a
+//! contract of the configuration, and checked against the same graph that it
+//! was found in, so a suggestion that would be broken is never made.
 
-mod acyclic;
-mod independence;
-mod layers;
 mod modules;
+mod passes;
 
 use std::fmt;
 
-use modules::{ModuleKind, Modules};
+use modules::Modules;
+use passes::{Context, PASSES};
 use zenith_config::{Config, Languages, Reexports};
 use zenith_graph::{Graph, GraphView, UnitGraph};
 use zenith_lang::Workspace;
 use zenith_pipeline::Graphs;
 
 use crate::{Contract, Exemptions};
-
-/// The passes, in the order that their suggestions are listed.
-const PASSES: &[&dyn Pass] = &[&acyclic::Acyclic, &layers::Layers, &independence::Independence];
-
-/// A pass that proposes contracts of one kind, from the modules and the
-/// dependencies between them.
-trait Pass {
-    /// The contracts that the dependencies between the modules of `context`
-    /// allow. They are checked before they are suggested.
-    fn propose(&self, context: &Context) -> Vec<Suggestion>;
-}
-
-/// What the passes propose contracts from.
-struct Context {
-    /// The modules.
-    modules: Modules,
-
-    /// The dependencies between the modules, as units in their order.
-    units: UnitGraph,
-
-    /// The languages whose selector schemes the contracts may use.
-    languages: Languages,
-}
 
 /// A contract that the code already keeps, suggested for the configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]

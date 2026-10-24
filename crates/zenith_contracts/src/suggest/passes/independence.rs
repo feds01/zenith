@@ -5,7 +5,8 @@ use zenith_config::ContractConfig;
 use zenith_diagnostics::message;
 use zenith_utils::toml_writing::array;
 
-use super::{Context, ModuleKind, Pass, Suggestion};
+use super::{Context, Pass};
+use crate::{Suggestion, suggest::modules::ModuleKind};
 
 /// Suggests that sibling modules stay independent of each other.
 pub(super) struct Independence;

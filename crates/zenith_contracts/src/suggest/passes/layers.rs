@@ -5,7 +5,8 @@ use zenith_config::{Languages, Layer};
 use zenith_diagnostics::message;
 use zenith_utils::toml_writing::array;
 
-use super::{Context, Pass, Suggestion};
+use super::{Context, Pass};
+use crate::Suggestion;
 
 /// Suggests that the modules keep the order they stack in.
 pub(super) struct Layers;

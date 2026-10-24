@@ -1,5 +1,7 @@
 //! Tests of the roots of a project and of finding the file of a module.
 
+use zenith_utils::fs::disk;
+
 use super::*;
 use crate::testing::Project;
 
@@ -7,7 +9,7 @@ use crate::testing::Project;
 /// `project`, as its file relative to the root and whether it is regular.
 fn find(project: &Project, dir: &str, names: &str) -> Option<(String, bool)> {
     let names: Vec<_> = names.split('.').collect();
-    let module = Module::find(&Directories::default(), &project.path(dir), &names)?;
+    let module = Module::find(&Directories::new(disk().clone()), &project.path(dir), &names)?;
     let file = module.file.strip_prefix(project.root()).unwrap();
     Some((file.to_string_lossy().replace('\\', "/"), module.regular))
 }
@@ -60,7 +62,8 @@ fn the_roots_with_a_name_are_those_around_the_file_first() {
         ("b/inner/x.py", ""),
         ("c/other.py", ""),
     ]);
-    let roots = Roots::configured(project.root(), &["a".into(), "b".into(), "c".into()]);
+    let roots =
+        Roots::configured(disk().as_ref(), project.root(), &["a".into(), "b".into(), "c".into()]);
     assert_eq!(
         roots.having("shared", &project.path("c/other.py")),
         [project.path("a"), project.path("b")]
@@ -75,15 +78,18 @@ fn the_roots_with_a_name_are_those_around_the_file_first() {
 #[test]
 fn a_configured_root_that_is_not_a_directory_is_left_out() {
     let project = Project::new(&[("src/a.py", "")]);
-    let roots =
-        Roots::configured(project.root(), &["src".into(), "missing".into(), "./src".into()]);
+    let roots = Roots::configured(
+        disk().as_ref(),
+        project.root(),
+        &["src".into(), "missing".into(), "./src".into()],
+    );
     assert_eq!(roots.dirs, [project.path("src")]);
 }
 
 #[test]
 fn the_package_root_is_above_the_outermost_regular_package() {
     let project = Project::workspace();
-    let directories = Directories::default();
+    let directories = Directories::new(disk().clone());
     let root = |file| directories.package_root(&project.path(file), project.root()).to_path_buf();
     assert_eq!(root("legacy/app/views.py"), project.path("legacy"));
     assert_eq!(root("scripts/build.py"), project.path("scripts"));

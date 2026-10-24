@@ -1,6 +1,8 @@
 //! Tests of discovery: the packages of a project and the directories their
 //! imports start from.
 
+use zenith_utils::fs::disk;
+
 use super::*;
 use crate::testing::Project;
 
@@ -38,6 +40,7 @@ fn a_manifest_that_cannot_be_read_is_left_out() {
 #[test]
 fn imports_start_from_src_in_the_src_layout_and_from_the_package_otherwise() {
     let project = Project::workspace();
-    let roots: Vec<_> = project.packages().iter().map(Package::root).collect();
+    let roots: Vec<_> =
+        project.packages().iter().map(|package| package.root(disk().as_ref())).collect();
     assert_eq!(roots, [project.path("services/api/src"), project.path("services/core")]);
 }

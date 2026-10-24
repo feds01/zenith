@@ -2,7 +2,7 @@
 //! absolute imports from the roots, relative imports, the standard library
 //! and third-party packages.
 
-use zenith_utils::glob::NamePattern;
+use zenith_utils::{fs::disk, glob::NamePattern};
 
 use super::*;
 use crate::testing::Project;
@@ -23,7 +23,7 @@ impl Fixture {
     /// What `specifier` resolves to when the file `from` imports it, both
     /// relative to the root of the project.
     fn resolve(&self, from: &str, specifier: &str) -> Resolved {
-        Resolver::new(self.project.root(), &self.roots, &[])
+        Resolver::new(self.project.root(), disk().clone(), &self.roots, &[])
             .resolve(&self.project.path(from), specifier)
     }
 
@@ -179,8 +179,9 @@ fn anything_else_is_a_third_party_package_named_by_its_top_level_module() {
 #[test]
 fn configured_roots_replace_those_of_the_packages() {
     let fixture = Fixture::new();
-    let roots = Roots::configured(fixture.project.root(), &["services/core".into()]);
-    let resolver = Resolver::new(fixture.project.root(), &roots, &[]);
+    let roots =
+        Roots::configured(disk().as_ref(), fixture.project.root(), &["services/core".into()]);
+    let resolver = Resolver::new(fixture.project.root(), disk().clone(), &roots, &[]);
     let resolve = |specifier| resolver.resolve(&fixture.project.path(CORE), specifier);
     assert_eq!(resolve("core.db"), Resolved::Internal(DB.into()));
     assert_eq!(resolve("acme.api"), Resolved::External { package: "acme".into(), found: true });
@@ -190,7 +191,7 @@ fn configured_roots_replace_those_of_the_packages() {
 fn unresolved_paths_that_match_a_pattern_are_expected() {
     let fixture = Fixture::new();
     let patterns = [NamePattern::new(".generated.*").unwrap()];
-    let resolver = Resolver::new(fixture.project.root(), &fixture.roots, &patterns);
+    let resolver = Resolver::new(fixture.project.root(), disk().clone(), &fixture.roots, &patterns);
     let resolve =
         |specifier| resolver.resolve(&fixture.project.path("scripts/build.py"), specifier);
     assert_eq!(

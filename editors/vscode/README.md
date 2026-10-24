@@ -1,4 +1,4 @@
-# zenith for VS Code
+# Zenith Linter for VS Code
 
 [zenith](https://feds01.github.io/zenith/) checks which parts of a monorepo may
 import which others, by the contracts in its `zenith.toml`. This extension

@@ -1,6 +1,6 @@
 {
   "name": "zenith",
-  "displayName": "zenith",
+  "displayName": "Zenith Linter",
   "description": "Shows where the code breaks its architecture contracts, as you save",
   "version": "0.0.0",
   "private": true,

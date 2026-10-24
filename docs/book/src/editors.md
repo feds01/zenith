@@ -43,7 +43,7 @@ Known limits:
 
 ## VS Code
 
-Install the [zenith extension](https://marketplace.visualstudio.com/items?itemName=feds01.zenith)
+Install the [Zenith Linter extension](https://marketplace.visualstudio.com/items?itemName=feds01.zenith)
 from the Marketplace, or from [Open VSX](https://open-vsx.org/extension/feds01/zenith)
 in editors that use it, such as Cursor and VSCodium. It checks each folder of
 the workspace that has a `zenith.toml`, in it or in a folder above it, and

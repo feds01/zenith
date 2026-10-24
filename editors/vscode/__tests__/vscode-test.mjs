@@ -4,9 +4,9 @@
 // binary in bin/, as it would once packaged, which `just vscode::test` copies
 // there.
 
-import { cpSync, existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "@vscode/test-cli";
@@ -22,23 +22,11 @@ if (!existsSync(binary)) {
   );
 }
 
-// A copy, so that the tests can change its files. `realpathSync`, as the
-// temporary directory is a symlink on macOS.
+// A copy, as the tests edit its files, and VS Code rewrites its workspace file
+// when they add a folder. `realpathSync`, as the temporary directory is a
+// symlink on macOS.
 const workspace = realpathSync(mkdtempSync(join(tmpdir(), "zenith-vscode-")));
 cpSync(join(here, "fixture"), workspace, { recursive: true });
-
-// The project `pinned` depends on a zenith that predates `zenith lsp`: its
-// binary, for this platform, fails as such a zenith would.
-const modules = join(workspace, "pinned", "node_modules", "@feds01");
-const platformPackage = join(modules, `zenith-${process.platform}-${process.arch}`);
-mkdirSync(platformPackage, { recursive: true });
-mkdirSync(join(modules, "zenith"), { recursive: true });
-writeFileSync(join(modules, "zenith", "package.json"), `{ "name": "@feds01/zenith" }\n`);
-writeFileSync(
-  join(platformPackage, "package.json"),
-  `{ "name": "@feds01/zenith-${process.platform}-${process.arch}" }\n`,
-);
-writeFileSync(join(platformPackage, basename(binary)), "#!/bin/sh\nexit 2\n", { mode: 0o755 });
 
 // VS Code's data, in a directory with a short path: the path of its socket
 // must be short enough for macOS, which the default, under this one, may not be.

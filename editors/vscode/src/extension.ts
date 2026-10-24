@@ -7,7 +7,7 @@ import type { ChildProcess } from "node:child_process";
 import * as vscode from "vscode";
 import { LanguageClient, type LanguageClientOptions, type ServerOptions } from "vscode-languageclient/node";
 
-import { type Binary, findBinaries, hasLsp, isFile, type Source } from "./binary";
+import { type Binary, findBinary, isFile, type Source } from "./binary";
 import { CONFIG_FILE_NAME, projectOf } from "./project";
 
 /** The guide's page on installing zenith. */
@@ -244,9 +244,10 @@ class Server {
 
   /** Start the server, or say why it can't start. */
   async start(): Promise<void> {
-    // 1. Find the binary to run: the first that has `zenith lsp`.
+    // 1. Find the binary to run. The project's own is passed over if it predates
+    //    `zenith lsp`.
     const { path, args } = settings(this.folder);
-    const binaries = findBinaries({
+    const { binary, outdated } = findBinary({
       folder: this.folder.uri.fsPath,
       setting: path,
       bundled: this.bundled,
@@ -254,32 +255,20 @@ class Server {
       arch: process.arch,
       path: process.env["PATH"] ?? "",
     });
-    const [first] = binaries;
-    if (first === undefined) {
-      void this.fail(
-        `zenith can't check ${this.folder.name}: it isn't installed, and the extension has no binary of its own for this platform.`,
-        true,
-      );
-      return;
-    }
-    if (first.source === "setting" && !isFile(first.path)) {
-      void this.fail(
-        `zenith can't check ${this.folder.name}: \`zenith.path\` is ${first.path}, which isn't a file.`,
-        false,
-      );
-      return;
-    }
-    let binary: Binary | undefined;
-    for (const candidate of binaries) {
-      if (await hasLsp(candidate.path)) {
-        binary = candidate;
-        break;
-      }
-      this.output.warn(`${candidate.path}, from ${SOURCES[candidate.source]}, has no \`zenith lsp\`: it is too old.`);
+    if (outdated !== undefined) {
+      this.output.warn(`The project's \`@feds01/zenith\` is ${outdated}, which has no \`zenith lsp\`: upgrade it.`);
     }
     if (binary === undefined) {
+      const why =
+        outdated === undefined
+          ? "it isn't installed, and the extension has no binary of its own for this platform"
+          : `the project's \`@feds01/zenith\` is ${outdated}, which has no \`zenith lsp\`; upgrade it, or set \`zenith.path\``;
+      void this.fail(`zenith can't check ${this.folder.name}: ${why}.`, outdated === undefined);
+      return;
+    }
+    if (binary.source === "setting" && !isFile(binary.path)) {
       void this.fail(
-        `zenith can't check ${this.folder.name}: ${first.path}, from ${SOURCES[first.source]}, has no \`zenith lsp\`. Upgrade it, or set \`zenith.path\`.`,
+        `zenith can't check ${this.folder.name}: \`zenith.path\` is ${binary.path}, which isn't a file.`,
         false,
       );
       return;

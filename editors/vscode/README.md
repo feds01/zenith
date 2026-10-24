@@ -20,12 +20,12 @@ guide.
 
 ## The binary
 
-The extension runs the first of these that it finds, and that has
-`zenith lsp`, which a zenith that a project pins may predate:
+The extension runs the first of these that it finds:
 
 1. the binary that the `zenith.path` setting names;
 2. the project's own, if it has `@feds01/zenith` among its npm dependencies,
-   so that it runs the version that the project pins;
+   so that it runs the version that the project pins, unless it is 0.5.0 or
+   older, which have no `zenith lsp`;
 3. the binary that comes with the extension, on macOS, Linux (ARM64 and
    x86-64) and Windows (x86-64);
 4. `zenith` on the `PATH`.

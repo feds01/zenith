@@ -51,14 +51,14 @@ starts or stops checking a folder as it gains or loses one. It runs a server
 for each project: folders under the same `zenith.toml`, such as the packages
 of a monorepo, share one, which shows each finding once.
 
-It runs the first of these binaries that it finds, and that has `zenith lsp`,
-which a zenith that a project pins may predate:
+It runs the first of these binaries that it finds:
 
 1. the one that the `zenith.path` setting names, absolute or relative to the
    folder;
 2. the project's own, if it has `@feds01/zenith` among its
    [npm](installation.md#npm) dependencies, so that the editor runs the
-   version that the project pins;
+   version that the project pins, unless it is 0.5.0 or older, which have no
+   `zenith lsp`;
 3. the one that comes with the extension, for macOS, Linux (ARM64 and
    x86-64) and Windows (x86-64);
 4. `zenith` on the `PATH`.

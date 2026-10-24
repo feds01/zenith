@@ -1,16 +1,15 @@
-// Finds the zenith binaries that could run for a workspace folder, in the
-// order to try them: the one that the settings name, or else the project's
-// own, from its npm package, the one that comes with the extension, and
-// `zenith` on the `PATH`.
+// Finds the zenith binary to run for a workspace folder: the one that the
+// settings name, or else the project's own, from its npm package, unless it
+// predates `zenith lsp`, or else the one that comes with the extension, or
+// else `zenith` on the `PATH`.
 
-import { execFile } from "node:child_process";
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 
-/** How long a binary has to say whether it has `zenith lsp`, in milliseconds. */
-const PROBE_TIMEOUT = 10_000;
+/** The last release of zenith without `zenith lsp`. */
+const LAST_WITHOUT_LSP = [0, 5, 0];
 
 /** zenith's npm package, which depends on a package per platform with its binary. */
 const NPM_PACKAGE = "@feds01/zenith";
@@ -25,6 +24,15 @@ export interface Binary {
 
   /** Where it was found. */
   source: Source;
+}
+
+/** The binary to run, and the project's own zenith, if it was passed over. */
+export interface Choice {
+  /** The binary to run, if there is one. */
+  binary: Binary | undefined;
+
+  /** The version of the project's zenith, if it predates `zenith lsp`. */
+  outdated: string | undefined;
 }
 
 /** Where to look for a binary. */
@@ -47,38 +55,49 @@ export interface Search {
 }
 
 /**
- * The binaries that could run for `search.folder`, in the order to try them.
- * The one that the setting names is the only one, even if it doesn't exist,
- * so that the caller can say that the setting is wrong, rather than run
- * another.
+ * The binary to run for `search.folder`. The one that the setting names is
+ * run even if it doesn't exist, so that the caller can say that the setting
+ * is wrong, rather than run another.
  */
-export function findBinaries(search: Search): Binary[] {
+export function findBinary(search: Search): Choice {
   const executable = search.platform === "win32" ? "zenith.exe" : "zenith";
   if (search.setting !== "") {
-    return [{ path: settingPath(search.setting, search.folder), source: "setting" }];
+    return { binary: { path: settingPath(search.setting, search.folder), source: "setting" }, outdated: undefined };
   }
-  const project = projectBinary(search, executable);
+
+  // 1. The project's own, unless it predates `zenith lsp`.
+  const project = projectZenith(search, executable);
+  const outdated = project === undefined || hasLsp(project.version) ? undefined : project.version;
+  if (project?.binary !== undefined && outdated === undefined) {
+    return { binary: { path: project.binary, source: "project" }, outdated };
+  }
+
+  // 2. The extension's own, which always has it.
   const bundled = join(search.bundled, executable);
+  if (isFile(bundled)) {
+    return { binary: { path: bundled, source: "bundled" }, outdated };
+  }
+
+  // 3. The first on the `PATH`.
   const onPath = search.path
     .split(delimiter)
     .filter((dir) => dir !== "")
     .map((dir) => join(dir, executable))
     .find(isFile);
-  return [
-    ...(project === undefined ? [] : [{ path: project, source: "project" as const }]),
-    ...(isFile(bundled) ? [{ path: bundled, source: "bundled" as const }] : []),
-    ...(onPath === undefined ? [] : [{ path: onPath, source: "path" as const }]),
-  ];
+  return { binary: onPath === undefined ? undefined : { path: onPath, source: "path" }, outdated };
 }
 
 /**
- * Whether the binary at `path` runs, and has `zenith lsp`, which a zenith
- * that predates it doesn't: a project may pin one.
+ * Whether zenith `version` has `zenith lsp`, as every release after 0.5.0
+ * does. A version that names no release is taken to have it.
  */
-export function hasLsp(path: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    execFile(path, ["lsp", "--help"], { timeout: PROBE_TIMEOUT }, (error) => resolve(error === null));
-  });
+export function hasLsp(version: string): boolean {
+  const release = /^(\d+)\.(\d+)\.(\d+)/.exec(version)?.slice(1).map(Number);
+  if (release === undefined) {
+    return true;
+  }
+  const differs = release.findIndex((part, index) => part !== LAST_WITHOUT_LSP[index]);
+  return differs !== -1 && (release[differs] ?? 0) > (LAST_WITHOUT_LSP[differs] ?? 0);
 }
 
 /** Whether a file is at `path`. */
@@ -98,20 +117,36 @@ function settingPath(setting: string, folder: string): string {
   return isAbsolute(setting) ? setting : resolve(folder, setting);
 }
 
+/** The project's zenith, from its npm package. */
+interface ProjectZenith {
+  /** Its version. */
+  version: string;
+
+  /** Its binary for the platform, if the package manager installed it. */
+  binary: string | undefined;
+}
+
 /**
- * The binary of the project's npm package, as Node finds it from the folder:
- * that of the platform's package, which zenith's package depends on. It is
- * found from zenith's package, as package managers that don't hoist it, such
- * as pnpm, leave it there.
+ * The project's zenith, as Node finds its npm package from the folder, if
+ * the project has it. Its binary is that of the platform's package, which
+ * zenith's package depends on, and is found from zenith's package, as
+ * package managers that don't hoist it, such as pnpm, leave it there.
  */
-function projectBinary(search: Search, executable: string): string | undefined {
+function projectZenith(search: Search, executable: string): ProjectZenith | undefined {
+  let main: string;
+  let version: string;
   try {
-    const main = createRequire(join(search.folder, "package.json")).resolve(`${NPM_PACKAGE}/package.json`);
+    main = createRequire(join(search.folder, "package.json")).resolve(`${NPM_PACKAGE}/package.json`);
+    version = String((JSON.parse(readFileSync(main, "utf8")) as { version?: unknown }).version);
+  } catch {
+    return undefined;
+  }
+  try {
     const platformPackage = `${NPM_PACKAGE}-${search.platform}-${search.arch}`;
     const manifest = createRequire(main).resolve(`${platformPackage}/package.json`);
     const binary = join(dirname(manifest), executable);
-    return isFile(binary) ? binary : undefined;
+    return { version, binary: isFile(binary) ? binary : undefined };
   } catch {
-    return undefined;
+    return { version, binary: undefined };
   }
 }

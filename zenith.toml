@@ -7,9 +7,84 @@ exclude = ["tests/**"]     # the UI test cases are projects of their own
 
 [languages.rust]
 
+# Every crate has a place here: a new crate takes one, or nothing checks it.
+[contracts.crate-layers]
+type = "layers"
+name = "Crates only depend on the layers below them"
+layers = [
+  "pkg:zenith | pkg:zenith_benchmark",
+  "pkg:zenith_contracts",
+  "pkg:zenith_pipeline",
+  "pkg:zenith_lang_*",
+  "pkg:zenith_config",
+  "pkg:zenith_lang",
+  "pkg:zenith_cache | pkg:zenith_graph | pkg:zenith_reporting | pkg:zenith_workspace",
+  "pkg:zenith_diagnostics",
+  "pkg:zenith_macros | pkg:zenith_utils",
+]
+guidance = "Move the shared code down to a layer that both crates may import."
+
+[contracts.languages-independent]
+type = "independence"
+name = "Languages know nothing of each other"
+modules = ["pkg:zenith_lang_*"]
+guidance = "Share code between languages through zenith_lang."
+
 [contracts.languages-behind-the-pipeline]
 type = "protected"
 name = "Languages are only reached through the pipeline"
 modules = ["pkg:zenith_lang_*"]
 allowed_importers = ["pkg:zenith_pipeline", "pkg:zenith_benchmark"]
 guidance = "Reach a language through the interfaces in zenith_config and zenith_lang."
+
+[contracts.parsers-in-languages]
+type = "protected"
+name = "Parsers and resolvers stay in their languages"
+modules = ["crate:oxc_*", "crate:ra_ap_*", "crate:ruff_*", "crate:tree-sitter*", "crate:yaml-rust2"]
+allowed_importers = ["pkg:zenith_lang_*"]
+guidance = "Expose what the parser finds through the types in zenith_lang."
+
+[contracts.command-line-in-the-cli]
+type = "protected"
+name = "Only the CLI parses arguments and reports errors with anyhow"
+modules = ["crate:anyhow", "crate:argfile", "crate:clap"]
+allowed_importers = ["pkg:zenith"]
+guidance = "Return a typed error that implements `Diagnostic`, and leave the command line to the CLI."
+
+[contracts.walker-in-the-workspace]
+type = "protected"
+name = "Only zenith_workspace walks the file system"
+modules = ["crate:ignore"]
+allowed_importers = ["pkg:zenith_workspace"]
+guidance = "Walk files through zenith_workspace."
+
+[contracts.messages-in-the-catalogue]
+type = "protected"
+name = "Only zenith_diagnostics renders messages"
+modules = ["crate:annotate-snippets", "crate:fluent-*", "crate:unic-langid"]
+allowed_importers = ["pkg:zenith_diagnostics", "pkg:zenith_macros"]
+guidance = "Name a message with `#[derive(Diagnostic)]` or `message!`, and keep its text in the catalogue."
+
+# lib.rs dispatches to each command, rule and pass, so only direct imports
+# between them count.
+
+[contracts.commands-independent]
+type = "independence"
+name = "Commands don't import each other"
+modules = [{ path = "crates/zenith/src/commands/*", except = ["crates/zenith/src/commands/mod.rs"] }]
+allow_indirect_imports = true
+guidance = "Move what two commands share into the core crates, or into a module of the CLI beside the commands."
+
+[contracts.rules-independent]
+type = "independence"
+name = "Contract types don't import each other"
+modules = [{ path = "crates/zenith_contracts/src/rules/*", except = ["crates/zenith_contracts/src/rules/mod.rs"] }]
+allow_indirect_imports = true
+guidance = "Move what two contract types share into `rules/mod.rs`, or into a module of zenith_contracts beside the rules."
+
+[contracts.suggest-passes-independent]
+type = "independence"
+name = "Suggestion passes don't import each other"
+modules = [{ path = "crates/zenith_contracts/src/suggest/passes/*", except = ["crates/zenith_contracts/src/suggest/passes/mod.rs"] }]
+allow_indirect_imports = true
+guidance = "Move what two passes share into `passes/mod.rs`."

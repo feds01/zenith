@@ -30,7 +30,8 @@ just changelog <version>  # write CHANGELOG.md for a release, from the titles of
 ```
 
 zenith checks its own architecture: the contracts in the root `zenith.toml`
-run in `just lint`, in the pre-commit hook and in CI.
+run in `just lint`, in the pre-commit hook and in CI. A new crate needs a
+place in its `crate-layers` contract.
 
 The toolchain is pinned nightly (`rust-toolchain.toml`). This is needed for the
 `rustfmt.toml` options `imports_granularity` and `group_imports`. Run

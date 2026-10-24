@@ -8,7 +8,9 @@ use zenith_graph::{Graph, ImportDetail, ImportKind};
 use zenith_reporting::{Count, Outcome, Summary, SummaryEntry};
 use zenith_utils::location::ByteRange;
 
-use crate::{Chain, ContractReport, CycleBreaker, Fix, Link, Violation, baseline::entry_ranges};
+use crate::{
+    Chain, ContractReport, CycleBreaker, CycleScope, Fix, Link, Violation, baseline::entry_ranges,
+};
 
 /// How many excerpts a report of chains or illegal imports shows.
 const MAX_EXCERPTS: usize = 3;
@@ -56,6 +58,20 @@ impl ContractReport<'_> {
         config: Option<SourceId>,
         baseline: &BaselineConfig,
     ) -> Vec<Report> {
+        let findings = self.identified_findings(graph, sources, config, baseline);
+        findings.into_iter().map(|finding| finding.report).collect()
+    }
+
+    /// The findings of the contract, as [`ContractReport::findings`] makes
+    /// them, each with what tells it apart from run to run and the links
+    /// after the one it points at, as SARIF shows them.
+    pub(crate) fn identified_findings(
+        &self,
+        graph: &Graph,
+        sources: &mut SourceMap,
+        config: Option<SourceId>,
+        baseline: &BaselineConfig,
+    ) -> Vec<Finding<'_>> {
         ReportBuilder { graph, sources, config, baseline }.findings(self)
     }
 
@@ -101,11 +117,34 @@ impl ContractReport<'_> {
 
 /// Reports of what a contract violates are errors, or warnings if it is of
 /// `warn` severity.
-fn kind(config: &ContractConfig) -> ReportKind {
+pub(crate) fn kind(config: &ContractConfig) -> ReportKind {
     match config.severity {
         Severity::Error => ReportKind::Error,
         Severity::Warn => ReportKind::Warning,
     }
+}
+
+/// A finding of a contract: its report, a line's worth, with its title on
+/// its own, what tells it apart from the other findings of the contract from
+/// run to run, the links that it is also about, and how to fix it.
+pub(crate) struct Finding<'r> {
+    /// The report, pointing at the first import of the finding, if it has
+    /// one, and titled with the finding and the hint of its fix.
+    pub report: Report,
+
+    /// What the finding is, without the hint of its fix.
+    pub title: String,
+
+    /// What tells the finding apart from run to run, whatever lines its
+    /// imports move to: the units, files and entries that it is about.
+    pub identity: String,
+
+    /// The links after the one that the report points at: the rest of a
+    /// chain, or the other imports of a cycle breaker, up to [`MAX_IMPORTS`].
+    pub related: &'r [Link],
+
+    /// How to fix it, if it is a finding of a violation.
+    pub fix: Option<Fix<'r>>,
 }
 
 /// Makes the reports of checked contracts, with excerpts of the imports that
@@ -216,57 +255,86 @@ impl ReportBuilder<'_> {
         ranges.into_iter().map(|range| range.map(|range| Span::new(source, range))).collect()
     }
 
-    /// The findings of `report`, as [`ContractReport::findings`] makes them.
-    fn findings(&mut self, report: &ContractReport) -> Vec<Report> {
+    /// The findings of `report`, as [`ContractReport::identified_findings`]
+    /// makes them.
+    fn findings<'r>(&mut self, report: &'r ContractReport) -> Vec<Finding<'r>> {
         let config = report.config;
         let kind = kind(config);
         let encapsulation = matches!(config.kind, ContractKind::Encapsulation(_));
         let graph = self.graph;
         let mut findings = Vec::new();
         for violation in &report.violations {
-            let titles: Vec<_> = match violation {
+            // Each finding's title, identity and related links, in the order of its fix.
+            let parts: Vec<(String, String, &[Link])> = match violation {
                 Violation::Dependency { importer, imported, chains } => chains
                     .iter()
-                    .map(|chain| match chain.links.len() {
-                        1 => message!(contracts_must_not_import, importer, imported),
-                        _ => {
-                            let chain = chain_summary(graph, chain);
-                            message!(contracts_must_not_import_via, importer, imported, chain)
-                        }
+                    .map(|chain| {
+                        let title = match chain.links.len() {
+                            1 => message!(contracts_must_not_import, importer, imported),
+                            _ => {
+                                let chain = chain_summary(graph, chain);
+                                message!(contracts_must_not_import_via, importer, imported, chain)
+                            }
+                        };
+                        let nodes: Vec<_> =
+                            chain.nodes().into_iter().map(|node| graph.name(node)).collect();
+                        let identity =
+                            identity(&["dependency", importer, imported, &nodes.join(" -> ")]);
+                        (title, identity, related(&chain.links))
                     })
                     .collect(),
                 Violation::IllegalImports { module, imports } => imports
                     .iter()
                     .map(|link| {
-                        if encapsulation {
-                            let imported = graph.name(link.imported);
+                        let (importer, imported) =
+                            (graph.name(link.importer), graph.name(link.imported));
+                        let title = if encapsulation {
                             message!(contracts_internal_import, imported, module)
                         } else {
-                            let importer = graph.name(link.importer);
                             message!(contracts_protected_import, importer, module)
-                        }
+                        };
+                        let identity = identity(&["illegal-import", module, importer, imported]);
+                        (title, identity, &[][..])
                     })
                     .collect(),
-                Violation::Cycle { scope, breakers } => breakers
-                    .iter()
-                    .map(|breaker| {
-                        let mut cycle = breaker.cycle.clone();
-                        cycle.push(breaker.importer.clone());
-                        message!(contracts_cycle_finding, scope, cycle = cycle.join(" -> "))
-                    })
-                    .collect(),
+                Violation::Cycle { scope, breakers } => {
+                    let units = match scope {
+                        CycleScope::Modules(selectors) => ["modules", selectors.as_str()],
+                        CycleScope::Children(unit) => ["children", unit.as_str()],
+                    };
+                    breakers
+                        .iter()
+                        .map(|breaker| {
+                            let mut cycle = breaker.cycle.clone();
+                            cycle.push(breaker.importer.clone());
+                            let title = message!(
+                                contracts_cycle_finding,
+                                scope,
+                                cycle = cycle.join(" -> ")
+                            );
+                            let (importer, imported) = (&breaker.importer, &breaker.imported);
+                            let identity =
+                                identity(&["cycle", units[0], units[1], importer, imported]);
+                            (title, identity, related(&breaker.imports))
+                        })
+                        .collect()
+                }
                 Violation::UndeclaredModule { container, module } => {
                     let module = graph.name(*module);
-                    vec![message!(contracts_undeclared_module, module, container)]
+                    let title = message!(contracts_undeclared_module, module, container);
+                    vec![(title, identity(&["undeclared-module", container, module]), &[][..])]
                 }
             };
-            for (title, fix) in titles.into_iter().zip(violation.fixes(&config.kind)) {
-                findings.push(self.finding(kind, title, fix));
+            for ((title, identity, related), fix) in
+                parts.into_iter().zip(violation.fixes(&config.kind))
+            {
+                let report = self.finding(kind, &title, &fix);
+                findings.push(Finding { report, title, identity, related, fix: Some(fix) });
             }
         }
         if let Some(guidance) = &config.guidance {
             for finding in &mut findings {
-                finding.add_help(guidance.trim());
+                finding.report.add_help(guidance.trim());
             }
         }
 
@@ -282,7 +350,15 @@ impl ReportBuilder<'_> {
                 if let (Some(source), Some(range)) = (self.config, entry.range()) {
                     finding.add_span(Span::new(source, range));
                 }
-                findings.push(finding);
+                let identity = identity(&["unmatched-ignore", entry.as_str()]);
+                let title = finding.title.clone();
+                findings.push(Finding {
+                    report: finding,
+                    title,
+                    identity,
+                    related: &[],
+                    fix: None,
+                });
             }
         }
         let stale = self.entry_spans(&config.id, &report.stale_entries);
@@ -293,15 +369,20 @@ impl ReportBuilder<'_> {
                 finding.add_span(span);
             }
             finding.add_help(message!(contracts_stale_entries.help, count = 1));
-            findings.push(finding);
+            let identity = identity(&["stale-entry", entry]);
+            let title = finding.title.clone();
+            findings.push(Finding { report: finding, title, identity, related: &[], fix: None });
         }
-        findings.into_iter().map(|finding| finding.with_id(&config.id)).collect()
+        for finding in &mut findings {
+            finding.report.id = Some(config.id.clone());
+        }
+        findings
     }
 
     /// The report of a finding titled `title`, followed by the hint of its
     /// `fix`, pointing at the first import of the fix's link if there is one
     /// and its file can be read.
-    fn finding(&mut self, kind: ReportKind, title: String, fix: Fix) -> Report {
+    fn finding(&mut self, kind: ReportKind, title: &str, fix: &Fix) -> Report {
         let mut report =
             Report::new(kind, message!(contracts_finding, finding = title, hint = fix.hint));
         if let Some(span) = fix.link.and_then(|link| self.span(link)) {
@@ -425,9 +506,7 @@ impl ReportBuilder<'_> {
     /// The span of the first import of `link`, or `None` if it has none or
     /// its file can't be read.
     fn span(&mut self, link: &Link) -> Option<Span> {
-        let import = link.imports.first()?;
-        let source = self.sources.file(self.graph.name(link.importer))?;
-        Some(Span::new(source, import_span(&self.sources.get(source).contents, import)))
+        link.span(self.graph, self.sources)
     }
 
     /// `chain` as lines of `file:line` hops, with its other heads and tails
@@ -489,6 +568,16 @@ impl ReportBuilder<'_> {
     }
 }
 
+impl Link {
+    /// The span of the first import of the link, of `graph`, in `sources`, or
+    /// `None` if it has none or its file can't be read.
+    pub(crate) fn span(&self, graph: &Graph, sources: &mut SourceMap) -> Option<Span> {
+        let import = self.imports.first()?;
+        let source = sources.file(graph.name(self.importer))?;
+        Some(Span::new(source, import_span(&sources.get(source).contents, import)))
+    }
+}
+
 /// The span to point at for `import` in the `text` of its file: its quoted
 /// specifier in the statement, or else the statement's first line.
 pub(crate) fn import_span(text: &str, import: &ImportDetail) -> ByteRange {
@@ -504,6 +593,17 @@ pub(crate) fn import_span(text: &str, import: &ImportDetail) -> ByteRange {
     }
     let line_end = statement.find('\n').map_or(end, |offset| start + offset);
     ByteRange::new(start as u32, line_end as u32)
+}
+
+/// The identity of a finding made of `parts`, which have no NUL.
+pub(crate) fn identity(parts: &[&str]) -> String {
+    parts.join("\0")
+}
+
+/// The links after the first of `links`, up to [`MAX_IMPORTS`].
+fn related(links: &[Link]) -> &[Link] {
+    let rest = links.get(1..).unwrap_or_default();
+    &rest[..rest.len().min(MAX_IMPORTS)]
 }
 
 /// The nodes of `chain`, as `a.ts -> b.ts -> npm:c`, without the middle of a

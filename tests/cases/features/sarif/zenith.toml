@@ -1,0 +1,23 @@
+[contracts.ui-not-db]
+type = "forbidden"
+name = "The UI does not reach the database"
+from = ["src/ui"]
+to = ["src/db"]
+guidance = "Go through src/api."
+
+[contracts.api-protected]
+type = "protected"
+modules = ["src/api"]
+allowed_importers = ["src/ui"]
+severity = "warn"
+
+[contracts.no-legacy]
+type = "forbidden"
+from = ["src/ui"]
+to = ["src/legacy"]
+
+[contracts.src-layers]
+type = "layers"
+containers = ["src"]
+layers = ["ui", "lib", "api", "db"]
+exhaustive = true

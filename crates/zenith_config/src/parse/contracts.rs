@@ -58,7 +58,7 @@ impl Parser {
 
             let contract = self.in_contract(&id, |parser| {
                 let table = parser.parse_contract_table(Spanned::new(span, table))?;
-                Some(parser.parse_contract(id.clone(), &table, analysis))
+                Some(parser.parse_contract(id.clone(), id_range, &table, analysis))
             });
             parsed.extend(contract);
         }
@@ -105,10 +105,12 @@ impl Parser {
         table.inspect_err(|error| self.add_toml_error(error)).ok()
     }
 
-    /// Validate a contract's options, with the defaults of `analysis`.
+    /// Validate the options of the contract `id`, whose key is at `range`,
+    /// with the defaults of `analysis`.
     fn parse_contract(
         &mut self,
         id: String,
+        range: ByteRange,
         table: &ContractTable,
         analysis: &AnalysisConfig,
     ) -> ContractConfig {
@@ -160,6 +162,7 @@ impl Parser {
         ContractConfig {
             name: shared.name.unwrap_or(&id).to_string(),
             id,
+            range,
             severity: shared.severity,
             exclude_kinds,
             reexports,

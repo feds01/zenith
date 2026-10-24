@@ -12,5 +12,9 @@ publish = { workspace = true }
 zenith_diagnostics = { workspace = true }
 zenith_utils = { workspace = true }
 
+serde = { workspace = true }
+serde_json = { workspace = true }
+xxhash-rust = { workspace = true }
+
 [lints]
 workspace = true

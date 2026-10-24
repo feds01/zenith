@@ -14,7 +14,9 @@
 //!
 //! Each case runs as its own test, in a copy of the project in a temporary
 //! directory outside the repository, so the repository's `.gitignore` can't
-//! affect it. The project's path is shown as `$ROOT`, with `/` separators.
+//! affect it. The project's path is shown as `$ROOT`, with `/` separators,
+//! and zenith's version in quotes as `"$VERSION"`, so that a release doesn't
+//! change the snapshots.
 //! Run `just update-snapshots` (`REGENERATE_OUTPUT=1`) to re-record them.
 
 use std::{
@@ -110,8 +112,10 @@ fn run_invocation(project: &Path, line: &str) -> Result<String, Failed> {
         .map_err(|e| format!("running zenith: {e}"))?;
 
     let root = project.to_string_lossy();
+    let version = format!("\"{}\"", env!("CARGO_PKG_VERSION"));
     let normalise = |bytes: &[u8]| {
         let text = String::from_utf8_lossy(bytes).replace("\r\n", "\n");
+        let text = text.replace(&version, "\"$VERSION\"");
         let mut text = text.replace(root.as_ref(), "$ROOT").replace('\\', "/");
         if !text.is_empty() && !text.ends_with('\n') {
             text.push('\n');

@@ -83,3 +83,59 @@ the summary line:
 ```yaml
 - run: npx zenith check --format github
 ```
+
+## sarif
+
+A [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html)
+log, which GitHub code scanning, GitLab and security dashboards read. Unlike
+annotations, its alerts persist: GitHub shows them in the repository's
+Security tab, and closes each one once a later upload no longer has it.
+
+- Each checked contract is a rule, with its id, its name and type, its
+  guidance as its help, and its severity as its level. Unused suppressions
+  have a rule of their own, `zenith/unused-suppression`.
+- Each finding, as `compact` lists it, is a result: an `error`, or a
+  `warning` for a contract of `warn` severity, with its title as its
+  message, and its [fix](#fixes), its `action` and `hint`, as
+  `properties.fix`. It points at its import, with the rest of its chain of
+  imports, or the other imports of a cycle breaker, as related locations, up
+  to ten. Stale baseline entries and unmatched `ignore_imports` entries are
+  results of their contract too. A finding without an import,
+  such as an undeclared layer, points at its contract's table in
+  `zenith.toml`. What suppressions and the baseline leave out is not a
+  result.
+- Each result has a fingerprint, `zenith/v1`, made from its contract and
+  what it is about, such as the files of its chain, but not their lines. An
+  alert stays the same alert when the code around its import moves.
+- The imports that couldn't be resolved are notifications of the run rather
+  than results.
+
+Paths are relative to the root of the git repository that the project is in,
+as code scanning reads them, even when the project's root is a directory
+inside it. Inside a submodule, they are relative to the submodule, whose
+repository code scanning reads. Outside a repository, they are relative to
+the project root.
+
+Upload the log with
+[`github/codeql-action/upload-sarif`](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github).
+zenith exits with 1 when a contract is broken, so let the upload run anyway:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+  actions: read # only needed in a private repository
+
+steps:
+  - uses: actions/checkout@v7
+  - run: npx zenith check --format sarif > zenith.sarif
+  - uses: github/codeql-action/upload-sarif@v4
+    if: ${{ !cancelled() }}
+    with:
+      sarif_file: zenith.sarif
+      category: zenith
+```
+
+Upload the log of a full check. Code scanning closes the alerts of a category
+that an upload doesn't have, so the log of a check of some contracts, with
+`--contract`, or of some files, with paths, closes the alerts of the others.

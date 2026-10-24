@@ -124,6 +124,12 @@ contracts_unused_unknown_contracts = unused suppression: {$count ->
 contracts_unused_no_import = unused suppression: no import on line {$line} for the contracts it names
 contracts_unused_no_import_on_its_line = unused suppression: no import on its line for the contracts it names
 
+## The rules of the SARIF output: a contract, and the unused suppressions.
+
+contracts_sarif_rule = {$name} ({$kind} contract)
+contracts_sarif_unused_suppressions = `zenith-ignore` comments that have no effect
+    .help = remove the comment, or name the contracts whose imports on its line it is for
+
 ## Why the baseline could not be read or written. A version, a line and a
 ## column are shown as they are.
 

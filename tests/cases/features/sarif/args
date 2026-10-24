@@ -1,0 +1,10 @@
+# A broken contract, through a direct import and a chain, a warned one, one
+# kept by a suppression, and an undeclared layer, which points at its contract
+# in zenith.toml, with an unused suppression and an unresolved import. The
+# project is not in a git repository, so paths are relative to its root. The
+# SARIF log validates against the SARIF 2.1.0 schema:
+#
+#   zenith check --format sarif > zenith.sarif
+#   uvx check-jsonschema --schemafile https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json zenith.sarif
+check --format compact
+check --format sarif

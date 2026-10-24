@@ -10,6 +10,7 @@ use zenith_contracts::{
 use zenith_diagnostics::message;
 use zenith_pipeline::StageKind;
 use zenith_reporting::{Format, Output, Summary};
+use zenith_workspace::Git;
 
 use crate::{
     ExitStatus,
@@ -74,44 +75,47 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     };
 
     // 6. Show what they found, with their stale baseline entries, and the unused
-    //    suppressions: as JSON, or as reports in full or a finding a line, then the
-    //    summary.
+    //    suppressions: as JSON or SARIF, or as reports in full or a finding a line,
+    //    then the summary.
     let (mut sources, config) = session.sources();
     let format = match args.format {
+        ReportFormat::Json => {
+            println!("{}", CheckJson::new(&session, &checked, &unused, &summary, &mut sources));
+            None
+        }
+        ReportFormat::Sarif => {
+            // Code scanning reads paths as relative to the root of the repository.
+            let prefix = Git::new(&session.root).root_prefix().unwrap_or_default();
+            let sarif =
+                ContractReport::sarif(&checked, &unused, &session, &mut sources, config, &prefix);
+            println!("{sarif}");
+            None
+        }
         ReportFormat::Pretty => Some(Format::Pretty),
         ReportFormat::Compact => Some(Format::Compact),
         ReportFormat::Github => Some(Format::Github),
-        ReportFormat::Json => None,
     };
-    match format {
-        None => {
-            println!("{}", CheckJson::new(&session, &checked, &unused, &summary, &mut sources));
+    if let Some(format) = format {
+        let mut reports = Vec::new();
+        for report in &checked {
+            reports.extend(match format {
+                Format::Pretty => {
+                    report.reports(graphs.of(report.config), &mut sources, config, baseline)
+                }
+                Format::Compact | Format::Github => {
+                    report.findings(graphs.of(report.config), &mut sources, config, baseline)
+                }
+            });
         }
-        Some(format) => {
-            let mut reports = Vec::new();
-            for report in &checked {
-                reports.extend(match format {
-                    Format::Pretty => {
-                        report.reports(graphs.of(report.config), &mut sources, config, baseline)
-                    }
-                    Format::Compact | Format::Github => {
-                        report.findings(graphs.of(report.config), &mut sources, config, baseline)
-                    }
-                });
-            }
-            reports.extend(unused.iter().map(|unused| unused.report(&mut sources)));
-            // Every format warns about the imports that couldn't be resolved, which
-            // `--show-unresolved` lists: in the warning in full, or a line each.
-            if format != Format::Pretty && args.show_unresolved {
-                reports.extend(session.unresolved.iter().map(|import| import.report(&mut sources)));
-            } else {
-                reports.extend(session.unresolved_report(&mut sources, args.show_unresolved));
-            }
-            println!(
-                "{}",
-                Output { sources: &sources, reports: &reports, summary: &summary, format }
-            );
+        reports.extend(unused.iter().map(|unused| unused.report(&mut sources)));
+        // Every format warns about the imports that couldn't be resolved, which
+        // `--show-unresolved` lists: in the warning in full, or a line each.
+        if format != Format::Pretty && args.show_unresolved {
+            reports.extend(session.unresolved.iter().map(|import| import.report(&mut sources)));
+        } else {
+            reports.extend(session.unresolved_report(&mut sources, args.show_unresolved));
         }
+        println!("{}", Output { sources: &sources, reports: &reports, summary: &summary, format });
     }
 
     // 7. Fail if a contract of `error` severity is broken, or has stale baseline

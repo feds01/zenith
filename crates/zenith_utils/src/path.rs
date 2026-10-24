@@ -11,6 +11,8 @@ use std::{
 
 use path_absolutize::Absolutize;
 
+use crate::fs::{FileSystem, OsFileSystem};
+
 /// Convert any path to an absolute path, based on the current working
 /// directory, without touching the file system.
 pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
@@ -26,8 +28,7 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
 /// lexically with [`normalize_path`] instead, so symlinks in its existing
 /// ancestors stay unresolved.
 pub fn adjust_canonicalisation<P: AsRef<Path>>(path: P) -> PathBuf {
-    let path = path.as_ref();
-    dunce::canonicalize(path).unwrap_or_else(|_| normalize_path(path))
+    OsFileSystem.adjust_canonicalisation(path.as_ref())
 }
 
 /// The POSIX form of `path` relative to `root`, or `None` if `path` is not

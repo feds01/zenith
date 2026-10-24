@@ -1,6 +1,9 @@
 //! The session: one project, and everything the stages have found in it.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use rustc_hash::FxHashSet;
 use thin_vec::ThinVec;
@@ -10,6 +13,7 @@ use zenith_diagnostics::{Report, SourceId, SourceMap, message};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_lang::{ParsedFile, Resolved, Suppression, Workspace};
 use zenith_utils::{
+    fs::{FileSystem, OsFileSystem},
     location::Located,
     path::{absolute_path, adjust_canonicalisation, relative_posix},
 };
@@ -25,6 +29,9 @@ use crate::{Backends, FileError, PipelineError, Scope, UnresolvedImport};
 pub struct Session {
     /// The canonical project root.
     pub root: PathBuf,
+
+    /// The file system that the project's files are read from.
+    pub file_system: Arc<dyn FileSystem>,
 
     /// The project's configuration.
     pub config: Config,
@@ -42,7 +49,8 @@ pub struct Session {
 
     /// Where the [`Parse`](crate::StageKind::Parse) stage keeps its cache, or
     /// `None` to read and parse every file. A new session has none; see
-    /// [`Session::cache_settings`].
+    /// [`Session::cache_settings`]. The cache reads the files from the disk,
+    /// whatever the session's file system.
     pub cache: Option<CacheSettings>,
 
     /// The source files to scan, sorted by path. Found by the
@@ -198,13 +206,25 @@ pub struct Stats {
 }
 
 impl Session {
-    /// A session for the project at `root`, which must be canonical,
-    /// configured by `config`. Nothing has been found in it yet.
+    /// A session for the project on the disk at `root`, which must be
+    /// canonical, configured by `config`. Nothing has been found in it yet.
     pub fn new(root: PathBuf, config: Config) -> Self {
+        Self::with_file_system(root, Arc::new(OsFileSystem), config)
+    }
+
+    /// A session for the project at `root` in `file_system`, as
+    /// [`Session::new`] makes one for the disk. The root must be canonical
+    /// in the file system.
+    pub fn with_file_system(
+        root: PathBuf,
+        file_system: Arc<dyn FileSystem>,
+        config: Config,
+    ) -> Self {
         let builds_graph_through_reexports = config.needs_graph_through_reexports();
         Self {
             backends: Backends::new(&config, &root, builds_graph_through_reexports),
             root,
+            file_system,
             config,
             tracked_only: false,
             scope: Scope::default(),

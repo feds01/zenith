@@ -1,0 +1,5 @@
+# Both apps import `ui`, which imports `utils`, but neither app imports the
+# other, so the apps are independent and the packages are not.
+suggest
+# `suggested.toml` holds what `suggest` printed, which the code keeps.
+check --config suggested.toml

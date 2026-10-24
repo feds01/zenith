@@ -1,0 +1,4 @@
+# The workspace packages depend on each other in no cycle.
+[contracts.packages-acyclic]
+type = "acyclic"
+modules = ["pkg:*"]

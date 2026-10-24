@@ -45,7 +45,7 @@ impl Parser {
         for (id, value) in contracts {
             let id_range = ByteRange::from(id.span());
             let id = id.into_inner().into_owned();
-            if !is_valid_id(&id) {
+            if !ContractConfig::is_valid_id(&id) {
                 let kind = ConfigErrorKind::InvalidContractId { id: id.clone() };
                 self.add_error(kind, Some(id_range));
             }
@@ -224,9 +224,4 @@ impl Parser {
         }
         self.parse_selectors(&boundaries.value)
     }
-}
-
-/// Whether a contract id is valid.
-fn is_valid_id(id: &str) -> bool {
-    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }

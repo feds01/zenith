@@ -32,7 +32,8 @@ use zenith_utils::{glob::GlobError, location::ByteRange};
 
 use crate::{
     config::Config,
-    error::{ConfigError, ConfigErrorKind, InContract, PatternError, classify},
+    contracts::ContractConfig,
+    error::{Alternatives, ConfigError, ConfigErrorKind, InContract, PatternError, classify},
     language::{Language, Languages},
     schema::{ConfigFile, Located},
 };
@@ -43,21 +44,33 @@ type TomlValue<'de> = Spanned<DeValue<'de>>;
 /// Parse and validate the contents of a configuration file, as
 /// [`Config::parse`] does.
 pub(crate) fn parse(contents: &str, languages: Languages) -> Result<Config, Vec<ConfigError>> {
-    let mut parser = Parser {
-        diagnostics: DiagnosticStore::default(),
-        contract: None,
-        languages,
-        enabled: Vec::new(),
-    };
+    let mut parser = Parser::new(languages, Vec::new());
     let config = parser.parse_config(contents);
-    let (mut errors, _) = parser.diagnostics.into_parts();
-    match config {
-        Some(config) if errors.is_empty() => Ok(config),
-        _ => {
-            errors.sort_by_key(|error| error.range.map(ByteRange::start));
-            Err(errors)
+    parser.finish(config)
+}
+
+/// Parse and validate the contracts in `contents` as contracts of `config`,
+/// as [`Config::parse_contracts`] does.
+pub(crate) fn parse_contracts(
+    contents: &str,
+    config: &Config,
+    languages: Languages,
+) -> Result<Vec<ContractConfig>, Vec<ConfigError>> {
+    let mut parser = Parser::new(languages, config.languages.enabled().collect());
+    let contracts = parser.parse_document(contents).map(|mut document| {
+        // Only `[contracts]` may be written; the other tables are the configuration's.
+        let contracts = document.get_mut().remove("contracts");
+        for key in document.get_ref().keys() {
+            let alternatives = Alternatives::new(key.get_ref(), vec!["contracts".to_string()]);
+            let kind = ConfigErrorKind::UnknownKey { key: key.get_ref().to_string(), alternatives };
+            parser.add_error(kind, Some(ByteRange::from(key.span())));
         }
-    }
+        match contracts {
+            Some(contracts) => parser.parse_contracts(contracts, &config.analysis),
+            None => Vec::new(),
+        }
+    });
+    parser.finish(contracts)
 }
 
 /// Parses a configuration file, collecting its errors.
@@ -77,18 +90,41 @@ struct Parser {
 }
 
 impl Parser {
-    /// Parse the whole file. Returns `None` if it isn't valid TOML.
-    fn parse_config(&mut self, contents: &str) -> Option<Config> {
-        // 1. Parse the TOML document, which keeps the byte range of every key and
-        //    value.
-        let mut document = match DeTable::parse(contents) {
-            Ok(document) => document,
+    /// A parser of a file that may enable the `languages`, whose contracts may
+    /// use the selector schemes of the `enabled` ones.
+    fn new(languages: Languages, enabled: Vec<&'static Language>) -> Self {
+        Self { diagnostics: DiagnosticStore::default(), contract: None, languages, enabled }
+    }
+
+    /// `parsed`, or else the errors found, in the order of the file.
+    fn finish<T>(self, parsed: Option<T>) -> Result<T, Vec<ConfigError>> {
+        let (mut errors, _) = self.diagnostics.into_parts();
+        match parsed {
+            Some(parsed) if errors.is_empty() => Ok(parsed),
+            _ => {
+                errors.sort_by_key(|error| error.range.map(ByteRange::start));
+                Err(errors)
+            }
+        }
+    }
+
+    /// Parse the TOML document, which keeps the byte range of every key and
+    /// value. Returns `None` if it isn't valid TOML.
+    fn parse_document<'de>(&mut self, contents: &'de str) -> Option<Spanned<DeTable<'de>>> {
+        match DeTable::parse(contents) {
+            Ok(document) => Some(document),
             Err(error) => {
                 let kind = ConfigErrorKind::Syntax { message: error.message().to_string() };
                 self.add_error(kind, error.span().map(ByteRange::from));
-                return None;
+                None
             }
-        };
+        }
+    }
+
+    /// Parse the whole file. Returns `None` if it isn't valid TOML.
+    fn parse_config(&mut self, contents: &str) -> Option<Config> {
+        // 1. Parse the TOML document.
+        let mut document = self.parse_document(contents)?;
 
         // 2. Take out the known tables, and reject the ones left, which are unknown.
         let tables = document.get_mut();

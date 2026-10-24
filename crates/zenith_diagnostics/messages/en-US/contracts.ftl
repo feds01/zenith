@@ -150,3 +150,14 @@ contracts_baseline_invalid = the baseline `{$path}` is invalid: {$message}
 contracts_baseline_version = the baseline `{$path}` has version {$version}, but zenith reads version {$expected}
 contracts_baseline_write = could not write the baseline `{$path}`: {$error}
 contracts_baseline_error_at = {$message} at line {$line} column {$column}
+
+## Why a contract is suggested, as the comment above it: the modules it is
+## about, and what the code does that keeps it.
+
+contracts_suggest_packages = workspace packages
+contracts_suggest_top_level_packages = top-level workspace packages
+contracts_suggest_directories = top-level directories
+contracts_suggest_packages_in = workspace packages in `{$dir}`
+contracts_suggest_acyclic = The {$modules} depend on each other in no cycle.
+contracts_suggest_layers = These {$modules} stack in one order: each depends on the next.
+contracts_suggest_independence = The {$modules} do not depend on each other.

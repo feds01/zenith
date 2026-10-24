@@ -36,7 +36,7 @@ impl Stage for Parse {
             Some(settings) => {
                 let languages: Vec<_> =
                     session.config.languages.enabled().map(|language| language.name).collect();
-                let inputs = (languages, session.config.needs_graph_through_reexports());
+                let inputs = (languages, session.needs_graph_through_reexports());
                 parse_cached(session, Cache::load(settings, inputs))
             }
             None => parse_all(session),

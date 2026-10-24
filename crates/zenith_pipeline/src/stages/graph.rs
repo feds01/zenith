@@ -25,7 +25,7 @@ impl Stage for BuildGraph {
     fn run(&self, session: &mut Session) -> Result<(), PipelineError> {
         let parsed = mem::take(&mut session.parsed);
         let resolved = mem::take(&mut session.resolved);
-        let through_reexports = session.config.needs_graph_through_reexports();
+        let through_reexports = session.needs_graph_through_reexports();
         let stats = &mut session.stats;
         let mut file_exports = Vec::new();
 

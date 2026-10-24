@@ -2868,6 +2868,7 @@ dependencies = [
  "rayon",
  "serde_json",
  "tempfile",
+ "toml",
 ]
 
 [[package]]

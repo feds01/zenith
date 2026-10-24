@@ -1,0 +1,1 @@
+# Contracts see re-exports as opaque, as they do by default.

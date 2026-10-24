@@ -27,6 +27,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use toml::Spanned;
+use zenith_config::ContractConfig;
 use zenith_diagnostics::message;
 use zenith_graph::{EdgeSet, Graph, ModuleId};
 use zenith_lang::Workspace;
@@ -34,6 +35,7 @@ use zenith_pipeline::Graphs;
 use zenith_utils::{
     location::{ByteRange, LineIndex},
     text::comment_out_conflict_markers,
+    toml_writing,
 };
 use zenith_workspace::Renames;
 
@@ -103,11 +105,7 @@ impl Baseline {
     pub fn save(&self, path: &Path) -> Result<(), BaselineError> {
         let mut contents = format!("version = {}\n\n[contracts]\n", self.version);
         for (id, entries) in &self.contracts {
-            contents += &format!("{} = [\n", key(id));
-            for entry in entries {
-                contents += &format!("    {},\n", toml::Value::String(entry.clone()));
-            }
-            contents += "]\n";
+            contents += &toml_writing::array_per_line(&key(id), entries);
         }
         fs::write(path, contents)
             .map_err(|error| BaselineError::Write { path: path.display().to_string(), error })
@@ -255,11 +253,9 @@ fn entry(graph: &Graph, importer: ModuleId, imported: ModuleId) -> String {
 
 /// The contract `id` as a TOML key: bare, as valid ids are, or else quoted.
 fn key(id: &str) -> String {
-    let bare = !id.is_empty()
-        && id.chars().all(|char| char.is_ascii_alphanumeric() || char == '-' || char == '_');
-    match bare {
+    match ContractConfig::is_valid_id(id) {
         true => id.to_string(),
-        false => toml::Value::String(id.to_string()).to_string(),
+        false => toml_writing::string(id),
     }
 }
 

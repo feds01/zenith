@@ -1,0 +1,8 @@
+# Without workspace packages, the suggestions are about the top-level
+# directories. `app` imports `domain`, which imports `infra`, so they stack;
+# `scripts` takes part in no dependency, so it is no layer.
+suggest
+# `suggested.toml` holds what `suggest` printed, which the code keeps, and
+# which a second run doesn't suggest again.
+check --config suggested.toml
+suggest --config suggested.toml

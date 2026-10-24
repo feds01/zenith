@@ -1,0 +1,7 @@
+[files]
+exclude = ["dist/**"]
+
+[contracts.other-scheme]
+type = "forbidden"
+from = ["web"]
+to = ["oth:x"]

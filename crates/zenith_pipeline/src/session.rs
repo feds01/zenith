@@ -71,8 +71,14 @@ pub struct Session {
 
     /// The import graph through re-exports, for the contracts whose `reexports`
     /// are transparent. Built by the [`Graph`](crate::StageKind::Graph)
-    /// stage if a contract is.
+    /// stage if a contract is, or if it is
+    /// [asked for](Session::build_graph_through_reexports).
     pub graph_through_reexports: Option<Graph>,
+
+    /// Whether the [`Graph`](crate::StageKind::Graph) stage builds the graph
+    /// through re-exports: if a contract of the configuration needs it, or if
+    /// it was [asked for](Session::build_graph_through_reexports).
+    builds_graph_through_reexports: bool,
 
     /// The source files that could not be read or parsed in full, sorted by
     /// file. Found by the [`Parse`](crate::StageKind::Parse) stage.
@@ -116,7 +122,16 @@ impl<'g> Graphs<'g> {
     /// Panics if the contract sees through re-exports but the graph through
     /// them wasn't built, which the graph stage does when one does.
     pub fn of(&self, config: &ContractConfig) -> &'g Graph {
-        match config.reexports {
+        self.seeing(config.reexports)
+    }
+
+    /// The graph that a contract that sees re-exports as `reexports` checks
+    /// against.
+    ///
+    /// Panics if it sees through them, but the graph through them wasn't
+    /// built.
+    pub fn seeing(&self, reexports: Reexports) -> &'g Graph {
+        match reexports {
             Reexports::Opaque => self.graph,
             Reexports::Transparent => self
                 .through_reexports
@@ -186,8 +201,9 @@ impl Session {
     /// A session for the project at `root`, which must be canonical,
     /// configured by `config`. Nothing has been found in it yet.
     pub fn new(root: PathBuf, config: Config) -> Self {
+        let builds_graph_through_reexports = config.needs_graph_through_reexports();
         Self {
-            backends: Backends::new(&config, &root),
+            backends: Backends::new(&config, &root, builds_graph_through_reexports),
             root,
             config,
             tracked_only: false,
@@ -199,11 +215,27 @@ impl Session {
             resolved: Vec::new(),
             graph: GraphBuilder::new().finish(),
             graph_through_reexports: None,
+            builds_graph_through_reexports,
             file_errors: Vec::new(),
             unresolved: Vec::new(),
             suppressions: Vec::new(),
             stats: Stats::default(),
         }
+    }
+
+    /// Build the graph through re-exports even if no contract of the
+    /// configuration needs it, as for contracts that are not in it. Call it
+    /// before the [`Parse`](crate::StageKind::Parse) stage runs, which
+    /// records what files export for it.
+    pub fn build_graph_through_reexports(&mut self) {
+        self.builds_graph_through_reexports = true;
+        self.backends = Backends::new(&self.config, &self.root, true);
+    }
+
+    /// Whether the [`Graph`](crate::StageKind::Graph) stage builds the graph
+    /// through re-exports.
+    pub fn needs_graph_through_reexports(&self) -> bool {
+        self.builds_graph_through_reexports
     }
 
     /// A source map that reads the project's files when reports first need

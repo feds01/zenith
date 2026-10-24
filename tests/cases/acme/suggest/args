@@ -1,0 +1,3 @@
+# The packages in `packages` form a cycle, so only the top-level packages
+# that do not depend on each other are suggested.
+suggest

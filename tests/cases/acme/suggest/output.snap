@@ -1,0 +1,10 @@
+$ zenith suggest
+exit: 0
+--- stdout
+# The top-level workspace packages do not depend on each other.
+[contracts.top-level-packages-independent]
+type = "independence"
+modules = ["pkg:sdk", "pkg:web"]
+--- stderr
+warning: 1 import could not be resolved; run with `-v` to list them
+

@@ -1,0 +1,10 @@
+[contracts.inherits]
+type = "acyclic"
+modules = ["web/*"]
+
+[contracts.overrides]
+type = "forbidden"
+from = ["web"]
+to = ["core:*"]
+exclude_kinds = []
+reexports = "opaque"

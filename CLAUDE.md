@@ -53,7 +53,8 @@ a new kind of responsibility, not for each feature:
   and the interface through which each language owns its `[languages]` table.
   It knows no language.
 - `zenith_contracts`: selectors, the contract types and the violations they
-  find, suppressions, the baseline, and the JSON output of `zenith check`.
+  find, suppressions, the baseline, the JSON output of `zenith check`, and
+  the contracts suggested from the import graph.
 - `zenith_diagnostics`: reports with source excerpts, the catalogue of
   what zenith says to its users, the `Diagnostic` trait through which an
   error makes its report, and how reports render.

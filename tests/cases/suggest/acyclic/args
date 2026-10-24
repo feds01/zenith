@@ -1,0 +1,6 @@
+# `app` imports `ui` and `utils`, which import nothing: no cycle, but they
+# don't stack in one order, and the siblings depend on each other. `pkg:*`
+# selects every package, so it covers the packages added later too.
+suggest
+# `suggested.toml` holds what `suggest` printed, which the code keeps.
+check --config suggested.toml

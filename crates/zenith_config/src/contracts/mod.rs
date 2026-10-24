@@ -67,6 +67,26 @@ pub struct ContractConfig {
     pub kind: ContractKind,
 }
 
+impl ContractConfig {
+    /// Whether `id` is a valid contract id: one or more characters, each an
+    /// ASCII letter or digit, `-` or `_`.
+    pub fn is_valid_id(id: &str) -> bool {
+        !id.is_empty() && id.chars().all(Self::is_id_char)
+    }
+
+    /// `text` as part of a contract id, e.g. `packages-libs` for
+    /// `packages/libs`: every character that ids can't have becomes a `-`.
+    pub fn id_part(text: &str) -> String {
+        text.chars().map(|c| if Self::is_id_char(c) { c } else { '-' }).collect()
+    }
+
+    /// Whether a contract id may have the character `c`: an ASCII letter or
+    /// digit, `-` or `_`.
+    fn is_id_char(c: char) -> bool {
+        c.is_ascii_alphanumeric() || c == '-' || c == '_'
+    }
+}
+
 /// A contract type, with the options of that type.
 #[derive(Debug, Clone)]
 pub enum ContractKind {

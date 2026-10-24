@@ -1,0 +1,22 @@
+$ zenith suggest
+exit: 0
+--- stdout
+# The workspace packages depend on each other in no cycle.
+[contracts.packages-acyclic]
+type = "acyclic"
+modules = ["pkg:*"]
+
+# The workspace packages in `apps` do not depend on each other.
+[contracts.apps-independent]
+type = "independence"
+modules = ["pkg:@independence/admin", "pkg:@independence/web"]
+
+$ zenith check --config suggested.toml
+exit: 0
+--- stdout
+Contracts
+  ✓ packages-acyclic  acyclic       kept
+  ✓ apps-independent  independence  kept
+
+2 kept, 0 broken · 4 files, 3 imports
+

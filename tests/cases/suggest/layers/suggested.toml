@@ -1,0 +1,9 @@
+# The top-level directories depend on each other in no cycle.
+[contracts.directories-acyclic]
+type = "acyclic"
+modules = ["app", "domain", "infra", "scripts"]
+
+# These top-level directories stack in one order: each depends on the next.
+[contracts.directories-layers]
+type = "layers"
+layers = ["app", "domain", "infra"]

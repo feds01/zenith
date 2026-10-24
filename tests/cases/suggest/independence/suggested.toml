@@ -1,0 +1,9 @@
+# The workspace packages depend on each other in no cycle.
+[contracts.packages-acyclic]
+type = "acyclic"
+modules = ["pkg:*"]
+
+# The workspace packages in `apps` do not depend on each other.
+[contracts.apps-independent]
+type = "independence"
+modules = ["pkg:@independence/admin", "pkg:@independence/web"]

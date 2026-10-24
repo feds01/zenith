@@ -1,0 +1,16 @@
+$ zenith suggest
+exit: 0
+--- stdout
+# The workspace packages depend on each other in no cycle.
+[contracts.packages-acyclic]
+type = "acyclic"
+modules = ["pkg:*"]
+
+$ zenith check --config suggested.toml
+exit: 0
+--- stdout
+Contracts
+  ✓ packages-acyclic  acyclic  kept
+
+1 kept, 0 broken · 3 files, 2 imports
+

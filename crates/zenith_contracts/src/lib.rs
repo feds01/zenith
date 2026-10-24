@@ -20,6 +20,9 @@
 //! on any contract are each an [`UnusedSuppression`]. [`CheckJson`] is all of
 //! it as the JSON output of `zenith check`, and [`ContractReport::sarif`] as
 //! its SARIF output.
+//!
+//! [`Suggestion::find`] proposes contracts that the code already keeps,
+//! checking each one before it is suggested.
 
 mod baseline;
 mod contract;
@@ -32,6 +35,7 @@ mod rules;
 mod sarif;
 mod schema;
 mod selection;
+mod suggest;
 mod suppressions;
 #[cfg(test)]
 mod testing;
@@ -43,4 +47,5 @@ pub use error::{ContractError, ContractErrorKind};
 pub use findings::{Chain, CycleBreaker, CycleScope, Fix, FixAction, Limit, Link, Violation};
 pub use schema::{CheckJson, JSON_VERSION};
 pub use selection::{Selection, UnmatchedSelector};
+pub use suggest::Suggestion;
 pub use suppressions::{UnusedReason, UnusedSuppression};

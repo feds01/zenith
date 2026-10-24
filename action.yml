@@ -1,0 +1,100 @@
+# zenith's GitHub Action: it installs zenith from npm, checks the contracts,
+# and uploads the results to code scanning, or annotates them. Its guide,
+# docs/book/src/ci.md, explains each input; keep the descriptions here short
+# and in step with it.
+name: zenith
+description: Check the architecture contracts of a monorepo with zenith.
+author: Alexander Fedotov
+branding:
+  icon: layers
+  color: purple
+
+inputs:
+  version:
+    description: The version of zenith to install from npm. By default, the action's own release, or else `latest`.
+    default: ""
+  config:
+    description: The configuration file, instead of the nearest `zenith.toml`.
+    default: ""
+  upload-sarif:
+    description: Whether to upload the results to code scanning (`true`), or annotate them (`false`).
+    default: "true"
+  category:
+    description: The category of the upload, one for each run of the action in a repository.
+    default: zenith
+  args:
+    description: More arguments for `zenith check`, separated by spaces, but not `--format`.
+    default: ""
+  binary:
+    description: The path of a zenith binary to run instead of installing one.
+    default: ""
+
+outputs:
+  exit-code:
+    description: zenith's exit code, 0 kept, 1 broken, or 2 when it couldn't check.
+    value: ${{ steps.check.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    # Into a directory of its own, so the project's package.json and lockfile
+    # are left alone.
+    - name: Install zenith
+      id: install
+      if: inputs.binary == ''
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        ACTION_REF: ${{ github.action_ref }}
+        PREFIX: ${{ runner.temp }}/zenith
+      run: |
+        # The zenith of the action's release, if it is used at one.
+        if [ -z "$VERSION" ]; then
+          if [[ "$ACTION_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            VERSION=${ACTION_REF#v}
+          else
+            VERSION=latest
+          fi
+        fi
+        npm install --no-save --no-audit --no-fund --prefix "$PREFIX" "@feds01/zenith@$VERSION"
+        echo "path=$PREFIX/node_modules/.bin/zenith" >> "$GITHUB_OUTPUT"
+
+    # zenith runs once: with a SARIF log, code scanning annotates the results
+    # once it is uploaded; without, zenith does, with workflow commands. The
+    # script explains each stage.
+    #
+    # Follow-up: once `zenith check --since` (#111) is released, pass it the
+    # base of a pull request here, so that only what the PR changes is checked.
+    - name: Check the contracts
+      id: check
+      shell: bash
+      env:
+        ZENITH: ${{ inputs.binary || steps.install.outputs.path }}
+        CONFIG: ${{ inputs.config }}
+        UPLOAD_SARIF: ${{ inputs.upload-sarif }}
+        ARGS: ${{ inputs.args }}
+        SARIF_FILE: ${{ runner.temp }}/zenith.sarif
+        LOG: ${{ runner.temp }}/zenith.log
+      run: bash "$GITHUB_ACTION_PATH/action/check.sh"
+
+    - name: Upload the results to code scanning
+      if: steps.check.outputs.sarif == 'true'
+      uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+      with:
+        sarif_file: ${{ steps.check.outputs.sarif-file }}
+        category: ${{ inputs.category }}
+
+    # Only after the upload, so that the results of a broken check are still
+    # uploaded.
+    - name: Fail if a contract is broken
+      if: steps.check.outputs.exit-code == '1'
+      shell: bash
+      env:
+        SARIF: ${{ steps.check.outputs.sarif }}
+      run: |
+        if [ "$SARIF" = true ]; then
+          echo "A contract is broken: see the code scanning alerts." >&2
+        else
+          echo "A contract is broken: see the annotations." >&2
+        fi
+        exit 1

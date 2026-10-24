@@ -44,7 +44,8 @@ Contracts
 0 kept, 1 broken · 2 files, 2 imports
 ```
 
-`zenith check` exits with 1 when a contract is broken, so it can fail a CI job.
+`zenith check` exits with 1 when a contract is broken, so it can fail a CI job,
+as with zenith's [GitHub Action](ci.md).
 
 ## 3. Add contracts
 

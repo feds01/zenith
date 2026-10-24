@@ -146,3 +146,6 @@ steps:
 Upload the log of a full check. Code scanning closes the alerts of a category
 that an upload doesn't have, so the log of a check of some contracts, with
 `--contract`, or of some files, with paths, closes the alerts of the others.
+
+zenith's [GitHub Action](ci.md) installs zenith, checks and uploads in a
+single step.

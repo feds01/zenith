@@ -2,6 +2,9 @@
 
 set positional-arguments
 
+# The VS Code extension's recipes, e.g. `just vscode::test`
+mod vscode 'editors/vscode'
+
 # List available recipes
 default:
     @just --list --unsorted
@@ -287,3 +290,4 @@ publish-npm dir:
         id="$(sed -n 's/.*(staged with id \(.*\))$/\1/p' <<<"$staged")"
         echo "::notice title=npm::Staged $spec. Approve it on npmjs.com, under Staged Packages, or with npm stage approve ${id:-<id>}."
     done
+

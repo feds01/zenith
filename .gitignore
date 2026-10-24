@@ -1,7 +1,8 @@
 /target
 
-# Editors
+# Editors, but for the launch configuration of the VS Code extension
 .vscode/
+!/editors/vscode/.vscode/
 .idea/
 
 # Local worktrees and agent scratch space

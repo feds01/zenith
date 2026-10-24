@@ -6,7 +6,7 @@ use std::{env, path::Path, sync::Arc};
 use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
 use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
-use zenith_contracts::Contract;
+use zenith_contracts::{Baseline, Contract};
 use zenith_diagnostics::{Diagnostic, ReportKind, SourceMap, message};
 use zenith_pipeline::{FileError, FileErrorKind, LANGUAGES, Pipeline, Session, StageKind};
 use zenith_utils::{
@@ -151,7 +151,7 @@ pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<Pipeli
 
 /// Compile the contracts of the session's configuration whose ids are in
 /// `ids`, or every contract if there are none, against its graph. An unknown
-/// id is an error. So are the contracts' errors, which are shown in the
+/// id is an error. So are the contracts' errors, which are reported in the
 /// context of the configuration file.
 pub(crate) fn compile_contracts<'s>(
     session: &'s Session,
@@ -170,11 +170,26 @@ pub(crate) fn compile_contracts<'s>(
     let selected = configs.iter().filter(|config| ids.is_empty() || ids.contains(&config.id));
     Contract::compile_all(selected, &session.graph, &session.workspace).map_err(|errors| {
         let (sources, config) = session.sources();
-        let reports: Vec<_> =
-            errors.iter().map(|error| error.report_in(ReportKind::Error, config)).collect();
-        reporting::emit(&sources, &reports);
-        Reported.into()
+        let reports = errors.iter().map(|error| error.report_in(ReportKind::Error, config));
+        Reported { sources, reports: reports.collect() }.into()
     })
+}
+
+/// Read the baseline of `session`, if it has one and it isn't `ignored`, and
+/// say that it is used, and if it has merge conflict markers.
+pub(crate) fn baseline(session: &Session, ignored: bool) -> Result<Option<Baseline>> {
+    if ignored {
+        return Ok(None);
+    }
+    let baseline = Baseline::load(&session.baseline_path())?;
+    if let Some(baseline) = &baseline {
+        let shown = &session.config.baseline.path;
+        info!("{}", message!(cli_using_baseline, path = shown));
+        if baseline.conflicted {
+            warn!("{}", message!(cli_baseline_conflicted, path = shown));
+        }
+    }
+    Ok(baseline)
 }
 
 /// Load the configuration file at `path` in `file_system`. An invalid file is
@@ -185,12 +200,11 @@ fn load(file_system: &dyn FileSystem, path: &Path, root: &Path) -> Result<Config
         Err(LoadError::Invalid { path, contents, errors }) => {
             let mut sources = SourceMap::with_root(root);
             let source = sources.add_file(&path, contents);
-            let reports: Vec<_> = errors
+            let reports = errors
                 .iter()
                 .map(|error| error.report_in(ReportKind::Error, Some(source)))
                 .collect();
-            reporting::emit(&sources, &reports);
-            Err(Reported.into())
+            Err(Reported { sources, reports }.into())
         }
         Err(error) => Err(error.into()),
     }

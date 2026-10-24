@@ -27,6 +27,7 @@ just bench-instructions <bench> [filter]  # measure with CodSpeed locally, in Do
 just corpus <path> <config>  # a release build on a local checkout, with a config in corpus/
 just book     # serve the user guide in docs/book (mdBook)
 just changelog <version>  # write CHANGELOG.md for a release, from the titles of the merged PRs
+just vscode::test  # the VS Code extension's tests, in VS Code, with this checkout's zenith
 ```
 
 zenith checks its own architecture: the contracts in the root `zenith.toml`
@@ -80,6 +81,9 @@ a new kind of responsibility, not for each feature:
   module sources and dependency paths with tree-sitter, resolving them to
   directories or registry and repository modules, and the
   `[languages.terraform]` table.
+- `zenith_lsp`: the language server of `zenith lsp`: the protocol over
+  stdio, and reports as the diagnostics it publishes to an editor. It knows
+  nothing of what is checked.
 - `zenith_macros`: the macros through which code names the messages of
   the catalogue, `#[derive(Diagnostic)]` and `message!`, which check them
   when it compiles.
@@ -89,6 +93,10 @@ a new kind of responsibility, not for each feature:
 - `zenith_utils`: shared helpers: files, paths, globs, locations, terminal
   output and the thread pool.
 - `zenith_workspace`: the file walker and git.
+
+Outside the crates, `editors/vscode` is the VS Code extension, in
+TypeScript: it finds a zenith binary and runs `zenith lsp` for each
+workspace folder that zenith checks.
 
 Key invariants:
 

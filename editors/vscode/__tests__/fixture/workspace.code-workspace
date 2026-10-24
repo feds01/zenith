@@ -1,0 +1,10 @@
+{
+  "folders": [
+    { "path": "web-api" },
+    { "path": "app-db" },
+    { "path": "nested/packages/web", "name": "nested-web" },
+    { "path": "nested/packages/api", "name": "nested-api" },
+    { "path": "pinned" },
+    { "path": "plain" }
+  ]
+}

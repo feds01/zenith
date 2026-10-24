@@ -2,7 +2,8 @@
 
 zenith is a single binary, for macOS, Linux and Windows. Every
 [GitHub release](https://github.com/feds01/zenith/releases) has prebuilt
-binaries and installers, and is published to npm and to a Homebrew tap.
+binaries and installers, and is published to npm, to a Homebrew tap, and
+as a VS Code extension.
 
 ## npm
 
@@ -71,6 +72,12 @@ With a Rust toolchain:
 ```sh
 cargo install --locked --git https://github.com/feds01/zenith zenith
 ```
+
+## VS Code
+
+The [VS Code extension](editors.md#vs-code)
+comes with zenith, and runs a project's own zenith when it has one, from npm.
+It shows where the code breaks its contracts, as you save.
 
 ## Check the installation
 

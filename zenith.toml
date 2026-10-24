@@ -18,7 +18,7 @@ layers = [
   "pkg:zenith_lang_*",
   "pkg:zenith_config",
   "pkg:zenith_lang",
-  "pkg:zenith_cache | pkg:zenith_graph | pkg:zenith_reporting | pkg:zenith_workspace",
+  "pkg:zenith_cache | pkg:zenith_graph | pkg:zenith_lsp | pkg:zenith_reporting | pkg:zenith_workspace",
   "pkg:zenith_diagnostics",
   "pkg:zenith_macros | pkg:zenith_utils",
 ]
@@ -58,6 +58,14 @@ modules = ["crate:ignore"]
 allowed_importers = ["pkg:zenith_workspace"]
 guidance = "Walk files through zenith_workspace."
 
+# The CLI's test of `zenith lsp` plays the editor, which speaks it too.
+[contracts.protocol-in-the-server]
+type = "protected"
+name = "Only zenith_lsp speaks the Language Server Protocol"
+modules = ["crate:lsp-server", "crate:lsp-types"]
+allowed_importers = ["pkg:zenith_lsp", "crates/zenith/tests/lsp.rs"]
+guidance = "Give zenith_lsp reports to publish, and leave the protocol to it."
+
 [contracts.messages-in-the-catalogue]
 type = "protected"
 name = "Only zenith_diagnostics renders messages"
@@ -88,3 +96,10 @@ name = "Suggestion passes don't import each other"
 modules = [{ path = "crates/zenith_contracts/src/suggest/passes/*", except = ["crates/zenith_contracts/src/suggest/passes/mod.rs"] }]
 allow_indirect_imports = true
 guidance = "Move what two passes share into `passes/mod.rs`."
+
+[contracts.lsp-knows-nothing-of-checks]
+type = "forbidden"
+name = "The language server knows nothing of what is checked"
+from = ["pkg:zenith_lsp"]
+to = ["pkg:zenith_contracts", "pkg:zenith_pipeline", "pkg:zenith_graph"]
+guidance = "Give the server reports to publish, from the command that checks the project."

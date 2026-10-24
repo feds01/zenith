@@ -12,6 +12,7 @@ zenith why <from-selector> <to-selector> [--exclude-kind <kind>]… [--limit <n>
 zenith resolve <file> <specifier>
 zenith init [--force]
 zenith suggest
+zenith lsp
 zenith version
 ```
 
@@ -25,6 +26,7 @@ zenith version
 | `resolve` | Shows what a specifier resolves to from a file, and why. |
 | `init` | Writes a starter `zenith.toml` for the workspace packages it finds. |
 | `suggest` | Prints contracts that the code already keeps, as TOML: see [suggesting contracts](#suggesting-contracts). |
+| `lsp` | Runs a language server, which shows the violations in an editor: see [editor integration](editors.md). |
 
 Every command takes these options:
 
@@ -205,4 +207,5 @@ directory called `diff`, write `zenith graph ./diff`.
 | 1 | A contract of `error` severity is broken, or has stale baseline entries that are errors. |
 | 2 | The configuration or the command line is invalid, or something went wrong. |
 
-`zenith resolve` exits with 1 when the specifier doesn't resolve.
+`zenith resolve` exits with 1 when the specifier doesn't resolve, and `zenith lsp`
+when the editor tells it to exit without shutting it down first.

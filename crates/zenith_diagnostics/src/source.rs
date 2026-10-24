@@ -34,7 +34,7 @@ impl Span {
 }
 
 /// A 1-based line and column of a source. Columns count characters, not
-/// bytes.
+/// bytes, unless [`Source::position_in`] counts them in other [`Columns`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     /// The line.
@@ -42,6 +42,30 @@ pub struct Position {
 
     /// The column.
     pub column: u32,
+}
+
+/// What the column of a [`Position`] counts, in its line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Columns {
+    /// Characters, as reports show them.
+    Chars,
+
+    /// UTF-8 bytes.
+    Utf8,
+
+    /// UTF-16 code units, as most editors count them.
+    Utf16,
+}
+
+impl Columns {
+    /// How many columns `text` takes up.
+    fn width(self, text: &str) -> usize {
+        match self {
+            Self::Chars => text.chars().count(),
+            Self::Utf8 => text.len(),
+            Self::Utf16 => text.encode_utf16().count(),
+        }
+    }
 }
 
 /// Where a span starts: the path of its source, and the position in it.
@@ -87,16 +111,31 @@ impl Source {
         self.lines.line(offset)
     }
 
-    /// The position of the byte `offset`. An offset past the end is just
-    /// after the last character.
+    /// The position of the byte `offset`, its column counted in characters.
+    /// An offset past the end is just after the last character.
     pub fn position(&self, offset: u32) -> Position {
+        self.position_in(offset, Columns::Chars)
+    }
+
+    /// The position of the byte `offset`, its column counted in `columns`.
+    /// An offset inside a character is just after it, and an offset past the
+    /// end is just after the last character.
+    pub fn position_in(&self, offset: u32, columns: Columns) -> Position {
+        let (line, before) = self.line_prefix(offset);
+        Position { line, column: columns.width(before) as u32 + 1 }
+    }
+
+    /// The 1-based line that the byte `offset` is on, and the text of the
+    /// line before it. An offset inside a character is after it, and an
+    /// offset past the end is at the end.
+    fn line_prefix(&self, offset: u32) -> (u32, &str) {
         let line = self.lines.line(offset);
-        let start = self.lines.line_range(line).start();
-        let before = self.contents[start as usize..]
-            .char_indices()
-            .take_while(|(index, _)| start as usize + index < offset as usize)
-            .count();
-        Position { line, column: before as u32 + 1 }
+        let start = self.lines.line_range(line).start() as usize;
+        let mut end = (offset as usize).clamp(start, self.contents.len());
+        while !self.contents.is_char_boundary(end) {
+            end += 1;
+        }
+        (line, &self.contents[start..end])
     }
 
     /// The whole lines that `range` is on: the 1-based number of the first,
@@ -189,6 +228,17 @@ impl SourceMap {
         &self.sources[id.0 as usize]
     }
 
+    /// Where the source with the given id is on disk: its path under the
+    /// root, or the path it is shown as if it is outside the root or the map
+    /// has none.
+    pub fn disk_path(&self, id: SourceId) -> PathBuf {
+        let path = &self.get(id).path;
+        match &self.root {
+            Some(root) => root.join(path),
+            None => PathBuf::from(path),
+        }
+    }
+
     /// Where `span` starts, which must be in this map.
     pub fn location(&self, span: Span) -> Location<'_> {
         let source = self.get(span.source);
@@ -198,7 +248,7 @@ impl SourceMap {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{env, fs};
 
     use tempfile::TempDir;
 
@@ -229,6 +279,39 @@ mod tests {
         assert_eq!(source.line(offset), 2);
         let span = Span::new(id, ByteRange::new(offset, offset + 6));
         assert_eq!(sources.location(span).to_string(), "web/a.ts:2:15");
+    }
+
+    #[test]
+    fn finds_positions_in_other_columns() {
+        // `é` is 2 bytes and 1 UTF-16 code unit, `😀` 4 bytes and 2 units, and
+        // `日本` 6 bytes and 2 units.
+        let text = "// é😀\nconst 日本 = 1; import('./b');\n";
+        let mut sources = SourceMap::new();
+        let id = sources.add("web/a.ts", text);
+        let source = sources.get(id);
+
+        let offset = text.find("import").unwrap() as u32;
+        let at = |line, column| Position { line, column };
+        assert_eq!(source.position_in(offset, Columns::Chars), at(2, 15));
+        assert_eq!(source.position_in(offset, Columns::Utf8), at(2, 19));
+        assert_eq!(source.position_in(offset, Columns::Utf16), at(2, 15));
+        assert_eq!(source.position_in(9, Columns::Utf16), at(1, 7));
+        assert_eq!(source.position_in(9, Columns::Utf8), at(1, 10));
+        // Inside `é`, and past the end.
+        assert_eq!(source.position_in(4, Columns::Utf8), at(1, 6));
+        assert_eq!(source.position_in(1000, Columns::Utf16), at(3, 1));
+    }
+
+    #[test]
+    fn finds_sources_on_disk_under_the_root() {
+        let root = env::temp_dir();
+        let mut sources = SourceMap::with_root(&root);
+        let id = sources.add("web/a.ts", "");
+        assert_eq!(sources.disk_path(id), root.join("web/a.ts"));
+
+        let mut sources = SourceMap::new();
+        let id = sources.add("web/a.ts", "");
+        assert_eq!(sources.disk_path(id), Path::new("web/a.ts"));
     }
 
     #[test]

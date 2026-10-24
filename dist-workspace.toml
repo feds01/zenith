@@ -14,11 +14,12 @@ ci = "github"
 installers = ["shell", "powershell", "homebrew"]
 # The Homebrew tap that the formula is published to: `brew install feds01/tap/zenith`
 tap = "feds01/homebrew-tap"
-# Publish the npm packages and the Homebrew formula with each release, by our
-# own jobs, which run `just publish-npm` and `just publish-formula`. The npm
-# packages are staged with npm's trusted publishing, without a token, and go
-# live once a maintainer approves them.
-publish-jobs = ["./publish-homebrew", "./publish-npm"]
+# Publish the npm packages, the Homebrew formula and the VS Code extension with
+# each release, by our own jobs, which run `just publish-npm`,
+# `just publish-formula` and `just vscode::publish`. The npm packages are staged
+# with npm's trusted publishing, without a token, and go live once a
+# maintainer approves them.
+publish-jobs = ["./publish-homebrew", "./publish-npm", "./publish-vscode"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-apple-darwin", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
 # Path that installers should place binaries in
@@ -36,6 +37,7 @@ pr-run-mode = "skip"
 [dist.github-custom-job-permissions]
 "publish-homebrew" = { contents = "read" }
 "publish-npm" = { contents = "read", id-token = "write" }
+"publish-vscode" = { contents = "read" }
 
 # The versions of the GitHub actions that the release workflow uses
 [dist.github-action-commits]

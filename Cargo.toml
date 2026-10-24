@@ -24,6 +24,7 @@ zenith_lang_js = { path = "crates/zenith_lang_js" }
 zenith_lang_python = { path = "crates/zenith_lang_python" }
 zenith_lang_rust = { path = "crates/zenith_lang_rust" }
 zenith_lang_terraform = { path = "crates/zenith_lang_terraform" }
+zenith_lsp = { path = "crates/zenith_lsp" }
 zenith_macros = { path = "crates/zenith_macros" }
 zenith_pipeline = { path = "crates/zenith_pipeline" }
 zenith_reporting = { path = "crates/zenith_reporting" }
@@ -49,6 +50,8 @@ mimalloc = { version = "0.1.52", default-features = false }
 libtest-mimic = { version = "0.8.2" }
 indexmap = { version = "2.14.2", features = ["serde"] }
 log = { version = "0.4.34" }
+lsp-server = { version = "0.10.0" }
+lsp-types = { version = "0.95.1" }
 oxc_allocator = { version = "0.153.0" }
 oxc_ast = { version = "0.153.0" }
 oxc_ast_visit = { version = "0.153.0" }

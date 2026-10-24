@@ -1,0 +1,6 @@
+# The project of the language server's tests, where `api` may be imported by
+# one file outside it, but `web/a.ts` and `lib/c.ts` both import it.
+[contracts.small-api]
+type = "limits"
+modules = ["api"]
+max_fan_in = 1

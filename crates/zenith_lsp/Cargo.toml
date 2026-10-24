@@ -1,0 +1,21 @@
+[package]
+name = "zenith_lsp"
+version = { workspace = true }
+description = "Publishes what zenith finds to an editor, as Language Server Protocol diagnostics"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = { workspace = true }
+
+[dependencies]
+zenith_diagnostics = { workspace = true }
+zenith_utils = { workspace = true }
+
+log = { workspace = true }
+lsp-server = { workspace = true }
+lsp-types = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

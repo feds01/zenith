@@ -22,6 +22,19 @@ formatting check, clippy, zenith's own contracts and `cargo deny` on Linux.
 
 See [CLAUDE.md](CLAUDE.md) for the architecture and conventions.
 
+## The VS Code extension
+
+The extension, in [editors/vscode](editors/vscode), runs `zenith lsp` for each
+workspace folder that zenith checks. It builds with [Bun](https://bun.com),
+and its tests run with Node 22 or later. Its recipes are in its own
+justfile, which the root one runs as `just vscode::<recipe>`.
+`just vscode::test` builds zenith, copies it into the extension as the binary
+that it comes with, and runs the extension's tests, in `__tests__`, in a
+VS Code that they download; on Linux, run it under `xvfb-run -a`. To try the
+extension, open `editors/vscode` in VS Code and start the *Run Extension*
+launch configuration, which builds it and runs the binary that
+`just vscode::test` copied, or else zenith on the `PATH`.
+
 ## The user guide
 
 The user guide is an [mdBook](https://rust-lang.github.io/mdBook/) in
@@ -53,3 +66,23 @@ builds them locally. They are staged rather than published: approve them on
 npmjs.com, under Staged Packages, or with `npm stage approve <id>` (npm 11.15
 or later), the platform packages before `@feds01/zenith`. The release run
 shows the ids, and so does `npm stage list <package>`.
+
+The VS Code extension is packaged by `just vscode::release`, from the same
+archives: a VSIX per platform with its binary, and a universal one without,
+for the other platforms. `just vscode::publish` publishes them to the VS Code
+Marketplace and to Open VSX with the tokens in the repository's secrets
+`VSCE_PAT` and `OVSX_PAT`, which only that step sees. A pre-release version
+isn't published, as the Marketplace takes none. `just vscode::packages` builds
+the VSIX files locally.
+
+Before the first release that publishes it:
+
+1. Create the `feds01` publisher on the
+   [Marketplace](https://marketplace.visualstudio.com/manage), and an Azure
+   DevOps personal access token with the *Marketplace (Manage)* scope, for
+   all accessible organisations, as `VSCE_PAT`.
+2. Sign in to [Open VSX](https://open-vsx.org) with GitHub, sign the
+   publisher agreement, create an access token as `OVSX_PAT`, and create the
+   namespace with `npx ovsx create-namespace feds01 -p <token>`.
+
+Both tokens expire: renew them before they do.

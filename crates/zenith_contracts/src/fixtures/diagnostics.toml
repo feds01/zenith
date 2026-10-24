@@ -1,0 +1,5 @@
+# `a` must not reach `b`, which it does through `c`.
+[contracts.ab]
+type = "forbidden"
+from = ["a"]
+to = ["b"]

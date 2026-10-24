@@ -1,0 +1,8 @@
+# What a VSIX has: the bundle, the binary of its platform, if it has one, the
+# icon, the README and the licence.
+**
+!dist/extension.js
+!bin/**
+!icon.png
+!README.md
+!LICENSE

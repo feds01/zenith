@@ -31,6 +31,7 @@
 
 - [The baseline](baseline.md)
 - [Suppressions](suppressions.md)
+- [Editor integration](editors.md)
 
 # Reference
 

@@ -1,0 +1,129 @@
+{
+  "name": "zenith",
+  "displayName": "Zenith Linter",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shows where the code breaks its architecture contracts, as you save",
+  "categories": [
+    "Linters"
+  ],
+  "keywords": [
+    "architecture",
+    "go",
+    "imports",
+    "linter",
+    "monorepo",
+    "python",
+    "rust",
+    "terraform",
+    "typescript"
+  ],
+  "homepage": "https://feds01.github.io/zenith/editors.html",
+  "bugs": "https://github.com/feds01/zenith/issues",
+  "license": "MIT",
+  "author": "Alexander Fedotov <alexander.fedotov.uk@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/feds01/zenith.git",
+    "directory": "editors/vscode"
+  },
+  "publisher": "feds01",
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "bun build src/extension.ts --outdir dist --target node --format cjs --external vscode --sourcemap=linked --minify",
+    "watch": "bun build src/extension.ts --outdir dist --target node --format cjs --external vscode --sourcemap=linked --watch",
+    "format": "oxfmt",
+    "check": "oxfmt --check && oxlint --deny-warnings && tsc --noEmit && tsc --noEmit -p __tests__",
+    "pretest": "bun run build && tsc -p __tests__",
+    "test": "vscode-test --config __tests__/vscode-test.mjs"
+  },
+  "dependencies": {
+    "vscode-languageclient": "11.0.0"
+  },
+  "devDependencies": {
+    "@types/mocha": "10.0.10",
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.91.0",
+    "@vscode/test-cli": "0.0.15",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.0.0",
+    "mocha": "12.0.3",
+    "ovsx": "1.3.0",
+    "oxfmt": "0.74.0",
+    "oxlint": "1.89.0",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "mocha": "12.0.3"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "zenith",
+      "properties": {
+        "zenith.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "The path of the `zenith` binary to run, absolute or relative to the workspace folder. By default, the project's own, from the `@feds01/zenith` npm package, or else the one that comes with the extension, or else `zenith` on the `PATH`."
+        },
+        "zenith.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "resource",
+          "markdownDescription": "More arguments for `zenith lsp`, such as `[\"--config\", \"tools/zenith.toml\"]`. It takes the [options](https://feds01.github.io/zenith/cli.html) of every command."
+        },
+        "zenith.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "scope": "window",
+          "markdownDescription": "Log the messages between VS Code and the server, in the server's output."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "zenith.restart",
+        "title": "Restart the server",
+        "category": "zenith"
+      },
+      {
+        "command": "zenith.showOutput",
+        "title": "Show the server's output",
+        "category": "zenith"
+      }
+    ]
+  },
+  "activationEvents": [
+    "onStartupFinished",
+    "workspaceContains:**/zenith.toml"
+  ],
+  "icon": "icon.png",
+  "galleryBanner": {
+    "color": "#14163a",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.91.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "zenith runs a binary that may be the workspace's own, and that runs tools such as cargo and git in the workspace."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "zenith reads the project's files from disk."
+    }
+  },
+  "trustedDependencies": [
+    "@vscode/vsce-sign"
+  ]
+}

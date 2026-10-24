@@ -1,0 +1,7 @@
+{
+  "name": "pinned",
+  "private": true,
+  "devDependencies": {
+    "@feds01/zenith": "0.1.0"
+  }
+}

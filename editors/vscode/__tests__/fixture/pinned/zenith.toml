@@ -1,0 +1,6 @@
+# `web` must not import `api`.
+[contracts.web-api]
+type = "forbidden"
+from = ["web"]
+to = ["api"]
+guidance = "Move what `web` needs out of `api`."

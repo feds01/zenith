@@ -13,7 +13,7 @@ use zenith_utils::{
     location::Located,
     path::{absolute_path, adjust_canonicalisation, relative_posix},
 };
-use zenith_workspace::WalkSettings;
+use zenith_workspace::{Git, WalkSettings};
 
 use crate::{Backends, FileError, PipelineError, Scope, UnresolvedImport};
 
@@ -279,15 +279,32 @@ impl Session {
     }
 
     /// Report only on the files under `paths`, which are relative to the
-    /// working directory, and must be inside the root. They need not exist,
-    /// as a deleted file's importers may still involve it. No paths is every
-    /// file.
-    pub fn scope_to(&mut self, paths: &[PathBuf]) -> Result<(), PipelineError> {
+    /// working directory, and must be inside the root, and on the files that
+    /// the branch changed since it left the commit `since`, if it is given:
+    /// untracked files too, unless only tracked files are scanned. The
+    /// paths need not exist, as a deleted file's importers may still
+    /// involve it. No paths and no commit is every file.
+    pub fn scope_to(
+        &mut self,
+        paths: &[PathBuf],
+        since: Option<&str>,
+    ) -> Result<(), PipelineError> {
+        // 1. Name the paths relative to the root.
         let names = paths.iter().map(|path| {
             relative_posix(&self.root, &adjust_canonicalisation(path))
                 .ok_or_else(|| PipelineError::OutsideRoot(path.clone()))
         });
-        self.scope = Scope::new(names.collect::<Result<_, _>>()?);
+        let mut names: Vec<_> = names.collect::<Result<_, _>>()?;
+
+        // 2. Add the files that changed since the commit. If none did, the scope is no
+        //    file, rather than every file.
+        if let Some(since) = since {
+            names.extend(Git::new(&self.root).changed_files(since, !self.tracked_only)?);
+        }
+        self.scope = match (names.is_empty(), since) {
+            (true, None) => Scope::default(),
+            _ => Scope::new(names),
+        };
         Ok(())
     }
 

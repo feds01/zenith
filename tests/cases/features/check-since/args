@@ -1,0 +1,3 @@
+# Outside a git repository, `--since` is an error, as `--tracked` is.
+check --since main
+check --tracked

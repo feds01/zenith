@@ -5,6 +5,8 @@
 //! which narrow the walk down, and the files that it sees renamed.
 
 mod git;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 mod walk;
 
 pub use git::{Git, GitError, Renames, TrackedFiles};

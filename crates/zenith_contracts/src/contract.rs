@@ -328,7 +328,10 @@ mod tests {
         let project = Project::new(&imports, &[], include_str!("fixtures/narrow.toml"))
             .baseline("f", &["web/a.ts -> api/z.ts", "web/old.ts -> api/x.ts"]);
         let narrowed = |paths: &[&str]| {
-            let scope = Scope::new(paths.iter().map(|path| path.to_string()).collect());
+            let scope = match paths {
+                [] => Scope::default(),
+                paths => Scope::new(paths.iter().map(|path| path.to_string()).collect()),
+            };
             let mut found = Vec::new();
             for id in ["f", "c", "l"] {
                 let mut report = project.check(id);

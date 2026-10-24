@@ -2582,6 +2582,7 @@ dependencies = [
  "mimalloc",
  "pretty_assertions",
  "serde_json",
+ "tempfile",
  "zenith_config",
  "zenith_contracts",
  "zenith_diagnostics",

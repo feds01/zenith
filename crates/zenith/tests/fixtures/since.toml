@@ -1,0 +1,4 @@
+[contracts.web-not-api]
+type = "forbidden"
+from = ["src/web"]
+to = ["src/api"]

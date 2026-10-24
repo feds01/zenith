@@ -30,6 +30,7 @@ thin-vec = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+zenith_workspace = { workspace = true, features = ["testing"] }
 
 [lints]
 workspace = true

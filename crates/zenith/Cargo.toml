@@ -35,6 +35,8 @@ serde_json = { workspace = true }
 [dev-dependencies]
 libtest-mimic = { workspace = true }
 pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+zenith_workspace = { workspace = true, features = ["testing"] }
 
 # The UI snapshot tests run the binary on the projects in `tests/cases`.
 [[test]]

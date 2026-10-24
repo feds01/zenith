@@ -8,6 +8,10 @@ license = { workspace = true }
 repository = { workspace = true }
 publish = { workspace = true }
 
+[features]
+# Helpers for other crates' tests that build git repositories.
+testing = []
+
 [dependencies]
 ignore = { workspace = true }
 log = { workspace = true }

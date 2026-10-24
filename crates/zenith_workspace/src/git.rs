@@ -1,7 +1,8 @@
 //! What git knows about a project, through a [`Git`] client: the files that
 //! it tracks, for scanning only those, as in a pre-commit hook, where
-//! untracked files aren't part of the commit, and the files that it sees
-//! renamed, for following them.
+//! untracked files aren't part of the commit, the files that it sees
+//! renamed, for following them, and the files that changed since a commit,
+//! for reporting on only those.
 
 use std::{
     ffi::OsString,
@@ -10,7 +11,7 @@ use std::{
     process::Command,
 };
 
-use log::debug;
+use log::{debug, warn};
 use rustc_hash::{FxHashMap, FxHashSet};
 use zenith_diagnostics::message;
 use zenith_utils::path::relative_posix;
@@ -30,9 +31,14 @@ pub struct Git {
     root: PathBuf,
 
     /// The worktree's root: the nearest directory with a `.git`, at or above
-    /// the project root, or the project root outside a worktree, where git
-    /// explains the problem.
+    /// the project root, or the project root outside a worktree.
     worktree: PathBuf,
+
+    /// What the project's paths start with to be relative to the worktree's
+    /// root, as [`Self::root_prefix`] gives it, or `None` outside a worktree,
+    /// which [`Self::ensure_repository`] reports as
+    /// [`GitError::NotARepository`].
+    prefix: Option<String>,
 
     /// The environment variables to run git with, besides zenith's own.
     variables: Vec<(&'static str, OsString)>,
@@ -41,8 +47,16 @@ pub struct Git {
 impl Git {
     /// A client for the project at `root`, which must be canonical.
     pub fn new(root: &Path) -> Self {
-        let worktree = root.ancestors().find(|dir| dir.join(".git").exists()).unwrap_or(root);
-        Self { root: root.to_owned(), worktree: worktree.to_owned(), variables: Vec::new() }
+        let worktree = root.ancestors().find(|dir| dir.join(".git").exists());
+        let prefix = worktree
+            .and_then(|worktree| relative_posix(worktree, root))
+            .map(|prefix| if prefix.is_empty() { prefix } else { format!("{prefix}/") });
+        Self {
+            root: root.to_owned(),
+            worktree: worktree.unwrap_or(root).to_owned(),
+            prefix,
+            variables: Vec::new(),
+        }
     }
 
     /// This client, running git with the environment variable `name` set to
@@ -57,16 +71,13 @@ impl Git {
     /// worktree that it is in: the root's POSIX path in it, ending in `/`,
     /// or nothing if the project is rooted there. `None` outside a worktree.
     pub fn root_prefix(&self) -> Option<String> {
-        if !self.worktree.join(".git").exists() {
-            return None;
-        }
-        let prefix = relative_posix(&self.worktree, &self.root)?;
-        Some(if prefix.is_empty() { prefix } else { format!("{prefix}/") })
+        self.prefix.clone()
     }
 
     /// The files that git tracks in the worktree: those in its index, which
     /// is the next commit's while a pre-commit hook runs.
     pub fn tracked_files(&self) -> Result<TrackedFiles, GitError> {
+        self.ensure_repository()?;
         let output = self.run(&["ls-files", "-z", "--cached"])?;
         // `ls-files` lists the files relative to the directory it runs in.
         let names = fields(&output).map(str::to_owned).collect();
@@ -93,13 +104,7 @@ impl Git {
 
         // 2. Git names the files relative to the worktree's root, and the project's are
         //    relative to its own root, which may be a directory inside it.
-        let Some(prefix) = relative_posix(&self.worktree, &self.root) else {
-            return Ok(Renames::default());
-        };
-        let inside = |name: &str| match prefix.as_str() {
-            "" => Some(name.to_owned()),
-            prefix => name.strip_prefix(prefix)?.strip_prefix('/').map(str::to_owned),
-        };
+        let inside = |name| self.inside(name);
 
         // 3. Each change is its status, then its path, or the old and new paths of a
         //    rename (`R` and its similarity), or of a copy (`C`), which `diff.renames =
@@ -119,6 +124,102 @@ impl Git {
             }
         }
         Ok(Renames { names })
+    }
+
+    /// The files inside the project root that a branch changed since it left
+    /// `since`: those that differ between the merge base of `since` and
+    /// `HEAD` and the files in the worktree, as in `git diff <since>...` and
+    /// a pull request's diff, so that what `since` gained after the branch
+    /// left it is not among them. They are those added, copied, modified,
+    /// renamed or deleted, a renamed file by both its old and its new name,
+    /// and, if `untracked` is set, the untracked files that git doesn't
+    /// ignore. Each is a POSIX path relative to the project root, and they
+    /// are sorted. If `since` and `HEAD` share no history, as in a shallow
+    /// clone without the merge base, the files are compared with `since`
+    /// itself, with a warning.
+    ///
+    /// `since` is anything that names a commit, as for
+    /// [`Self::resolve_commit`].
+    pub fn changed_files(&self, since: &str, untracked: bool) -> Result<Vec<String>, GitError> {
+        // 1. Find the commit first, so that an unknown one has an error of its own,
+        //    then where the branch left it. Before the first commit, `HEAD` names none.
+        let commit = self.resolve_commit(since)?;
+        let head = self.resolve_commit("HEAD")?;
+        let base = match self.merge_base(&commit, &head)? {
+            Some(base) => base,
+            None => {
+                warn!("{}", message!(workspace_no_merge_base, reference = since));
+                commit
+            }
+        };
+
+        // 2. Compare it with the files in the worktree, without finding renames, so
+        //    that a renamed file is deleted under its old name and added under its new
+        //    one.
+        let diff =
+            self.run(&["diff", "--name-only", "--no-renames", "-z", "--no-ext-diff", &base])?;
+
+        // 3. Add the untracked files, which git doesn't compare.
+        let others = match untracked {
+            true => self.run(&["ls-files", "-z", "--others", "--exclude-standard"])?,
+            false => String::new(),
+        };
+
+        // 4. Keep those inside the project root, named relative to it.
+        let mut names: Vec<_> =
+            fields(&diff).chain(fields(&others)).filter_map(|name| self.inside(name)).collect();
+        names.sort_unstable();
+        names.dedup();
+        Ok(names)
+    }
+
+    /// The hash of the commit that `reference` names: anything that names a
+    /// commit, such as a branch, a tag, `HEAD~1` or a hash. One that names
+    /// none is [`GitError::UnknownCommit`], and outside a repository, it is
+    /// [`GitError::NotARepository`].
+    pub fn resolve_commit(&self, reference: &str) -> Result<String, GitError> {
+        self.ensure_repository()?;
+        let revision = format!("{reference}^{{commit}}");
+        // A reference such as `--git-dir` is a revision, not an option.
+        match self.run(&["rev-parse", "--verify", "--quiet", "--end-of-options", &revision]) {
+            Ok(hash) => Ok(hash.trim().to_owned()),
+            // `--quiet` silences only the error that no commit has that name.
+            Err(GitError::Failed { message, .. }) if message.is_empty() => {
+                Err(GitError::UnknownCommit(reference.to_owned()))
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// The hash of the best common ancestor of the commits `first` and
+    /// `second`, where the history of one left the other, or `None` if they
+    /// share no history.
+    pub fn merge_base(&self, first: &str, second: &str) -> Result<Option<String>, GitError> {
+        match self.run(&["merge-base", "--end-of-options", first, second]) {
+            Ok(hash) => Ok(Some(hash.trim().to_owned())),
+            // Git fails without a word when there is none.
+            Err(GitError::Failed { message, .. }) if message.is_empty() => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Fail with [`GitError::NotARepository`] if there is no `.git` at or
+    /// above the project root, rather than with whatever git says, which
+    /// depends on its version and language. Git still explains any other
+    /// problem, such as a repository that it doesn't trust.
+    fn ensure_repository(&self) -> Result<(), GitError> {
+        match self.prefix {
+            Some(_) => Ok(()),
+            None => Err(GitError::NotARepository(self.root.clone())),
+        }
+    }
+
+    /// Name the file `name`, which git names relative to the worktree's root,
+    /// relative to the project root instead, which may be a directory inside
+    /// it, or `None` if the file is outside the project root, or there is no
+    /// worktree.
+    fn inside(&self, name: &str) -> Option<String> {
+        name.strip_prefix(self.prefix.as_deref()?).map(str::to_owned)
     }
 
     /// Run git with `args` in the worktree's root, returning what it printed.
@@ -213,7 +314,7 @@ pub enum GitError {
     /// this message.
     Run(String),
 
-    /// Git ran but failed, most likely outside a repository.
+    /// Git ran but failed.
     Failed {
         /// The command's arguments, e.g. `ls-files -z --cached`.
         command: String,
@@ -221,6 +322,12 @@ pub enum GitError {
         /// What git said.
         message: String,
     },
+
+    /// The project, at this root, is not in a git repository's worktree.
+    NotARepository(PathBuf),
+
+    /// No commit has this name.
+    UnknownCommit(String),
 }
 
 impl fmt::Display for GitError {
@@ -230,6 +337,12 @@ impl fmt::Display for GitError {
             Self::Failed { command, message } => {
                 f.write_str(&message!(workspace_git_failed, command, message))
             }
+            Self::NotARepository(root) => {
+                f.write_str(&message!(workspace_not_a_repository, root = root.display()))
+            }
+            Self::UnknownCommit(reference) => {
+                f.write_str(&message!(workspace_unknown_commit, reference))
+            }
         }
     }
 }
@@ -238,24 +351,33 @@ impl std::error::Error for GitError {}
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{fs, sync::Mutex};
 
+    use log::{Level, LevelFilter, Log, Metadata, Record};
     use tempfile::TempDir;
     use zenith_utils::path::adjust_canonicalisation;
 
     use super::*;
+    use crate::testing::{commit, git};
 
-    /// Run git in `dir`, outside any hook that could have set its variables.
-    fn git(dir: &Path, args: &[&str]) {
-        let status = Command::new("git")
-            .current_dir(dir)
-            .args(args)
-            .env_remove("GIT_DIR")
-            .env_remove("GIT_WORK_TREE")
-            .env_remove("GIT_INDEX_FILE")
-            .status()
-            .unwrap();
-        assert!(status.success(), "git {args:?} failed");
+    /// The warnings logged while the tests run, on any thread.
+    static WARNINGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    /// A logger that keeps the warnings in [`WARNINGS`].
+    struct Warnings;
+
+    impl Log for Warnings {
+        fn enabled(&self, metadata: &Metadata) -> bool {
+            metadata.level() <= Level::Warn
+        }
+
+        fn log(&self, record: &Record) {
+            if self.enabled(record.metadata()) {
+                WARNINGS.lock().unwrap().push(record.args().to_string());
+            }
+        }
+
+        fn flush(&self) {}
     }
 
     /// A git repository with `files`, each with contents of its own, so that
@@ -266,11 +388,7 @@ mod tests {
         for file in files {
             fs::write(root.join(file), format!("export const name = '{file}';\n")).unwrap();
         }
-        git(&root, &["add", "--all"]);
-        let config = ["user.name=zenith", "user.email=zenith@example.com", "commit.gpgSign=false"];
-        let mut commit: Vec<_> = config.iter().flat_map(|setting| ["-c", setting]).collect();
-        commit.extend(["commit", "--quiet", "--message", "test"]);
-        git(&root, &commit);
+        commit(&root);
         (dir, root)
     }
 
@@ -356,7 +474,7 @@ mod tests {
             return;
         }
         let error = Git::new(&root).tracked_files().unwrap_err();
-        assert!(matches!(error, GitError::Failed { .. }), "{error:?}");
+        assert_eq!(error, GitError::NotARepository(root));
     }
 
     #[test]
@@ -412,6 +530,137 @@ mod tests {
         // A repository above the temporary directory could have renames.
         if !root.ancestors().any(|dir| dir.join(".git").exists()) {
             assert!(Git::new(&root).renames().is_empty());
+        }
+    }
+
+    #[test]
+    fn changed_files_are_those_added_modified_renamed_or_deleted() {
+        let (_dir, root) = committed(&["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"]);
+        fs::write(root.join("src/a.ts"), "export const a = 'changed';\n").unwrap();
+        git(&root, &["mv", "src/b.ts", "src/z.ts"]);
+        fs::remove_file(root.join("src/c.ts")).unwrap();
+        fs::write(root.join("src/new.ts"), "").unwrap();
+        fs::write(root.join(".gitignore"), "ignored.ts\n").unwrap();
+        fs::write(root.join("ignored.ts"), "").unwrap();
+
+        let git = Git::new(&root);
+        let tracked = ["src/a.ts", "src/b.ts", "src/c.ts", "src/z.ts"];
+        assert_eq!(git.changed_files("HEAD", false).unwrap(), tracked);
+        let untracked =
+            [".gitignore", "src/a.ts", "src/b.ts", "src/c.ts", "src/new.ts", "src/z.ts"];
+        assert_eq!(git.changed_files("HEAD", true).unwrap(), untracked);
+    }
+
+    #[test]
+    fn changed_files_are_found_since_a_branch_a_hash_or_an_ancestor() {
+        let (_dir, root) = committed(&["a.ts", "b.ts"]);
+        git(&root, &["branch", "base"]);
+        fs::write(root.join("a.ts"), "export const a = 'changed';\n").unwrap();
+        commit(&root);
+        fs::write(root.join("b.ts"), "export const b = 'changed';\n").unwrap();
+
+        let git = Git::new(&root);
+        let hash = git.resolve_commit("base").unwrap();
+        for since in ["base", hash.as_str(), "HEAD~1"] {
+            assert_eq!(git.changed_files(since, true).unwrap(), ["a.ts", "b.ts"], "{since}");
+        }
+        assert_eq!(git.changed_files("HEAD", true).unwrap(), ["b.ts"]);
+    }
+
+    #[test]
+    fn changed_files_leave_out_what_the_other_branch_gained_after_the_branch_left_it() {
+        let (_dir, root) = committed(&["a.ts", "b.ts", "c.ts"]);
+        git(&root, &["branch", "trunk"]);
+        git(&root, &["checkout", "--quiet", "-b", "feature"]);
+        fs::write(root.join("b.ts"), "export const b = 'changed';\n").unwrap();
+        commit(&root);
+        git(&root, &["checkout", "--quiet", "trunk"]);
+        fs::write(root.join("a.ts"), "export const a = 'changed';\n").unwrap();
+        commit(&root);
+        git(&root, &["checkout", "--quiet", "feature"]);
+        fs::write(root.join("c.ts"), "export const c = 'changed';\n").unwrap();
+
+        assert_eq!(Git::new(&root).changed_files("trunk", true).unwrap(), ["b.ts", "c.ts"]);
+    }
+
+    #[test]
+    fn changed_files_are_compared_with_a_commit_without_shared_history_with_a_warning() {
+        // A process has one logger, so only this test may install it.
+        log::set_logger(&Warnings).expect("only this test installs a logger");
+        log::set_max_level(LevelFilter::Warn);
+        let (_dir, root) = committed(&["a.ts", "b.ts"]);
+        git(&root, &["branch", "unrelated"]);
+        git(&root, &["checkout", "--quiet", "--orphan", "fresh"]);
+        fs::write(root.join("c.ts"), "export const c = 'new';\n").unwrap();
+        commit(&root);
+        fs::write(root.join("b.ts"), "export const b = 'changed';\n").unwrap();
+
+        assert_eq!(Git::new(&root).changed_files("unrelated", true).unwrap(), ["b.ts", "c.ts"]);
+        let warning = "`unrelated` shares no history with `HEAD` here, so the files are compared \
+                       with its tip; in a shallow clone, fetch more history";
+        assert!(WARNINGS.lock().unwrap().iter().any(|logged| logged == warning));
+    }
+
+    #[test]
+    fn changed_files_are_named_relative_to_a_root_inside_the_repository() {
+        let (_dir, repository) = committed(&["web/a.ts", "api/b.ts"]);
+        fs::write(repository.join("web/a.ts"), "export const a = 'changed';\n").unwrap();
+        fs::write(repository.join("api/b.ts"), "export const b = 'changed';\n").unwrap();
+        // Out of the root.
+        git(&repository, &["mv", "web/a.ts", "api/a.ts"]);
+
+        let root = repository.join("web");
+        assert_eq!(Git::new(&root).changed_files("HEAD", true).unwrap(), ["a.ts"]);
+    }
+
+    #[test]
+    fn an_unknown_commit_or_a_missing_repository_is_an_error_of_its_own() {
+        let (_dir, root) = committed(&["a.ts"]);
+        let error = Git::new(&root).changed_files("no-such-branch", true).unwrap_err();
+        assert_eq!(error, GitError::UnknownCommit("no-such-branch".into()));
+
+        let dir = TempDir::new().unwrap();
+        let root = adjust_canonicalisation(dir.path());
+        // A repository above the temporary directory would know its commits.
+        if !root.ancestors().any(|dir| dir.join(".git").exists()) {
+            let error = Git::new(&root).changed_files("HEAD", true).unwrap_err();
+            assert_eq!(error, GitError::NotARepository(root));
+        }
+    }
+
+    #[test]
+    fn a_reference_like_an_option_is_a_commit_name() {
+        let (_dir, root) = committed(&["a.ts"]);
+        let error = Git::new(&root).resolve_commit("--git-dir").unwrap_err();
+        assert_eq!(error, GitError::UnknownCommit("--git-dir".into()));
+    }
+
+    #[test]
+    fn before_the_first_commit_head_is_an_unknown_commit() {
+        let (_dir, root) = repository(&["a.ts"], &["a.ts"]);
+        let error = Git::new(&root).changed_files("HEAD", true).unwrap_err();
+        assert_eq!(error, GitError::UnknownCommit("HEAD".into()));
+
+        // On a branch without a commit, beside one with commits.
+        let (_dir, root) = committed(&["a.ts"]);
+        git(&root, &["branch", "trunk"]);
+        git(&root, &["checkout", "--quiet", "--orphan", "fresh"]);
+        let error = Git::new(&root).changed_files("trunk", true).unwrap_err();
+        assert_eq!(error, GitError::UnknownCommit("HEAD".into()));
+    }
+
+    #[test]
+    fn git_explains_a_repository_that_it_cannot_read() {
+        // A `.git` file that doesn't point at a repository.
+        let dir = TempDir::new().unwrap();
+        let root = adjust_canonicalisation(dir.path());
+        fs::write(root.join(".git"), "not a link to a repository\n").unwrap();
+        let git = Git::new(&root);
+        for error in
+            [git.tracked_files().unwrap_err(), git.changed_files("HEAD", true).unwrap_err()]
+        {
+            let GitError::Failed { message, .. } = &error else { panic!("{error:?}") };
+            assert!(!message.is_empty(), "{error:?}");
         }
     }
 }

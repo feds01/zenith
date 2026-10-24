@@ -7,18 +7,11 @@ use serde_json::Value;
 use tempfile::TempDir;
 use zenith_workspace::testing::{commit, git};
 
-/// Copy the files of `from` into `to`, leaving out the UI test's own.
-fn copy_project(from: &Path, to: &Path) {
-    for entry in fs::read_dir(from).unwrap() {
-        let path = entry.unwrap().path();
-        let target = to.join(path.file_name().unwrap());
-        if path.is_dir() {
-            fs::create_dir_all(&target).unwrap();
-            copy_project(&path, &target);
-        } else if !path.ends_with("args") && !path.ends_with("output.snap") {
-            fs::copy(&path, &target).unwrap();
-        }
-    }
+/// Write `contents` to `file` in `root`, creating its directories.
+fn write(root: &Path, file: &str, contents: &str) {
+    let path = root.join(file);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, contents).unwrap();
 }
 
 /// The files of the results of `zenith check` with `args`, in `root`, as a
@@ -45,14 +38,19 @@ fn sarif_files(root: &Path, args: &[&str]) -> Vec<String> {
 #[test]
 fn since_narrows_the_sarif_results_to_the_changed_files() {
     // Two files import `src/api`, which they mustn't; only one changes.
-    let case = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/cases/features/check-paths");
     let dir = TempDir::new().unwrap();
     let root = dir.path();
-    copy_project(&case, root);
+    write(root, "zenith.toml", include_str!("fixtures/since.toml"));
+    write(root, "src/api/client.ts", "export const client = 1;\n");
+    write(root, "src/web/a.ts", "import { client } from \"../api/client\";\n");
+    write(root, "src/web/b.ts", "import { client } from \"../api/client\";\n");
     git(root, &["init", "--quiet"]);
     commit(root);
-    let b = root.join("src/web/b.ts");
-    fs::write(&b, fs::read_to_string(&b).unwrap() + "export const changed = true;\n").unwrap();
+    write(
+        root,
+        "src/web/b.ts",
+        "import { client } from \"../api/client\";\nexport const b = client;\n",
+    );
 
     assert_eq!(sarif_files(root, &[]), ["src/web/a.ts", "src/web/b.ts"]);
     assert_eq!(sarif_files(root, &["--since", "HEAD"]), ["src/web/b.ts"]);

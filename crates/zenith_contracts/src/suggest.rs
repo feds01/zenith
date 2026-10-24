@@ -22,13 +22,9 @@ use zenith_diagnostics::message;
 use zenith_graph::{Graph, GraphView, ModuleId, NodeKind, NodeSet, UnitGraph, UnitId};
 use zenith_lang::Workspace;
 use zenith_pipeline::Graphs;
-use zenith_utils::glob;
+use zenith_utils::{glob, toml_writing::array};
 
 use crate::{Contract, Exemptions, Selection};
-
-/// The longest line that a list of selectors is written on; a longer list
-/// is written a selector per line.
-const LINE_WIDTH: usize = 80;
 
 /// A contract that the code already keeps, suggested for the configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -328,22 +324,6 @@ fn is_plain_layer(selector: &str, languages: Languages) -> bool {
     })
 }
 
-/// `key = [...]`, a line of the quoted `values`, or a value per line if they
-/// don't fit on one.
-fn array(key: &str, values: &[String]) -> String {
-    let quoted: Vec<_> =
-        values.iter().map(|value| toml::Value::String(value.clone()).to_string()).collect();
-    let line = format!("{key} = [{}]\n", quoted.join(", "));
-    if line.len() <= LINE_WIDTH + 1 {
-        return line;
-    }
-    let mut lines = format!("{key} = [\n");
-    for value in quoted {
-        lines += &format!("    {value},\n");
-    }
-    lines + "]\n"
-}
-
 /// `dir` as part of a contract id, e.g. `packages-libs` for `packages/libs`:
 /// every character that ids can't have becomes a `-`.
 fn slug(dir: &str) -> String {
@@ -533,14 +513,5 @@ modules = [\"(shared)\", \"[locale]\", '\\{legacy\\}']
         let project = Project::new(&imports, &[], include_str!("fixtures/exclude-types.toml"));
         assert_eq!(ids(&project), ["directories-acyclic", "directories-layers"]);
         assert!(ids(&Project::new(&imports, &[], "")).is_empty());
-    }
-
-    #[test]
-    fn long_lists_are_written_a_selector_per_line() {
-        let selectors: Vec<_> = (1..=8).map(|n| format!("packages/module-{n}")).collect();
-        let written = array("modules", &selectors);
-        assert!(written.starts_with("modules = [\n    \"packages/module-1\",\n"), "{written}");
-        assert!(written.ends_with("    \"packages/module-8\",\n]\n"), "{written}");
-        assert_eq!(array("modules", &selectors[..2]).lines().count(), 1);
     }
 }

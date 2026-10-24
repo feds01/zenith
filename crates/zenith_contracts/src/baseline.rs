@@ -35,6 +35,7 @@ use zenith_pipeline::Graphs;
 use zenith_utils::{
     location::{ByteRange, LineIndex},
     text::comment_out_conflict_markers,
+    toml_writing,
 };
 use zenith_workspace::Renames;
 
@@ -104,11 +105,7 @@ impl Baseline {
     pub fn save(&self, path: &Path) -> Result<(), BaselineError> {
         let mut contents = format!("version = {}\n\n[contracts]\n", self.version);
         for (id, entries) in &self.contracts {
-            contents += &format!("{} = [\n", key(id));
-            for entry in entries {
-                contents += &format!("    {},\n", toml::Value::String(entry.clone()));
-            }
-            contents += "]\n";
+            contents += &toml_writing::array_per_line(&key(id), entries);
         }
         fs::write(path, contents)
             .map_err(|error| BaselineError::Write { path: path.display().to_string(), error })
@@ -258,7 +255,7 @@ fn entry(graph: &Graph, importer: ModuleId, imported: ModuleId) -> String {
 fn key(id: &str) -> String {
     match ContractConfig::is_valid_id(id) {
         true => id.to_string(),
-        false => toml::Value::String(id.to_string()).to_string(),
+        false => toml_writing::string(id),
     }
 }
 

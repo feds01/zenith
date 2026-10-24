@@ -6,7 +6,7 @@ use std::{
 };
 
 use tempfile::TempDir;
-use zenith_utils::path::adjust_canonicalisation;
+use zenith_utils::{fs::disk, path::adjust_canonicalisation};
 
 use crate::{crates::Crates, manifest::Manifest};
 
@@ -104,6 +104,9 @@ impl Project {
 
     /// The crates of the project, found by reading its manifests.
     pub(crate) fn crates(&self) -> Crates {
-        Crates::from_manifests(&Manifest::read_all(&self.manifests))
+        Crates::from_manifests(
+            disk().as_ref(),
+            &Manifest::read_all(disk().as_ref(), &self.manifests),
+        )
     }
 }

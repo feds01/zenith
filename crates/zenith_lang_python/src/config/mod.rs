@@ -70,6 +70,7 @@ impl LanguageOptions for PythonConfig {
     fn backend(&self, settings: BackendSettings<'_>) -> Box<dyn Backend> {
         Box::new(PythonBackend::new(
             settings.root,
+            settings.file_system.clone(),
             self.roots.clone(),
             self.ignore_unresolved.clone(),
         ))

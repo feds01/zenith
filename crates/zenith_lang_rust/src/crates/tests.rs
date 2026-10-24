@@ -2,6 +2,7 @@
 //! depend on, whether Cargo or the manifests say so.
 
 use zenith_lang::WorkspacePackage;
+use zenith_utils::{fs::disk, testing::Overlay};
 
 use super::{
     cargo::{CargoError, asked},
@@ -30,7 +31,7 @@ fn dependencies(krate: &Crate) -> Vec<(&str, &Dependency)> {
 /// The crates of `project` as Cargo says they are, or `None` if it isn't
 /// installed, which is said.
 fn from_cargo(project: &Project) -> Option<Crates> {
-    let manifests = Manifest::read_all(project.manifests());
+    let manifests = Manifest::read_all(disk().as_ref(), project.manifests());
     match Crates::from_cargo(project.root(), &manifests) {
         Ok(crates) => Some(crates),
         Err(CargoError::NotFound) => {
@@ -184,7 +185,7 @@ fn cargo_and_the_manifests_find_the_same_crates() {
 #[test]
 fn a_workspace_is_asked_about_once() {
     let ask = |project: &Project| -> Vec<String> {
-        let manifests = Manifest::read_all(project.manifests());
+        let manifests = Manifest::read_all(disk().as_ref(), project.manifests());
         let asked = asked(&manifests);
         asked
             .map(|dir| dir.strip_prefix(project.root()).unwrap().to_string_lossy().into())
@@ -203,10 +204,24 @@ fn a_workspace_is_asked_about_once() {
 }
 
 #[test]
+fn the_manifests_are_read_when_the_project_is_not_on_the_disk() {
+    // Cargo would read `core-lib` from the disk, where it builds.
+    let project = Project::new(&[
+        ("Cargo.toml", include_str!("../fixtures/core-lib.toml")),
+        ("src/lib.rs", ""),
+    ]);
+    let manifest = project.root().join("Cargo.toml");
+    let file_system = Overlay::default().with(manifest, include_str!("../fixtures/util.toml"));
+    let found = Crates::discover(&file_system, project.root(), project.manifests());
+    let names: Vec<_> = found.crates.iter().map(|krate| krate.name.as_str()).collect();
+    assert_eq!(names, ["util-kit"]);
+}
+
+#[test]
 fn the_manifests_are_read_when_cargo_fails() {
     // Cargo finds no target in a package without a file, and says so.
     let project = Project::new(&[("Cargo.toml", include_str!("../fixtures/core-lib.toml"))]);
-    let found = Crates::discover(project.root(), project.manifests());
+    let found = Crates::discover(disk().as_ref(), project.root(), project.manifests());
     assert_eq!(found, project.crates());
     assert_eq!(found.crates.len(), 1);
 }

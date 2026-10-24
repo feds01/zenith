@@ -13,6 +13,8 @@ pub mod logging;
 pub mod path;
 pub mod pool;
 pub mod specifier;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 pub mod text;
 pub mod toml_writing;
 pub mod tree_writing;

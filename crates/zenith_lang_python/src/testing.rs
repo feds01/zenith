@@ -6,7 +6,7 @@ use std::{
 };
 
 use tempfile::TempDir;
-use zenith_utils::path::adjust_canonicalisation;
+use zenith_utils::{fs::disk, path::adjust_canonicalisation};
 
 use crate::{modules::Roots, packages::Package};
 
@@ -85,11 +85,11 @@ impl Project {
 
     /// The packages of the project.
     pub(crate) fn packages(&self) -> Vec<Package> {
-        Package::read_all(&self.manifests)
+        Package::read_all(disk().as_ref(), &self.manifests)
     }
 
     /// The roots of the project, found from its packages.
     pub(crate) fn roots(&self) -> Roots {
-        Roots::inferred(&self.root, &self.packages())
+        Roots::inferred(disk().as_ref(), &self.root, &self.packages())
     }
 }

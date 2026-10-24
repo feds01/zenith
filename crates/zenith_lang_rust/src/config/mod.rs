@@ -64,7 +64,8 @@ impl LanguageOptions for RustConfig {
     }
 
     fn backend(&self, settings: BackendSettings<'_>) -> Box<dyn Backend> {
-        Box::new(RustBackend::new(settings.root, self.ignore_unresolved.clone()))
+        let file_system = settings.file_system.clone();
+        Box::new(RustBackend::new(settings.root, file_system, self.ignore_unresolved.clone()))
     }
 }
 

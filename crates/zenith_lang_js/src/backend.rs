@@ -2,11 +2,15 @@
 //! from `package.json` files, parsing with oxc, and resolving with
 //! `oxc_resolver`.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use zenith_lang::{
     Backend, ImportResolver, ParsedFile, ResolveFailure, Resolved, SourceParser, Workspace,
 };
+use zenith_utils::fs::FileSystem;
 
 use crate::{JsConfig, ParseOptions, Parser, Resolver, discover_packages};
 
@@ -17,6 +21,9 @@ pub(crate) struct JsBackend {
 
     /// The canonical project root.
     pub(crate) root: PathBuf,
+
+    /// The file system that the project's files are read from.
+    pub(crate) file_system: Arc<dyn FileSystem>,
 
     /// What the parsers record.
     pub(crate) parse: ParseOptions,
@@ -36,7 +43,7 @@ impl Backend for JsBackend {
     }
 
     fn discover(&mut self, manifests: &[PathBuf]) -> Workspace {
-        self.workspace = discover_packages(&self.root, manifests);
+        self.workspace = discover_packages(&*self.file_system, &self.root, manifests);
         self.workspace.clone()
     }
 
@@ -46,8 +53,8 @@ impl Backend for JsBackend {
 
     fn resolver(&self) -> Result<Box<dyn ImportResolver + '_>, ResolveFailure> {
         let settings = self.config.resolver_settings(&self.root, &self.workspace);
-        let resolver =
-            Resolver::new(settings).map_err(|error| ResolveFailure::new(error.to_string()))?;
+        let resolver = Resolver::with_file_system(settings, self.file_system.clone())
+            .map_err(|error| ResolveFailure::new(error.to_string()))?;
         Ok(Box::new(resolver))
     }
 }

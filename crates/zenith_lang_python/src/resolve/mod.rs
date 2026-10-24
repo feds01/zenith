@@ -15,11 +15,11 @@
 #[cfg(test)]
 mod tests;
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use zenith_diagnostics::message;
 use zenith_lang::{Resolved, UnresolvedReason};
-use zenith_utils::{glob::NamePattern, path::relative_posix};
+use zenith_utils::{fs::FileSystem, glob::NamePattern, path::relative_posix};
 
 use crate::{
     modules::{Directories, Module, Roots},
@@ -43,15 +43,16 @@ pub(crate) struct Resolver<'a> {
 }
 
 impl<'a> Resolver<'a> {
-    /// A resolver of the project at `root`, which must be canonical, which
-    /// expects the module paths that match `ignore_unresolved` not to
-    /// resolve.
+    /// A resolver of the project at `root` in `file_system`, which must be
+    /// canonical there, which expects the module paths that match
+    /// `ignore_unresolved` not to resolve.
     pub(crate) fn new(
         root: &'a Path,
+        file_system: Arc<dyn FileSystem>,
         roots: &'a Roots,
         ignore_unresolved: &'a [NamePattern],
     ) -> Self {
-        Self { root, roots, directories: Directories::default(), ignore_unresolved }
+        Self { root, roots, directories: Directories::new(file_system), ignore_unresolved }
     }
 
     /// What `specifier`, a module path written with `.`, refers to when the

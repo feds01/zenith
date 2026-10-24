@@ -7,7 +7,6 @@ mod tests;
 
 use std::{
     ffi::{OsStr, OsString},
-    fs,
     path::{Path, PathBuf},
     sync::{Arc, PoisonError, RwLock},
 };
@@ -15,7 +14,7 @@ use std::{
 use log::warn;
 use rustc_hash::{FxHashMap, FxHashSet};
 use zenith_diagnostics::message;
-use zenith_utils::path::normalize_path;
+use zenith_utils::{fs::FileSystem, path::normalize_path};
 
 use crate::packages::Package;
 
@@ -34,21 +33,26 @@ pub(crate) struct Roots {
 }
 
 impl Roots {
-    /// The roots of the project at `root`, with its `packages`: the root of
-    /// each package, then the project root.
-    pub(crate) fn inferred(root: &Path, packages: &[Package]) -> Self {
-        let dirs = packages.iter().map(Package::root).chain([root.to_path_buf()]);
-        Self::new(dirs.collect())
+    /// The roots of the project at `root` in `file_system`, with its
+    /// `packages`: the root of each package, then the project root.
+    pub(crate) fn inferred(
+        file_system: &dyn FileSystem,
+        root: &Path,
+        packages: &[Package],
+    ) -> Self {
+        let dirs = packages.iter().map(|package| package.root(file_system));
+        Self::new(file_system, dirs.chain([root.to_path_buf()]).collect())
     }
 
     /// The roots that the configuration names, each relative to the project
-    /// at `root`. Those that aren't directories are left out, with a warning.
-    pub(crate) fn configured(root: &Path, names: &[String]) -> Self {
+    /// at `root` in `file_system`. Those that aren't directories are left
+    /// out, with a warning.
+    pub(crate) fn configured(file_system: &dyn FileSystem, root: &Path, names: &[String]) -> Self {
         let dirs = names
             .iter()
             .filter_map(|name| {
                 let dir = normalize_path(root.join(name));
-                match dir.is_dir() {
+                match file_system.is_dir(&dir) {
                     true => Some(dir),
                     false => {
                         warn!("{}", message!(python_root_not_a_directory, name));
@@ -57,12 +61,12 @@ impl Roots {
                 }
             })
             .collect();
-        Self::new(dirs)
+        Self::new(file_system, dirs)
     }
 
-    /// The roots `dirs`, in the order that they are searched. A root that is
-    /// listed again keeps its first place.
-    fn new(mut dirs: Vec<PathBuf>) -> Self {
+    /// The roots `dirs` in `file_system`, in the order that they are
+    /// searched. A root that is listed again keeps its first place.
+    fn new(file_system: &dyn FileSystem, mut dirs: Vec<PathBuf>) -> Self {
         let mut seen = Vec::new();
         dirs.retain(|dir| match seen.contains(dir) {
             true => false,
@@ -73,12 +77,12 @@ impl Roots {
         });
         let mut by_name: FxHashMap<String, Vec<usize>> = FxHashMap::default();
         for (index, dir) in dirs.iter().enumerate() {
-            let Ok(entries) = fs::read_dir(dir) else {
+            let Ok(entries) = file_system.read_dir(dir) else {
                 continue;
             };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let name = match path.is_dir() {
+            for entry in entries {
+                let path = entry.path;
+                let name = match file_system.is_dir(&path) {
                     true => path.file_name(),
                     false if is_module_file(&path) => path.file_stem(),
                     false => None,
@@ -115,8 +119,11 @@ impl Roots {
 /// What the directories of a project hold, each read once, as finding
 /// modules needs it. Names are compared exactly, as Python's importer
 /// compares them, even where the file system ignores case.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Directories {
+    /// The file system that the directories are read from.
+    file_system: Arc<dyn FileSystem>,
+
     /// What each directory that was read holds.
     listings: RwLock<FxHashMap<PathBuf, Arc<Listing>>>,
 }
@@ -132,6 +139,11 @@ struct Listing {
 }
 
 impl Directories {
+    /// The directories of `file_system`, none of which has been read yet.
+    pub(crate) fn new(file_system: Arc<dyn FileSystem>) -> Self {
+        Self { file_system, listings: RwLock::default() }
+    }
+
     /// What `dir` holds, read the first time that it is asked for.
     fn listing(&self, dir: &Path) -> Arc<Listing> {
         let listings = self.listings.read().unwrap_or_else(PoisonError::into_inner);
@@ -140,10 +152,13 @@ impl Directories {
         }
         drop(listings);
         let mut listing = Listing::default();
-        for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
-            match entry.path().is_dir() {
-                true => listing.dirs.insert(entry.file_name()),
-                false => listing.files.insert(entry.file_name()),
+        for entry in self.file_system.read_dir(dir).into_iter().flatten() {
+            let Some(name) = entry.path.file_name().map(OsStr::to_os_string) else {
+                continue;
+            };
+            match self.file_system.is_dir(&entry.path) {
+                true => listing.dirs.insert(name),
+                false => listing.files.insert(name),
             };
         }
         let listing = Arc::new(listing);

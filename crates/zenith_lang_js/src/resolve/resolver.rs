@@ -4,7 +4,7 @@ use std::{
     borrow::Cow,
     fmt,
     path::{Path, PathBuf},
-    sync::{Mutex, PoisonError},
+    sync::{Arc, Mutex, PoisonError},
 };
 
 use oxc_resolver::{
@@ -16,7 +16,7 @@ use serde_json::Value;
 use zenith_diagnostics::message;
 use zenith_lang::{ResolveFailure, Resolved, UnresolvedReason};
 use zenith_utils::{
-    fs::read_json,
+    fs::{FileSystem, disk},
     glob::NamePattern,
     path::{is_extension, relative_posix},
     specifier::{package_from_path, package_name, split_query, split_scheme, squash_builtin},
@@ -129,9 +129,19 @@ struct WorkspaceEntry {
 }
 
 impl Resolver {
-    /// Create a resolver. The `package.json` of every workspace package is
-    /// read now; one that can't be read counts as having no `exports` map.
+    /// Create a resolver of the project on the disk. The `package.json` of
+    /// every workspace package is read now; one that can't be read counts as
+    /// having no `exports` map.
     pub fn new(settings: ResolverSettings) -> Result<Self, ResolverError> {
+        Self::with_file_system(settings, disk().clone())
+    }
+
+    /// Create a resolver of the project in `file_system`, as [`Resolver::new`]
+    /// does for the disk.
+    pub fn with_file_system(
+        settings: ResolverSettings,
+        file_system: Arc<dyn FileSystem>,
+    ) -> Result<Self, ResolverError> {
         let ResolverSettings {
             root,
             tsconfig,
@@ -149,7 +159,7 @@ impl Resolver {
         let tsconfig = match tsconfig {
             TsconfigMode::Auto => Some(TsconfigDiscovery::Auto),
             TsconfigMode::Off => None,
-            TsconfigMode::File(path) if !path.is_file() => {
+            TsconfigMode::File(path) if !file_system.is_file(&path) => {
                 return Err(ResolverError::TsconfigNotFound(path));
             }
             TsconfigMode::File(path) => Some(TsconfigDiscovery::Manual(TsconfigOptions {
@@ -191,14 +201,15 @@ impl Resolver {
             .iter()
             .map(|(name, dir)| {
                 let manifest = dir.join("package.json");
-                let exports = read_json(&manifest)
+                let exports = file_system
+                    .read_json(&manifest)
                     .ok()
                     .and_then(|mut json| json.get_mut("exports").map(Value::take))
                     .filter(|exports| !exports.is_null());
                 (name.clone(), WorkspaceEntry { manifest, exports })
             })
             .collect();
-        let file_system = LinkedFileSystem::new(&root, packages);
+        let file_system = LinkedFileSystem::new(&root, file_system, packages);
 
         let without_tsconfig = ResolveOptions { tsconfig: None, ..options.clone() };
         let inner = ResolverGeneric::new_with_file_system(file_system, options);
@@ -343,7 +354,7 @@ mod tests {
     use std::{fs, thread};
 
     use tempfile::TempDir;
-    use zenith_utils::path::adjust_canonicalisation;
+    use zenith_utils::{path::adjust_canonicalisation, testing::Overlay};
 
     use super::*;
 
@@ -419,6 +430,18 @@ mod tests {
 
     fn is_unresolved(resolved: &Resolved) -> bool {
         matches!(unresolved_reason(resolved), Some(UnresolvedReason::Failed(_)))
+    }
+
+    #[test]
+    fn resolves_against_the_file_system_that_it_is_given() {
+        let project = Project::new(&[("web/src/main.ts", "")]);
+        let main = project.path("web/src/main.ts");
+        let file_system = Overlay::default().with(project.path("web/src/util.ts"), "");
+
+        let resolver = Resolver::with_file_system(project.settings(), Arc::new(file_system));
+        assert_eq!(resolver.unwrap().resolve(&main, "./util"), internal("web/src/util.ts"));
+        let resolver = Resolver::new(project.settings()).unwrap();
+        assert!(is_unresolved(&resolver.resolve(&main, "./util")));
     }
 
     #[test]

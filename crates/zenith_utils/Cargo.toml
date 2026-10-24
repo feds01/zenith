@@ -8,6 +8,10 @@ license = { workspace = true }
 repository = { workspace = true }
 publish = { workspace = true }
 
+[features]
+# Helpers for other crates' tests that read a project from another file system.
+testing = []
+
 [dependencies]
 dunce = { workspace = true }
 log = { workspace = true }

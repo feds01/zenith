@@ -3,12 +3,18 @@
 
 mod address;
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 pub use address::{Address, Hosts};
 use zenith_diagnostics::message;
 use zenith_lang::{Resolved, UnresolvedReason};
-use zenith_utils::path::{absolute_path, join_posix, normalize_path, relative_posix};
+use zenith_utils::{
+    fs::FileSystem,
+    path::{absolute_path, join_posix, normalize_path, relative_posix},
+};
 
 use crate::parse::Dialect;
 
@@ -49,15 +55,18 @@ pub struct Resolver {
     /// The canonical project root.
     root: PathBuf,
 
+    /// The file system that the project's directories are looked up in.
+    file_system: Arc<dyn FileSystem>,
+
     /// The hosts that module sources may name.
     hosts: Hosts,
 }
 
 impl Resolver {
-    /// The resolver of the project at `root`, which must be canonical, whose
-    /// module sources may name `hosts`.
-    pub fn new(root: &Path, hosts: Hosts) -> Self {
-        Self { root: root.to_path_buf(), hosts }
+    /// The resolver of the project at `root` in `file_system`, which must be
+    /// canonical there, whose module sources may name `hosts`.
+    pub fn new(root: &Path, file_system: Arc<dyn FileSystem>, hosts: Hosts) -> Self {
+        Self { root: root.to_path_buf(), file_system, hosts }
     }
 
     /// What `source`, a module source or a dependency path written in a file
@@ -96,7 +105,7 @@ impl Resolver {
         };
 
         // 2. It must be there.
-        match absolute_path(&self.root, &dir).is_dir() {
+        match self.file_system.is_dir(&absolute_path(&self.root, &dir)) {
             true => TerraformResolved::Internal { dir },
             false => TerraformResolved::NoDirectory { dir },
         }
@@ -129,7 +138,7 @@ mod tests {
     use std::fs;
 
     use tempfile::TempDir;
-    use zenith_utils::path::adjust_canonicalisation;
+    use zenith_utils::{fs::disk, path::adjust_canonicalisation};
 
     use super::*;
 
@@ -140,7 +149,7 @@ mod tests {
         let root = adjust_canonicalisation(dir.path());
         fs::create_dir_all(root.join("modules/vpc/sub")).unwrap();
         fs::create_dir_all(root.join("live/prod")).unwrap();
-        let resolver = Resolver::new(&root, Hosts::default());
+        let resolver = Resolver::new(&root, disk().clone(), Hosts::default());
         (dir, root, resolver)
     }
 

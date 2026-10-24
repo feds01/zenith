@@ -144,6 +144,7 @@ impl LanguageOptions for JsConfig {
         Box::new(JsBackend {
             config: self.clone(),
             root: settings.root.to_path_buf(),
+            file_system: settings.file_system.clone(),
             parse: ParseOptions { names: settings.record_exports },
             workspace: Workspace::default(),
         })

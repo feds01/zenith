@@ -3,6 +3,7 @@
 
 use divan::Bencher;
 use zenith_benchmark::{TempRepo, default_walk_settings};
+use zenith_utils::fs::disk;
 
 // The allocator of the `zenith` binary. CodSpeed measures the allocations
 // itself, in its memory mode.
@@ -40,5 +41,6 @@ fn discover_packages(bencher: Bencher, source_files: usize) {
     #[cfg(not(codspeed))]
     let bencher = bencher.counter(divan::counter::ItemsCount::new(found.manifests.len()));
 
-    bencher.bench(|| zenith_lang_js::discover_packages(&repo.root, &found.manifests));
+    bencher
+        .bench(|| zenith_lang_js::discover_packages(disk().as_ref(), &repo.root, &found.manifests));
 }

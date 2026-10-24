@@ -17,7 +17,7 @@ use std::path::Path;
 
 use zenith_diagnostics::message;
 use zenith_lang::{Resolved, UnresolvedReason};
-use zenith_utils::{glob::NamePattern, path::relative_posix};
+use zenith_utils::{fs::FileSystem, glob::NamePattern, path::relative_posix};
 
 use crate::{
     crates::{Crate, Crates, Dependency, STANDARD_CRATES, Target},
@@ -34,6 +34,9 @@ pub(crate) struct Resolver<'a> {
     /// The canonical project root.
     root: &'a Path,
 
+    /// The file system that the modules' files are looked up in.
+    file_system: &'a dyn FileSystem,
+
     /// The crates of the project.
     crates: &'a Crates,
 
@@ -42,14 +45,16 @@ pub(crate) struct Resolver<'a> {
 }
 
 impl<'a> Resolver<'a> {
-    /// A resolver of the project at `root`, which must be canonical, which
-    /// expects the paths that match `ignore_unresolved` not to resolve.
+    /// A resolver of the project at `root` in `file_system`, which must be
+    /// canonical there, which expects the paths that match
+    /// `ignore_unresolved` not to resolve.
     pub(crate) fn new(
         root: &'a Path,
+        file_system: &'a dyn FileSystem,
         crates: &'a Crates,
         ignore_unresolved: &'a [NamePattern],
     ) -> Self {
-        Self { root, crates, ignore_unresolved }
+        Self { root, file_system, crates, ignore_unresolved }
     }
 
     /// What `specifier`, a path written with `::`, refers to when the file at
@@ -149,7 +154,7 @@ impl<'a> Resolver<'a> {
             let own = all.len();
             all.push(name);
             all.extend(rest);
-            let (file, depth) = target.module_file(&all);
+            let (file, depth) = target.module_file(self.file_system, &all);
             if depth > own {
                 return self.file(&file, path);
             }
@@ -165,7 +170,7 @@ impl<'a> Resolver<'a> {
     /// The file of the module that `modules` name in the tree of `target`,
     /// for an import in the file at `importer`.
     fn module(&self, target: &Target, modules: &[&str], importer: &Path) -> Resolved {
-        self.file(&target.module_file(modules).0, importer)
+        self.file(&target.module_file(self.file_system, modules).0, importer)
     }
 
     /// `file`, imported by the file at `importer`, as it is named in the

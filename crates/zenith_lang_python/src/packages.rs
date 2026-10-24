@@ -9,7 +9,7 @@ use log::warn;
 use serde::Deserialize;
 use zenith_diagnostics::message;
 use zenith_lang::{Workspace, WorkspacePackage};
-use zenith_utils::{fs::read_text, path::relative_posix};
+use zenith_utils::{fs::FileSystem, path::relative_posix};
 
 /// A package of the project: a directory with a `pyproject.toml` that names
 /// it.
@@ -24,14 +24,15 @@ pub(crate) struct Package {
 
 impl Package {
     /// The packages in the directories of `manifests`, the `pyproject.toml`
-    /// files of the project, sorted by directory. A manifest that names no
-    /// package, such as one that only configures tools, is left out, and one
-    /// that can't be read is too, with a warning.
-    pub(crate) fn read_all(manifests: &[PathBuf]) -> Vec<Package> {
+    /// files of the project in `file_system`, sorted by directory. A manifest
+    /// that names no package, such as one that only configures tools, is left
+    /// out, and one that can't be read is too, with a warning.
+    pub(crate) fn read_all(file_system: &dyn FileSystem, manifests: &[PathBuf]) -> Vec<Package> {
         let mut packages: Vec<_> = manifests
             .iter()
             .filter_map(|path| {
-                let manifest = read_text(path)
+                let manifest = file_system
+                    .read_text(path)
                     .map_err(|error| error.to_string())
                     .and_then(|text| toml::from_str(&text).map_err(|error| error.to_string()));
                 let manifest: Manifest = match manifest {
@@ -48,12 +49,12 @@ impl Package {
         packages
     }
 
-    /// The directory that the absolute imports of its modules start from:
-    /// its `src` directory in the src layout, and its own directory
-    /// otherwise.
-    pub(crate) fn root(&self) -> PathBuf {
+    /// The directory that the absolute imports of its modules start from, in
+    /// `file_system`: its `src` directory in the src layout, and its own
+    /// directory otherwise.
+    pub(crate) fn root(&self, file_system: &dyn FileSystem) -> PathBuf {
         let src = self.dir.join("src");
-        if src.is_dir() { src } else { self.dir.clone() }
+        if file_system.is_dir(&src) { src } else { self.dir.clone() }
     }
 
     /// `packages` as the workspace packages of the project at `root`, which

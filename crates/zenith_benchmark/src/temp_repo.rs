@@ -102,7 +102,7 @@ mod tests {
     use std::{collections::BTreeSet, fs, path::Path};
 
     use zenith_lang_js::discover_packages;
-    use zenith_utils::path::relative_posix;
+    use zenith_utils::{fs::disk, path::relative_posix};
     use zenith_workspace::{WalkSettings, walk};
 
     use super::*;
@@ -179,7 +179,7 @@ mod tests {
     fn discovers_every_package() {
         let temp = TempRepo::new(1_000).unwrap();
         let found = walk(&temp.root, &without_ignore_files());
-        let workspace = discover_packages(&temp.root, &found.manifests);
+        let workspace = discover_packages(disk().as_ref(), &temp.root, &found.manifests);
 
         let discovered: Vec<(&str, &str)> = workspace
             .packages

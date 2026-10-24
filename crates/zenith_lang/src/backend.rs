@@ -1,7 +1,12 @@
 //! The interface through which the pipeline runs a language: finding its
 //! packages, parsing its files and resolving their imports.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+use zenith_utils::fs::FileSystem;
 
 use crate::{ParsedFile, ResolveFailure, Resolved, Workspace};
 
@@ -10,6 +15,10 @@ use crate::{ParsedFile, ResolveFailure, Resolved, Workspace};
 pub struct BackendSettings<'a> {
     /// The canonical project root.
     pub root: &'a Path,
+
+    /// The file system that the project's files are read from, in which the
+    /// root is canonical.
+    pub file_system: &'a Arc<dyn FileSystem>,
 
     /// Whether parsing records what each file exports, which following
     /// imports through re-exports needs, and costs time otherwise.

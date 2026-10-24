@@ -60,6 +60,12 @@ cli_baseline_gained = the baseline gained {NUMBER($entries)} {$entries ->
 
 cli_matches_nothing = `{$selector}` does not match anything
 
+## `zenith graph diff`.
+
+cli_graph_diff_failed = could not build the graph at `{$reference}`
+cli_graph_diff_no_root = the project root is not a directory at `{$reference}`
+cli_graph_diff_no_source_files = found no source files in the project root at `{$reference}`
+
 ## `zenith why`.
 
 cli_why_overlap = `{$from}` and `{$to}` overlap, so there is no import between them

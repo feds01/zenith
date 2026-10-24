@@ -6,6 +6,8 @@ zenith check [<path>…] [--since <ref>] [--contract <id>]…
              [--no-baseline] [--show-unresolved] [--show-timings]
 zenith baseline [--contract <id>]… [--prune]
 zenith graph [<selector>] [--depth <n>] [--format tree|dot|mermaid|json] [--exclude-kind <kind>]…
+zenith graph diff <base> [<head>] [--depth <n>] [--format tree|json] [--exclude-kind <kind>]…
+             [-- <selector>]
 zenith why <from-selector> <to-selector> [--exclude-kind <kind>]… [--limit <n>]
 zenith resolve <file> <specifier>
 zenith init [--force]
@@ -18,6 +20,7 @@ zenith version
 | `check` | Checks the contracts, or only those of `--contract`. With paths, or [`--since`](#checking-what-a-branch-changed), it only reports what involves the files under them. `--format` picks one of the [output formats](output.md), such as `sarif` for code scanning. |
 | `baseline` | Records the current violations in the [baseline](baseline.md). |
 | `graph` | Shows the module tree under a selector, and the dependencies between each node's children, as a tree, Graphviz, Mermaid or JSON. |
+| `graph diff` | Shows the dependencies between a selector's children that were added and removed from one git ref to another. See [Comparing refs](#comparing-refs). |
 | `why` | Shows the shortest import chains from one selector to another. |
 | `resolve` | Shows what a specifier resolves to from a file, and why. |
 | `init` | Writes a starter `zenith.toml` for the workspace packages it finds. |
@@ -132,6 +135,62 @@ It never writes a file. Write the suggestions to one to review them, as in
 `zenith.toml`; or let an agent read them. A contract whose id the
 configuration already has is not suggested, so once you have added them, a
 second run only prints what is new.
+
+## Comparing refs
+
+`zenith graph diff <base> [<head>]` answers "how did the architecture change
+in this branch?". It builds the graph at the merge base of the refs `<base>`
+and `<head>`, or `HEAD` without one, and at `<head>`, or of the working tree
+without one, and shows the dependencies between the children of the selector
+that were added (`+`) and removed (`-`). A ref is anything git names a commit
+by, such as `main` or `HEAD~3`, as for `--since`:
+
+```console
+$ zenith graph diff main -- web/src
+dependencies between the children of `web/src` that changed:
+  + web/src/app -> web/src/server (2 imports)
+  - web/src/lib -> web/src/types.ts (1 import)
+```
+
+As in `git diff <base>...` and a pull request's diff, the base is where the
+branch left `<base>`, so what has landed on `<base>` since is not shown as the
+branch's change. Where git finds no merge base, as in a shallow clone, the
+tip of `<base>` is compared instead, with a warning.
+
+As in `git diff`, the selector comes after `--`, so that it can't be taken for
+a ref, and the options go before it. It defaults to the whole project, and
+need only match at one of the refs, so a package that the branch adds shows
+every dependency between its children as added.
+
+`--depth` means something else here than in `graph`, where it is how deep
+the tree is drawn: it is how far below the selector to compare; 1 compares
+its children. `--depth 2` compares the children of the children instead, and
+so on. `--exclude-kind` leaves imports out as in `graph`. `--format json`
+gives each node of the selector as `{"module", "added", "removed"}`, and each
+dependency as `{"from", "to", "imports"}`.
+
+A file that git sees renamed keeps its dependencies under its new name,
+rather than losing them all and gaining them back. The command exits with 0
+whatever changed: it is for reading, not for failing a build. As with
+`--since`, a ref that names no commit, and a project outside a git
+repository, are errors. Only the head's unresolved imports and unreadable
+files are reported, as `zenith graph` reports them; the base's are not the
+working tree's to fix.
+
+Each ref is checked out into a temporary directory, which is removed
+afterwards, without touching the repository's index or worktrees, and
+without fetching Git LFS files. Interrupting zenith, as with Ctrl-C, or a
+crash can leave a `zenith-*` directory in the system's temporary directory,
+but never anything in the repository. The checkout holds only the files that git
+tracks, so a dependency that resolves through an untracked file, such as one
+in `node_modules`, may resolve differently there than in the working tree.
+The project's root and configuration file are those at the same paths in the
+ref; without that file, the ref's project uses the `zenith.toml` in its root,
+or else the defaults. A configuration file outside the repository is used as
+it is.
+
+`zenith graph diff` takes a subcommand's place after `graph`, so to show a
+directory called `diff`, write `zenith graph ./diff`.
 
 ## Exit codes
 

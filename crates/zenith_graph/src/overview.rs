@@ -8,7 +8,7 @@ use serde::Serialize;
 use zenith_diagnostics::message;
 use zenith_utils::tree_writing::{TreeNode, TreeWriter};
 
-use crate::{Graph, GraphView, ModuleId, NodeKind, NodeSet, UnitGraph};
+use crate::{Graph, GraphView, ModuleId, NodeKind};
 
 /// A node of the module tree, its children, and the dependencies between
 /// the children in a [`GraphView`].
@@ -55,14 +55,14 @@ pub struct OverviewChild<'g> {
     pub files: usize,
 }
 
-/// A dependency between two children of the node of a [`ModuleOverview`],
-/// shown as `<from> -> <to> (<n> imports)`.
+/// A dependency between two nodes below a module, such as two children of
+/// the node of a [`ModuleOverview`], shown as `<from> -> <to> (<n> imports)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ChildDependency<'g> {
-    /// The name of the importing child.
+    /// The name of the importing node.
     pub from: &'g str,
 
-    /// The name of the imported child.
+    /// The name of the imported node.
     pub to: &'g str,
 
     /// The number of imports between their members: the `(importer,
@@ -82,18 +82,9 @@ impl<'g> ModuleOverview<'g> {
     /// children in `view`.
     pub fn new(view: &GraphView<'g>, id: ModuleId) -> Self {
         let graph = view.graph();
-        let children = graph.children(id);
-        let units: Vec<NodeSet> = children.iter().map(|child| graph.members(*child)).collect();
-        let dependencies = UnitGraph::build(view, &units)
-            .dependencies()
-            .iter()
-            .map(|dependency| ChildDependency {
-                from: graph.name(children[dependency.importer.index()]),
-                to: graph.name(children[dependency.imported.index()]),
-                imports: dependency.weight,
-            })
-            .collect();
-        let children = children
+        let dependencies = view.dependencies_below(id, 1);
+        let children = graph
+            .children(id)
             .iter()
             .map(|child| {
                 let node = graph.node(*child);
@@ -255,7 +246,7 @@ fn tree_node(graph: &Graph, id: ModuleId, depth: usize, top: bool) -> TreeNode {
 }
 
 /// The name of a node, with `.` for the root.
-fn display_name(graph: &Graph, id: ModuleId) -> &str {
+pub(crate) fn display_name(graph: &Graph, id: ModuleId) -> &str {
     if id == ModuleId::ROOT { "." } else { graph.name(id) }
 }
 

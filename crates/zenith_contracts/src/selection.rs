@@ -17,7 +17,7 @@ use std::fmt;
 
 use zenith_config::{Selector, SelectorTarget};
 use zenith_diagnostics::message;
-use zenith_graph::{Graph, NodeSet, Unit};
+use zenith_graph::{Graph, ModuleId, NodeSet, Unit};
 use zenith_lang::Workspace;
 
 /// The units that a selector resolves to in a project.
@@ -105,6 +105,24 @@ impl Selection {
             return Err(UnmatchedSelector { selector: selector.to_string() });
         }
         Ok(selection)
+    }
+
+    /// The nodes of a project that `selector` points at, for showing the part
+    /// of the project under them: the roots of its units, or the project
+    /// root without a selector. A selector without units points at nothing,
+    /// even one that may match nothing, such as an `npm:` package.
+    pub fn roots(
+        selector: Option<&Selector>,
+        graph: &Graph,
+        workspace: &Workspace,
+    ) -> Vec<ModuleId> {
+        match selector {
+            None => vec![ModuleId::ROOT],
+            Some(selector) => {
+                let selection = Self::resolve(selector, graph, workspace);
+                selection.units.iter().map(|unit| unit.root).collect()
+            }
+        }
     }
 
     /// Every member of every unit.

@@ -1,20 +1,26 @@
 //! `zenith graph`.
 
+mod diff;
+
 use anyhow::{Result, bail};
 use zenith_contracts::Selection;
 use zenith_diagnostics::message;
-use zenith_graph::{GraphView, ModuleId, ModuleOverview};
+use zenith_graph::{GraphView, ModuleOverview};
 use zenith_pipeline::StageKind;
 
 use crate::{
     ExitStatus,
-    cli::{GlobalArgs, GraphCommand, GraphFormat},
+    cli::{GlobalArgs, GraphAction, GraphCommand, GraphFormat},
     project,
 };
 
 /// Show the module tree under a selector, and the dependencies between its
-/// children.
+/// children, or what a subcommand such as `diff` shows instead.
 pub fn graph(global: &GlobalArgs, args: GraphCommand) -> Result<ExitStatus> {
+    if let Some(GraphAction::Diff(args)) = args.action {
+        return diff::diff(global, args);
+    }
+
     // 1. Open the project, and build its graph.
     let mut session = project::open(global)?;
     project::run_until(&mut session, StageKind::Graph)?;
@@ -22,18 +28,13 @@ pub fn graph(global: &GlobalArgs, args: GraphCommand) -> Result<ExitStatus> {
     let graph = &session.graph;
 
     // 2. Find the nodes to show: the roots of the selector's units, or the project
-    //    root. A selector without units has nothing to show, even one that may
-    //    match nothing, such as an `npm:` package.
-    let roots: Vec<ModuleId> = match &args.selector {
-        None => vec![ModuleId::ROOT],
-        Some(selector) => {
-            let selection = Selection::resolve(selector, graph, &session.workspace);
-            if selection.units.is_empty() {
-                bail!(message!(cli_matches_nothing, selector));
-            }
-            selection.units.iter().map(|unit| unit.root).collect()
-        }
-    };
+    //    root.
+    let roots = Selection::roots(args.selector.as_ref(), graph, &session.workspace);
+    if let Some(selector) = &args.selector
+        && roots.is_empty()
+    {
+        bail!(message!(cli_matches_nothing, selector));
+    }
 
     // 3. Gather the children of each node, and the dependencies between them.
     let view = GraphView::without_kinds(graph, args.kinds.excluded());

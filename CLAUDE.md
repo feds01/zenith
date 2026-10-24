@@ -27,6 +27,7 @@ just bench-instructions <bench> [filter]  # measure with CodSpeed locally, in Do
 just corpus <path> <config>  # a release build on a local checkout, with a config in corpus/
 just book     # serve the user guide in docs/book (mdBook)
 just changelog <version>  # write CHANGELOG.md for a release, from the titles of the merged PRs
+just vscode-test  # the VS Code extension's tests, in VS Code, with this checkout's zenith
 ```
 
 zenith checks its own architecture: the contracts in the root `zenith.toml`
@@ -92,6 +93,10 @@ a new kind of responsibility, not for each feature:
 - `zenith_utils`: shared helpers: files, paths, globs, locations, terminal
   output and the thread pool.
 - `zenith_workspace`: the file walker and git.
+
+Outside the crates, `editors/vscode` is the VS Code extension, in
+TypeScript: it finds a zenith binary and runs `zenith lsp` for each
+workspace folder that zenith checks.
 
 Key invariants:
 

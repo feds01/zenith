@@ -22,6 +22,17 @@ formatting check, clippy, zenith's own contracts and `cargo deny` on Linux.
 
 See [CLAUDE.md](CLAUDE.md) for the architecture and conventions.
 
+## The VS Code extension
+
+The extension, in [editors/vscode](editors/vscode), runs `zenith lsp` for each
+workspace folder that zenith checks. It needs Node 22 or later.
+`just vscode-test` builds zenith, copies it into the extension as the binary
+that it comes with, and runs the extension's tests in a VS Code that they
+download; on Linux, run it under `xvfb-run -a`. To try the extension, open
+`editors/vscode` in VS Code and start the *Run Extension* launch
+configuration, which builds it and runs the binary that `just vscode-test`
+copied, or else zenith on the `PATH`.
+
 ## The user guide
 
 The user guide is an [mdBook](https://rust-lang.github.io/mdBook/) in

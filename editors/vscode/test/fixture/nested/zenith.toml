@@ -1,0 +1,5 @@
+# A project whose workspace folders are its packages, below this file.
+[contracts.packages]
+type = "forbidden"
+from = ["packages/web"]
+to = ["packages/api"]

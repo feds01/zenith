@@ -1,0 +1,5 @@
+# `app` must not import `db`.
+[contracts.app-db]
+type = "forbidden"
+from = ["app"]
+to = ["db"]

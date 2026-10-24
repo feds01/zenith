@@ -3,6 +3,7 @@
 
 use divan::Bencher;
 use zenith_benchmark::{TempRepo, default_walk_settings};
+use zenith_utils::fs::disk;
 
 // The allocator of the `zenith` binary. CodSpeed measures the allocations
 // itself, in its memory mode.
@@ -40,5 +41,5 @@ fn walk(bencher: Bencher, source_files: usize) {
     #[cfg(not(codspeed))]
     let bencher = bencher.counter(divan::counter::ItemsCount::new(source_files));
 
-    bencher.bench(|| zenith_workspace::walk(&repo.root, &settings));
+    bencher.bench(|| zenith_workspace::walk(disk().as_ref(), &repo.root, &settings));
 }

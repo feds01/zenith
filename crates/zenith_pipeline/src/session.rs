@@ -49,8 +49,8 @@ pub struct Session {
 
     /// Where the [`Parse`](crate::StageKind::Parse) stage keeps its cache, or
     /// `None` to read and parse every file. A new session has none; see
-    /// [`Session::cache_settings`]. The cache reads the files from the disk,
-    /// whatever the session's file system.
+    /// [`Session::cache_settings`]. A session that doesn't read the disk only
+    /// reads the cache.
     pub cache: Option<CacheSettings>,
 
     /// The source files to scan, sorted by path. Found by the

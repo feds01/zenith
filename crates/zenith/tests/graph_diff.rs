@@ -1,6 +1,7 @@
 //! `zenith graph diff` on a git repository in a temporary directory: the
 //! dependencies it finds added and removed between commits, and the working
-//! tree, and the temporary checkouts it leaves behind, which must be none.
+//! tree, and the temporary files it writes, which must be none, as it reads
+//! the commits from git.
 
 use std::{
     fs,
@@ -15,8 +16,8 @@ use zenith_workspace::testing;
 /// A configuration that leaves `src/legacy.ts` out.
 const CONFIG: &str = include_str!("fixtures/graph-diff.toml");
 
-/// A git repository, and the directory that `zenith` makes its temporary
-/// checkouts in, which must be empty after every run.
+/// A git repository, and the temporary directory that `zenith` is given,
+/// which must be empty after every run.
 struct Repository {
     /// The temporary directory, which holds both.
     _dir: TempDir,
@@ -71,7 +72,7 @@ impl Repository {
 
     /// Run `zenith` with `args` in the repository, outside any hook that
     /// could have set git's variables, checking that it leaves no temporary
-    /// checkout behind.
+    /// file behind.
     fn zenith(&self, args: &[&str]) -> Output {
         let mut command = Command::new(env!("CARGO_BIN_EXE_zenith"));
         // Options before the command, since those after `--` are a selector.
@@ -325,14 +326,14 @@ fn a_selector_that_matches_nowhere_is_an_error() {
 }
 
 #[test]
-fn the_checkout_is_removed_when_its_graph_cannot_be_built() {
+fn a_base_whose_graph_cannot_be_built_is_an_error() {
     // The first commit has no source files, and no `web` directory.
     let repository = Repository::new();
     repository.write(&[("README.md", Some("# A project\n"))]);
     repository.commit();
     repository.write(&[("web/src/app.ts", Some("export const app = 1;\n"))]);
 
-    // The errors name the ref, not the temporary directory.
+    // The errors name the ref.
     let output = repository.zenith(&["graph", "diff", "HEAD"]);
     assert_eq!(output.status.code(), Some(2));
     let expected = "error: found no source files in the project root at `HEAD`\n";
@@ -342,4 +343,42 @@ fn the_checkout_is_removed_when_its_graph_cannot_be_built() {
     assert_eq!(output.status.code(), Some(2));
     let expected = "error: the project root is not a directory at `HEAD`\n";
     assert_eq!(text(&output.stderr), expected);
+}
+
+#[test]
+fn the_base_resolves_through_the_packages_installed_in_the_working_tree() {
+    // The path alias comes from a configuration that is installed, and ignored.
+    let repository = Repository::new();
+    let tsconfig =
+        r#"{ "extends": "@acme/tsconfig/base.json", "compilerOptions": { "baseUrl": "." } }"#;
+    let base = r#"{ "compilerOptions": { "paths": { "@/*": ["src/*"] } } }"#;
+    repository.write(&[
+        (".gitignore", Some("node_modules/\n")),
+        ("tsconfig.json", Some(tsconfig)),
+        ("node_modules/@acme/tsconfig/package.json", Some(r#"{ "name": "@acme/tsconfig" }"#)),
+        ("node_modules/@acme/tsconfig/base.json", Some(base)),
+        ("src/app.ts", Some("import '@/lib/a';\n")),
+        ("src/lib/a.ts", Some("export const a = 1;\n")),
+    ]);
+    repository.commit();
+
+    let output = repository.zenith(&["graph", "diff", "HEAD", "--", "src"]);
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(text(&output.stdout), "no dependencies between the children of `src` changed\n");
+}
+
+#[test]
+fn the_untracked_files_of_the_working_tree_are_not_in_the_base() {
+    let repository = changed_repository();
+    repository.write(&[("src/new.ts", Some("import './types';\n"))]);
+
+    let output = repository.zenith(&["graph", "diff", "HEAD", "--", "src"]);
+    assert_eq!(output.status.code(), Some(0));
+    let expected = "\
+dependencies between the children of `src` that changed:
+  + src/app.ts -> src/types.ts (1 import)
+  - src/lib -> src/types.ts (1 import)
+  + src/new.ts -> src/types.ts (1 import)
+";
+    assert_eq!(text(&output.stdout), expected);
 }

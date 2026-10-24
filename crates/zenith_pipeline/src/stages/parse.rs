@@ -17,7 +17,9 @@ use crate::{FileError, FileErrorKind, PipelineError, Session, SourceFile, Stage,
 ///
 /// With [`Session::cache`] set, the files that haven't changed since the last
 /// run come from the parse cache instead, which is then rewritten if
-/// anything changed. Otherwise every file is read from the session's file
+/// anything changed. A session that doesn't read the disk, such as one of a
+/// commit, only reads the cache, so that it can't replace the entries of the
+/// files on the disk. Otherwise every file is read from the session's file
 /// system and parsed.
 ///
 /// A file that can't be read parses as empty. Read and syntax errors are
@@ -87,7 +89,7 @@ fn parse_cached(session: &mut Session, mut cache: Cache<ParsedFile>) -> Vec<Pars
     let removed = cache.len();
 
     // 2. Parse each file, unless its entry shows that it hasn't changed.
-    let root = &session.root;
+    let (root, file_system) = (&session.root, &*session.file_system);
     let results: Vec<Lookup<ParsedFile>> = session
         .files
         .par_iter()
@@ -97,7 +99,7 @@ fn parse_cached(session: &mut Session, mut cache: Cache<ParsedFile>) -> Vec<Pars
             |parsers, (file, entry)| {
                 let path = file.path(root);
                 let parser = &mut parsers[usize::from(file.language)];
-                cache.lookup(&path, entry, |source| parser.parse_source(&path, source))
+                cache.lookup(file_system, &path, entry, |source| parser.parse_source(&path, source))
             },
         )
         .collect();
@@ -113,8 +115,9 @@ fn parse_cached(session: &mut Session, mut cache: Cache<ParsedFile>) -> Vec<Pars
         unchanged += usize::from(lookup.origin == Origin::Unchanged);
     }
 
-    // 4. Rewrite the cache if anything in it changed: a file was parsed, was read
-    //    to find it unchanged, or is gone. A file that can't be read has no entry.
+    // 4. Rewrite the cache if anything in it changed, and the files are the disk's:
+    //    a file was parsed, was read to find it unchanged, or is gone. A file that
+    //    can't be read has no entry.
     debug!("{}", message!(pipeline_unchanged_files, unchanged, total = parsed.len()));
     let entries: Vec<_> = session
         .files
@@ -123,7 +126,8 @@ fn parse_cached(session: &mut Session, mut cache: Cache<ParsedFile>) -> Vec<Pars
         .zip(&parsed)
         .filter_map(|((file, stamp), parsed)| Some((file.name.as_str(), stamp.as_ref()?, parsed)))
         .collect();
-    if (entries.len() != unchanged || removed > 0)
+    if session.file_system.on_disk()
+        && (entries.len() != unchanged || removed > 0)
         && let Err(error) = cache.save(started, entries.into_iter())
     {
         let dir = &cache.settings().dir;

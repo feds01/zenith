@@ -7,7 +7,6 @@ use rayon::prelude::*;
 use zenith_cache::{Cache, Lookup, Origin};
 use zenith_diagnostics::message;
 use zenith_lang::ParsedFile;
-use zenith_utils::fs::read_text;
 
 use crate::{FileError, FileErrorKind, PipelineError, Session, SourceFile, Stage, StageKind};
 
@@ -18,7 +17,8 @@ use crate::{FileError, FileErrorKind, PipelineError, Session, SourceFile, Stage,
 ///
 /// With [`Session::cache`] set, the files that haven't changed since the last
 /// run come from the parse cache instead, which is then rewritten if
-/// anything changed. Otherwise every file is read and parsed.
+/// anything changed. Otherwise every file is read from the session's file
+/// system and parsed.
 ///
 /// A file that can't be read parses as empty. Read and syntax errors are
 /// moved to the session's file errors.
@@ -60,7 +60,7 @@ impl Stage for Parse {
 /// Read and parse every file of `session`, moving the read errors to the
 /// session.
 fn parse_all(session: &mut Session) -> Vec<ParsedFile> {
-    let root = &session.root;
+    let (root, file_system) = (&session.root, &*session.file_system);
     let results: Vec<io::Result<ParsedFile>> = session
         .files
         .par_iter()
@@ -68,7 +68,7 @@ fn parse_all(session: &mut Session) -> Vec<ParsedFile> {
             || session.backends.parsers(),
             |parsers, file| {
                 let path = file.path(root);
-                let source = read_text(&path)?;
+                let source = file_system.read_text(&path)?;
                 Ok(parsers[usize::from(file.language)].parse_source(&path, &source))
             },
         )

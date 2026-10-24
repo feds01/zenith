@@ -1,7 +1,7 @@
 //! Finding the project and its configuration, and running the pipeline on
 //! it.
 
-use std::{env, path::Path};
+use std::{env, path::Path, sync::Arc};
 
 use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
@@ -9,7 +9,10 @@ use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
 use zenith_contracts::Contract;
 use zenith_diagnostics::{Diagnostic, ReportKind, SourceMap, message};
 use zenith_pipeline::{FileError, FileErrorKind, LANGUAGES, Pipeline, Session, StageKind};
-use zenith_utils::path::adjust_canonicalisation;
+use zenith_utils::{
+    fs::{FileSystem, OsFileSystem},
+    path::adjust_canonicalisation,
+};
 use zenith_workspace::Checkout;
 
 use crate::{Reported, cli::GlobalArgs, reporting, version::version};
@@ -25,14 +28,17 @@ use crate::{Reported, cli::GlobalArgs, reporting, version::version};
 /// turns it off.
 pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
     // 1. Find the configuration file, if there is one.
+    let file_system: Arc<dyn FileSystem> = Arc::new(OsFileSystem);
     let cwd = env::current_dir().with_context(|| message!(cli_current_dir))?;
     let config_path = match (&global.config, &global.root) {
-        (Some(config), _) if !config.is_file() => {
+        (Some(config), _) if !file_system.is_file(config) => {
             bail!(message!(cli_config_not_found, path = config.display()));
         }
         (Some(config), _) => Some(config.clone()),
-        (None, Some(root)) => Some(root.join(CONFIG_FILE_NAME)).filter(|path| path.is_file()),
-        (None, None) => Config::discover(&cwd),
+        (None, Some(root)) => {
+            Some(root.join(CONFIG_FILE_NAME)).filter(|path| file_system.is_file(path))
+        }
+        (None, None) => Config::discover(&*file_system, &cwd),
     };
 
     // 2. Find the project root.
@@ -44,17 +50,17 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
         }
         (None, None) => &cwd,
     };
-    if !root.is_dir() {
+    if !file_system.is_dir(root) {
         bail!(message!(cli_root_not_a_directory, root = root.display()));
     }
-    let root = adjust_canonicalisation(root);
+    let root = file_system.adjust_canonicalisation(root);
     debug!("project root: {}", root.display());
 
     // 3. Load the configuration, or use the defaults.
     let config = match &config_path {
         Some(path) => {
             debug!("configuration: {}", path.display());
-            load(path, &root)?
+            load(&*file_system, path, &root)?
         }
         None => {
             debug!("no `{CONFIG_FILE_NAME}` found; using the defaults");
@@ -63,7 +69,7 @@ pub(crate) fn open(global: &GlobalArgs) -> Result<Session> {
     };
 
     // 4. Keep a parse cache for this version of zenith, unless it is turned off.
-    let mut session = Session::new(root, config);
+    let mut session = Session::with_file_system(root, file_system, config);
     session.tracked_only = global.tracked;
     if !global.no_cache {
         session.cache = session.cache_settings(&version().to_string());
@@ -175,10 +181,10 @@ pub(crate) fn compile_contracts<'s>(
     })
 }
 
-/// Load the configuration file at `path`. An invalid file is reported, with
-/// its path relative to the project `root` if it is inside it.
-fn load(path: &Path, root: &Path) -> Result<Config> {
-    match Config::load(path, LANGUAGES) {
+/// Load the configuration file at `path` in `file_system`. An invalid file is
+/// reported, with its path relative to the project `root` if it is inside it.
+fn load(file_system: &dyn FileSystem, path: &Path, root: &Path) -> Result<Config> {
+    match Config::load(file_system, path, LANGUAGES) {
         Ok(config) => Ok(config),
         Err(LoadError::Invalid { path, contents, errors }) => {
             let mut sources = SourceMap::with_root(root);

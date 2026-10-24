@@ -1,9 +1,10 @@
 //! Running the standard pipeline on projects in temporary directories.
 
 use std::{
-    fs,
+    fs, io,
     ops::Range,
-    path::PathBuf,
+    path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, SystemTime},
 };
 
@@ -14,7 +15,10 @@ use zenith_diagnostics::{ReportElement, Reporter};
 use zenith_graph::{Graph, ImportKind, ModuleId, NodeKind};
 use zenith_lang::{ParsedFile, ResolveFailure, UnresolvedReason};
 use zenith_lang_js::ResolverError;
-use zenith_utils::path::adjust_canonicalisation;
+use zenith_utils::{
+    fs::{DirEntry, FileKind, FileSystem, OsFileSystem},
+    path::adjust_canonicalisation,
+};
 use zenith_workspace::testing::{commit, git};
 
 use crate::{FileErrorKind, LANGUAGES, Pipeline, PipelineError, Session, StageKind};
@@ -220,6 +224,58 @@ fn stops_after_the_stage_it_is_asked_for() {
         timed,
         [StageKind::Discover, StageKind::Parse, StageKind::Resolve, StageKind::Graph]
     );
+}
+
+/// The disk, with other contents for one file.
+#[derive(Debug)]
+struct Overlay {
+    /// The file.
+    path: PathBuf,
+
+    /// Its contents.
+    contents: &'static str,
+}
+
+impl FileSystem for Overlay {
+    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        match path == self.path {
+            true => Ok(self.contents.into()),
+            false => OsFileSystem.read(path),
+        }
+    }
+
+    fn kind(&self, path: &Path) -> io::Result<FileKind> {
+        OsFileSystem.kind(path)
+    }
+
+    fn link_kind(&self, path: &Path) -> io::Result<FileKind> {
+        OsFileSystem.link_kind(path)
+    }
+
+    fn read_dir(&self, path: &Path) -> io::Result<Vec<DirEntry>> {
+        OsFileSystem.read_dir(path)
+    }
+
+    fn read_link(&self, path: &Path) -> io::Result<PathBuf> {
+        OsFileSystem.read_link(path)
+    }
+
+    fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
+        OsFileSystem.canonicalize(path)
+    }
+}
+
+#[test]
+fn files_are_read_from_the_session_file_system() {
+    let project = Project::new(&[("a.ts", b"export const a = 1;\n"), ("b.ts", b"")]);
+    let contents = "import { a } from './a';\n";
+    let file_system = Arc::new(Overlay { path: project.root.join("b.ts"), contents });
+    let mut session =
+        Session::with_file_system(project.root.clone(), file_system, Config::defaults(LANGUAGES));
+    Pipeline::standard().run_until(&mut session, StageKind::Graph).unwrap();
+
+    let imports = imports_of(&session.graph, "b.ts");
+    assert_eq!(imports, [("a.ts".to_string(), "./a".to_string(), ImportKind::Value)]);
 }
 
 #[test]

@@ -15,10 +15,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use zenith_diagnostics::ReportKind;
 use zenith_graph::KindSet;
-use zenith_utils::{
-    fs::{find_in_ancestors, read_text},
-    glob::Glob,
-};
+use zenith_utils::{fs::FileSystem, glob::Glob};
 
 use crate::{
     contracts::{ContractConfig, Reexports, Severity},
@@ -83,16 +80,23 @@ impl Config {
     }
 
     /// Find the nearest configuration file in `start` or one of its
-    /// ancestors. A relative `start` is taken from the current directory.
-    pub fn discover(start: &Path) -> Option<PathBuf> {
-        find_in_ancestors(start, CONFIG_FILE_NAME)
+    /// ancestors, in `file_system`. A relative `start` is taken from the
+    /// current directory.
+    pub fn discover(file_system: &dyn FileSystem, start: &Path) -> Option<PathBuf> {
+        file_system.find_in_ancestors(start, CONFIG_FILE_NAME)
     }
 
-    /// Read a configuration file and parse it with [`Config::parse`]. The
-    /// configuration keeps the file, in [`Config::file`].
-    pub fn load(path: &Path, languages: Languages) -> Result<Self, LoadError> {
-        let contents =
-            read_text(path).map_err(|error| LoadError::Read { path: path.to_path_buf(), error })?;
+    /// Read a configuration file from `file_system` and parse it with
+    /// [`Config::parse`]. The configuration keeps the file, in
+    /// [`Config::file`].
+    pub fn load(
+        file_system: &dyn FileSystem,
+        path: &Path,
+        languages: Languages,
+    ) -> Result<Self, LoadError> {
+        let contents = file_system
+            .read_text(path)
+            .map_err(|error| LoadError::Read { path: path.to_path_buf(), error })?;
         match Self::parse(&contents, languages) {
             Ok(config) => {
                 let file = ConfigFile { path: path.to_path_buf(), contents };
@@ -344,6 +348,7 @@ mod tests {
     use std::fs;
 
     use tempfile::TempDir;
+    use zenith_utils::fs::OsFileSystem;
 
     use super::*;
     use crate::testing::LANGUAGES;
@@ -354,7 +359,10 @@ mod tests {
         let root = dir.path();
         fs::create_dir_all(root.join("web/src")).unwrap();
         fs::write(root.join(CONFIG_FILE_NAME), "").unwrap();
-        assert_eq!(Config::discover(&root.join("web/src")), Some(root.join(CONFIG_FILE_NAME)));
+        assert_eq!(
+            Config::discover(&OsFileSystem, &root.join("web/src")),
+            Some(root.join(CONFIG_FILE_NAME))
+        );
     }
 
     #[test]
@@ -363,7 +371,7 @@ mod tests {
         let path = dir.path().join(CONFIG_FILE_NAME);
         let contents = "[baseline]\nstale = \"warn\"\n";
         fs::write(&path, contents).unwrap();
-        let file = Config::load(&path, LANGUAGES).unwrap().file.unwrap();
+        let file = Config::load(&OsFileSystem, &path, LANGUAGES).unwrap().file.unwrap();
         assert_eq!(file, ConfigFile { path, contents: contents.to_string() });
         assert!(Config::parse(contents, LANGUAGES).unwrap().file.is_none());
     }
@@ -373,20 +381,23 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join(CONFIG_FILE_NAME);
         fs::write(&path, "\u{feff}[baseline]\nstale = \"warn\"\n").unwrap();
-        assert_eq!(Config::load(&path, LANGUAGES).unwrap().baseline.stale, StaleLevel::Warn);
+        assert_eq!(
+            Config::load(&OsFileSystem, &path, LANGUAGES).unwrap().baseline.stale,
+            StaleLevel::Warn
+        );
     }
 
     #[test]
     fn tells_unreadable_from_invalid_configs() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join(CONFIG_FILE_NAME);
-        let error = Config::load(&path, LANGUAGES).unwrap_err();
+        let error = Config::load(&OsFileSystem, &path, LANGUAGES).unwrap_err();
         assert!(matches!(&error, LoadError::Read { path: p, .. } if *p == path), "{error:?}");
         assert!(error.to_string().starts_with("could not read `"), "{error}");
 
         let contents = "[files]\nexclud = []\n\n[contracts.a]\ntype = \"layer\"\n";
         fs::write(&path, contents).unwrap();
-        let error = Config::load(&path, LANGUAGES).unwrap_err();
+        let error = Config::load(&OsFileSystem, &path, LANGUAGES).unwrap_err();
         let LoadError::Invalid { contents: read, errors, .. } = &error else {
             panic!("expected an invalid config, got {error:?}");
         };

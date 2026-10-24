@@ -75,6 +75,18 @@ pub trait FileSystem: fmt::Debug + Send + Sync {
         matches!(self.kind(path), Ok(FileKind::Directory))
     }
 
+    /// Whether the directory of `path` lists an entry spelt exactly as its
+    /// last component. Where names ignore case, as they do by default on
+    /// macOS and Windows, `src/Config.rs` names the file `src/config.rs`,
+    /// but isn't listed.
+    fn is_listed(&self, path: &Path) -> bool {
+        let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+            return false;
+        };
+        (self.read_dir(dir))
+            .is_ok_and(|entries| entries.iter().any(|entry| entry.path.file_name() == Some(name)))
+    }
+
     /// The nearest file named `name` in `start` or one of its ancestors, such
     /// as the configuration file that applies to a directory. Directories
     /// with that name are skipped. A relative `start` is taken from the

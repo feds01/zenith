@@ -21,7 +21,7 @@ use zenith_utils::{fs::FileSystem, glob::NamePattern, path::relative_posix};
 
 use crate::{
     crates::{Crate, Crates, Dependency, STANDARD_CRATES, Target},
-    modules::Position,
+    modules::{Items, Position},
 };
 
 /// The tools whose attributes and lints the compiler knows, such as
@@ -40,32 +40,37 @@ pub(crate) struct Resolver<'a> {
     /// The crates of the project.
     crates: &'a Crates,
 
+    /// The items of each file.
+    items: &'a Items,
+
     /// Patterns of the paths that are expected not to resolve.
     ignore_unresolved: &'a [NamePattern],
 }
 
 impl<'a> Resolver<'a> {
     /// A resolver of the project at `root` in `file_system`, which must be
-    /// canonical there, which expects the paths that match
-    /// `ignore_unresolved` not to resolve.
+    /// canonical there, with the `items` of its files, which expects the
+    /// paths that match `ignore_unresolved` not to resolve.
     pub(crate) fn new(
         root: &'a Path,
         file_system: &'a dyn FileSystem,
         crates: &'a Crates,
+        items: &'a Items,
         ignore_unresolved: &'a [NamePattern],
     ) -> Self {
-        Self { root, file_system, crates, ignore_unresolved }
+        Self { root, file_system, crates, items, ignore_unresolved }
     }
 
     /// What `specifier`, a path written with `::`, refers to when the file at
-    /// `path` imports it.
-    pub(crate) fn resolve(&self, path: &Path, specifier: &str) -> Resolved {
-        self.resolve_specifier(path, specifier)
+    /// `path` imports it, taking the item `name` from the module that it
+    /// resolves to, or the whole module if it is `None`.
+    pub(crate) fn resolve(&self, path: &Path, specifier: &str, name: Option<&str>) -> Resolved {
+        self.resolve_specifier(path, specifier, name)
             .ignoring_unresolved(specifier, self.ignore_unresolved)
     }
 
     /// Resolve `specifier`, without applying `ignore_unresolved`.
-    fn resolve_specifier(&self, path: &Path, specifier: &str) -> Resolved {
+    fn resolve_specifier(&self, path: &Path, specifier: &str, name: Option<&str>) -> Resolved {
         // 1. Find the package of the importing file.
         let Some(krate) = self.crates.containing(path) else {
             return Resolved::failed(message!(rust_no_package));
@@ -84,14 +89,21 @@ impl<'a> Resolver<'a> {
 
         // 3. Resolve it from where it starts.
         match segments[0] {
-            "crate" | "self" | "super" if !rooted => self.relative(krate, path, &segments),
-            name => self.named(krate, path, rooted, name, &segments[1..]),
+            "crate" | "self" | "super" if !rooted => self.relative(krate, path, &segments, name),
+            first => self.named(krate, path, rooted, first, &segments[1..], name),
         }
     }
 
     /// What `segments`, which start with `crate`, `self` or `super`, refer to
-    /// when they are imported by the file at `path`, in `krate`.
-    fn relative(&self, krate: &Crate, path: &Path, segments: &[&str]) -> Resolved {
+    /// when they are imported by the file at `path`, in `krate`, taking the
+    /// item `name`.
+    fn relative(
+        &self,
+        krate: &Crate,
+        path: &Path,
+        segments: &[&str],
+        name: Option<&str>,
+    ) -> Resolved {
         let Some(Position { target, modules }) = krate.locate(path) else {
             return Resolved::failed(message!(rust_no_module_tree, name = krate.name));
         };
@@ -111,12 +123,12 @@ impl<'a> Resolver<'a> {
         }
 
         modules.extend(rest);
-        self.module(target, &modules, path)
+        self.module(target, &modules, path, name)
     }
 
     /// What `rest`, the segments after the first, refer to when `name`, the
     /// first, is not `crate`, `self` or `super`, and the file at `path`, in
-    /// `krate`, imports them.
+    /// `krate`, imports them, taking the item `item`.
     fn named(
         &self,
         krate: &Crate,
@@ -124,13 +136,14 @@ impl<'a> Resolver<'a> {
         rooted: bool,
         name: &str,
         rest: &[&str],
+        item: Option<&str>,
     ) -> Resolved {
         // 1. A crate: a dependency, the crate's own library, or the standard library.
         match krate.dependencies.get(name) {
             Some(Dependency::Internal(index)) => {
                 let krate = self.crates.get(*index);
                 return match krate.library() {
-                    Some(library) => self.module(library, rest, path),
+                    Some(library) => self.module(library, rest, path, item),
                     None => Resolved::failed(message!(rust_no_library, name = krate.name)),
                 };
             }
@@ -168,9 +181,29 @@ impl<'a> Resolver<'a> {
     }
 
     /// The file of the module that `modules` name in the tree of `target`,
-    /// for an import in the file at `importer`.
-    fn module(&self, target: &Target, modules: &[&str], importer: &Path) -> Resolved {
-        self.file(&target.module_file(self.file_system, modules).0, importer)
+    /// for an import in the file at `importer` that takes the item `name`. A
+    /// last module that shares its name with an item of its parent, as the
+    /// module `write` does after `pub use write::write;`, is the item, so its
+    /// parent's file, unless the import takes the whole module.
+    fn module(
+        &self,
+        target: &Target,
+        modules: &[&str],
+        importer: &Path,
+        name: Option<&str>,
+    ) -> Resolved {
+        let (file, depth) = target.module_file(self.file_system, modules);
+        if let Some(name) = name
+            && let Some((last, parents)) = modules.split_last()
+            && depth == modules.len()
+            && *last == name.strip_prefix("r#").unwrap_or(name)
+        {
+            let (parent, parent_depth) = target.module_file(self.file_system, parents);
+            if parent_depth == parents.len() && self.items.has(&parent, name) {
+                return self.file(&parent, importer);
+            }
+        }
+        self.file(&file, importer)
     }
 
     /// `file`, imported by the file at `importer`, as it is named in the

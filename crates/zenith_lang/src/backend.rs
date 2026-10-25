@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use zenith_graph::ImportDetail;
 use zenith_utils::fs::FileSystem;
 
 use crate::{ParsedFile, ResolveFailure, Resolved, Workspace};
@@ -75,4 +76,11 @@ pub trait SourceParser {
 pub trait ImportResolver: Sync {
     /// What `specifier`, imported by the file at `path`, refers to.
     fn resolve(&self, path: &Path, specifier: &str) -> Resolved;
+
+    /// What `import`, made by the file at `path`, refers to: what its
+    /// specifier does, unless the names that it takes tell otherwise, as in a
+    /// language whose items and modules may share a name.
+    fn resolve_import(&self, path: &Path, import: &ImportDetail) -> Resolved {
+        self.resolve(path, &import.specifier)
+    }
 }

@@ -1,0 +1,9 @@
+# `spice` is used through its crate root, which re-exports the functions
+# `parse` and `write` from the modules of the same names. `use spice::write`
+# imports the function, so `lib.rs`, not the private module `write`.
+[languages.rust]
+
+[contracts.spice-surface]
+type = "encapsulation"
+modules = ["pkg:spice"]
+entrypoints = ["src/lib"]

@@ -23,7 +23,7 @@ zenith version
 | `graph` | Shows the module tree under a selector, and the dependencies between each node's children, as a tree, Graphviz, Mermaid or JSON. |
 | `graph diff` | Shows the dependencies between a selector's children that were added and removed from one git ref to another. See [Comparing refs](#comparing-refs). |
 | `why` | Shows the shortest import chains from one selector to another. |
-| `resolve` | Shows what a specifier resolves to from a file, and why. |
+| `resolve` | Shows what a specifier resolves to from a file, and why, as the file imports it if it does. |
 | `init` | Writes a starter `zenith.toml` for the workspace packages it finds. With `--suggest`, it adds the [suggested contracts](#suggesting-contracts) too. |
 | `suggest` | Prints contracts that the code already keeps, as TOML: see [suggesting contracts](#suggesting-contracts). |
 | `lsp` | Runs a language server, which shows the violations in an editor: see [editor integration](editors.md). |

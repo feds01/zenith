@@ -1,0 +1,13 @@
+$ zenith check
+exit: 0
+--- stdout
+Contracts
+  ✓ spice-surface  encapsulation  kept
+
+1 kept, 0 broken · 4 files, 4 imports
+
+$ zenith resolve crates/app/src/main.rs spice::write
+exit: 0
+--- stdout
+internal: crates/spice/src/lib.rs
+

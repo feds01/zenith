@@ -32,7 +32,7 @@ impl Stage for Resolve {
                 let imports = parsed.imports.iter();
                 let path = file.path(root);
                 imports
-                    .map(|import| match resolver.resolve(&path, &import.specifier) {
+                    .map(|import| match resolver.resolve_import(&path, import) {
                         Resolved::Internal(name) => match indices.get(name.as_str()) {
                             Some(index) => ResolvedImport::File(*index),
                             None => ResolvedImport::Other(Resolved::Internal(name)),

@@ -1,0 +1,2 @@
+check
+resolve crates/app/src/main.rs spice::write

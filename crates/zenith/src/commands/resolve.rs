@@ -22,20 +22,29 @@ pub fn resolve(global: &GlobalArgs, args: ResolveCommand) -> Result<ExitStatus> 
         bail!(message!(cli_not_a_file, path = args.file.display()));
     }
 
-    // 2. Find the file's language, and the workspace packages, which resolve
-    //    without `node_modules`.
-    let language = relative_posix(&session.root, &file)
-        .and_then(|name| session.config.languages.language_of(&name));
+    // 2. Find the file's language, and parse the project, whose workspace packages
+    //    resolve without `node_modules`, and whose files tell what an import takes.
+    let name = relative_posix(&session.root, &file);
+    let language = name.as_deref().and_then(|name| session.config.languages.language_of(name));
     let Some(language) = language else {
         bail!(message!(cli_not_a_source_file, path = args.file.display()));
     };
-    project::run_until(&mut session, StageKind::Discover)?;
+    project::run_until(&mut session, StageKind::Parse)?;
     let backend = session.backends.get(language);
     let resolver = backend.resolver().map_err(PipelineError::from)?;
     let scheme = backend.external_scheme();
 
-    // 3. Resolve the specifier, and show what it resolves to.
-    let resolved = resolver.resolve(&file, &args.specifier);
+    // 3. Resolve the specifier, as the file imports it if it does, and show what it
+    //    resolves to.
+    let index = session.files.iter().position(|source| Some(&source.name) == name.as_ref());
+    let import = index.and_then(|index| {
+        let imports = session.parsed.get(index)?.imports.iter();
+        imports.into_iter().find(|import| import.specifier == args.specifier)
+    });
+    let resolved = match import {
+        Some(import) => resolver.resolve_import(&file, import),
+        None => resolver.resolve(&file, &args.specifier),
+    };
     let status = match resolved {
         Resolved::Unresolved(_) | Resolved::Ignored(_) => ExitStatus::Failure,
         _ => ExitStatus::Success,

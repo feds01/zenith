@@ -34,22 +34,19 @@ pub(super) struct Reader<'s> {
     /// The source of the file.
     source: &'s str,
 
-    /// Whether to record the names that imports take, and what the file
-    /// exports, rather than take each import to take the whole module.
-    names: bool,
-
     /// The leaves of `use` declarations and the `extern crate`s.
     imports: Vec<ImportDetail>,
 
     /// Where the declaration of each of [`imports`](Self::imports) starts.
     declarations: Vec<usize>,
 
-    /// Whether each of [`imports`](Self::imports) takes a name from the module
-    /// that it resolves to, rather than the whole module, as a glob does.
-    named: Vec<bool>,
+    /// The name that each of [`imports`](Self::imports) brings into scope, if
+    /// it takes a name from the module that it resolves to, rather than the
+    /// whole module, as a glob does.
+    bindings: Vec<Option<CompactString>>,
 
     /// What the file exports, with the source of each re-export as the range
-    /// of its import. Nothing, unless [`names`](Self::names) is set.
+    /// of its import.
     exports: Exports<ByteRange>,
 
     /// Whether the `use` declaration being read is an item of the file, whose
@@ -125,20 +122,17 @@ enum Token {
 
 impl<'s> Reader<'s> {
     /// Read the file whose syntax tree is `root`, from its `source`, with its
-    /// syntax `errors`, recording the names that imports take and what the
-    /// file exports if `names` is set.
+    /// syntax `errors`.
     pub(super) fn read(
         source: &'s str,
         root: &SyntaxNode,
         errors: ThinVec<Located<SyntaxError>>,
-        names: bool,
     ) -> ParsedFile {
         let mut reader = Reader {
             source,
-            names,
             imports: Vec::new(),
             declarations: Vec::new(),
-            named: Vec::new(),
+            bindings: Vec::new(),
             exports: Exports::default(),
             exporting: false,
             aliases: FxHashMap::default(),
@@ -189,14 +183,14 @@ impl<'s> Reader<'s> {
             }
         };
         let is_item = node.parent().is_some_and(|parent| parent.kind() == SyntaxKind::SOURCE_FILE);
-        if self.names && is_item {
+        if is_item {
             self.exported_item(&node);
         }
         match node.kind() {
             SyntaxKind::USE => {
                 self.declaration = range.start;
                 self.use_end = range.end;
-                self.exporting = self.names && is_item;
+                self.exporting = is_item;
                 if let Some(declaration) = ast::Use::cast(node) {
                     // The declaration is read before its attributes are visited.
                     if declaration.attrs().any(|attr| is_test_attr(&attr)) {
@@ -259,7 +253,7 @@ impl<'s> Reader<'s> {
             if self.exporting {
                 self.exports.stars.push((location(range), false));
             }
-            self.import(range, &specifier, false);
+            self.import(range, &specifier, None);
         } else if let Some(path) = path {
             let alias = tree.rename().map(|rename| match rename.name() {
                 Some(name) => self.text(name.syntax()),
@@ -298,7 +292,8 @@ impl<'s> Reader<'s> {
                 }
             }
         }
-        self.import(range, &specifier, named);
+        let binding = named.then(|| alias.unwrap_or(&name));
+        self.import(range, &specifier, binding);
     }
 
     /// Record that `name`, which the declaration being read brings into
@@ -343,13 +338,13 @@ impl<'s> Reader<'s> {
             self.bound.insert(alias.as_ref().into());
             self.alias(&alias, &name_text);
         }
-        self.import(name.syntax().text_range(), &name_text, false);
+        self.import(name.syntax().text_range(), &name_text, None);
     }
 
     /// Record an import of `specifier` that the code at `range` makes, which
-    /// takes a name from the module that it resolves to if `named`, rather
-    /// than the whole module.
-    fn import(&mut self, range: TextRange, specifier: &str, named: bool) {
+    /// takes a name from the module that it resolves to, and brings it into
+    /// scope as `binding`, if it has one, rather than the whole module.
+    fn import(&mut self, range: TextRange, specifier: &str, binding: Option<&str>) {
         if let Some(specifier) = self.in_file(specifier) {
             let detail = ImportDetail {
                 range: location(range),
@@ -359,7 +354,7 @@ impl<'s> Reader<'s> {
             };
             self.imports.push(detail);
             self.declarations.push(self.declaration);
-            self.named.push(named);
+            self.bindings.push(binding.map(CompactString::from));
         }
     }
 
@@ -607,12 +602,20 @@ impl<'s> Reader<'s> {
 
     /// The file that was read, with its syntax `errors`.
     fn finish(mut self, errors: ThinVec<Located<SyntaxError>>) -> ParsedFile {
+        // A name that a path in code starts with, as `m` in `m::f()`, is a module,
+        // so the `use` that brought it into scope takes the whole module.
+        let qualifiers: FxHashSet<&str> = (self.paths.iter())
+            .filter_map(|path| path.specifier.split_once("::").map(|(first, _)| first))
+            .filter(|first| self.bound.contains(*first))
+            .collect();
         let mut imports = std::mem::take(&mut self.imports);
-        for ((import, declaration), named) in
-            imports.iter_mut().zip(&self.declarations).zip(&self.named)
+        for ((import, declaration), binding) in
+            imports.iter_mut().zip(&self.declarations).zip(&self.bindings)
         {
             self.unalias(&mut import.specifier, *declaration);
-            if self.names && *named {
+            if let Some(binding) = binding
+                && !qualifiers.contains(binding.as_str())
+            {
                 import.names = taken(&import.specifier);
             }
         }
@@ -629,11 +632,8 @@ impl<'s> Reader<'s> {
             let first = path.specifier.split("::").next().unwrap_or_default();
             path.specifier.starts_with("::") || !bound.contains(first)
         });
-        let names = self.names;
         imports.extend(paths.map(|mut path| {
-            if names {
-                path.names = taken(&path.specifier);
-            }
+            path.names = taken(&path.specifier);
             path
         }));
         imports.sort_by_key(|import| import.range);
@@ -641,15 +641,11 @@ impl<'s> Reader<'s> {
         // Each re-export's source is the index of its import, if it is kept. A Rust
         // module has no code that importing it runs, so importing a name from it is
         // importing the name from where it is defined, whatever else it has.
-        let exports = match self.names {
-            true => {
-                Exports { pass_through: true, ..std::mem::take(&mut self.exports) }.map(|range| {
-                    let index = imports.binary_search_by_key(&range, |import| import.range);
-                    u32::try_from(index.ok()?).ok()
-                })
-            }
-            false => Exports::default(),
-        };
+        let exports =
+            Exports { pass_through: true, ..std::mem::take(&mut self.exports) }.map(|range| {
+                let index = imports.binary_search_by_key(&range, |import| import.range);
+                u32::try_from(index.ok()?).ok()
+            });
 
         let comments = comments(self.source, &self.comments);
         ParsedFile {

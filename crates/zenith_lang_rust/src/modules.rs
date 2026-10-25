@@ -1,17 +1,44 @@
 //! The module tree of a crate: where each file sits in it, which file each
-//! module is, and which files only tests compile.
+//! module is, the items that each file has, and which files only tests
+//! compile.
 
 #[cfg(test)]
 mod tests;
 
 use std::path::{Path, PathBuf};
 
+use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
 use zenith_graph::ImportKind;
 use zenith_lang::ParsedFile;
 use zenith_utils::fs::FileSystem;
 
 use crate::crates::{Crate, Crates, Target, TargetKind};
+
+/// The names of the items that each file declares, or brings into scope with
+/// `use`, by its path. A function and a module may share a name, as after
+/// `pub use write::write;`, so a path to the module may mean the item.
+#[derive(Debug, Default)]
+pub(crate) struct Items(FxHashMap<PathBuf, FxHashSet<CompactString>>);
+
+impl Items {
+    /// Record the items of each of `files`, each with its path, from what it
+    /// exports, in place of those it had. The other files keep theirs, as an
+    /// update of a session links the changed files alone.
+    pub(crate) fn update(&mut self, files: &[(PathBuf, &mut ParsedFile)]) {
+        for (path, parsed) in files {
+            let exports = &parsed.exports;
+            let declared = exports.names.iter().map(|name| name.name.clone());
+            let used = exports.reexports.iter().map(|reexport| reexport.name.clone());
+            self.0.insert(path.clone(), declared.chain(used).collect());
+        }
+    }
+
+    /// Whether the file at `path` has an item named `name`.
+    pub(crate) fn has(&self, path: &Path, name: &str) -> bool {
+        self.0.get(path).is_some_and(|items| items.contains(name))
+    }
+}
 
 /// Where a file sits in the module tree of its crate.
 #[derive(Debug, PartialEq, Eq)]

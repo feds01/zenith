@@ -5,11 +5,11 @@
 use zenith_config::{AlertLevel, BaselineConfig, ContractConfig, ContractKind, Severity};
 use zenith_diagnostics::{Report, ReportElement, ReportKind, SourceId, SourceMap, Span, message};
 use zenith_graph::{Graph, ImportDetail, ImportKind};
-use zenith_reporting::{Count, Outcome, Summary, SummaryEntry};
 use zenith_utils::location::ByteRange;
 
 use crate::{
-    Chain, ContractReport, CycleBreaker, CycleScope, Fix, Link, Violation, baseline::entry_ranges,
+    Chain, ContractReport, Count, CycleBreaker, CycleScope, Fix, Link, Outcome, Summary,
+    SummaryEntry, Violation, baseline::entry_ranges,
 };
 
 /// How many excerpts a report of chains or illegal imports shows.

@@ -99,7 +99,9 @@ impl Summary {
             .iter()
             .map(|entry| {
                 let (mark, status) = match &entry.outcome {
-                    Outcome::Kept => (highlight(Colour::Green, "✓"), message!(reporting_kept)),
+                    Outcome::Kept => {
+                        (highlight(Colour::Green, "✓"), message!(contracts_summary_kept))
+                    }
                     Outcome::KeptWith { status, kind: ReportKind::Error } => {
                         (highlight(Colour::Red, "✗"), status.clone())
                     }
@@ -108,11 +110,11 @@ impl Summary {
                     }
                     Outcome::Broken { findings, kind: ReportKind::Error } => (
                         highlight(Colour::Red, "✗"),
-                        message!(reporting_broken, findings = *findings),
+                        message!(contracts_summary_broken, findings = *findings),
                     ),
                     Outcome::Broken { findings, kind: ReportKind::Warning } => (
                         highlight(Colour::Yellow, "!"),
-                        message!(reporting_broken_warning, findings = *findings),
+                        message!(contracts_summary_broken_warning, findings = *findings),
                     ),
                 };
                 let details = match entry.details.as_slice() {
@@ -134,15 +136,16 @@ impl Summary {
     pub(crate) fn totals(&self) -> String {
         let (kept, broken) = (self.kept(), self.broken(ReportKind::Error));
         let mut line = match self.broken(ReportKind::Warning) {
-            0 => message!(reporting_outcomes, kept, broken),
-            warnings => message!(reporting_outcomes_with_warnings, kept, broken, warnings),
+            0 => message!(contracts_summary_outcomes, kept, broken),
+            warnings => message!(contracts_summary_outcomes_with_warnings, kept, broken, warnings),
         };
         for Count { text, count } in &self.counts {
             if *count > 0 {
                 line += &format!(" · {text}");
             }
         }
-        let checked = message!(reporting_checked, files = self.files, imports = self.imports);
+        let checked =
+            message!(contracts_summary_checked, files = self.files, imports = self.imports);
         line += &format!(" · {checked}");
         if let Some(timings) = &self.timings {
             let steps: Vec<_> =

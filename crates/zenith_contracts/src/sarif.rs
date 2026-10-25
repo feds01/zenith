@@ -1,13 +1,14 @@
-//! The SARIF output of `zenith check`, for code scanning: a rule for each
-//! checked contract and one for unused suppressions, a result for each
-//! finding, and the imports that couldn't be resolved as problems of the run.
+//! What checking the contracts found, as the SARIF output of `zenith check`
+//! shows it, for code scanning: a rule for each checked contract and one for
+//! unused suppressions, and a result for each finding.
 
 use serde_json::{Map, json};
 use zenith_config::BaselineConfig;
-use zenith_diagnostics::{ReportElement, ReportKind, SourceId, SourceMap, Span, message};
+use zenith_diagnostics::{
+    ReportElement, ReportKind, Sarif, SarifRule, SourceId, SourceMap, Span, message,
+};
 use zenith_graph::Graph;
-use zenith_pipeline::Session;
-use zenith_reporting::{Sarif, SarifRule};
+use zenith_pipeline::Graphs;
 
 use crate::{
     ContractReport, UnusedReason, UnusedSuppression,
@@ -19,18 +20,19 @@ use crate::{
 const UNUSED_SUPPRESSIONS: &str = "zenith/unused-suppression";
 
 impl ContractReport<'_> {
-    /// The SARIF log of the checked contracts `reports` of `session`, and of
-    /// the `unused` suppressions: a rule for each contract, and one for
-    /// unused suppressions, a result for each finding, as `--format compact`
-    /// lists them, and the imports that couldn't be resolved as problems of
-    /// the run. They point into `sources`, and into `config`, the
+    /// The SARIF log of the checked contracts `reports`, which checked against
+    /// `graphs` with the `baseline` configured, and of the `unused`
+    /// suppressions: a rule for each contract, and one for unused
+    /// suppressions, and a result for each finding, as `--format compact`
+    /// lists them. They point into `sources`, and into `config`, the
     /// configuration file, if it is there. Their paths start with `prefix`,
     /// the project root's path in its repository, as [`Sarif::new`] takes
     /// it.
     pub fn sarif(
         reports: &[Self],
         unused: &[UnusedSuppression],
-        session: &Session,
+        graphs: Graphs,
+        baseline: &BaselineConfig,
         sources: &mut SourceMap,
         config: Option<SourceId>,
         prefix: &str,
@@ -41,7 +43,6 @@ impl ContractReport<'_> {
         }
         sarif.add_rule(UnusedSuppression::sarif_rule());
 
-        let (graphs, baseline) = (session.graphs(), &session.config.baseline);
         for report in reports {
             let graph = graphs.of(report.config);
             report.add_sarif_results(&mut sarif, graph, sources, config, baseline);
@@ -49,10 +50,6 @@ impl ContractReport<'_> {
         for unused in unused {
             let report = unused.report(sources).with_id(UNUSED_SUPPRESSIONS);
             sarif.add_result(&report, &unused.sarif_identity(), Map::new(), sources);
-        }
-        for import in &session.unresolved {
-            let report = import.report(sources);
-            sarif.add_notification(&report, sources);
         }
         sarif
     }

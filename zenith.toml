@@ -18,7 +18,7 @@ layers = [
   "pkg:zenith_lang_*",
   "pkg:zenith_config",
   "pkg:zenith_lang",
-  "pkg:zenith_cache | pkg:zenith_graph | pkg:zenith_lsp | pkg:zenith_reporting | pkg:zenith_workspace",
+  "pkg:zenith_cache | pkg:zenith_graph | pkg:zenith_lsp | pkg:zenith_workspace",
   "pkg:zenith_diagnostics",
   "pkg:zenith_macros | pkg:zenith_utils",
 ]
@@ -77,8 +77,8 @@ guidance = "Name a message with `#[derive(Diagnostic)]` or `message!`, and keep 
 type = "forbidden"
 name = "Languages parse and resolve what the pipeline gives them"
 from = ["pkg:zenith_lang_*"]
-to = ["pkg:zenith_cache", "pkg:zenith_reporting", "pkg:zenith_workspace"]
-guidance = "Leave walking, caching and reporting to the pipeline, and pass the language what it needs."
+to = ["pkg:zenith_cache", "pkg:zenith_workspace"]
+guidance = "Leave walking and caching to the pipeline, and pass the language what it needs."
 
 # zenith_lang writes what a file imports into the cache, and the baseline
 # follows the files that git renamed.
@@ -96,13 +96,6 @@ name = "Only the CLI and the pipeline walk the project and read git"
 modules = ["pkg:zenith_workspace"]
 allowed_importers = ["pkg:zenith", "pkg:zenith_benchmark", "pkg:zenith_pipeline", "crates/zenith_contracts/src/baseline.rs"]
 guidance = "Take the files from the pipeline, or a `FileSystem` from the caller."
-
-[contracts.reporting-for-output]
-type = "protected"
-name = "Only the output of `zenith check` uses its formats"
-modules = ["pkg:zenith_reporting"]
-allowed_importers = ["pkg:zenith", "crates/zenith_contracts/src/reports.rs", "crates/zenith_contracts/src/sarif.rs", "crates/zenith_contracts/src/schema.rs"]
-guidance = "Turn findings into output in the reports of zenith_contracts, or in the CLI."
 
 [contracts.code-generation-in-the-macros]
 type = "protected"
@@ -206,9 +199,9 @@ guidance = "The validated types know nothing of how the file is written: convert
 
 [contracts.contracts-stages]
 type = "layers"
-name = "Contracts are checked, then reported, then written out"
+name = "Contracts are checked, then reported, then shown"
 containers = ["crates/zenith_contracts/src"]
-layers = ["sarif | schema", "reports | suggest", "contract", "rules", "findings | selection", "view", "baseline"]
+layers = ["output | sarif | schema", "reports | suggest", "contract", "rules", "findings | selection", "view", "baseline | summary"]
 allow_indirect_imports = true
 guidance = "Contract types find violations, and know nothing of how they are reported."
 

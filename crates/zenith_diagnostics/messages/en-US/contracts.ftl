@@ -117,6 +117,33 @@ contracts_more_entries = and {NUMBER($count)} more {$count ->
 }
 contracts_stale_entry = stale baseline entry `{$entry}`: its import no longer exists
 
+## The heading of the summary, and the outcome of a contract on its line.
+
+contracts_summary = Contracts
+contracts_summary_kept = kept
+contracts_summary_broken = broken ({contracts_summary_violations})
+contracts_summary_broken_warning = broken ({contracts_summary_violations}, warning only)
+contracts_summary_violations = {NUMBER($findings)} {$findings ->
+    [one] violation
+   *[other] violations
+}
+
+## The totals line: how many contracts are kept and broken, and how much was
+## checked.
+
+contracts_summary_outcomes = {NUMBER($kept)} kept, {NUMBER($broken)} broken
+contracts_summary_outcomes_with_warnings = {contracts_summary_outcomes}, {NUMBER($warnings)} {$warnings ->
+    [one] warning
+   *[other] warnings
+}
+contracts_summary_checked = {NUMBER($files)} {$files ->
+    [one] file
+   *[other] files
+}, {NUMBER($imports)} {$imports ->
+    [one] import
+   *[other] imports
+}
+
 ## A contract's line of the summary: its status when it is kept with stale
 ## baseline entries, and the imports that it left out.
 

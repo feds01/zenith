@@ -27,7 +27,6 @@ const SOURCES: &[(&str, &str)] = &[
     ("lsp.ftl", include_str!("../../zenith_diagnostics/messages/en-US/lsp.ftl")),
     ("pipeline.ftl", include_str!("../../zenith_diagnostics/messages/en-US/pipeline.ftl")),
     ("python.ftl", include_str!("../../zenith_diagnostics/messages/en-US/python.ftl")),
-    ("reporting.ftl", include_str!("../../zenith_diagnostics/messages/en-US/reporting.ftl")),
     ("rust.ftl", include_str!("../../zenith_diagnostics/messages/en-US/rust.ftl")),
     ("terraform.ftl", include_str!("../../zenith_diagnostics/messages/en-US/terraform.ftl")),
     ("workspace.ftl", include_str!("../../zenith_diagnostics/messages/en-US/workspace.ftl")),

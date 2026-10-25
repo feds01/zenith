@@ -1,36 +1,28 @@
-//! The JSON output of `zenith check`, for tools to read: whether it passed,
-//! its summary, the checked contracts, the suppressions that had no effect,
-//! and the problems that the pipeline found.
+//! What checking the contracts found, as the JSON output of `zenith check`
+//! shows it: its summary, the checked contracts, and the suppressions that
+//! had no effect. The CLI puts it in the output, beside the problems that
+//! the pipeline found.
 //!
-//! The output is versioned by [`JSON_VERSION`]. Fields may be added within a
-//! version, but none are removed or change meaning.
+//! The output is versioned by the CLI. Fields may be added within a version,
+//! but none are removed or change meaning.
 
-use std::{fmt, time::Duration};
+use std::time::Duration;
 
 use serde::Serialize;
 use zenith_config::{AlertLevel, ContractKind, Severity};
 use zenith_diagnostics::{Position, ReportKind, Source, SourceMap};
 use zenith_graph::{Graph, ImportDetail, ImportKind};
-use zenith_pipeline::{FileProblemJson, Session, UnresolvedJson};
-use zenith_reporting::Summary;
+use zenith_pipeline::Graphs;
 
 use crate::{
-    Chain, ContractReport, CycleBreaker, CycleScope, Fix, FixAction, Link, UnusedReason,
+    Chain, ContractReport, CycleBreaker, CycleScope, Fix, FixAction, Link, Summary, UnusedReason,
     UnusedSuppression, Violation, reports::import_span,
 };
 
-/// The version of the JSON output's schema.
-pub const JSON_VERSION: u32 = 1;
-
-/// The output of `zenith check` as JSON, shown as indented JSON.
+/// What checking the contracts found, as JSON: the fields that it adds to
+/// the output of `zenith check`.
 #[derive(Debug, Serialize)]
-pub struct CheckJson<'a> {
-    /// The version of the schema, [`JSON_VERSION`].
-    version: u32,
-
-    /// Whether the check passed, which is when zenith exits with 0.
-    passed: bool,
-
+pub struct ContractsJson<'a> {
     /// What the summary line counts.
     summary: SummaryJson,
 
@@ -39,16 +31,6 @@ pub struct CheckJson<'a> {
 
     /// The suppressions that had no effect.
     unused_suppressions: Vec<UnusedSuppressionJson<'a>>,
-
-    /// The imports that couldn't be resolved.
-    unresolved: Vec<UnresolvedJson<'a>>,
-
-    /// The errors in source files that couldn't be read or parsed in full.
-    file_errors: Vec<FileProblemJson<'a>>,
-
-    /// How long each step took, if timings are shown.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    timings: Option<Vec<Timing>>,
 }
 
 /// What the summary line counts.
@@ -73,36 +55,20 @@ struct SummaryJson {
     imports: usize,
 }
 
-/// How long a step took.
-#[derive(Debug, Serialize)]
-struct Timing {
-    /// The step, e.g. `parse`.
-    step: &'static str,
-
-    /// How long it took, in milliseconds.
-    milliseconds: f64,
-}
-
-impl<'a> CheckJson<'a> {
-    /// The output of checking the contracts of `session`: the `checked`
-    /// contracts and the `unused` suppressions, with their `summary`, and
-    /// where what they found is in `sources`. Timings are shown if the
-    /// summary has them.
+impl<'a> ContractsJson<'a> {
+    /// The `checked` contracts, which checked against `graphs`, and the
+    /// `unused` suppressions, with their `summary`, and where what they found
+    /// is in `sources`. How long each contract took is shown if the summary
+    /// has timings.
     pub fn new(
-        session: &'a Session,
         checked: &'a [ContractReport],
         unused: &'a [UnusedSuppression],
         summary: &Summary,
+        graphs: Graphs<'a>,
         sources: &mut SourceMap,
     ) -> Self {
         let timed = summary.timings.is_some();
-        let timings = summary.timings.as_ref().map(|timings| {
-            let timing = |&(step, time)| Timing { step, milliseconds: milliseconds(time) };
-            timings.iter().map(timing).collect()
-        });
-        CheckJson {
-            version: JSON_VERSION,
-            passed: !summary.failed(),
+        ContractsJson {
             summary: SummaryJson {
                 kept: summary.kept(),
                 broken: summary.broken(ReportKind::Error),
@@ -116,19 +82,10 @@ impl<'a> CheckJson<'a> {
             },
             contracts: checked
                 .iter()
-                .map(|report| report.json(session.graphs().of(report.config), sources, timed))
+                .map(|report| report.json(graphs.of(report.config), sources, timed))
                 .collect(),
             unused_suppressions: unused.iter().map(|unused| unused.json(sources)).collect(),
-            unresolved: session.unresolved.iter().map(|import| import.json(sources)).collect(),
-            file_errors: session.file_errors.iter().flat_map(|error| error.json(sources)).collect(),
-            timings,
         }
-    }
-}
-
-impl fmt::Display for CheckJson<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&serde_json::to_string_pretty(self).map_err(|_| fmt::Error)?)
     }
 }
 

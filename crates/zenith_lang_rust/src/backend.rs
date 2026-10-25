@@ -14,6 +14,7 @@ use zenith_utils::{fs::FileSystem, glob::NamePattern};
 
 use crate::{
     crates::{Crates, Editions},
+    modules::TestModules,
     parse::Parser,
     resolve::Resolver,
 };
@@ -34,6 +35,10 @@ pub(crate) struct RustBackend {
 
     /// Patterns of the paths that are expected not to resolve.
     ignore_unresolved: Vec<NamePattern>,
+
+    /// The modules that each file declares for its tests, kept from one link
+    /// to the next.
+    test_modules: TestModules,
 }
 
 impl RustBackend {
@@ -45,8 +50,10 @@ impl RustBackend {
         file_system: Arc<dyn FileSystem>,
         ignore_unresolved: Vec<NamePattern>,
     ) -> Self {
-        let (crates, editions) = (Crates::default(), Arc::default());
-        Self { root: root.to_path_buf(), file_system, crates, editions, ignore_unresolved }
+        let (crates, editions, test_modules) =
+            (Crates::default(), Arc::default(), TestModules::default());
+        let root = root.to_path_buf();
+        Self { root, file_system, crates, editions, ignore_unresolved, test_modules }
     }
 }
 
@@ -71,7 +78,7 @@ impl Backend for RustBackend {
 
     fn link(&mut self, files: &mut dyn Iterator<Item = (PathBuf, &mut ParsedFile)>) {
         let mut files: Vec<_> = files.collect();
-        self.crates.mark_test_code(&mut files);
+        self.crates.mark_test_code(&mut files, &mut self.test_modules);
     }
 
     fn resolver(&self) -> Result<Box<dyn ImportResolver + '_>, ResolveFailure> {

@@ -8,6 +8,7 @@ use zenith_graph::{ImportDetail, ImportKind, ImportedNames};
 use zenith_lang::ParsedFile;
 use zenith_utils::location::{ByteRange, Located};
 
+use super::TestModules;
 use crate::testing::Project;
 
 /// The files of `app` in the workspace, relative to the root.
@@ -53,7 +54,7 @@ fn test_files(test_modules: &[(&str, &str)]) -> Vec<&'static str> {
         })
         .collect();
     let mut files: Vec<(PathBuf, &mut ParsedFile)> = paths.into_iter().zip(&mut parsed).collect();
-    project.crates().mark_test_code(&mut files);
+    project.crates().mark_test_code(&mut files, &mut TestModules::default());
     FILES
         .iter()
         .zip(&parsed)
@@ -99,4 +100,42 @@ fn a_module_declared_for_tests_is_one_of_the_tree_of_the_declaring_file() {
     // through it.
     let declared = [("crates/app/src/main.rs", "c"), ("crates/app/src/lib.rs", "a::b")];
     assert_eq!(test_files(&declared)[..1], ["crates/app/src/a/b.rs"]);
+}
+
+#[test]
+fn a_changed_file_is_marked_by_what_the_unchanged_files_declared() {
+    let project = Project::workspace();
+    let crates = project.crates();
+    let parsed = |test_modules: &[&str]| ParsedFile {
+        imports: vec![ImportDetail {
+            range: ByteRange::new(0, 1),
+            specifier: "crate::x".into(),
+            kind: ImportKind::Value,
+            names: ImportedNames::All,
+        }],
+        test_modules: test_modules.iter().map(|module| module.to_string()).collect(),
+        ..ParsedFile::default()
+    };
+    let (mut lib, mut d) = (parsed(&["c"]), parsed(&[]));
+    let mut declared = TestModules::default();
+    let mut files = vec![
+        (project.path("crates/app/src/lib.rs"), &mut lib),
+        (project.path("crates/app/src/c/d.rs"), &mut d),
+    ];
+    crates.mark_test_code(&mut files, &mut declared);
+    assert_eq!(d.imports[0].kind, ImportKind::Test);
+
+    // An update parses `c/d.rs` alone, whose parent's declaration is kept.
+    let mut d = parsed(&[]);
+    crates.mark_test_code(&mut [(project.path("crates/app/src/c/d.rs"), &mut d)], &mut declared);
+    assert_eq!(d.imports[0].kind, ImportKind::Test);
+
+    // Once `lib.rs` declares `c` for every build, `c` is no longer test code.
+    let (mut lib, mut d) = (parsed(&[]), parsed(&[]));
+    let mut files = vec![
+        (project.path("crates/app/src/lib.rs"), &mut lib),
+        (project.path("crates/app/src/c/d.rs"), &mut d),
+    ];
+    crates.mark_test_code(&mut files, &mut declared);
+    assert_eq!(d.imports[0].kind, ImportKind::Value);
 }

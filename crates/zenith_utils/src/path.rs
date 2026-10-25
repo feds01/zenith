@@ -1,4 +1,4 @@
-//! Path manipulation and canonicalisation utilities.
+//! Path manipulation utilities, which never touch the file system.
 //!
 //! Zenith identifies every internal node by a POSIX path relative to the
 //! project root, on every platform.
@@ -11,8 +11,6 @@ use std::{
 
 use path_absolutize::Absolutize;
 
-use crate::fs::{FileSystem, OsFileSystem};
-
 /// Convert any path to an absolute path, based on the current working
 /// directory, without touching the file system.
 pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
@@ -21,14 +19,6 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
         Ok(path) => path.into_owned(),
         Err(_) => path.to_path_buf(),
     }
-}
-
-/// Canonicalise a path: resolve symlinks and, on Windows, strip the `\\?\`
-/// prefix where that is safe. A path that does not exist is normalised
-/// lexically with [`normalize_path`] instead, so symlinks in its existing
-/// ancestors stay unresolved.
-pub fn adjust_canonicalisation<P: AsRef<Path>>(path: P) -> PathBuf {
-    OsFileSystem.adjust_canonicalisation(path.as_ref())
 }
 
 /// The POSIX form of `path` relative to `root`, or `None` if `path` is not
@@ -195,8 +185,6 @@ pub fn has_windows_drive(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::env;
-
     use super::*;
 
     #[test]
@@ -316,17 +304,6 @@ mod tests {
             relative_posix(root, Path::new(r"C:\repo\web\a.ts")).as_deref(),
             Some("web/a.ts")
         );
-    }
-
-    #[test]
-    fn existing_paths_are_canonicalised() {
-        assert_eq!(adjust_canonicalisation("."), env::current_dir().unwrap());
-    }
-
-    #[test]
-    fn missing_paths_are_normalised() {
-        let cwd = env::current_dir().unwrap();
-        assert_eq!(adjust_canonicalisation("no-such-dir/x/../y.ts"), cwd.join("no-such-dir/y.ts"));
     }
 
     #[test]

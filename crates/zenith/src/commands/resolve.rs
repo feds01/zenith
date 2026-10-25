@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 use zenith_diagnostics::message;
 use zenith_lang::Resolved;
 use zenith_pipeline::{PipelineError, StageKind};
-use zenith_utils::path::{adjust_canonicalisation, relative_posix};
+use zenith_utils::{fs::adjust_canonicalisation, path::relative_posix};
 
 use crate::{
     ExitStatus,

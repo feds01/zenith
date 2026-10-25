@@ -6,7 +6,7 @@ use std::{
 };
 
 use tempfile::TempDir;
-use zenith_utils::{fs::disk, path::adjust_canonicalisation};
+use zenith_utils::fs::{adjust_canonicalisation, disk};
 
 use crate::{crates::Crates, manifest::Manifest};
 

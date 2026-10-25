@@ -13,9 +13,9 @@ use zenith_diagnostics::{Report, SourceId, SourceMap, message};
 use zenith_graph::{Graph, GraphBuilder};
 use zenith_lang::{ParsedFile, Resolved, Suppression, Workspace};
 use zenith_utils::{
-    fs::{FileSystem, disk},
+    fs::{FileSystem, adjust_canonicalisation, disk},
     location::Located,
-    path::{absolute_path, adjust_canonicalisation, relative_posix},
+    path::{absolute_path, relative_posix},
 };
 use zenith_workspace::{Git, WalkSettings};
 

@@ -15,7 +15,7 @@ use zenith_diagnostics::{ReportElement, Reporter};
 use zenith_graph::{Graph, ImportKind, ModuleId, NodeKind};
 use zenith_lang::{ParsedFile, ResolveFailure, UnresolvedReason};
 use zenith_lang_js::ResolverError;
-use zenith_utils::{path::adjust_canonicalisation, testing::Overlay};
+use zenith_utils::{fs::adjust_canonicalisation, testing::Overlay};
 use zenith_workspace::testing::{commit, git};
 
 use crate::{FileErrorKind, LANGUAGES, Pipeline, PipelineError, Session, StageKind};

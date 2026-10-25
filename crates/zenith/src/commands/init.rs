@@ -7,7 +7,7 @@ use zenith_config::{CONFIG_FILE_NAME, Config};
 use zenith_contracts::Suggestion;
 use zenith_diagnostics::message;
 use zenith_pipeline::{LANGUAGES, Session, StageKind};
-use zenith_utils::path::adjust_canonicalisation;
+use zenith_utils::fs::adjust_canonicalisation;
 
 use crate::{
     ExitStatus,

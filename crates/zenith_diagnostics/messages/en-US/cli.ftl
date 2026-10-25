@@ -96,6 +96,10 @@ cli_init_written = Wrote `{$path}` ({cli_source_files} and {NUMBER($packages)} w
     [one] package
    *[other] packages
 } found).
+cli_init_suggested = Added {NUMBER($contracts)} suggested {$contracts ->
+    [one] contract
+   *[other] contracts
+} that the code keeps.
 
 ## `zenith suggest`.
 

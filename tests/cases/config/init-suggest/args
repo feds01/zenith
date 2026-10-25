@@ -1,0 +1,7 @@
+# Both apps import `ui`, which imports `utils`. The starter's contract keeps
+# the packages free of cycles, so `--suggest` adds what it doesn't cover: the
+# packages stack in layers, and the apps don't import each other.
+init --suggest
+check
+# Every contract that the code keeps is in `zenith.toml` now.
+suggest

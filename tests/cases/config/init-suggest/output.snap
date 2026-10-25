@@ -1,0 +1,21 @@
+$ zenith init --suggest
+exit: 0
+--- stdout
+Wrote `zenith.toml` (4 source files and 4 workspace packages found).
+Added 2 suggested contracts that the code keeps.
+
+$ zenith check
+exit: 0
+--- stdout
+Contracts
+  ✓ packages-acyclic  acyclic       kept
+  ✓ packages-layers   layers        kept
+  ✓ apps-independent  independence  kept
+
+3 kept, 0 broken · 4 files, 4 imports
+
+$ zenith suggest
+exit: 0
+--- stderr
+warning: found no new contracts to suggest that the code keeps
+

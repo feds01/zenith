@@ -10,7 +10,7 @@ zenith graph diff <base> [<head>] [--depth <n>] [--format tree|json] [--exclude-
              [-- <selector>]
 zenith why <from-selector> <to-selector> [--exclude-kind <kind>]… [--limit <n>]
 zenith resolve <file> <specifier>
-zenith init [--force]
+zenith init [--force] [--suggest]
 zenith suggest
 zenith lsp
 zenith version
@@ -24,7 +24,7 @@ zenith version
 | `graph diff` | Shows the dependencies between a selector's children that were added and removed from one git ref to another. See [Comparing refs](#comparing-refs). |
 | `why` | Shows the shortest import chains from one selector to another. |
 | `resolve` | Shows what a specifier resolves to from a file, and why. |
-| `init` | Writes a starter `zenith.toml` for the workspace packages it finds. |
+| `init` | Writes a starter `zenith.toml` for the workspace packages it finds. With `--suggest`, it adds the [suggested contracts](#suggesting-contracts) too. |
 | `suggest` | Prints contracts that the code already keeps, as TOML: see [suggesting contracts](#suggesting-contracts). |
 | `lsp` | Runs a language server, which shows the violations in an editor: see [editor integration](editors.md). |
 
@@ -136,7 +136,8 @@ contract of the configuration, with its `[analysis]` defaults, so it passes
 
 It never writes a file. Write the suggestions to one to review them, as in
 `zenith suggest > suggested.toml`, and copy the ones you want into
-`zenith.toml`; or let an agent read them.
+`zenith.toml`; or let an agent read them. `zenith init --suggest` writes them
+into a new `zenith.toml`, after its starter contract.
 
 A suggestion is left out when a contract of the same type in the configuration
 already selects all of its modules, whatever its id, so once you have added

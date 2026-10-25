@@ -73,8 +73,68 @@ modules = ["crate:annotate-snippets", "crate:fluent-*", "crate:unic-langid"]
 allowed_importers = ["pkg:zenith_diagnostics", "pkg:zenith_macros"]
 guidance = "Name a message with `#[derive(Diagnostic)]` or `message!`, and keep its text in the catalogue."
 
-# lib.rs dispatches to each command, rule and pass, so only direct imports
-# between them count.
+[contracts.languages-given-their-files]
+type = "forbidden"
+name = "Languages parse and resolve what the pipeline gives them"
+from = ["pkg:zenith_lang_*"]
+to = ["pkg:zenith_cache", "pkg:zenith_reporting", "pkg:zenith_workspace"]
+guidance = "Leave walking, caching and reporting to the pipeline, and pass the language what it needs."
+
+# zenith_lang writes what a file imports into the cache, and the baseline
+# follows the files that git renamed.
+
+[contracts.cache-behind-the-pipeline]
+type = "protected"
+name = "Only the pipeline reads and writes the parse cache"
+modules = ["pkg:zenith_cache"]
+allowed_importers = ["pkg:zenith_benchmark", "pkg:zenith_lang", "pkg:zenith_pipeline"]
+guidance = "Reach the cache through the pipeline's session."
+
+[contracts.workspace-behind-the-pipeline]
+type = "protected"
+name = "Only the CLI and the pipeline walk the project and read git"
+modules = ["pkg:zenith_workspace"]
+allowed_importers = ["pkg:zenith", "pkg:zenith_benchmark", "pkg:zenith_pipeline", "crates/zenith_contracts/src/baseline.rs"]
+guidance = "Take the files from the pipeline, or a `FileSystem` from the caller."
+
+[contracts.reporting-for-output]
+type = "protected"
+name = "Only the output of `zenith check` uses its formats"
+modules = ["pkg:zenith_reporting"]
+allowed_importers = ["pkg:zenith", "crates/zenith_contracts/src/reports.rs", "crates/zenith_contracts/src/sarif.rs", "crates/zenith_contracts/src/schema.rs"]
+guidance = "Turn findings into output in the reports of zenith_contracts, or in the CLI."
+
+[contracts.code-generation-in-the-macros]
+type = "protected"
+name = "Only zenith_macros generates code"
+modules = ["crate:proc-macro2", "crate:quote", "crate:syn"]
+allowed_importers = ["pkg:zenith_macros"]
+guidance = "Write a macro in zenith_macros."
+
+[contracts.allocator-in-the-binaries]
+type = "protected"
+name = "Only the binaries choose the allocator"
+modules = ["crate:mimalloc"]
+allowed_importers = ["crates/zenith/src/main.rs", "crates/zenith_benchmark/benches"]
+guidance = "Set the global allocator in a binary, not in a library."
+
+[contracts.paths-in-the-utils]
+type = "protected"
+name = "Only zenith_utils normalises and canonicalises paths"
+modules = ["crate:dunce", "crate:path-absolutize"]
+allowed_importers = ["pkg:zenith_utils"]
+guidance = "Use the helpers in `zenith_utils::path` and `zenith_utils::fs`."
+
+[contracts.lsp-knows-nothing-of-checks]
+type = "forbidden"
+name = "The language server knows nothing of what is checked"
+from = ["pkg:zenith_lsp"]
+to = ["pkg:zenith_contracts", "pkg:zenith_pipeline", "pkg:zenith_graph"]
+guidance = "Give the server reports to publish, from the command that checks the project."
+
+# Inside a crate, modules reach each other's items through the re-exports of
+# lib.rs and mod.rs, which zenith doesn't follow in Rust, so only direct
+# imports between them count.
 
 [contracts.commands-independent]
 type = "independence"
@@ -97,9 +157,79 @@ modules = [{ path = "crates/zenith_contracts/src/suggest/passes/*", except = ["c
 allow_indirect_imports = true
 guidance = "Move what two passes share into `passes/mod.rs`."
 
-[contracts.lsp-knows-nothing-of-checks]
-type = "forbidden"
-name = "The language server knows nothing of what is checked"
-from = ["pkg:zenith_lsp"]
-to = ["pkg:zenith_contracts", "pkg:zenith_pipeline", "pkg:zenith_graph"]
-guidance = "Give the server reports to publish, from the command that checks the project."
+[contracts.stages-independent]
+type = "independence"
+name = "Pipeline stages don't import each other"
+modules = [{ path = "crates/zenith_pipeline/src/stages/*", except = ["crates/zenith_pipeline/src/stages/mod.rs"] }]
+allow_indirect_imports = true
+guidance = "Pass what one stage hands the next through the session."
+
+[contracts.git-independent]
+type = "independence"
+name = "The walk and each use of git don't import each other"
+modules = [
+  "crates/zenith_workspace/src/walk.rs",
+  { path = "crates/zenith_workspace/src/git/*", except = ["crates/zenith_workspace/src/git/mod.rs"] },
+]
+allow_indirect_imports = true
+guidance = "Move what they share into `git/mod.rs`, or into zenith_utils."
+
+[contracts.modules-acyclic]
+type = "acyclic"
+name = "A crate's modules don't depend on each other in cycles"
+modules = [{ path = "crates/*/src/*", except = ["crates/*/src/lib.rs", "crates/*/src/main.rs"] }]
+ignore_imports = [
+  # Only tests import the test helpers.
+  "crates/*/src/** -> crates/*/src/testing.rs",
+  # A type parses itself through `parse`, as `Config::parse` and each
+  # language's table do.
+  "crates/zenith_config/src/config.rs -> crates/zenith_config/src/parse",
+  "crates/zenith_config/src/language.rs -> crates/zenith_config/src/parse",
+]
+guidance = "Move what both modules need into a third, which both may import."
+
+[contracts.language-stages]
+type = "layers"
+name = "A language's config builds its backend, which resolves, then parses"
+containers = ["crates/zenith_lang_*/src"]
+layers = ["config", "backend", "resolve", "parse", "(crates) : (modules) : (packages)"]
+allow_indirect_imports = true
+guidance = "Parsing knows nothing of resolving, and neither knows the backend: pass them what they need."
+
+[contracts.config-stages]
+type = "layers"
+name = "zenith.toml is parsed through its schema into the validated types"
+containers = ["crates/zenith_config/src"]
+layers = ["parse", "schema", "contracts", "selector"]
+allow_indirect_imports = true
+guidance = "The validated types know nothing of how the file is written: convert in `parse`."
+
+[contracts.contracts-stages]
+type = "layers"
+name = "Contracts are checked, then reported, then written out"
+containers = ["crates/zenith_contracts/src"]
+layers = ["sarif | schema", "reports | suggest", "contract", "rules", "findings | selection", "view", "baseline"]
+allow_indirect_imports = true
+guidance = "Contract types find violations, and know nothing of how they are reported."
+
+[contracts.cli-stages]
+type = "layers"
+name = "Commands run on the project that the CLI's arguments find"
+containers = ["crates/zenith/src"]
+layers = ["commands", "project", "reporting | version", "cli"]
+allow_indirect_imports = true
+guidance = "The argument types in `cli.rs` hold no logic: put it in a command, or in the core crates."
+
+[contracts.diagnostics-stages]
+type = "layers"
+name = "Reports are made from sources, and rendered by the reporter"
+containers = ["crates/zenith_diagnostics/src"]
+layers = ["diagnostic | reporter", "report", "source"]
+allow_indirect_imports = true
+
+[contracts.macros-stages]
+type = "layers"
+name = "The macros check their messages against the catalogue"
+containers = ["crates/zenith_macros/src"]
+layers = ["diagnostic", "message", "catalogue"]
+allow_indirect_imports = true

@@ -12,8 +12,10 @@ use crate::{
 };
 
 /// The languages that the tests' configurations are read with: JavaScript,
-/// whose files and packages the tests are written in.
-pub(crate) const LANGUAGES: Languages = Languages::new(&[&zenith_lang_js::JS]);
+/// whose files and packages the tests are written in, and Rust, whose index
+/// files the tests of exhaustive layers need.
+pub(crate) const LANGUAGES: Languages =
+    Languages::new(&[&zenith_lang_js::JS, &zenith_lang_rust::RUST]);
 
 /// A project for testing contracts: a graph, no workspace packages, a
 /// configuration, suppressions and a baseline.

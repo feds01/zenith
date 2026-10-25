@@ -24,6 +24,7 @@ toml = { workspace = true }
 
 [dev-dependencies]
 zenith_lang_js = { workspace = true }
+zenith_lang_rust = { workspace = true }
 
 tempfile = { workspace = true }
 thin-vec = { workspace = true }

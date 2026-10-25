@@ -2791,6 +2791,7 @@ dependencies = [
  "zenith_graph",
  "zenith_lang",
  "zenith_lang_js",
+ "zenith_lang_rust",
  "zenith_utils",
  "zenith_workspace",
 ]

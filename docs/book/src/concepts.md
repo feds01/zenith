@@ -58,11 +58,14 @@ Each import statement is recorded with its kind:
 | `type` | an import that is erased at runtime, such as TypeScript's `import type` |
 | `dynamic` | an import made while the code runs, such as JavaScript's `import("s")` |
 | `require` | a CommonJS `require("s")` |
+| `test` | an import that only tests compile, such as one in Rust's `#[cfg(test)]` code |
 
 The [languages](languages.md) page lists the statements that make each kind.
 Contracts can leave out imports by kind with
 [`exclude_kinds`](contracts/overview.md#common-options): type-only imports
-are erased at runtime, so they are often excluded.
+are erased at runtime, so they are often excluded, and leaving out the test
+imports makes the contracts about production code. `[analysis] exclude_kinds`
+leaves them out of every contract.
 
 ## Re-exports
 

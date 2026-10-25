@@ -5,8 +5,8 @@ use std::{borrow::Cow, cmp::Ordering, iter, ops::Range};
 
 use compact_str::CompactString;
 use ra_ap_syntax::{
-    AstNode, NodeOrToken, SyntaxElement, SyntaxKind, SyntaxNode, TextRange, WalkEvent,
-    ast::{self, HasGenericArgs, HasName},
+    AstNode, NodeOrToken, SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken, TextRange, WalkEvent,
+    ast::{self, HasAttrs, HasGenericArgs, HasName},
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use thin_vec::ThinVec;
@@ -46,11 +46,11 @@ pub(super) struct Reader<'s> {
     /// different scopes, or for an item of the file.
     aliases: FxHashMap<CompactString, Option<(CompactString, usize)>>,
 
-    /// The paths in code, each specifier once.
+    /// The paths in code, each specifier once of each kind.
     paths: Vec<ImportDetail>,
 
-    /// The specifiers of [`paths`](Self::paths).
-    seen: FxHashSet<CompactString>,
+    /// The specifiers of [`paths`](Self::paths), with their kinds.
+    seen: FxHashSet<(CompactString, ImportKind)>,
 
     /// The names that `use` declarations and inline modules bring into scope. A
     /// path in code that starts with one of them is already imported, or is not
@@ -71,9 +71,17 @@ pub(super) struct Reader<'s> {
     /// Where the `use` declaration that is being read ends.
     use_end: usize,
 
-    /// Where each inline module that the node being read is in ends, from the
-    /// outermost.
-    inline: Vec<usize>,
+    /// Where each inline module that the node being read is in ends, with
+    /// its name, from the outermost.
+    inline: Vec<(usize, CompactString)>,
+
+    /// Where each item or expression that only tests compile, and that the
+    /// node being read is in, ends, from the outermost.
+    tests: Vec<usize>,
+
+    /// The modules that the file declares in files of their own, and that
+    /// only tests compile, each as its path from the module of the file.
+    test_modules: ThinVec<String>,
 
     /// The last body of a [`QUOTE_MACROS`] macro that was read.
     quoted: Range<usize>,
@@ -120,6 +128,8 @@ impl<'s> Reader<'s> {
             declaration: 0,
             use_end: 0,
             inline: Vec::new(),
+            tests: Vec::new(),
+            test_modules: ThinVec::new(),
             quoted: 0..0,
         };
         // The walk doesn't recurse, so that deeply nested code can't overflow the
@@ -135,8 +145,11 @@ impl<'s> Reader<'s> {
     /// Read `element`, a node or a token.
     fn visit(&mut self, element: SyntaxElement) {
         let range = byte_range(element.text_range());
-        while self.inline.last().is_some_and(|end| range.start >= *end) {
+        while self.inline.last().is_some_and(|(end, _)| range.start >= *end) {
             self.inline.pop();
+        }
+        while self.tests.last().is_some_and(|end| range.start >= *end) {
+            self.tests.pop();
         }
         let node = match element {
             NodeOrToken::Node(node) => node,
@@ -157,20 +170,42 @@ impl<'s> Reader<'s> {
             SyntaxKind::USE => {
                 self.declaration = range.start;
                 self.use_end = range.end;
-                if let Some(tree) = ast::Use::cast(node).and_then(|node| node.use_tree()) {
-                    self.use_tree(&tree, "");
+                if let Some(declaration) = ast::Use::cast(node) {
+                    // The declaration is read before its attributes are visited.
+                    if declaration.attrs().any(|attr| is_test_attr(&attr)) {
+                        self.tests.push(range.end);
+                    }
+                    if let Some(tree) = declaration.use_tree() {
+                        self.use_tree(&tree, "");
+                    }
                 }
             }
             SyntaxKind::EXTERN_CRATE => self.extern_crate(&node),
             SyntaxKind::MODULE => {
                 if let Some(module) = ast::Module::cast(node)
-                    && module.item_list().is_some()
                     && let Some(name) = module.name()
                 {
                     let name: CompactString = self.text(name.syntax()).into();
-                    self.bound.insert(name.clone());
-                    self.modules.insert(name);
-                    self.inline.push(range.end);
+                    if module.item_list().is_some() {
+                        self.bound.insert(name.clone());
+                        self.modules.insert(name.clone());
+                        self.inline.push((range.end, name));
+                    } else if self.is_test() || module.attrs().any(|attr| is_test_attr(&attr)) {
+                        let inline = self.inline.iter().map(|(_, name)| name.as_str());
+                        let path: Vec<&str> = inline.chain([name.as_str()]).collect();
+                        self.test_modules.push(path.join("::"));
+                    }
+                }
+            }
+            // An attribute that only tests compile what it is on, as `#[cfg(test)]`
+            // and `#[test]` do, holds for the rest of that, and `#![cfg(test)]` for the
+            // rest of the file or module that it is in.
+            SyntaxKind::ATTR => {
+                if let Some(attr) = ast::Attr::cast(node.clone())
+                    && is_test_attr(&attr)
+                    && let Some(parent) = node.parent()
+                {
+                    self.tests.push(byte_range(parent.text_range()).end);
                 }
             }
             SyntaxKind::PATH => self.code_path(&node),
@@ -250,7 +285,12 @@ impl<'s> Reader<'s> {
         if name_text == "self" {
             return;
         }
-        self.declaration = byte_range(node.text_range()).start;
+        let range = byte_range(node.text_range());
+        self.declaration = range.start;
+        // The declaration is read before its attributes are visited.
+        if krate.attrs().any(|attr| is_test_attr(&attr)) {
+            self.tests.push(range.end);
+        }
         let alias = match krate.rename() {
             Some(rename) => rename.name().map(|alias| self.text(alias.syntax())),
             None => Some(name_text.clone()),
@@ -268,7 +308,7 @@ impl<'s> Reader<'s> {
             let detail = ImportDetail {
                 range: location(range),
                 specifier: specifier.as_ref().into(),
-                kind: ImportKind::Value,
+                kind: self.kind(),
                 names: ImportedNames::All,
             };
             self.imports.push(detail);
@@ -443,15 +483,25 @@ impl<'s> Reader<'s> {
         let Some(specifier) = self.in_file(specifier) else {
             return;
         };
-        if self.seen.insert(specifier.as_ref().into()) {
+        let kind = self.kind();
+        if self.seen.insert((specifier.as_ref().into(), kind)) {
             let names = ImportedNames::All;
-            let detail = ImportDetail {
-                range,
-                specifier: specifier.as_ref().into(),
-                kind: ImportKind::Value,
-                names,
-            };
+            let detail = ImportDetail { range, specifier: specifier.as_ref().into(), kind, names };
             self.paths.push(detail);
+        }
+    }
+
+    /// Whether only tests compile the code being read.
+    fn is_test(&self) -> bool {
+        !self.tests.is_empty()
+    }
+
+    /// The kind of an import in the code being read: a test import if only
+    /// tests compile it.
+    fn kind(&self) -> ImportKind {
+        match self.is_test() {
+            true => ImportKind::Test,
+            false => ImportKind::Value,
         }
     }
 
@@ -508,9 +558,49 @@ impl<'s> Reader<'s> {
         ParsedFile {
             imports,
             suppressions: Suppression::collect(self.source, comments),
+            test_modules: self.test_modules,
             errors,
             ..ParsedFile::default()
         }
+    }
+}
+
+/// Whether `attr` makes what it is on code that only tests compile: `#[test]`,
+/// `#[bench]` or another test attribute, such as `#[tokio::test]`, or a
+/// `#[cfg]` whose predicate only holds in tests.
+fn is_test_attr(attr: &ast::Attr) -> bool {
+    match attr.meta() {
+        Some(ast::Meta::CfgMeta(cfg)) => {
+            cfg.cfg_predicate().is_some_and(|predicate| holds_only_in_tests(&predicate, 0))
+        }
+        Some(meta) => meta
+            .path()
+            .and_then(|path| path.segment()?.name_ref())
+            .is_some_and(|name| name.text() == "test" || name.text() == "bench"),
+        None => false,
+    }
+}
+
+/// Whether `predicate`, of a `#[cfg]`, only holds when tests are compiled:
+/// `test`, an `all` of which one predicate does, or an `any` of which each
+/// does. It is nested `depth` deep, and one deeper than a cfg would be is
+/// taken to hold anywhere.
+fn holds_only_in_tests(predicate: &ast::CfgPredicate, depth: usize) -> bool {
+    match predicate {
+        ast::CfgPredicate::CfgAtom(atom) => {
+            atom.eq_token().is_none()
+                && atom.ident_token().is_some_and(|name| name.text() == "test")
+        }
+        ast::CfgPredicate::CfgComposite(composite) if depth < 16 => {
+            let predicates: Vec<_> = composite.cfg_predicates().collect();
+            let holds = |predicate: &ast::CfgPredicate| holds_only_in_tests(predicate, depth + 1);
+            match composite.keyword().as_ref().map(SyntaxToken::text) {
+                Some("all") => predicates.iter().any(holds),
+                Some("any") => !predicates.is_empty() && predicates.iter().all(holds),
+                _ => false,
+            }
+        }
+        ast::CfgPredicate::CfgComposite(_) => false,
     }
 }
 

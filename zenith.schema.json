@@ -300,6 +300,11 @@
           "type": "string",
           "const": "require",
           "description": "A CommonJS `require(\"s\")` or TypeScript `import x = require(\"s\")`."
+        },
+        {
+          "type": "string",
+          "const": "test",
+          "description": "An import that only tests compile, such as one in Rust's\n`#[cfg(test)]` code or in a crate's `tests` directory."
         }
       ],
       "description": "How an import is made. Contracts can exclude imports of given kinds, e.g.\nto exempt type-only imports."

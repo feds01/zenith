@@ -1,9 +1,15 @@
 //! The backends of the enabled languages, which the stages run.
 
-use std::{fmt, path::Path, sync::Arc};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use zenith_config::Config;
-use zenith_lang::{Backend, BackendSettings, ImportResolver, ResolveFailure, SourceParser};
+use zenith_lang::{
+    Backend, BackendSettings, ImportResolver, ParsedFile, ResolveFailure, SourceParser,
+};
 use zenith_utils::fs::FileSystem;
 
 use crate::SourceFile;
@@ -57,6 +63,21 @@ impl Backends {
     /// A parser of each language, for one thread, in order.
     pub fn parsers(&self) -> Vec<Box<dyn SourceParser>> {
         self.0.iter().map(|backend| backend.parser()).collect()
+    }
+
+    /// Let the backend of each language [link](Backend::link) its files of
+    /// `files`, each with what it `parsed` to, in the same order, in the
+    /// project at `root`.
+    pub fn link(&mut self, root: &Path, files: &[SourceFile], parsed: &mut [ParsedFile]) {
+        let paths: Vec<PathBuf> = files.iter().map(|file| file.path(root)).collect();
+        let mut by_language: Vec<Vec<(&Path, &mut ParsedFile)>> =
+            self.0.iter().map(|_| Vec::new()).collect();
+        for ((file, path), parsed) in files.iter().zip(&paths).zip(parsed) {
+            by_language[usize::from(file.language)].push((path, parsed));
+        }
+        for (backend, mut files) in self.0.iter_mut().zip(by_language) {
+            backend.link(&mut files);
+        }
     }
 
     /// A resolver of each language, in order.

@@ -150,7 +150,16 @@ impl Parser {
             false => Exports::default(),
         };
 
-        ParsedFile { imports, exports, non_literal_imports, directives, suppressions, errors }
+        let test_modules = ThinVec::new();
+        ParsedFile {
+            imports,
+            exports,
+            non_literal_imports,
+            directives,
+            suppressions,
+            test_modules,
+            errors,
+        }
     }
 }
 

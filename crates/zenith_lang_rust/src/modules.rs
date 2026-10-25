@@ -1,11 +1,17 @@
-//! The module tree of a crate: where each file sits in it, and which file
-//! each module is.
+//! The module tree of a crate: where each file sits in it, which file each
+//! module is, and which files only tests compile.
+
+#[cfg(test)]
+mod tests;
 
 use std::path::{Path, PathBuf};
 
+use rustc_hash::FxHashSet;
+use zenith_graph::ImportKind;
+use zenith_lang::ParsedFile;
 use zenith_utils::fs::FileSystem;
 
-use crate::crates::{Crate, Target, TargetKind};
+use crate::crates::{Crate, Crates, Target, TargetKind};
 
 /// Where a file sits in the module tree of its crate.
 #[derive(Debug, PartialEq, Eq)]
@@ -94,5 +100,53 @@ impl Crate {
             modules.pop();
         }
         Some(Position { target: nearest, modules })
+    }
+}
+
+impl Crates {
+    /// Make every import of each of `files`, each with its path, that only
+    /// tests compile a test import: the files of the tests, benchmarks and
+    /// examples, and those of the modules that a file declares for its tests
+    /// alone, as `#[cfg(test)] mod tests;` does, with every module in them.
+    pub(crate) fn mark_test_code(&self, files: &mut [(&Path, &mut ParsedFile)]) {
+        // 1. Where each file sits, and the modules that the files declare for their
+        //    tests, by the root of their target and their path from it.
+        let positions: Vec<_> =
+            files.iter().map(|(path, _)| self.containing(path)?.locate(path)).collect();
+        let mut declared: FxHashSet<(&Path, String)> = FxHashSet::default();
+        for ((_, parsed), position) in files.iter().zip(&positions) {
+            let Some(Position { target, modules }) = position else {
+                continue;
+            };
+            for module in &parsed.test_modules {
+                let path = modules.iter().map(String::as_str).chain(module.split("::"));
+                declared.insert((&target.root, path.collect::<Vec<_>>().join("::")));
+            }
+        }
+
+        // 2. A file is test code if its target is, or a module on its path is.
+        for ((_, parsed), position) in files.iter_mut().zip(&positions) {
+            let Some(Position { target, modules }) = position else {
+                continue;
+            };
+            let mut path = String::new();
+            let in_test_module = modules.iter().any(|module| {
+                if !path.is_empty() {
+                    path.push_str("::");
+                }
+                path.push_str(module);
+                declared.contains(&(target.root.as_path(), path.clone()))
+            });
+            let test_target =
+                matches!(target.kind, TargetKind::Test | TargetKind::Bench | TargetKind::Example);
+            if test_target || in_test_module {
+                for import in &mut parsed.imports {
+                    import.kind = ImportKind::Test;
+                }
+                for import in &mut parsed.non_literal_imports {
+                    import.value = ImportKind::Test;
+                }
+            }
+        }
     }
 }

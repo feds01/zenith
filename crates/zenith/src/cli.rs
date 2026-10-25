@@ -393,6 +393,8 @@ pub enum ImportKindArg {
     Dynamic,
     /// `require()` calls and `import x = require()`.
     Require,
+    /// Imports that only tests compile, such as Rust's `#[cfg(test)]` code.
+    Test,
 }
 
 impl From<ImportKindArg> for ImportKind {
@@ -402,6 +404,7 @@ impl From<ImportKindArg> for ImportKind {
             ImportKindArg::Type => ImportKind::Type,
             ImportKindArg::Dynamic => ImportKind::Dynamic,
             ImportKindArg::Require => ImportKind::Require,
+            ImportKindArg::Test => ImportKind::Test,
         }
     }
 }

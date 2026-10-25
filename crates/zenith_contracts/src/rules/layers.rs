@@ -478,24 +478,6 @@ mod tests {
     }
 
     #[test]
-    fn exhaustive_layers_leave_out_the_index_files_of_the_languages() {
-        let project = Project::new(
-            &values(&[
-                ("crates/cli/src/main.rs", "crates/cli/src/commands/mod.rs"),
-                ("crates/cli/src/commands/mod.rs", "crates/cli/src/model.rs"),
-                ("crates/cli/src/lib.rs", "crates/cli/src/model.rs"),
-                ("crates/cli/src/utils.rs", "crates/cli/src/model.rs"),
-            ]),
-            &[],
-            include_str!("fixtures/layers-index-files.toml"),
-        );
-        assert_eq!(
-            project.findings("l"),
-            ["crates/cli/src: `crates/cli/src/utils.rs` is not a layer"]
-        );
-    }
-
-    #[test]
     fn layers_can_be_packages_and_externals() {
         let project = Project::new(
             &values(&[("lib/a.ts", "npm:react"), ("app/b.ts", "lib/a.ts")]),

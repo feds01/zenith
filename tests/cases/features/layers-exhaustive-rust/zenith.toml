@@ -1,0 +1,10 @@
+# Every module of each crate must be a layer. The crate roots, `lib.rs` and
+# `main.rs`, and `commands/mod.rs`, are Rust's index files, not modules of
+# their own, so only `utils.rs` is undeclared.
+[languages.rust]
+
+[contracts.crate-layers]
+type = "layers"
+containers = ["crates/*/src"]
+layers = ["commands", "model"]
+exhaustive = true

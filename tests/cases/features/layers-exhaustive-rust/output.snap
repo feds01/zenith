@@ -1,0 +1,12 @@
+$ zenith check
+exit: 1
+--- stdout
+error[crate-layers]: `crates/cli/src/utils.rs` is not declared as a layer of `crates/cli/src`
+  |
+  = help: the contract is exhaustive: declare it in `layers`, or add it to `exhaustive_ignores`
+
+Contracts
+  ✗ crate-layers  layers  broken (1 violation)
+
+0 kept, 1 broken · 5 files, 3 imports
+

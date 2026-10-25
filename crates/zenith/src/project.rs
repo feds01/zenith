@@ -128,8 +128,7 @@ pub(crate) fn build_at(
 pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<Pipeline> {
     let mut pipeline = Pipeline::standard();
     pipeline.run_until(session, last)?;
-    session.narrow();
-    report_file_errors(&mut SourceMap::with_root(&session.root), &session.file_errors);
+    keep_problems_in_scope(session);
 
     if last >= StageKind::Graph {
         if session.files.is_empty() {
@@ -146,6 +145,28 @@ pub(crate) fn run_until(session: &mut Session, last: StageKind) -> Result<Pipeli
         }
     }
     Ok(pipeline)
+}
+
+/// Update `session`, whose graph `pipeline` built, with the source files at
+/// `changed`, whose contents have changed since, as
+/// [`Pipeline::update`] does, keep only the problems of the files in its
+/// scope, and warn about those that could not be read or parsed.
+pub(crate) fn update(
+    session: &mut Session,
+    pipeline: &mut Pipeline,
+    changed: &[u32],
+) -> Result<()> {
+    pipeline.update(session, changed)?;
+    keep_problems_in_scope(session);
+    info!("{}", message!(cli_updated, files = changed.len()));
+    Ok(())
+}
+
+/// Keep only the problems of the files in the scope of `session`, and warn
+/// about those that could not be read or parsed.
+fn keep_problems_in_scope(session: &mut Session) {
+    session.narrow();
+    report_file_errors(&mut SourceMap::with_root(&session.root), &session.file_errors);
 }
 
 /// Compile the contracts of the session's configuration whose ids are in

@@ -4,17 +4,26 @@
 use std::{
     any::Any,
     collections::{BTreeMap, BTreeSet},
+    mem,
     panic::{self, AssertUnwindSafe},
     path::{Path, PathBuf},
 };
 
 use log::info;
-use lsp_server::{Connection, ErrorCode, IoThreads, Message, Notification, Request, Response};
+use lsp_server::{
+    Connection, ErrorCode, IoThreads, Message, Notification, Request, RequestId, Response,
+};
 use lsp_types::{
-    Diagnostic, InitializeParams, InitializeResult, MessageType, PublishDiagnosticsParams,
-    ServerCapabilities, ServerInfo, ShowMessageParams, TextDocumentSyncCapability,
-    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, Url,
-    notification::{DidSaveTextDocument, Exit, Notification as _, PublishDiagnostics, ShowMessage},
+    Diagnostic, DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions,
+    DidSaveTextDocumentParams, FileSystemWatcher, GlobPattern, InitializeParams, InitializeResult,
+    MessageType, PublishDiagnosticsParams, Registration, RegistrationParams, ServerCapabilities,
+    ServerInfo, ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, Url,
+    notification::{
+        DidChangeWatchedFiles, DidSaveTextDocument, Exit, Notification as _, PublishDiagnostics,
+        ShowMessage,
+    },
+    request::{RegisterCapability, Request as _},
 };
 use zenith_diagnostics::{Report, Reporter, SourceMap, message};
 
@@ -23,6 +32,25 @@ use crate::{diagnostics::Editor, error::ServerError};
 /// What the server's operations return, failing with why it stopped talking to
 /// the editor.
 type Result<T, E = ServerError> = std::result::Result<T, E>;
+
+/// The id of the request that asks the editor to report the changes to files,
+/// and of the registration it asks for.
+const WATCH_FILES: &str = "zenith/watch-files";
+
+/// What may have changed in the project since the last check, so that a
+/// check can redo only what the changes affect.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Changes {
+    /// Anything may have: no check has run yet, or the editor doesn't report
+    /// the changes to files.
+    Unknown,
+
+    /// The files at these paths, and nothing else, as the editor reported
+    /// them: those it saved, and those that it saw change on the disk, such
+    /// as when a branch is checked out. The paths of the files in the folder
+    /// that it opened are as zenith names them.
+    Files(BTreeSet<PathBuf>),
+}
 
 /// What a check found, for the server to publish.
 #[derive(Debug, Default)]
@@ -76,6 +104,12 @@ pub struct Server {
     /// The titles of the reports of the last check that ran that have no
     /// diagnostic, as the editor was last told of them.
     unlocated: Vec<String>,
+
+    /// Whether the editor reports the changes to files, once it was asked to.
+    watching: bool,
+
+    /// What changed since the last check, as the editor reported it.
+    changed: Changes,
 }
 
 impl Server {
@@ -86,8 +120,9 @@ impl Server {
     }
 
     /// A server on `connection`, once the editor has initialised it: it
-    /// tells the editor that it wants to hear of saves, and agrees an
-    /// encoding of positions with it.
+    /// tells the editor that it wants to hear of saves, agrees an encoding of
+    /// positions with it, and asks it to report the changes to files, if it
+    /// can.
     pub fn new(connection: Connection) -> Result<Self> {
         let (id, params) = connection.initialize_start()?;
         let params: InitializeParams = serde_json::from_value(params)?;
@@ -108,7 +143,8 @@ impl Server {
             }),
         };
         connection.initialize_finish(id, serde_json::to_value(result)?)?;
-        Ok(Self {
+        let watching = editor.watches_files;
+        let server = Self {
             connection,
             io_threads: None,
             editor,
@@ -116,7 +152,13 @@ impl Server {
             failed: BTreeMap::new(),
             shown: BTreeMap::new(),
             unlocated: Vec::new(),
-        })
+            watching,
+            changed: Changes::unchanged(watching),
+        };
+        if watching {
+            server.watch_files()?;
+        }
+        Ok(server)
     }
 
     /// The folder that the editor opened, as it names it, if it said.
@@ -125,20 +167,21 @@ impl Server {
     }
 
     /// Publish what `check` finds now, and again whenever the editor saves a
-    /// file, until it shuts the server down or exits. A check that fails, or
-    /// panics, keeps the diagnostics of the last one that ran, and shows why
-    /// it failed. Returns whether the editor shut the server down before it
-    /// exited, as the protocol asks it to.
-    pub fn run(mut self, mut check: impl FnMut() -> Result<Found, Failure>) -> Result<bool> {
-        let mut check = || {
-            panic::catch_unwind(AssertUnwindSafe(&mut check)).unwrap_or_else(|panic| {
+    /// file, until it shuts the server down or exits. Each check is told what
+    /// changed since the last. A check that fails, or panics, keeps the
+    /// diagnostics of the last one that ran, and shows why it failed. Returns
+    /// whether the editor shut the server down before it exited, as the
+    /// protocol asks it to.
+    pub fn run(mut self, mut check: impl FnMut(Changes) -> Result<Found, Failure>) -> Result<bool> {
+        let mut check = |changes| {
+            panic::catch_unwind(AssertUnwindSafe(|| check(changes))).unwrap_or_else(|panic| {
                 let reason = panic_reason(&*panic);
                 Err(Failure::Message(message!(lsp_check_panicked, reason)))
             })
         };
 
         // 1. Publish what the project has to begin with.
-        self.publish(check())?;
+        self.publish(check(Changes::Unknown))?;
 
         // 2. Handle what the editor sends, until it shuts the server down, exits or
         //    goes away.
@@ -158,7 +201,7 @@ impl Server {
                 Message::Notification(notification) => {
                     self.on_notification(notification, &mut check)?;
                 }
-                Message::Response(_) => {}
+                Message::Response(response) => self.on_response(response),
             }
         }
 
@@ -181,16 +224,69 @@ impl Server {
     }
 
     /// Act on a notification from the editor: check the project again when
-    /// it saves a file. Others are ignored, as the protocol allows.
+    /// it saves a file, and keep the changes to files that it reports for the
+    /// next check. Others are ignored, as the protocol allows.
     fn on_notification(
         &mut self,
         notification: Notification,
-        check: &mut impl FnMut() -> Result<Found, Failure>,
+        check: &mut impl FnMut(Changes) -> Result<Found, Failure>,
     ) -> Result<()> {
         match notification.method.as_str() {
-            DidSaveTextDocument::METHOD => self.publish(check()),
+            DidSaveTextDocument::METHOD => {
+                let saved = serde_json::from_value(notification.params);
+                let saved =
+                    saved.ok().map(|params: DidSaveTextDocumentParams| params.text_document);
+                let next = Changes::unchanged(self.watching);
+                let changes = match (mem::replace(&mut self.changed, next), saved) {
+                    (Changes::Files(mut files), Some(saved)) => {
+                        files.extend(self.editor.path(&saved.uri));
+                        Changes::Files(files)
+                    }
+                    // Without the file that was saved, anything may have changed.
+                    _ => Changes::Unknown,
+                };
+                self.publish(check(changes))
+            }
+            DidChangeWatchedFiles::METHOD => {
+                let watched = serde_json::from_value(notification.params);
+                match (&mut self.changed, watched) {
+                    (Changes::Files(files), Ok(DidChangeWatchedFilesParams { changes })) => {
+                        let editor = &self.editor;
+                        files.extend(changes.iter().filter_map(|change| editor.path(&change.uri)));
+                    }
+                    (changed, _) => *changed = Changes::Unknown,
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
+    }
+
+    /// Act on the editor's answer to a request: if it won't report the
+    /// changes to files, anything may change from then on.
+    fn on_response(&mut self, response: Response) {
+        if response.id == RequestId::from(WATCH_FILES.to_string())
+            && let Err(error) = response.response_result
+        {
+            info!("{}", message!(lsp_not_watching, error = error.message));
+            (self.watching, self.changed) = (false, Changes::Unknown);
+        }
+    }
+
+    /// Ask the editor to report the changes to every file, which it may
+    /// refuse in its answer.
+    fn watch_files(&self) -> Result<()> {
+        let glob_pattern = GlobPattern::String("**/*".to_string());
+        let watchers = vec![FileSystemWatcher { glob_pattern, kind: None }];
+        let options = DidChangeWatchedFilesRegistrationOptions { watchers };
+        let registration = Registration {
+            id: WATCH_FILES.to_string(),
+            method: DidChangeWatchedFiles::METHOD.to_string(),
+            register_options: Some(serde_json::to_value(options)?),
+        };
+        let params = RegistrationParams { registrations: vec![registration] };
+        let id = RequestId::from(WATCH_FILES.to_string());
+        self.send(Request::new(id, RegisterCapability::METHOD.to_string(), params).into())
     }
 
     /// Publish what a check found, or why it failed. A check that fails
@@ -285,6 +381,17 @@ impl Server {
     }
 }
 
+impl Changes {
+    /// No change yet, since a check, as an editor that reports changes to
+    /// files if `watching` would see it.
+    fn unchanged(watching: bool) -> Self {
+        match watching {
+            true => Self::Files(BTreeSet::new()),
+            false => Self::Unknown,
+        }
+    }
+}
+
 /// The folder that the editor opened, if it said: the first of its
 /// workspace folders, or else its root.
 fn opened(params: &InitializeParams) -> Option<PathBuf> {
@@ -310,17 +417,16 @@ fn panic_reason(panic: &(dyn Any + Send)) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, thread};
+    use std::{env, sync::mpsc, thread};
 
-    use lsp_server::{Request, RequestId};
     use lsp_types::{
-        DiagnosticSeverity, DidSaveTextDocumentParams, TextDocumentIdentifier, WorkspaceFolder,
+        DiagnosticSeverity, FileChangeType, FileEvent, TextDocumentIdentifier, WorkspaceFolder,
         notification::Initialized,
-        request::{Initialize, Request as _, Shutdown},
+        request::{Initialize, Shutdown},
     };
     use serde_json::{Value, json};
     use zenith_diagnostics::{Columns, Span};
-    use zenith_utils::location::ByteRange;
+    use zenith_utils::{fs::adjust_canonicalisation, location::ByteRange};
 
     use super::*;
 
@@ -445,7 +551,7 @@ mod tests {
             found(0, false, false),
         ]
         .into_iter();
-        let check = move || checks.next().unwrap().unwrap_or_else(|| panic!("the check broke"));
+        let check = move |_| checks.next().unwrap().unwrap_or_else(|| panic!("the check broke"));
         let running = thread::spawn(move || server.run(check));
         let error = DiagnosticSeverity::ERROR;
         assert_eq!(published(&editor), ("web/a.ts".into(), vec![error, error]));
@@ -510,7 +616,7 @@ mod tests {
         };
         let (server, editor) = start(json!({ "capabilities": {} }));
         let mut checks = [stale(), invalid(true), stale()].into_iter();
-        let running = thread::spawn(move || server.run(move || checks.next().unwrap().unwrap()));
+        let running = thread::spawn(move || server.run(move |_| checks.next().unwrap().unwrap()));
         let (error, warning) = (DiagnosticSeverity::ERROR, DiagnosticSeverity::WARNING);
         assert_eq!(published(&editor), ("zenith.toml".into(), vec![warning]));
 
@@ -527,6 +633,76 @@ mod tests {
     }
 
     #[test]
+    fn tells_each_check_what_changed_while_the_editor_reports_it() {
+        // The editor can report the changes to files, so the server asks it to.
+        let folder = Url::from_directory_path(env::temp_dir()).unwrap();
+        let (server, editor) = start(json!({
+            "capabilities": { "workspace": { "didChangeWatchedFiles": { "dynamicRegistration": true } } },
+            "rootUri": folder,
+        }));
+        let Message::Request(request) = editor.receiver.recv().unwrap() else {
+            panic!("expected the request to watch files");
+        };
+        assert_eq!(request.method, RegisterCapability::METHOD);
+        let params: RegistrationParams = serde_json::from_value(request.params).unwrap();
+        assert_eq!(params.registrations[0].method, DidChangeWatchedFiles::METHOD);
+
+        // Each check says what it was told.
+        let (told, changes) = mpsc::channel();
+        let running = thread::spawn(move || {
+            server.run(move |changes| {
+                told.send(changes).unwrap();
+                found(0, false, false).unwrap()
+            })
+        });
+        assert_eq!(changes.recv().unwrap(), Changes::Unknown);
+
+        // A save is checked with the files that changed since the last check, which
+        // are named as zenith names them, and the file that was saved.
+        let root = adjust_canonicalisation(env::temp_dir());
+        let changed =
+            |names: &[&str]| Changes::Files(names.iter().map(|name| root.join(name)).collect());
+        let watched = |names: &[&str]| {
+            let changes = names
+                .iter()
+                .map(|name| {
+                    let uri = Url::from_file_path(env::temp_dir().join(name)).unwrap();
+                    FileEvent::new(uri, FileChangeType::CHANGED)
+                })
+                .collect();
+            let params = DidChangeWatchedFilesParams { changes };
+            Notification::new(DidChangeWatchedFiles::METHOD.into(), params).into()
+        };
+        editor.sender.send(watched(&["web/b.ts", "web/c.ts"])).unwrap();
+        save(&editor);
+        assert_eq!(changes.recv().unwrap(), changed(&["web/a.ts", "web/b.ts", "web/c.ts"]));
+        save(&editor);
+        assert_eq!(changes.recv().unwrap(), changed(&["web/a.ts"]));
+
+        // A report that can't be read, or a save that doesn't say what was saved,
+        // could be of any change.
+        let invalid = Notification::new(DidChangeWatchedFiles::METHOD.into(), json!({}));
+        editor.sender.send(invalid.into()).unwrap();
+        save(&editor);
+        assert_eq!(changes.recv().unwrap(), Changes::Unknown);
+        let unsaid = Notification::new(DidSaveTextDocument::METHOD.into(), json!({}));
+        editor.sender.send(unsaid.into()).unwrap();
+        assert_eq!(changes.recv().unwrap(), Changes::Unknown);
+        save(&editor);
+        assert_eq!(changes.recv().unwrap(), changed(&["web/a.ts"]));
+
+        // Once the editor refuses to report them, any change could have been.
+        let refused = Response::new_err(request.id, ErrorCode::InvalidParams as i32, "no".into());
+        editor.sender.send(refused.into()).unwrap();
+        editor.sender.send(watched(&["web/b.ts"])).unwrap();
+        save(&editor);
+        assert_eq!(changes.recv().unwrap(), Changes::Unknown);
+
+        exit(&editor);
+        assert!(!running.join().unwrap().unwrap());
+    }
+
+    #[test]
     fn exits_without_being_shut_down() {
         // An editor that predates workspace folders names its root.
         let root = Url::from_directory_path(env::temp_dir()).unwrap();
@@ -534,7 +710,7 @@ mod tests {
         assert_eq!(server.editor.columns, Columns::Utf16);
         assert_eq!(server.folder(), Some(env::temp_dir().as_path()));
 
-        let running = thread::spawn(move || server.run(|| found(0, false, false).unwrap()));
+        let running = thread::spawn(move || server.run(|_| found(0, false, false).unwrap()));
         exit(&editor);
         assert!(!running.join().unwrap().unwrap());
     }

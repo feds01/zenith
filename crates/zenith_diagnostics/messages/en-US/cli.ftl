@@ -24,6 +24,10 @@ cli_root_not_a_directory = the project root `{$root}` is not a directory
 cli_no_source_files = found no source files in the project root `{$root}`; use `--root` to point at the project
 cli_indexed = indexed {cli_source_files} and {cli_imports}
 cli_reused_from_cache = reused the imports of {NUMBER($files)} of them from the parse cache
+cli_updated = updated the imports of {NUMBER($files)} changed {$files ->
+    [one] file
+   *[other] files
+}
 cli_non_literal_imports = skipped {NUMBER($imports)} {$imports ->
     [one] import whose specifier is not a literal
    *[other] imports whose specifier is not a literal

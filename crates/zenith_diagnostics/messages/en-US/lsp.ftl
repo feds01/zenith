@@ -10,6 +10,7 @@ lsp_published = published {NUMBER($diagnostics)} {$diagnostics ->
     [one] file
    *[other] files
 }
+lsp_not_watching = the editor won't report the changes to files ({$error}), so each save checks the whole project anew
 
 ## What the editor is answered, and shown.
 

@@ -39,21 +39,35 @@ pub(crate) struct RustBackend {
     /// The modules that each file declares for its tests, kept from one link
     /// to the next.
     test_modules: TestModules,
+
+    /// Whether parsing records the names that imports take, and what each
+    /// file exports.
+    record_exports: bool,
 }
 
 impl RustBackend {
     /// The backend of the project at `root` in `file_system`, which must be
     /// canonical there, which expects the paths that match
-    /// `ignore_unresolved` not to resolve.
+    /// `ignore_unresolved` not to resolve, and records what each file exports
+    /// if `record_exports` is set.
     pub(crate) fn new(
         root: &Path,
         file_system: Arc<dyn FileSystem>,
         ignore_unresolved: Vec<NamePattern>,
+        record_exports: bool,
     ) -> Self {
         let (crates, editions, test_modules) =
             (Crates::default(), Arc::default(), TestModules::default());
         let root = root.to_path_buf();
-        Self { root, file_system, crates, editions, ignore_unresolved, test_modules }
+        Self {
+            root,
+            file_system,
+            crates,
+            editions,
+            ignore_unresolved,
+            test_modules,
+            record_exports,
+        }
     }
 }
 
@@ -73,7 +87,7 @@ impl Backend for RustBackend {
     }
 
     fn parser(&self) -> Box<dyn SourceParser> {
-        Box::new(Parser::new(Arc::clone(&self.editions)))
+        Box::new(Parser::new(Arc::clone(&self.editions), self.record_exports))
     }
 
     fn link(&mut self, files: &mut dyn Iterator<Item = (PathBuf, &mut ParsedFile)>) {

@@ -95,6 +95,10 @@ reexports = "transparent"
 exclude_kinds = ["type"]
 ```
 
+In Rust, a module runs no code when it is imported, so every module is
+followed for the items that it brings into scope with `use`, as the
+[Rust page](languages/rust.md#re-exports) describes.
+
 `encapsulation` contracts always see re-exports as they are, since importing
 a module through its entry point, which often only re-exports, is what they
 allow.

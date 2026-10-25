@@ -1,0 +1,14 @@
+# The modules import each other through the crate root, which re-exports
+# them. As the imports are written, `layout` imports `lib.rs`, which imports
+# `document`, a layer above it. Through the re-exports, each module imports
+# the module that defines what it uses, so the layers are kept.
+[languages.rust]
+
+[contracts.layers-as-written]
+type = "layers"
+layers = ["src/render", "src/document", "src/layout", "src/units"]
+
+[contracts.layers-through-reexports]
+type = "layers"
+layers = ["src/render", "src/document", "src/layout", "src/units"]
+reexports = "transparent"

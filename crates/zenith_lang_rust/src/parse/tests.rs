@@ -18,7 +18,7 @@ use crate::crates::Editions;
 
 /// Parse `source` as the file `x.rs`.
 fn parse(source: &str) -> ParsedFile {
-    Parser::new(Arc::new(Editions::default())).parse_source(Path::new("x.rs"), source)
+    Parser::new(Arc::new(Editions::default()), false).parse_source(Path::new("x.rs"), source)
 }
 
 /// The specifiers of the imports of `source`, which must have no syntax errors.
@@ -449,7 +449,7 @@ fn a_file_is_parsed_in_the_edition_of_its_crate() {
     let editions = FxHashMap::from_iter([(PathBuf::from("/old"), Edition::Edition2015)]);
     let editions = Arc::new(Editions(editions));
     let parse = |path: &str| {
-        Parser::new(Arc::clone(&editions)).parse_source(Path::new(path), "fn async() {}\n")
+        Parser::new(Arc::clone(&editions), false).parse_source(Path::new(path), "fn async() {}\n")
     };
     // `async` is a name in Rust 2015, and a keyword since.
     assert!(parse("/old/src/lib.rs").errors.is_empty());
@@ -569,4 +569,103 @@ mod inline {
         parsed.test_modules.as_slice(),
         ["fixtures", "slow", "tests::helpers", "inline::checks"]
     );
+}
+
+/// Parse `source` as the file `x.rs`, recording the names that imports take
+/// and what the file exports.
+fn parse_names(source: &str) -> ParsedFile {
+    let parsed =
+        Parser::new(Arc::new(Editions::default()), true).parse_source(Path::new("x.rs"), source);
+    assert!(parsed.errors.is_empty(), "{source:?}: {:?}", parsed.errors);
+    parsed
+}
+
+/// The specifier of each import of `parsed`, with the name that it takes, or
+/// `*` for the whole module.
+fn taken(parsed: &ParsedFile) -> Vec<String> {
+    (parsed.imports.iter())
+        .map(|import| match &import.names {
+            ImportedNames::All => format!("{} *", import.specifier),
+            ImportedNames::Names(names) => format!("{} {}", import.specifier, names[0].name),
+        })
+        .collect()
+}
+
+#[test]
+fn an_import_takes_its_first_type_or_else_its_last_name() {
+    let source = "\
+use crate::Layout;
+use crate::shapes::Shape::Circle;
+use crate::write;
+use crate::units::{self, Millimetres};
+use crate::prelude::*;
+extern crate alloc;
+fn f() {
+    crate::geometry::Point::new();
+    crate::draw::run();
+}
+";
+    assert_eq!(
+        taken(&parse_names(source)),
+        [
+            "crate::Layout Layout",
+            "crate::shapes::Shape::Circle Shape",
+            "crate::write write",
+            "crate::units *",
+            "crate::units::Millimetres Millimetres",
+            "crate::prelude *",
+            "alloc *",
+            "crate::geometry::Point Point",
+            "crate::draw::run run",
+        ]
+    );
+    // Without names, every import takes the whole module.
+    assert!(parse(source).imports.iter().all(|import| import.names == ImportedNames::All));
+}
+
+#[test]
+fn a_file_exports_its_visible_items_and_what_its_uses_bring_into_scope() {
+    let source = "\
+mod layout;
+mod shapes;
+
+pub use layout::Layout;
+pub(crate) use shapes::{Circle as Round, Square};
+use std::fmt;
+use crate::units::*;
+use crate::hidden as _;
+
+pub struct Document;
+pub(crate) fn render() {}
+fn private() {}
+pub const LIMIT: u8 = 1;
+
+mod inline {
+    pub use super::Document as Inner;
+    pub fn inside() {}
+}
+";
+    let parsed = parse_names(source);
+    let exports = &parsed.exports;
+    assert!(exports.pass_through);
+    let names: Vec<_> = exports.names.iter().map(|name| name.name.as_str()).collect();
+    assert_eq!(names, ["Document", "render", "LIMIT"]);
+    let source_of = |index: u32| parsed.imports[index as usize].specifier.as_str();
+    let reexports: Vec<_> = (exports.reexports.iter())
+        .map(|reexport| {
+            let imported = reexport.imported.as_deref().unwrap_or("*");
+            format!("{} = {} {imported}", reexport.name, source_of(reexport.source))
+        })
+        .collect();
+    assert_eq!(
+        reexports,
+        [
+            "Layout = layout::Layout Layout",
+            "Round = shapes::Circle Circle",
+            "Square = shapes::Square Square",
+            "fmt = std::fmt fmt",
+        ]
+    );
+    let stars: Vec<_> = exports.stars.iter().map(|(star, _)| source_of(*star)).collect();
+    assert_eq!(stars, ["crate::units"]);
 }

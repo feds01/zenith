@@ -6,11 +6,11 @@ use std::{borrow::Cow, cmp::Ordering, iter, ops::Range};
 use compact_str::CompactString;
 use ra_ap_syntax::{
     AstNode, NodeOrToken, SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken, TextRange, WalkEvent,
-    ast::{self, HasAttrs, HasGenericArgs, HasName},
+    ast::{self, HasAttrs, HasGenericArgs, HasName, HasVisibility},
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use thin_vec::ThinVec;
-use zenith_graph::{ImportDetail, ImportKind, ImportedNames};
+use zenith_graph::{Exports, ImportDetail, ImportKind, ImportedName, ImportedNames, ReExport};
 use zenith_lang::{ParsedFile, Suppression, SyntaxError};
 use zenith_utils::location::{ByteRange, Located};
 
@@ -34,11 +34,27 @@ pub(super) struct Reader<'s> {
     /// The source of the file.
     source: &'s str,
 
+    /// Whether to record the names that imports take, and what the file
+    /// exports, rather than take each import to take the whole module.
+    names: bool,
+
     /// The leaves of `use` declarations and the `extern crate`s.
     imports: Vec<ImportDetail>,
 
     /// Where the declaration of each of [`imports`](Self::imports) starts.
     declarations: Vec<usize>,
+
+    /// Whether each of [`imports`](Self::imports) takes a name from the module
+    /// that it resolves to, rather than the whole module, as a glob does.
+    named: Vec<bool>,
+
+    /// What the file exports, with the source of each re-export as the range
+    /// of its import. Nothing, unless [`names`](Self::names) is set.
+    exports: Exports<ByteRange>,
+
+    /// Whether the `use` declaration being read is an item of the file, whose
+    /// names the file exports.
+    exporting: bool,
 
     /// What each name that a `use` or an `extern crate` brings into scope
     /// stands for, as a path written in the module of the file, with where
@@ -109,16 +125,22 @@ enum Token {
 
 impl<'s> Reader<'s> {
     /// Read the file whose syntax tree is `root`, from its `source`, with its
-    /// syntax `errors`.
+    /// syntax `errors`, recording the names that imports take and what the
+    /// file exports if `names` is set.
     pub(super) fn read(
         source: &'s str,
         root: &SyntaxNode,
         errors: ThinVec<Located<SyntaxError>>,
+        names: bool,
     ) -> ParsedFile {
         let mut reader = Reader {
             source,
+            names,
             imports: Vec::new(),
             declarations: Vec::new(),
+            named: Vec::new(),
+            exports: Exports::default(),
+            exporting: false,
             aliases: FxHashMap::default(),
             paths: Vec::new(),
             seen: FxHashSet::default(),
@@ -166,10 +188,15 @@ impl<'s> Reader<'s> {
                 return;
             }
         };
+        let is_item = node.parent().is_some_and(|parent| parent.kind() == SyntaxKind::SOURCE_FILE);
+        if self.names && is_item {
+            self.exported_item(&node);
+        }
         match node.kind() {
             SyntaxKind::USE => {
                 self.declaration = range.start;
                 self.use_end = range.end;
+                self.exporting = self.names && is_item;
                 if let Some(declaration) = ast::Use::cast(node) {
                     // The declaration is read before its attributes are visited.
                     if declaration.attrs().any(|attr| is_test_attr(&attr)) {
@@ -228,7 +255,11 @@ impl<'s> Reader<'s> {
             // `a::b::*` imports from `a::b`.
             let path = path.map(|path| self.text(path.syntax()));
             let specifier = join(prefix, path.as_deref().unwrap_or_default());
-            self.import(tree.syntax().text_range(), &specifier);
+            let range = tree.syntax().text_range();
+            if self.exporting {
+                self.exports.stars.push((location(range), false));
+            }
+            self.import(range, &specifier, false);
         } else if let Some(path) = path {
             let alias = tree.rename().map(|rename| match rename.name() {
                 Some(name) => self.text(name.syntax()),
@@ -243,18 +274,31 @@ impl<'s> Reader<'s> {
     fn leaf(&mut self, path: &ast::Path, prefix: &str, alias: Option<&str>) {
         // `use a::{self}` imports `a`.
         let text = self.text(path.syntax());
-        let (specifier, name) = match text.as_ref() {
-            "self" if !prefix.is_empty() => (prefix.to_owned(), last_segment(prefix).to_owned()),
-            _ => (join(prefix, &text), last_segment(&text).to_owned()),
+        let (specifier, name, named) = match text.as_ref() {
+            "self" if !prefix.is_empty() => {
+                (prefix.to_owned(), last_segment(prefix).to_owned(), false)
+            }
+            _ => (join(prefix, &text), last_segment(&text).to_owned(), true),
         };
+        let range = path.syntax().text_range();
         match alias.unwrap_or(&name) {
             "_" => {}
-            name => {
-                self.bound.insert(name.into());
-                self.alias(name, &specifier);
+            exported => {
+                self.bound.insert(exported.into());
+                self.alias(exported, &specifier);
+                // A `use` of the file re-exports what it brings into scope to the modules
+                // that may see it.
+                if self.exporting {
+                    self.exports.reexports.push(ReExport {
+                        name: exported.into(),
+                        source: location(range),
+                        imported: Some(name.as_str().into()),
+                        type_only: false,
+                    });
+                }
             }
         }
-        self.import(path.syntax().text_range(), &specifier);
+        self.import(range, &specifier, named);
     }
 
     /// Record that `name`, which the declaration being read brings into
@@ -299,11 +343,13 @@ impl<'s> Reader<'s> {
             self.bound.insert(alias.as_ref().into());
             self.alias(&alias, &name_text);
         }
-        self.import(name.syntax().text_range(), &name_text);
+        self.import(name.syntax().text_range(), &name_text, false);
     }
 
-    /// Record an import of `specifier` that the code at `range` makes.
-    fn import(&mut self, range: TextRange, specifier: &str) {
+    /// Record an import of `specifier` that the code at `range` makes, which
+    /// takes a name from the module that it resolves to if `named`, rather
+    /// than the whole module.
+    fn import(&mut self, range: TextRange, specifier: &str, named: bool) {
         if let Some(specifier) = self.in_file(specifier) {
             let detail = ImportDetail {
                 range: location(range),
@@ -313,6 +359,33 @@ impl<'s> Reader<'s> {
             };
             self.imports.push(detail);
             self.declarations.push(self.declaration);
+            self.named.push(named);
+        }
+    }
+
+    /// Record the name of `node`, an item of the file, as a name that the file
+    /// exports, if it is a type, a function, a constant or a static that is
+    /// visible outside the file.
+    fn exported_item(&mut self, node: &SyntaxNode) {
+        let is_named_item = matches!(
+            node.kind(),
+            SyntaxKind::FN
+                | SyntaxKind::STRUCT
+                | SyntaxKind::ENUM
+                | SyntaxKind::UNION
+                | SyntaxKind::TRAIT
+                | SyntaxKind::TYPE_ALIAS
+                | SyntaxKind::CONST
+                | SyntaxKind::STATIC
+        );
+        let is_visible = ast::AnyHasVisibility::cast(node.clone())
+            .is_some_and(|item| item.visibility().is_some());
+        if is_named_item
+            && is_visible
+            && let Some(name) = ast::AnyHasName::cast(node.clone()).and_then(|item| item.name())
+        {
+            let name = self.text(name.syntax());
+            self.exports.names.push(ImportedName::new(name.as_ref(), false));
         }
     }
 
@@ -535,8 +608,13 @@ impl<'s> Reader<'s> {
     /// The file that was read, with its syntax `errors`.
     fn finish(mut self, errors: ThinVec<Located<SyntaxError>>) -> ParsedFile {
         let mut imports = std::mem::take(&mut self.imports);
-        for (import, declaration) in imports.iter_mut().zip(&self.declarations) {
+        for ((import, declaration), named) in
+            imports.iter_mut().zip(&self.declarations).zip(&self.named)
+        {
             self.unalias(&mut import.specifier, *declaration);
+            if self.names && *named {
+                import.names = taken(&import.specifier);
+            }
         }
         // A `use` of an inline module is in the file.
         imports.retain(|import| {
@@ -551,12 +629,32 @@ impl<'s> Reader<'s> {
             let first = path.specifier.split("::").next().unwrap_or_default();
             path.specifier.starts_with("::") || !bound.contains(first)
         });
-        imports.extend(paths);
+        let names = self.names;
+        imports.extend(paths.map(|mut path| {
+            if names {
+                path.names = taken(&path.specifier);
+            }
+            path
+        }));
         imports.sort_by_key(|import| import.range);
+
+        // Each re-export's source is the index of its import, if it is kept. A Rust
+        // module has no code that importing it runs, so importing a name from it is
+        // importing the name from where it is defined, whatever else it has.
+        let exports = match self.names {
+            true => {
+                Exports { pass_through: true, ..std::mem::take(&mut self.exports) }.map(|range| {
+                    let index = imports.binary_search_by_key(&range, |import| import.range);
+                    u32::try_from(index.ok()?).ok()
+                })
+            }
+            false => Exports::default(),
+        };
 
         let comments = comments(self.source, &self.comments);
         ParsedFile {
             imports,
+            exports,
             suppressions: Suppression::collect(self.source, comments),
             test_modules: self.test_modules,
             errors,
@@ -657,6 +755,18 @@ fn join(path: &str, segment: &str) -> String {
         (_, true) => path.to_owned(),
         _ => format!("{path}::{segment}"),
     }
+}
+
+/// The name that the path `specifier` takes from the module that it resolves
+/// to, as far as its text tells: the first segment after the first that starts
+/// with a capital, which may be a type and the module's item, as `Shape` in
+/// `crate::Shape::Circle`, or else the last, as `write` in `crate::write`.
+fn taken(specifier: &str) -> ImportedNames {
+    let body = specifier.trim_start_matches("::");
+    let mut items = body.split("::").skip(1);
+    let name = items.find(|segment| segment.starts_with(char::is_uppercase));
+    let name = name.unwrap_or_else(|| last_segment(body));
+    ImportedNames::of(ThinVec::from([ImportedName::new(name, false)]))
 }
 
 /// The last segment of a path.

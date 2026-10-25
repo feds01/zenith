@@ -115,10 +115,14 @@ impl Names<'_> {
         name: &str,
         followed: &mut Followed,
     ) -> Option<Vec<(ModuleId, bool)>> {
-        // 1. A module of code defines what it exports.
+        // 1. A module of code defines what it exports, and so does a pass-through
+        //    module what it defines itself, as a Rust module may.
         let Some(exports) = self.exports.get(&module).filter(|exports| exports.pass_through) else {
             return Some(vec![(module, false)]);
         };
+        if exports.names.iter().any(|defined| defined.name == name) {
+            return Some(vec![(module, false)]);
+        }
 
         // 2. A pair met before has the definitions found then, as when two pass-through
         //    modules re-export a third. One that is still being followed, which a cycle
@@ -133,14 +137,19 @@ impl Names<'_> {
         followed.insert(key.clone(), None);
 
         // 3. A name the pass-through module re-exports by name comes from its source:
-        //    the whole source, for `export * as name`.
+        //    the whole source, for `export * as name`, or for a name that the source
+        //    doesn't export, which is the source itself, as Rust's `pub use a::b`
+        //    re-exports the module `b`.
         let definitions = match exports.reexports.iter().find(|reexport| reexport.name == name) {
             Some(reexport) => match &reexport.imported {
-                Some(imported) => {
+                Some(imported)
+                    if self.exports_name(reexport.source, imported, &mut FxHashSet::default())
+                        != Some(false) =>
+                {
                     let definitions = self.follow(reexport.source, imported, followed)?;
                     with_type_only(definitions, reexport.type_only)
                 }
-                None => vec![(reexport.source, reexport.type_only)],
+                _ => vec![(reexport.source, reexport.type_only)],
             },
 
             // 4. Any other name, but `default`, may come through `export *` from the modules that
@@ -404,6 +413,49 @@ mod tests {
         assert_eq!(
             app,
             ["app.ts -> c.ts", "app.ts -> inner/a.ts", "app.ts -> inner/b.ts", "app.ts -> ns.ts"]
+        );
+    }
+
+    #[test]
+    fn a_pass_through_module_defines_what_it_defines_itself() {
+        // As a Rust module does, which runs no code when imported, and may
+        // glob-import a name that it shadows.
+        let lib = Exports {
+            names: thin_vec![ImportedName::new("Layout", false)],
+            ..pass_through(&[], &["src/shapes.rs"])
+        };
+        let (graph, exports) = project(
+            &[
+                import("src/typeset.rs", "src/lib.rs", &["Layout"]),
+                import("src/lib.rs", "src/shapes.rs", &["*"]),
+            ],
+            &[("src/lib.rs", lib), ("src/shapes.rs", module(&["Layout"]))],
+        );
+        assert_eq!(
+            imports(&graph.through_reexports(&exports)),
+            ["src/lib.rs -> src/shapes.rs", "src/typeset.rs -> src/lib.rs"]
+        );
+    }
+
+    #[test]
+    fn a_name_that_its_source_does_not_export_is_the_source() {
+        // Rust's `pub use document;` re-exports the module `document` by its name.
+        let (graph, exports) = project(
+            &[
+                import("src/app.rs", "src/lib.rs", &["document"]),
+                import("src/lib.rs", "src/document.rs", &["document"]),
+            ],
+            &[
+                (
+                    "src/lib.rs",
+                    pass_through(&[("document", "src/document.rs", Some("document"))], &[]),
+                ),
+                ("src/document.rs", module(&["Document"])),
+            ],
+        );
+        assert_eq!(
+            imports(&graph.through_reexports(&exports)),
+            ["src/app.rs -> src/document.rs", "src/lib.rs -> src/document.rs"]
         );
     }
 

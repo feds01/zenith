@@ -108,9 +108,7 @@ after `pub use layout::Layout;` in `lib.rs`, imports `lib.rs`, which imports
 the module it re-exports from. A chain through the root then joins every
 module that imports through it to every module that it re-exports, so a
 contract that follows chains over the modules of a crate sees them all
-depend on each other. Make the crate roots
-[boundaries](../contracts/overview.md#boundaries) of such a contract, as in
-`boundaries = ["crates/*/src/lib.rs"]`, so that chains stop at them.
+depend on each other, unless it sees through [re-exports](#re-exports).
 
 An inline `mod a { }` block is part of its file, so a path into it, `use`d or
 not, imports nothing. `#[path]` attributes are not followed, and a file
@@ -118,3 +116,33 @@ doesn't import itself. A raw identifier names what it spells: `r#false` is the
 module `false`. A path that starts with the name of a tool, such as
 `clippy::too_many_lines` in an `#[allow]` or `rustfmt::skip`, is the tool's
 attribute or lint, and imports nothing unless a crate or module has the name.
+
+## Re-exports
+
+A Rust module runs no code when it is imported, so a contract with
+[`reexports = "transparent"`](../concepts.md#re-exports) sees an import of an
+item as an import of the module that defines it, through the `use`
+declarations of the modules on the way, globs included: with
+`pub use layout::Layout;` in `lib.rs`, `use crate::Layout` imports
+`layout.rs`. A `use` re-exports what it brings into scope to the modules that
+may see it, whatever its visibility. The item that a path takes is its first
+segment after the crate or module that starts with a capital, such as `Shape`
+in `crate::Shape::Circle`, or else its last, such as `write` in
+`crate::write`. An import of a whole module, such as a glob or
+`use crate::units::{self}`, still imports its file, and so does an item that
+zenith can't follow, such as one that may come from another crate through a
+glob.
+
+```toml
+[contracts.typeset-modules]
+type = "layers"
+containers = ["crates/typeset/src"]
+layers = ["render", "document", "layout", "units"]
+reexports = "transparent"
+```
+
+A module that also has code of its own, such as a crate root with functions,
+is followed all the same, for the items it doesn't define. Without
+re-exports seen through, making the crate roots
+[boundaries](../contracts/overview.md#boundaries) of a contract, as in
+`boundaries = ["crates/*/src/lib.rs"]`, stops chains at them instead.

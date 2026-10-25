@@ -1,0 +1,21 @@
+$ zenith check
+exit: 1
+--- stdout
+error[layers-as-written]: `src/layout` must not import `src/document`
+ --> src/layout.rs:1:5
+  |
+1 | use crate::Millimetres;
+  |     ^^^^^^^^^^^^^^^^^^ starts a chain of 2 imports
+  |
+  = note: import chain:
+            src/layout.rs:1
+            -> src/lib.rs:6
+            -> src/document.rs
+  = help: move the imported code into a module that may be imported here, or remove this import
+
+Contracts
+  ✗ layers-as-written         layers  broken (1 violation)
+  ✓ layers-through-reexports  layers  kept
+
+1 kept, 1 broken · 5 files, 7 imports
+

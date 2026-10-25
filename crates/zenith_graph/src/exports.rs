@@ -56,10 +56,12 @@ impl ImportedName {
 /// or the node it resolved to, in the graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exports<S> {
-    /// Whether the module is a pass-through module: every statement in it
-    /// imports or re-exports, so that it has no code of its own, and
-    /// importing a name from it is importing the name from where it is
-    /// defined.
+    /// Whether the module is a pass-through module, from which importing a
+    /// name is importing the name from where it is defined: every statement
+    /// in it imports or re-exports, so that it has no code of its own, or it
+    /// is a module of a language whose modules run no code when they are
+    /// imported, such as Rust. The names that it defines itself, in
+    /// [`names`](Self::names), it defines.
     pub pass_through: bool,
 
     /// The names that the module exports from its own code, e.g. `a` for

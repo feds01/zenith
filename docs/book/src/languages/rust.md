@@ -110,6 +110,13 @@ module that imports through it to every module that it re-exports, so a
 contract that follows chains over the modules of a crate sees them all
 depend on each other, unless it sees through [re-exports](#re-exports).
 
+A module and a function may share a name, as after `pub use write::write;` in
+`lib.rs`, which re-exports the function `write` of the module `write`. A path
+whose last module has the name of an item that its parent declares or brings
+into scope with `use` is that item, so `use spice::write` imports `lib.rs`,
+unless the path is used as a module: `use spice::write;` followed by
+`write::to_string()` imports `write.rs`, as does `use spice::write::to_string`.
+
 An inline `mod a { }` block is part of its file, so a path into it, `use`d or
 not, imports nothing. `#[path]` attributes are not followed, and a file
 doesn't import itself. A raw identifier names what it spells: `r#false` is the

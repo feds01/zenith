@@ -4,6 +4,8 @@
 
 use std::{io, path::PathBuf};
 
+use zenith_graph::ReExport;
+use zenith_lang::ParsedFile;
 use zenith_utils::fs::{DirEntry, FileKind, OsFileSystem, disk};
 
 use super::*;
@@ -25,8 +27,12 @@ impl Fixture {
     /// What `specifier` resolves to when the file `from` imports it, both
     /// relative to the root of the project.
     fn resolve(&self, from: &str, specifier: &str) -> Resolved {
-        Resolver::new(self.project.root(), disk().as_ref(), &self.crates, &[])
-            .resolve(&self.project.path(from), specifier)
+        let items = Items::default();
+        Resolver::new(self.project.root(), disk().as_ref(), &self.crates, &items, &[]).resolve(
+            &self.project.path(from),
+            specifier,
+            None,
+        )
     }
 
     /// The name of the file that `specifier` resolves to, which must be in the
@@ -246,10 +252,10 @@ fn a_raw_identifier_names_what_it_spells() {
 #[test]
 fn paths_that_match_ignore_unresolved_are_ignored() {
     let fixture = Fixture::new();
-    let patterns = [NamePattern::new("generated::*").unwrap()];
+    let (patterns, items) = ([NamePattern::new("generated::*").unwrap()], Items::default());
     let resolver =
-        Resolver::new(fixture.project.root(), disk().as_ref(), &fixture.crates, &patterns);
-    let resolve = |specifier| resolver.resolve(&fixture.project.path(AB), specifier);
+        Resolver::new(fixture.project.root(), disk().as_ref(), &fixture.crates, &items, &patterns);
+    let resolve = |specifier| resolver.resolve(&fixture.project.path(AB), specifier, None);
     assert!(matches!(resolve("generated::Thing"), Resolved::Ignored(_)));
     assert!(matches!(resolve("missing::Thing"), Resolved::Unresolved(_)));
 }
@@ -302,11 +308,14 @@ impl FileSystem for IgnoringCase {
 #[test]
 fn a_module_is_spelt_as_its_file_where_names_ignore_case() {
     let fixture = Fixture::new();
-    let resolver = Resolver::new(fixture.project.root(), &IgnoringCase, &fixture.crates, &[]);
-    let file = |from, specifier| match resolver.resolve(&fixture.project.path(from), specifier) {
-        Resolved::Internal(name) => name,
-        other => panic!("{from}: {specifier} resolved to {other:?}"),
-    };
+    let items = Items::default();
+    let resolver =
+        Resolver::new(fixture.project.root(), &IgnoringCase, &fixture.crates, &items, &[]);
+    let file =
+        |from, specifier| match resolver.resolve(&fixture.project.path(from), specifier, None) {
+            Resolved::Internal(name) => name,
+            other => panic!("{from}: {specifier} resolved to {other:?}"),
+        };
     // A type that the root re-exports, not `a.rs` or `c/mod.rs`.
     assert_eq!(file(AB, "crate::A"), LIB);
     assert_eq!(file(AB, "crate::C::d"), LIB);
@@ -360,7 +369,41 @@ fn a_crate_without_a_library_does_not_resolve() {
         ("user/src/lib.rs", ""),
     ]);
     let crates = project.crates();
-    let resolved = Resolver::new(project.root(), disk().as_ref(), &crates, &[])
-        .resolve(&project.path("user/src/lib.rs"), "bin_only::a");
+    let resolved = Resolver::new(project.root(), disk().as_ref(), &crates, &Items::default(), &[])
+        .resolve(&project.path("user/src/lib.rs"), "bin_only::a", None);
     assert_eq!(resolved, Resolved::failed("`bin-only` has no library"));
+}
+
+#[test]
+fn a_module_that_shares_its_name_with_an_item_of_its_parent_is_the_item() {
+    // `core-lib` re-exports the function `model` from the module `model`.
+    let fixture = Fixture::new();
+    let lib = fixture.project.path("crates/core-lib/src/lib.rs");
+    let mut parsed = ParsedFile::default();
+    parsed.exports.reexports.push(ReExport {
+        name: "model".into(),
+        source: 0,
+        imported: Some("model".into()),
+        type_only: false,
+    });
+    let mut items = Items::default();
+    items.update(&[(lib, &mut parsed)]);
+    let resolver =
+        Resolver::new(fixture.project.root(), disk().as_ref(), &fixture.crates, &items, &[]);
+    let file = |from: &str, specifier: &str, name: Option<&str>| match resolver.resolve(
+        &fixture.project.path(from),
+        specifier,
+        name,
+    ) {
+        Resolved::Internal(file) => file,
+        other => panic!("{specifier} resolved to {other:?}"),
+    };
+    let core = |file: &str| format!("crates/core-lib/src/{file}");
+    assert_eq!(file(A, "core_lib::model", Some("model")), core("lib.rs"));
+    assert_eq!(file(&core("store/mod.rs"), "crate::model", Some("model")), core("lib.rs"));
+    // Unless the import takes the whole module, or an item in it.
+    assert_eq!(file(A, "core_lib::model", None), core("model.rs"));
+    assert_eq!(file(A, "core_lib::model::M", Some("M")), core("model.rs"));
+    // A module whose parent has no item of its name is the module.
+    assert_eq!(file(A, "core_lib::store", Some("store")), core("store/mod.rs"));
 }

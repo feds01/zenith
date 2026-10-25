@@ -18,7 +18,7 @@ use crate::crates::Editions;
 
 /// Parse `source` as the file `x.rs`.
 fn parse(source: &str) -> ParsedFile {
-    Parser::new(Arc::new(Editions::default()), false).parse_source(Path::new("x.rs"), source)
+    Parser::new(Arc::new(Editions::default())).parse_source(Path::new("x.rs"), source)
 }
 
 /// The specifiers of the imports of `source`, which must have no syntax errors.
@@ -80,7 +80,7 @@ fn imports_are_located_by_their_leaf() {
         .imports
         .iter()
         .map(|import| {
-            assert_eq!((import.kind, &import.names), (ImportKind::Value, &ImportedNames::All));
+            assert_eq!(import.kind, ImportKind::Value);
             &source[Range::from(import.range)]
         })
         .collect();
@@ -449,7 +449,7 @@ fn a_file_is_parsed_in_the_edition_of_its_crate() {
     let editions = FxHashMap::from_iter([(PathBuf::from("/old"), Edition::Edition2015)]);
     let editions = Arc::new(Editions(editions));
     let parse = |path: &str| {
-        Parser::new(Arc::clone(&editions), false).parse_source(Path::new(path), "fn async() {}\n")
+        Parser::new(Arc::clone(&editions)).parse_source(Path::new(path), "fn async() {}\n")
     };
     // `async` is a name in Rust 2015, and a keyword since.
     assert!(parse("/old/src/lib.rs").errors.is_empty());
@@ -571,11 +571,9 @@ mod inline {
     );
 }
 
-/// Parse `source` as the file `x.rs`, recording the names that imports take
-/// and what the file exports.
+/// Parse `source` as the file `x.rs`, which must have no syntax errors.
 fn parse_names(source: &str) -> ParsedFile {
-    let parsed =
-        Parser::new(Arc::new(Editions::default()), true).parse_source(Path::new("x.rs"), source);
+    let parsed = parse(source);
     assert!(parsed.errors.is_empty(), "{source:?}: {:?}", parsed.errors);
     parsed
 }
@@ -619,8 +617,6 @@ fn f() {
             "crate::draw::run run",
         ]
     );
-    // Without names, every import takes the whole module.
-    assert!(parse(source).imports.iter().all(|import| import.names == ImportedNames::All));
 }
 
 #[test]
@@ -668,4 +664,22 @@ mod inline {
     );
     let stars: Vec<_> = exports.stars.iter().map(|(star, _)| source_of(*star)).collect();
     assert_eq!(stars, ["crate::units"]);
+}
+
+#[test]
+fn a_use_whose_name_starts_a_path_in_code_takes_the_whole_module() {
+    let source = "\
+use spice::write;
+use spice::view;
+use spice::check as checks;
+fn f() {
+    write();
+    view::svg();
+    checks::run();
+}
+";
+    assert_eq!(
+        taken(&parse_names(source)),
+        ["spice::write write", "spice::view *", "spice::check *"]
+    );
 }

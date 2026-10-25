@@ -28,18 +28,14 @@ use crate::crates::Editions;
 pub(crate) struct Parser {
     /// The edition of each crate, which the parsers of every thread share.
     editions: Arc<Editions>,
-
-    /// Whether to record the names that imports take, and what each file
-    /// exports.
-    names: bool,
 }
 
 impl Parser {
-    /// A parser of Rust files, in the `editions` of their crates, which
-    /// records the names that imports take, and what each file exports, if
-    /// `names` is set.
-    pub(crate) fn new(editions: Arc<Editions>, names: bool) -> Self {
-        Self { editions, names }
+    /// A parser of Rust files, in the `editions` of their crates. It always
+    /// records the names that imports take, and what each file exports, which
+    /// resolving needs to tell an item from a module of the same name.
+    pub(crate) fn new(editions: Arc<Editions>) -> Self {
+        Self { editions }
     }
 
     /// What the Rust `source` of the file at `path` imports, with its
@@ -59,7 +55,7 @@ impl Parser {
             })
             .collect();
         errors.sort_by_key(|error| error.range);
-        Reader::read(source, &parse.syntax_node(), errors, self.names)
+        Reader::read(source, &parse.syntax_node(), errors)
     }
 }
 

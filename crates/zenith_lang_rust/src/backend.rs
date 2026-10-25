@@ -7,6 +7,7 @@ use std::{
     sync::Arc,
 };
 
+use zenith_graph::{ImportDetail, ImportedNames};
 use zenith_lang::{
     Backend, ImportResolver, ParsedFile, ResolveFailure, Resolved, SourceParser, Workspace,
 };
@@ -14,7 +15,7 @@ use zenith_utils::{fs::FileSystem, glob::NamePattern};
 
 use crate::{
     crates::{Crates, Editions},
-    modules::TestModules,
+    modules::{Items, TestModules},
     parse::Parser,
     resolve::Resolver,
 };
@@ -40,34 +41,23 @@ pub(crate) struct RustBackend {
     /// to the next.
     test_modules: TestModules,
 
-    /// Whether parsing records the names that imports take, and what each
-    /// file exports.
-    record_exports: bool,
+    /// The items of each file, kept from one link to the next.
+    items: Items,
 }
 
 impl RustBackend {
     /// The backend of the project at `root` in `file_system`, which must be
     /// canonical there, which expects the paths that match
-    /// `ignore_unresolved` not to resolve, and records what each file exports
-    /// if `record_exports` is set.
+    /// `ignore_unresolved` not to resolve.
     pub(crate) fn new(
         root: &Path,
         file_system: Arc<dyn FileSystem>,
         ignore_unresolved: Vec<NamePattern>,
-        record_exports: bool,
     ) -> Self {
-        let (crates, editions, test_modules) =
-            (Crates::default(), Arc::default(), TestModules::default());
+        let (crates, editions) = (Crates::default(), Arc::default());
+        let (test_modules, items) = (TestModules::default(), Items::default());
         let root = root.to_path_buf();
-        Self {
-            root,
-            file_system,
-            crates,
-            editions,
-            ignore_unresolved,
-            test_modules,
-            record_exports,
-        }
+        Self { root, file_system, crates, editions, ignore_unresolved, test_modules, items }
     }
 }
 
@@ -87,17 +77,18 @@ impl Backend for RustBackend {
     }
 
     fn parser(&self) -> Box<dyn SourceParser> {
-        Box::new(Parser::new(Arc::clone(&self.editions), self.record_exports))
+        Box::new(Parser::new(Arc::clone(&self.editions)))
     }
 
     fn link(&mut self, files: &mut dyn Iterator<Item = (PathBuf, &mut ParsedFile)>) {
         let mut files: Vec<_> = files.collect();
         self.crates.mark_test_code(&mut files, &mut self.test_modules);
+        self.items.update(&files);
     }
 
     fn resolver(&self) -> Result<Box<dyn ImportResolver + '_>, ResolveFailure> {
-        let (root, file_system) = (&self.root, &*self.file_system);
-        Ok(Box::new(Resolver::new(root, file_system, &self.crates, &self.ignore_unresolved)))
+        let (root, file_system, crates) = (&self.root, &*self.file_system, &self.crates);
+        Ok(Box::new(Resolver::new(root, file_system, crates, &self.items, &self.ignore_unresolved)))
     }
 }
 
@@ -109,6 +100,14 @@ impl SourceParser for Parser {
 
 impl ImportResolver for Resolver<'_> {
     fn resolve(&self, path: &Path, specifier: &str) -> Resolved {
-        Resolver::resolve(self, path, specifier)
+        Resolver::resolve(self, path, specifier, None)
+    }
+
+    fn resolve_import(&self, path: &Path, import: &ImportDetail) -> Resolved {
+        let name = match &import.names {
+            ImportedNames::Names(names) => names.first().map(|name| name.name.as_str()),
+            ImportedNames::All => None,
+        };
+        Resolver::resolve(self, path, &import.specifier, name)
     }
 }

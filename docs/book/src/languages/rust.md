@@ -25,6 +25,13 @@ Each target of a crate is the root of a module tree: its library, its binaries,
 its tests, benchmarks and examples, and its build script. The other targets of
 a crate use its library by its name.
 
+A module with children may be written as `crates.rs` beside a `crates/`
+directory, which is the same module as `crates/mod.rs` would be. A
+[selector](../selectors.md) makes the file and the directory one unit,
+labelled `src/crates`, whichever of them it matches, so `src/*` has one unit
+for the module, and the imports between `crates.rs` and its children are
+inside it.
+
 ## Imports
 
 An import that only tests compile is a `test` import, and any other is a

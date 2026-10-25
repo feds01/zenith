@@ -4,6 +4,8 @@
 //!
 //! - each matched directory is one unit, with its whole subtree;
 //! - each matched file, external package or builtin is a unit of one;
+//! - a file and the directory beside it that are one module, as Rust's `foo.rs`
+//!   and `foo/` are, are one unit, whichever of them is matched;
 //! - `except` removes members from each unit;
 //! - `directive` replaces the units with one unit per member file that has the
 //!   directive.
@@ -45,11 +47,9 @@ impl Selection {
         let mut units: Vec<Unit> = match selector.target() {
             // `web/src/*`: one unit per outermost match, e.g. the directory
             // `web/src/app` with its files, and the file `web/src/config.ts`.
-            // `web/src/types` matches `web/src/types.ts` too.
-            SelectorTarget::Path(glob) => {
-                let found = graph.find_paths(glob);
-                found.into_iter().map(|id| graph.unit(id)).collect()
-            }
+            // `web/src/types` matches `web/src/types.ts` too. Rust's `src/crates.rs`
+            // and `src/crates` are one module, so one unit.
+            SelectorTarget::Path(glob) => graph.module_units(graph.find_paths(glob)),
             // `pkg:@acme/*`: one unit per matching workspace package, e.g. the
             // directory `packages/ui` labelled `@acme/ui`.
             SelectorTarget::Package(pattern) => workspace

@@ -224,6 +224,13 @@ impl LanguagesConfig {
         union(self.enabled().map(|language| language.optional_extensions))
     }
 
+    /// The extensions, without the `.`, of the files that are one module with
+    /// the directory beside them of the same name: those of every enabled
+    /// language.
+    pub fn directory_modules(&self) -> Vec<&'static str> {
+        union(self.enabled().map(|language| language.directory_modules))
+    }
+
     /// Which files to scan: the globs that the enabled languages set as their
     /// `include`, and the source extensions and file names of those that
     /// leave it to the default.

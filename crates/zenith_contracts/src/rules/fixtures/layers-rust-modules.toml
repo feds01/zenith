@@ -1,0 +1,7 @@
+[languages.rust]
+
+[contracts.l]
+type = "layers"
+containers = ["crates/*/src"]
+layers = ["crates", "model"]
+exhaustive = true

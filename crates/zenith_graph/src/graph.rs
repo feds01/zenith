@@ -195,6 +195,11 @@ pub struct Graph {
     /// The extensions, without the `.`, that a path glob may leave off a
     /// file's path: those of the languages that the files are in.
     pub(crate) optional_extensions: Vec<&'static str>,
+
+    /// The extensions, without the `.`, of the files that are one module with
+    /// the directory beside them of the same name, as Rust's `foo.rs` and
+    /// `foo/` are.
+    pub(crate) directory_modules: Vec<&'static str>,
 }
 
 /// The directories that imports target as a package: a unit of code that is
@@ -240,6 +245,7 @@ impl Graph {
         nodes: Vec<NodeParts>,
         imports: Vec<(ModuleId, ModuleId, ImportDetail)>,
         optional_extensions: Vec<&'static str>,
+        directory_modules: Vec<&'static str>,
     ) -> Self {
         debug_assert!(imports.is_sorted(), "imports must be sorted for the edge lookup");
         let node_count = nodes.len();
@@ -287,6 +293,7 @@ impl Graph {
             preorder,
             packages,
             optional_extensions,
+            directory_modules,
         }
     }
 
@@ -310,6 +317,7 @@ impl Graph {
             preorder: self.preorder.clone(),
             packages: self.packages.clone(),
             optional_extensions: self.optional_extensions.clone(),
+            directory_modules: self.directory_modules.clone(),
         }
     }
 

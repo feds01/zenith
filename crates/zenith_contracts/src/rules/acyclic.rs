@@ -113,20 +113,16 @@ impl Acyclic {
             {
                 continue;
             }
-            let children: Vec<Unit> = graph
-                .children(unit.root)
-                .iter()
-                .map(|child| {
-                    let mut child = graph.unit(*child);
-                    child.members = child
-                        .members
-                        .iter()
-                        .filter(|member| unit.members.contains(*member))
-                        .collect();
-                    child
-                })
-                .filter(|child| !child.members.is_empty())
-                .collect();
+            let children: Vec<Unit> = (graph
+                .module_units(graph.children(unit.root).iter().copied()))
+            .into_iter()
+            .map(|mut child| {
+                child.members =
+                    child.members.iter().filter(|member| unit.members.contains(*member)).collect();
+                child
+            })
+            .filter(|child| !child.members.is_empty())
+            .collect();
             let scope = CycleScope::Children(unit.label.clone());
             self.check_units(view, statements, scope, &children, depth - 1, violations);
         }
@@ -160,6 +156,23 @@ mod tests {
             project.findings("c"),
             ["pkgs/*: break pkgs/b -> pkgs/a (pkgs/b/y.ts -> pkgs/a/x.ts) in pkgs/b -> pkgs/a"]
         );
+    }
+
+    #[test]
+    fn a_rust_module_and_its_directory_are_one_unit() {
+        // `crates.rs` and its child `crates/manifest.rs` import each other,
+        // which is no cycle, as the two are the module `crates`.
+        let project = Project::new(
+            &values(&[
+                ("crates/lang/src/crates.rs", "crates/lang/src/crates/manifest.rs"),
+                ("crates/lang/src/crates/manifest.rs", "crates/lang/src/crates.rs"),
+                ("crates/lang/src/crates/manifest.rs", "crates/lang/src/model.rs"),
+                ("crates/lang/src/model.rs", "crates/lang/src/lib.rs"),
+            ]),
+            &[],
+            include_str!("fixtures/acyclic-rust-modules.toml"),
+        );
+        assert!(project.findings("c").is_empty());
     }
 
     #[test]

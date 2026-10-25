@@ -10,7 +10,8 @@ use crate::{Suppression, SyntaxError};
 ///
 /// A language's parser produces it: the imports of the file, its directive
 /// prologue (e.g. `"use client"`), its `zenith-ignore` suppression comments,
-/// the imports whose specifier is not a literal, and any syntax errors.
+/// the imports whose specifier is not a literal, the modules that only its
+/// tests declare, and any syntax errors.
 /// Everything is [`Located`] by its byte range in the file.
 ///
 /// Every list but the imports is empty in most files, so those are
@@ -39,6 +40,13 @@ pub struct ParsedFile {
 
     /// The `zenith-ignore` comments, in source order.
     pub suppressions: ThinVec<Located<Suppression>>,
+
+    /// The modules that the file declares in files of their own, and that
+    /// only its tests compile, such as `tests` for Rust's
+    /// `#[cfg(test)] mod tests;`, in source order. The language's
+    /// [`link`](crate::Backend::link) makes every import of their files a
+    /// test import.
+    pub test_modules: ThinVec<String>,
 
     /// The syntax errors, in source order. The parser recovers from some
     /// errors and keeps what it found. When it can't, the rest of the result

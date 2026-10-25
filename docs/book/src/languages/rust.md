@@ -27,7 +27,26 @@ a crate use its library by its name.
 
 ## Imports
 
-Every import is a `value` import. Each `use` declaration imports each of its
+An import that only tests compile is a `test` import, and any other is a
+`value` import. Tests compile the code under a `#[cfg]` whose predicate only
+holds in tests, such as `#[cfg(test)]` or `#[cfg(all(test, unix))]`, and the
+functions with a test attribute, such as `#[test]` or `#[tokio::test]`. They
+alone compile a module declared under such a `#[cfg]`, as in
+`#[cfg(test)] mod tests;`, with every module in it, a file that starts with
+`#![cfg(test)]`, and the tests, benchmarks and examples of a crate. A
+dev-dependency can only be used by that code, so its imports are `test`
+imports too. `exclude_kinds = ["test"]` leaves them out of a contract, so that
+the helpers of the tests, which import the modules they test, don't make
+cycles with them:
+
+```toml
+[contracts.modules-are-acyclic]
+type = "acyclic"
+modules = ["crates/*/src/*"]
+exclude_kinds = ["test"]
+```
+
+Each `use` declaration imports each of its
 leaves, so `use a::{b, c::d}` imports `a::b` and `a::c::d`, and a glob imports
 the path before it. So does an `extern crate`, and so does a path in code that
 starts with `crate`, `self`, `super`, `::` or the name of a crate or module,

@@ -15,8 +15,15 @@ impl Cached for ParsedFile {
     const FILE: &'static str = "parse.bin";
 
     fn encode(&self, encoder: &mut Encoder) {
-        let ParsedFile { imports, exports, non_literal_imports, directives, suppressions, errors } =
-            self;
+        let ParsedFile {
+            imports,
+            exports,
+            non_literal_imports,
+            directives,
+            suppressions,
+            test_modules,
+            errors,
+        } = self;
         encoder.length(imports.len());
         for ImportDetail { range, specifier, kind, names } in imports {
             encoder.range(*range);
@@ -49,6 +56,10 @@ impl Cached for ParsedFile {
             }
             encoder.option(reason.as_ref(), |encoder, reason| encoder.str(reason));
         }
+        encoder.length(test_modules.len());
+        for module in test_modules {
+            encoder.str(module);
+        }
         encoder.length(errors.len());
         for error in errors {
             encoder.range(error.range);
@@ -76,12 +87,21 @@ impl Cached for ParsedFile {
             let reason = decoder.option(|decoder| Some(decoder.str()?.to_string()))?;
             Some(Located::new(range, Suppression { contracts, reason, target }))
         })?;
+        let test_modules = decoder.list(|decoder| Some(decoder.str()?.to_string()))?;
         let errors: ThinVec<_> = decoder.list(|decoder| {
             let range = decoder.range()?;
             let message = Cow::Owned(decoder.str()?.to_string());
             Some(Located::new(range, SyntaxError { message }))
         })?;
-        Some(ParsedFile { imports, exports, non_literal_imports, directives, suppressions, errors })
+        Some(ParsedFile {
+            imports,
+            exports,
+            non_literal_imports,
+            directives,
+            suppressions,
+            test_modules,
+            errors,
+        })
     }
 }
 
@@ -192,6 +212,7 @@ mod tests {
                 },
             )]
             .into(),
+            test_modules: ["tests".to_string(), "fixtures".to_string()].into(),
             errors: [Located::new(
                 range(5, 6),
                 SyntaxError { message: Cow::Borrowed("Missing initializer") },

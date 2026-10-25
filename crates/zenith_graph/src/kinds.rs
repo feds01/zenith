@@ -26,12 +26,21 @@ pub enum ImportKind {
 
     /// A CommonJS `require("s")` or TypeScript `import x = require("s")`.
     Require,
+
+    /// An import that only tests compile, such as one in Rust's
+    /// `#[cfg(test)]` code or in a crate's `tests` directory.
+    Test,
 }
 
 impl ImportKind {
     /// Every import kind, in declaration order.
-    pub const ALL: [ImportKind; 4] =
-        [ImportKind::Value, ImportKind::Type, ImportKind::Dynamic, ImportKind::Require];
+    pub const ALL: [ImportKind; 5] = [
+        ImportKind::Value,
+        ImportKind::Type,
+        ImportKind::Dynamic,
+        ImportKind::Require,
+        ImportKind::Test,
+    ];
 
     /// The kind of a static import or re-export: [`ImportKind::Type`] if it
     /// imports only types, and [`ImportKind::Value`] otherwise.
@@ -46,6 +55,7 @@ impl ImportKind {
             ImportKind::Type => "type",
             ImportKind::Dynamic => "dynamic",
             ImportKind::Require => "require",
+            ImportKind::Test => "test",
         }
     }
 
@@ -77,6 +87,9 @@ bitflags! {
 
         /// [`ImportKind::Require`].
         const REQUIRE = ImportKind::Require.bit();
+
+        /// [`ImportKind::Test`].
+        const TEST = ImportKind::Test.bit();
     }
 }
 
@@ -117,7 +130,8 @@ mod tests {
         for (index, kind) in ImportKind::ALL.into_iter().enumerate() {
             assert_eq!(kind as usize, index);
         }
-        let flags = [KindSet::VALUE, KindSet::TYPE, KindSet::DYNAMIC, KindSet::REQUIRE];
+        let flags =
+            [KindSet::VALUE, KindSet::TYPE, KindSet::DYNAMIC, KindSet::REQUIRE, KindSet::TEST];
         assert_eq!(ImportKind::ALL.map(KindSet::from), flags);
         assert_eq!(KindSet::all().kinds().collect::<Vec<_>>(), ImportKind::ALL);
     }

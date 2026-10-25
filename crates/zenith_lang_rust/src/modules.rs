@@ -1,11 +1,17 @@
-//! The module tree of a crate: where each file sits in it, and which file
-//! each module is.
+//! The module tree of a crate: where each file sits in it, which file each
+//! module is, and which files only tests compile.
+
+#[cfg(test)]
+mod tests;
 
 use std::path::{Path, PathBuf};
 
+use rustc_hash::{FxHashMap, FxHashSet};
+use zenith_graph::ImportKind;
+use zenith_lang::ParsedFile;
 use zenith_utils::fs::FileSystem;
 
-use crate::crates::{Crate, Target, TargetKind};
+use crate::crates::{Crate, Crates, Target, TargetKind};
 
 /// Where a file sits in the module tree of its crate.
 #[derive(Debug, PartialEq, Eq)]
@@ -94,5 +100,71 @@ impl Crate {
             modules.pop();
         }
         Some(Position { target: nearest, modules })
+    }
+}
+
+/// The modules that each file declares for its tests alone, by its path,
+/// each as the root of its target and its path from it, kept from one link to
+/// the next.
+#[derive(Debug, Default)]
+pub(crate) struct TestModules(FxHashMap<PathBuf, Vec<(PathBuf, String)>>);
+
+impl Crates {
+    /// Make every import of each of `files`, each with its path, that only
+    /// tests compile a test import: the files of the tests, benchmarks and
+    /// examples, and those of the modules that a file declares for its tests
+    /// alone, as `#[cfg(test)] mod tests;` does, with every module in them.
+    /// The `declared` test modules of each of `files` replace those it had,
+    /// and the other files keep theirs, so that the files of an update are
+    /// marked by what every file declares. A file whose module another file
+    /// starts or stops declaring for its tests keeps its kinds until it is
+    /// parsed again.
+    pub(crate) fn mark_test_code(
+        &self,
+        files: &mut [(PathBuf, &mut ParsedFile)],
+        declared: &mut TestModules,
+    ) {
+        // 1. Where each file sits, and the modules that the files declare for their
+        //    tests, by the root of their target and their path from it.
+        let positions: Vec<_> =
+            files.iter().map(|(path, _)| self.containing(path)?.locate(path)).collect();
+        for ((path, parsed), position) in files.iter().zip(&positions) {
+            let Some(Position { target, modules }) = position else {
+                continue;
+            };
+            let test_modules = parsed.test_modules.iter().map(|module| {
+                let path = modules.iter().map(String::as_str).chain(module.split("::"));
+                (target.root.clone(), path.collect::<Vec<_>>().join("::"))
+            });
+            declared.0.insert(path.clone(), test_modules.collect());
+        }
+        let declared: FxHashSet<(&Path, &str)> = (declared.0.values().flatten())
+            .map(|(root, path)| (root.as_path(), path.as_str()))
+            .collect();
+
+        // 2. A file is test code if its target is, or a module on its path is.
+        for ((_, parsed), position) in files.iter_mut().zip(&positions) {
+            let Some(Position { target, modules }) = position else {
+                continue;
+            };
+            let mut path = String::new();
+            let in_test_module = modules.iter().any(|module| {
+                if !path.is_empty() {
+                    path.push_str("::");
+                }
+                path.push_str(module);
+                declared.contains(&(target.root.as_path(), path.as_str()))
+            });
+            let test_target =
+                matches!(target.kind, TargetKind::Test | TargetKind::Bench | TargetKind::Example);
+            if test_target || in_test_module {
+                for import in &mut parsed.imports {
+                    import.kind = ImportKind::Test;
+                }
+                for import in &mut parsed.non_literal_imports {
+                    import.value = ImportKind::Test;
+                }
+            }
+        }
     }
 }

@@ -23,7 +23,8 @@ use crate::{FileError, FileErrorKind, PipelineError, Session, SourceFile, Stage,
 /// system and parsed.
 ///
 /// A file that can't be read parses as empty. Read and syntax errors are
-/// moved to the session's file errors.
+/// moved to the session's file errors. Then each language
+/// [links](zenith_lang::Backend::link) its files.
 pub struct Parse;
 
 impl Stage for Parse {
@@ -54,6 +55,10 @@ impl Stage for Parse {
 
         // The files are sorted by path, which isn't quite the order of names.
         session.file_errors.sort_by(|a, b| a.file.cmp(&b.file));
+
+        // 3. Let each language settle what only all of its files tell, which the cache
+        //    doesn't keep.
+        session.backends.link(&session.root, &session.files, &mut parsed);
         session.parsed = parsed;
         Ok(())
     }

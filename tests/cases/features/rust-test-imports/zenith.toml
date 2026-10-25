@@ -1,0 +1,25 @@
+# The fixtures only exist for the tests of `shapes`, which they build, so
+# through the tests the modules form a cycle. Without the test imports, the
+# modules stack in layers, and production code never reaches the fixtures.
+[languages.rust]
+
+[contracts.modules-are-acyclic]
+type = "acyclic"
+modules = ["src/*"]
+
+[contracts.production-modules-are-acyclic]
+type = "acyclic"
+modules = ["src/*"]
+exclude_kinds = ["test"]
+
+[contracts.production-code-without-fixtures]
+type = "forbidden"
+from = ["src/shapes", "src/units"]
+to = ["src/fixtures"]
+exclude_kinds = ["test"]
+
+[contracts.geometry-layers]
+type = "layers"
+containers = ["src"]
+layers = ["fixtures", "shapes", "units"]
+exclude_kinds = ["test"]

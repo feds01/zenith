@@ -1,0 +1,3 @@
+check
+check --format json
+graph src --exclude-kind test

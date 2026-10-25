@@ -3,7 +3,9 @@
 use std::{fmt, path::Path, sync::Arc};
 
 use zenith_config::Config;
-use zenith_lang::{Backend, BackendSettings, ImportResolver, ResolveFailure, SourceParser};
+use zenith_lang::{
+    Backend, BackendSettings, ImportResolver, ParsedFile, ResolveFailure, SourceParser,
+};
 use zenith_utils::fs::FileSystem;
 
 use crate::SourceFile;
@@ -57,6 +59,18 @@ impl Backends {
     /// A parser of each language, for one thread, in order.
     pub fn parsers(&self) -> Vec<Box<dyn SourceParser>> {
         self.0.iter().map(|backend| backend.parser()).collect()
+    }
+
+    /// Let the backend of each language [link](Backend::link) its files of
+    /// `files`, each with what it `parsed` to, in the same order, in the
+    /// project at `root`.
+    pub fn link(&mut self, root: &Path, files: &[SourceFile], parsed: &mut [ParsedFile]) {
+        for (language, backend) in self.0.iter_mut().enumerate() {
+            let mut files = (files.iter().zip(parsed.iter_mut()))
+                .filter(|(file, _)| usize::from(file.language) == language)
+                .map(|(file, parsed)| (file.path(root), parsed));
+            backend.link(&mut files);
+        }
     }
 
     /// A resolver of each language, in order.

@@ -1,0 +1,153 @@
+$ zenith check
+exit: 1
+--- stdout
+error[modules-are-acyclic]: dependency cycle in `src/*`
+  --> src/shapes.rs:15:9
+   |
+15 |     use crate::fixtures::unit_square;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ closes the cycle src/shapes.rs -> src/fixtures.rs -> src/shapes.rs
+   |
+   = note: it could be made acyclic by removing 1 dependency:
+             src/shapes.rs -> src/fixtures.rs (1 import)
+   = help: remove `src/shapes.rs` -> `src/fixtures.rs` to break the cycle
+
+Contracts
+  ✗ modules-are-acyclic               acyclic    broken (1 violation)
+  ✓ production-modules-are-acyclic    acyclic    kept
+  ✓ production-code-without-fixtures  forbidden  kept
+  ✓ geometry-layers                   layers     kept
+
+3 kept, 1 broken · 5 files, 4 imports
+
+$ zenith check --format json
+exit: 1
+--- stdout
+{
+  "version": 1,
+  "passed": false,
+  "summary": {
+    "kept": 3,
+    "broken": 1,
+    "warnings": 0,
+    "stale_baseline_entries": 0,
+    "files": 5,
+    "imports": 4
+  },
+  "contracts": [
+    {
+      "id": "modules-are-acyclic",
+      "name": "modules-are-acyclic",
+      "type": "acyclic",
+      "severity": "error",
+      "status": "broken",
+      "guidance": null,
+      "violations": [
+        {
+          "kind": "cycle",
+          "scope": {
+            "modules": "src/*"
+          },
+          "breakers": [
+            {
+              "importer": "src/shapes.rs",
+              "imported": "src/fixtures.rs",
+              "cycle": [
+                "src/shapes.rs",
+                "src/fixtures.rs",
+                "src/shapes.rs"
+              ],
+              "imports": [
+                {
+                  "importer": "src/shapes.rs",
+                  "imported": "src/fixtures.rs",
+                  "imports": [
+                    {
+                      "line": 15,
+                      "column": 9,
+                      "specifier": "crate::fixtures::unit_square",
+                      "kind": "test"
+                    }
+                  ]
+                }
+              ],
+              "fix": {
+                "action": "break_cycle",
+                "import": {
+                  "file": "src/shapes.rs",
+                  "line": 15,
+                  "column": 9,
+                  "specifier": "crate::fixtures::unit_square",
+                  "kind": "test"
+                },
+                "hint": "remove `src/shapes.rs` -> `src/fixtures.rs` to break the cycle"
+              }
+            }
+          ]
+        }
+      ],
+      "unmatched_ignore_imports": [],
+      "stale_baseline_entries": [],
+      "ignored": 0,
+      "suppressed": 0,
+      "baselined": 0
+    },
+    {
+      "id": "production-modules-are-acyclic",
+      "name": "production-modules-are-acyclic",
+      "type": "acyclic",
+      "severity": "error",
+      "status": "kept",
+      "guidance": null,
+      "violations": [],
+      "unmatched_ignore_imports": [],
+      "stale_baseline_entries": [],
+      "ignored": 0,
+      "suppressed": 0,
+      "baselined": 0
+    },
+    {
+      "id": "production-code-without-fixtures",
+      "name": "production-code-without-fixtures",
+      "type": "forbidden",
+      "severity": "error",
+      "status": "kept",
+      "guidance": null,
+      "violations": [],
+      "unmatched_ignore_imports": [],
+      "stale_baseline_entries": [],
+      "ignored": 0,
+      "suppressed": 0,
+      "baselined": 0
+    },
+    {
+      "id": "geometry-layers",
+      "name": "geometry-layers",
+      "type": "layers",
+      "severity": "error",
+      "status": "kept",
+      "guidance": null,
+      "violations": [],
+      "unmatched_ignore_imports": [],
+      "stale_baseline_entries": [],
+      "ignored": 0,
+      "suppressed": 0,
+      "baselined": 0
+    }
+  ],
+  "unused_suppressions": [],
+  "unresolved": [],
+  "file_errors": []
+}
+
+$ zenith graph src --exclude-kind test
+exit: 0
+--- stdout
+src/ (4 files)
+├─fixtures.rs
+├─lib.rs
+├─shapes.rs
+└─units.rs
+
+dependencies between the children of `src`:
+  src/shapes.rs -> src/units.rs (1 import)
+

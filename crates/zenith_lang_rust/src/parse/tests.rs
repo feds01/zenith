@@ -461,3 +461,112 @@ fn valid_code_has_no_syntax_errors() {
     assert!(parse("fn main() { println!(\"{}\", 1); }\n").errors.is_empty());
     assert_eq!(parse("").imports, []);
 }
+
+/// The specifiers of the test imports of `source`, which must have no syntax
+/// errors.
+fn test_specifiers(source: &str) -> Vec<String> {
+    let parsed = parse(source);
+    assert!(parsed.errors.is_empty(), "{source:?}: {:?}", parsed.errors);
+    let tests = parsed.imports.iter().filter(|import| import.kind == ImportKind::Test);
+    tests.map(|import| import.specifier.to_string()).collect()
+}
+
+#[test]
+fn imports_that_only_tests_compile_are_test_imports() {
+    let source = "\
+use crate::model::Shape;
+
+#[cfg(test)]
+use crate::fixtures::square;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fixtures::circle;
+
+    fn helper() -> crate::testing::Probe {
+        crate::testing::probe()
+    }
+}
+
+#[test]
+fn draws() {
+    crate::draw::run();
+}
+
+#[tokio::test]
+async fn waits() {
+    crate::clock::tick();
+}
+
+fn draw() {
+    crate::draw::run();
+}
+";
+    assert_eq!(
+        test_specifiers(source),
+        [
+            "crate::fixtures::square",
+            "crate::fixtures::circle",
+            "crate::testing::Probe",
+            "crate::testing::probe",
+            "crate::draw::run",
+            "tokio::test",
+            "crate::clock::tick",
+        ]
+    );
+    // `draw` runs `crate::draw::run` in production code too.
+    let parsed = parse(source);
+    let kinds = (parsed.imports.iter())
+        .filter(|import| import.specifier == "crate::draw::run")
+        .map(|import| import.kind);
+    assert_eq!(kinds.collect::<Vec<_>>(), [ImportKind::Test, ImportKind::Value]);
+}
+
+#[test]
+fn a_cfg_is_test_code_if_it_only_holds_in_tests() {
+    let cfgs = [
+        ("test", true),
+        ("all(test, unix)", true),
+        ("all(unix, any(test, all(test, windows)))", true),
+        ("any(test, feature = \"testing\")", false),
+        ("not(test)", false),
+        ("feature = \"test\"", false),
+        ("unix", false),
+    ];
+    for (cfg, test) in cfgs {
+        let source = format!("#[cfg({cfg})]\nuse crate::a;\n");
+        assert_eq!(!test_specifiers(&source).is_empty(), test, "{cfg}");
+    }
+}
+
+#[test]
+fn an_inner_cfg_test_makes_the_whole_file_test_code() {
+    let source = "#![cfg(test)]\n\nuse crate::a;\n\nfn f() { crate::b::c(); }\n";
+    assert_eq!(test_specifiers(source), ["crate::a", "crate::b::c"]);
+}
+
+#[test]
+fn modules_that_only_tests_compile_are_recorded() {
+    let source = "\
+mod model;
+#[cfg(test)]
+mod fixtures;
+#[cfg(all(test, feature = \"slow\"))]
+pub(crate) mod slow;
+#[cfg(test)]
+mod tests {
+    mod helpers;
+}
+mod inline {
+    #[cfg(test)]
+    mod checks;
+}
+";
+    let parsed = parse(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    assert_eq!(
+        parsed.test_modules.as_slice(),
+        ["fixtures", "slow", "tests::helpers", "inline::checks"]
+    );
+}

@@ -27,7 +27,8 @@ pub struct BackendSettings<'a> {
 
 /// A language, set up for one project by its options. The pipeline runs it
 /// in this order: [`discover`](Self::discover) once, then a
-/// [`parser`](Self::parser) per thread over its files, then one
+/// [`parser`](Self::parser) per thread over its files, then
+/// [`link`](Self::link) once over all of them, then one
 /// [`resolver`](Self::resolver) for every import of its files.
 pub trait Backend: Send + Sync {
     /// The names of the manifest files that the walk collects for it, such
@@ -46,6 +47,18 @@ pub trait Backend: Send + Sync {
     /// A parser of its files, for one thread, so that it can reuse its
     /// buffers from file to file.
     fn parser(&self) -> Box<dyn SourceParser>;
+
+    /// Settle what only all of its parsed `files` tell, each with its path,
+    /// such as which of them only tests compile, as a linker joins the files
+    /// of a program. What a file parsed to depends on it alone, so that it can
+    /// be cached; what this changes is not cached. The files are those that
+    /// were just parsed: every file of its language, or, when a session is
+    /// updated, the changed ones alone, so it keeps what it learns of each
+    /// file for the next time. They are made as they are taken, so a
+    /// language that takes none costs nothing, as by default.
+    fn link(&mut self, files: &mut dyn Iterator<Item = (PathBuf, &mut ParsedFile)>) {
+        let _ = files;
+    }
 
     /// A resolver of the imports of its files, shared between threads. Run
     /// [`discover`](Self::discover) first.

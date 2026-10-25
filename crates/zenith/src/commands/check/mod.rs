@@ -6,7 +6,9 @@ use std::time::Instant;
 
 use anyhow::Result;
 use json::CheckJson;
+use log::warn;
 use zenith_contracts::{ContractReport, Format, Output, Summary};
+use zenith_diagnostics::message;
 use zenith_pipeline::StageKind;
 use zenith_workspace::Git;
 
@@ -21,10 +23,14 @@ use crate::{
 /// that are errors.
 pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     // 1. Open the project, scoped to the paths and to the files changed since the
-    //    commit of `--since`, if any are given, and build its graph.
+    //    commit of `--since`, if any are given, and build its graph. Warn about the
+    //    paths with no source file under them.
     let mut session = project::open(global)?;
     session.scope_to(&args.paths, args.since.as_deref())?;
     let pipeline = project::run_until(&mut session, StageKind::Graph)?;
+    for path in session.paths_without_files(&args.paths) {
+        warn!("{}", message!(cli_path_without_files, path = path.display()));
+    }
 
     // 2. Compile the contracts to check: every one, or those of `--contract`.
     let contracts = project::compile_contracts(&session, &args.contracts)?;

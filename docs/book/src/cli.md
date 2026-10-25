@@ -67,7 +67,8 @@ What involves a file:
 Unmatched `ignore_imports` entries are about the configuration, not a file,
 so they are always reported. A path is relative to the working directory and
 must be inside the root, but needn't exist, so a deleted file's importers
-still count.
+still count. zenith warns about a path with no source file under it, which
+is most likely a typo, or a file it doesn't scan.
 
 A cycle is reported on the imports zenith suggests removing, so one that a
 change closes can be left out if those imports are elsewhere. A full

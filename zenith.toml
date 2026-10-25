@@ -119,6 +119,24 @@ modules = ["crate:dunce", "crate:path-absolutize"]
 allowed_importers = ["pkg:zenith_utils"]
 guidance = "Use the helpers in `zenith_utils::path` and `zenith_utils::fs`."
 
+# zenith reads a project through `FileSystem`, so outside the tests only the
+# modules that write files need `std::fs`.
+[contracts.files-read-through-the-file-system]
+type = "protected"
+name = "Only the modules that write files use std::fs"
+modules = ["rust:std::fs"]
+allowed_importers = [
+  "pkg:zenith_benchmark",
+  "pkg:zenith_cache",
+  "pkg:zenith_utils",
+  "crates/zenith/build.rs",
+  "crates/zenith/src/commands/baseline.rs",
+  "crates/zenith/src/commands/init.rs",
+  "crates/zenith_contracts/src/baseline.rs",
+]
+exclude_kinds = ["test"]
+guidance = "Read a project through `FileSystem`, so that a commit's files read as the working tree's do."
+
 [contracts.lsp-knows-nothing-of-checks]
 type = "forbidden"
 name = "The language server knows nothing of what is checked"

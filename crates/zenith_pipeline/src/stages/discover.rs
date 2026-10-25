@@ -56,10 +56,4 @@ impl Stage for Discover {
         session.workspace = workspace;
         Ok(())
     }
-
-    /// Keeps the files and the packages, as they are the same when only the
-    /// contents of source files change.
-    fn update(&self, _session: &mut Session, _changed: &[u32]) -> Result<(), PipelineError> {
-        Ok(())
-    }
 }

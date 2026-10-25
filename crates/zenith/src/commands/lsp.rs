@@ -59,11 +59,10 @@ struct Built {
 }
 
 impl Built {
-    /// Open the project, and build its graph, so that it can be updated, in
-    /// the canonical `folder` that the editor opened, if it said.
+    /// Open the project, and build its graph, in the canonical `folder` that
+    /// the editor opened, if it said.
     fn new(global: &GlobalArgs, folder: Option<&Path>) -> Result<Self> {
         let mut session = project::open(global)?;
-        session.updatable = true;
         let pipeline = project::run_until(&mut session, StageKind::Graph)?;
         let watched = folder.is_some_and(|folder| session.is_within(folder));
         Ok(Self { session, pipeline, watched })

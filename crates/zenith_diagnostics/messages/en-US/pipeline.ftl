@@ -46,6 +46,5 @@ pipeline_tsconfig_some = {$count ->
 ## What the pipeline logs.
 
 pipeline_stage_time = the {$stage} stage took {$time}
-pipeline_stage_update_time = the {$stage} stage took {$time} to update the session
 pipeline_unchanged_files = {$unchanged} of {$total} files are unchanged since the last run
 pipeline_cache_not_written = could not write the parse cache to `{$dir}`: {$error}

@@ -96,6 +96,16 @@ pub fn absolute_path(root: &Path, name: &str) -> PathBuf {
     }
 }
 
+/// `path` at the same place under the directory `to` as it is under `from`,
+/// such as a file named through a symlink to a directory named without it,
+/// or `path` itself if it is not under `from`.
+pub fn rebase(path: &Path, from: &Path, to: &Path) -> PathBuf {
+    match path.strip_prefix(from) {
+        Ok(relative) => to.join(relative),
+        Err(_) => path.to_path_buf(),
+    }
+}
+
 /// Whether `path` is a normalised POSIX path relative to a root, such as
 /// [`relative_posix`] makes: one or more segments separated by single `/`s,
 /// none of them `.` or `..`. The root itself, `""`, is not.
@@ -267,6 +277,19 @@ mod tests {
         assert_eq!(absolute_path(root, ""), root);
         assert_eq!(absolute_path(Path::new("/"), "a/b.ts"), Path::new("/").join("a").join("b.ts"));
         assert_eq!(absolute_path(Path::new("/repo/"), "a.ts"), Path::new("/repo/a.ts"));
+    }
+
+    #[test]
+    fn paths_are_rebased_from_under_one_directory_to_another() {
+        let (from, to) = (Path::new("/tmp/web"), Path::new("/private/tmp/web"));
+        assert_eq!(
+            rebase(Path::new("/tmp/web/a.ts"), from, to),
+            Path::new("/private/tmp/web/a.ts")
+        );
+        assert_eq!(rebase(from, from, to), to);
+        // Only whole components are under a directory.
+        assert_eq!(rebase(Path::new("/tmp/webs/a.ts"), from, to), Path::new("/tmp/webs/a.ts"));
+        assert_eq!(rebase(Path::new("/srv/a.ts"), from, to), Path::new("/srv/a.ts"));
     }
 
     #[test]

@@ -190,8 +190,8 @@ const lazy = import(name);
     assert_eq!(graph.detail_count(), 5);
     assert_eq!(session.stats.non_literal_imports, 1);
     assert_eq!(session.stats.missing_packages, 1);
-    // The graph stage takes what it was built from.
-    assert!(session.parsed.is_empty() && session.resolved.is_empty());
+    // The graph stage leaves what it was built from, to build it again.
+    assert_eq!((session.parsed.len(), session.resolved.len()), (3, 3));
 }
 
 #[test]
@@ -635,11 +635,9 @@ fn the_scope_is_the_paths_and_the_files_changed_since_a_commit() {
     assert!(session.scope.is_everything());
 }
 
-/// Build the graph of `project`, and through its re-exports, in a session
-/// that can be updated.
-fn build_updatable(project: &Project) -> (Session, Pipeline) {
+/// Build the graph of `project`, and through its re-exports.
+fn build_through_reexports(project: &Project) -> (Session, Pipeline) {
     let mut session = project.session("");
-    session.updatable = true;
     session.build_graph_through_reexports();
     let mut pipeline = Pipeline::standard();
     pipeline.run_until(&mut session, StageKind::Graph).unwrap();
@@ -649,7 +647,7 @@ fn build_updatable(project: &Project) -> (Session, Pipeline) {
 #[test]
 fn an_update_finds_what_a_build_would() {
     let project = varied_project();
-    let (mut session, mut pipeline) = build_updatable(&project);
+    let (mut session, mut pipeline) = build_through_reexports(&project);
     assert_eq!(session.parsed.len(), 5);
     let before = findings(&session);
 
@@ -668,7 +666,7 @@ fn an_update_finds_what_a_build_would() {
     assert_eq!(changed, [0, 1, 2, 3]);
     pipeline.update(&mut session, &changed).unwrap();
 
-    let (built, _) = build_updatable(&project);
+    let (built, _) = build_through_reexports(&project);
     assert_ne!(findings(&session), before);
     assert_eq!(findings(&session), findings(&built));
     let through = |session: &Session| summary(session.graph_through_reexports.as_ref().unwrap());
@@ -677,7 +675,7 @@ fn an_update_finds_what_a_build_would() {
     // It can be updated again, as it keeps what it was built from.
     fs::write(project.root.join("app.tsx"), "export const app = 1;\n").unwrap();
     pipeline.update(&mut session, &[0]).unwrap();
-    assert_eq!(findings(&session), findings(&build_updatable(&project).0));
+    assert_eq!(findings(&session), findings(&build_through_reexports(&project).0));
 }
 
 #[test]

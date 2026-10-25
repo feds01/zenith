@@ -13,7 +13,7 @@ use lsp_types::{
 use zenith_diagnostics::{
     Columns, Report, ReportElement, ReportKind, ReportNoteKind, Source, SourceMap, Span,
 };
-use zenith_utils::{fs::adjust_canonicalisation, location::ByteRange};
+use zenith_utils::{fs::adjust_canonicalisation, location::ByteRange, path::rebase};
 
 /// What the diagnostics name as where they come from.
 const SOURCE: &str = "zenith";
@@ -38,20 +38,7 @@ impl Folder {
     /// path as the editor names it, if the file is in it, and `None` if the
     /// path is not absolute.
     fn uri(&self, path: &Path) -> Option<Url> {
-        match path.strip_prefix(&self.canonical) {
-            Ok(relative) => Url::from_file_path(self.path.join(relative)).ok(),
-            Err(_) => Url::from_file_path(path).ok(),
-        }
-    }
-
-    /// The path of the file at `path`, as the editor names it: under the
-    /// folder's canonical path, if the file is in it, so that a file that no
-    /// longer exists is named as zenith named it.
-    fn canonical_path(&self, path: PathBuf) -> PathBuf {
-        match path.strip_prefix(&self.path) {
-            Ok(relative) => self.canonical.join(relative),
-            Err(_) => path,
-        }
+        Url::from_file_path(rebase(path, &self.canonical, &self.path)).ok()
     }
 }
 
@@ -108,12 +95,12 @@ impl Editor {
     }
 
     /// The path of the file at `uri`, which the editor names, as zenith
-    /// names it if it is in the folder, or `None` if the URI is not of a
-    /// file.
+    /// names it if it is in the folder, so that a file that no longer exists
+    /// is named as zenith named it, or `None` if the URI is not of a file.
     pub(crate) fn path(&self, uri: &Url) -> Option<PathBuf> {
         let path = uri.to_file_path().ok()?;
         Some(match &self.folder {
-            Some(folder) => folder.canonical_path(path),
+            Some(folder) => rebase(&path, &folder.path, &folder.canonical),
             None => path,
         })
     }

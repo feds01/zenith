@@ -87,7 +87,7 @@ release dir out:
     fi
     "{{just_executable()}}" --justfile "{{justfile()}}" vscode::packages "{{dir}}" "{{out}}" "$version"
 
-# Publish the VSIX files in `dir`, which `just vscode::release` packaged, to the VS Code Marketplace and Open VSX with the tokens in $VSCE_PAT and $OVSX_PAT, skipping what they already have (run by the release workflow)
+# Publish the VSIX files in `dir`, which `just vscode::release` packaged, to the VS Code Marketplace and Open VSX with the tokens in $VSCE_PAT and $OVSX_PAT, skipping what they already have, and everything without both tokens (run by the release workflow)
 [no-cd]
 publish dir:
     #!/usr/bin/env bash
@@ -98,8 +98,12 @@ publish dir:
         echo "There is no VS Code extension to publish"
         exit 0
     fi
-    : "${VSCE_PAT:?is the token to publish to the VS Code Marketplace with, from the secrets of the repository}"
-    : "${OVSX_PAT:?is the token to publish to Open VSX with, from the secrets of the repository}"
+    # Until the repository has both tokens, the release goes on without the
+    # extension.
+    if [ -z "${VSCE_PAT:-}" ] || [ -z "${OVSX_PAT:-}" ]; then
+        echo "::warning title=VS Code::The repository has no VSCE_PAT or OVSX_PAT secret, so the extension isn't published."
+        exit 0
+    fi
 
     # Each VSIX that a registry doesn't have yet is published, so that the job
     # can be re-run. The Marketplace lists a universal VSIX without a platform.

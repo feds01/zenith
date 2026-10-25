@@ -72,7 +72,8 @@ archives: a VSIX per platform with its binary, and a universal one without,
 for the other platforms. `just vscode::publish` publishes them to the VS Code
 Marketplace and to Open VSX with the tokens in the repository's secrets
 `VSCE_PAT` and `OVSX_PAT`, which only that step sees. A pre-release version
-isn't published, as the Marketplace takes none. `just vscode::packages` builds
+isn't published, as the Marketplace takes none, and nor is any version
+until the repository has both tokens. `just vscode::packages` builds
 the VSIX files locally.
 
 Before the first release that publishes it:

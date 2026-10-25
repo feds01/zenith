@@ -41,30 +41,39 @@ impl Stage for Parse {
                 let inputs = (languages, session.needs_graph_through_reexports());
                 parse_cached(session, Cache::load(settings, inputs))
             }
-            None => parse_all(session),
+            None => {
+                let results = parse_files(session, &session.files);
+                read_all(&mut session.file_errors, &session.files, results)
+            }
         };
 
         // 2. Move the syntax errors to the session.
-        for (file, parsed) in session.files.iter().zip(&mut parsed) {
-            if !parsed.errors.is_empty() {
-                let kind = FileErrorKind::Syntax(mem::take(&mut parsed.errors));
-                session.file_errors.push(FileError { file: file.name.clone(), kind });
-            }
-        }
-
-        // The files are sorted by path, which isn't quite the order of names.
-        session.file_errors.sort_by(|a, b| a.file.cmp(&b.file));
+        move_syntax_errors(&mut session.file_errors, &session.files, &mut parsed);
         session.parsed = parsed;
+        Ok(())
+    }
+
+    /// Reads and parses the changed files again, in place of what they parsed
+    /// to before, with their read and syntax errors in place of theirs. The
+    /// cache stays as it is, so that the next run finds them changed.
+    fn update(&self, session: &mut Session, changed: &[u32]) -> Result<(), PipelineError> {
+        let files: Vec<_> =
+            changed.iter().map(|&index| session.files[index as usize].clone()).collect();
+        session.file_errors.retain(|error| files.iter().all(|file| file.name != error.file));
+        let results = parse_files(session, &files);
+        let mut parsed = read_all(&mut session.file_errors, &files, results);
+        move_syntax_errors(&mut session.file_errors, &files, &mut parsed);
+        for (&index, parsed) in changed.iter().zip(parsed) {
+            session.parsed[index as usize] = parsed;
+        }
         Ok(())
     }
 }
 
-/// Read and parse every file of `session`, moving the read errors to the
-/// session.
-fn parse_all(session: &mut Session) -> Vec<ParsedFile> {
+/// Read and parse `files`, of `session`, from its file system.
+fn parse_files(session: &Session, files: &[SourceFile]) -> Vec<io::Result<ParsedFile>> {
     let (root, file_system) = (&session.root, &*session.file_system);
-    let results: Vec<io::Result<ParsedFile>> = session
-        .files
+    files
         .par_iter()
         .map_init(
             || session.backends.parsers(),
@@ -74,9 +83,35 @@ fn parse_all(session: &mut Session) -> Vec<ParsedFile> {
                 Ok(parsers[usize::from(file.language)].parse_source(&path, &source))
             },
         )
-        .collect();
-    let files = session.files.iter().zip(results);
-    files.map(|(file, result)| read_or_default(&mut session.file_errors, file, result)).collect()
+        .collect()
+}
+
+/// What each of `files` parsed to, as `results` has it, or an empty file for
+/// each that couldn't be read, with the error moved to `file_errors`.
+fn read_all(
+    file_errors: &mut Vec<FileError>,
+    files: &[SourceFile],
+    results: Vec<io::Result<ParsedFile>>,
+) -> Vec<ParsedFile> {
+    let files = files.iter().zip(results);
+    files.map(|(file, result)| read_or_default(file_errors, file, result)).collect()
+}
+
+/// Move the syntax errors of what each of `files` parsed to, in `parsed`, to
+/// `file_errors`, and sort them by file.
+fn move_syntax_errors(
+    file_errors: &mut Vec<FileError>,
+    files: &[SourceFile],
+    parsed: &mut [ParsedFile],
+) {
+    for (file, parsed) in files.iter().zip(parsed) {
+        if !parsed.errors.is_empty() {
+            let kind = FileErrorKind::Syntax(mem::take(&mut parsed.errors));
+            file_errors.push(FileError { file: file.name.clone(), kind });
+        }
+    }
+    // The files are sorted by path, which isn't quite the order of names.
+    file_errors.sort_by(|a, b| a.file.cmp(&b.file));
 }
 
 /// Parse the files of `session` that `cache` doesn't show unchanged, moving

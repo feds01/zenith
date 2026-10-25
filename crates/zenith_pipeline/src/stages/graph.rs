@@ -10,7 +10,8 @@ use crate::{
 };
 
 /// Builds the import graph from the parsed files and their resolved imports,
-/// which it takes out of the session. Imports that don't resolve are left out,
+/// which it takes out of the session, or copies if the session is
+/// [updatable](Session::updatable). Imports that don't resolve are left out,
 /// and recorded in the session, which also keeps the files' suppressions.
 /// If a contract sees through re-exports, it builds the graph through them too,
 /// from what each file exports.
@@ -22,10 +23,16 @@ impl Stage for BuildGraph {
     }
 
     fn run(&self, session: &mut Session) -> Result<(), PipelineError> {
-        let parsed = mem::take(&mut session.parsed);
-        let resolved = mem::take(&mut session.resolved);
+        let (parsed, resolved) = match session.updatable {
+            true => (session.parsed.clone(), session.resolved.clone()),
+            false => (mem::take(&mut session.parsed), mem::take(&mut session.resolved)),
+        };
         let through_reexports = session.needs_graph_through_reexports();
+        // What a graph that was built before found goes with it.
+        session.unresolved.clear();
+        session.suppressions.clear();
         let stats = &mut session.stats;
+        (stats.non_literal_imports, stats.missing_packages) = (0, 0);
         let mut file_exports = Vec::new();
 
         // The builder sorts what it is given, so the order of the files
@@ -110,6 +117,12 @@ impl Stage for BuildGraph {
         }
         session.graph = graph;
         Ok(())
+    }
+
+    /// Builds the graph again, as the graph can't change, from what the
+    /// session kept and the stages before it updated.
+    fn update(&self, session: &mut Session, _changed: &[u32]) -> Result<(), PipelineError> {
+        self.run(session)
     }
 }
 

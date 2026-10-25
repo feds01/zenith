@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use zenith_cache::CacheSettings;
 use zenith_config::Config;
 use zenith_diagnostics::{Report, SourceId, SourceMap, message};
@@ -51,6 +51,13 @@ pub struct Session {
     /// reads the cache.
     pub cache: Option<CacheSettings>,
 
+    /// Whether the [`Graph`](crate::StageKind::Graph) stage leaves what the
+    /// files parsed and resolved to in the session, copying it into the graph
+    /// rather than taking it, so that
+    /// [`Pipeline::update`](crate::Pipeline::update) can build the graph
+    /// again as files change. A new session isn't.
+    pub updatable: bool,
+
     /// The source files to scan, sorted by path. Found by the
     /// [`Discover`](crate::StageKind::Discover) stage.
     pub files: Vec<SourceFile>,
@@ -61,13 +68,15 @@ pub struct Session {
 
     /// What the parser found in each file, in the order of `files`. Filled
     /// in by the [`Parse`](crate::StageKind::Parse) stage, and taken by the
-    /// [`Graph`](crate::StageKind::Graph) stage.
+    /// [`Graph`](crate::StageKind::Graph) stage unless the session is
+    /// [updatable](Session::updatable).
     pub parsed: Vec<ParsedFile>,
 
     /// What each import of each file resolved to, in the order of `files` and
     /// of their imports. Filled in by the
     /// [`Resolve`](crate::StageKind::Resolve) stage, and taken by the
-    /// [`Graph`](crate::StageKind::Graph) stage.
+    /// [`Graph`](crate::StageKind::Graph) stage unless the session is
+    /// [updatable](Session::updatable).
     pub resolved: Vec<Vec<ResolvedImport>>,
 
     /// The module tree and import graph. Built by the
@@ -174,6 +183,7 @@ impl Session {
             tracked_only: false,
             scope: Scope::default(),
             cache: None,
+            updatable: false,
             files: Vec::new(),
             workspace: Workspace::default(),
             parsed: Vec::new(),
@@ -273,6 +283,57 @@ impl Session {
             });
         }
         Some(report)
+    }
+
+    /// The index of each source file in [`Session::files`], by its name.
+    pub(crate) fn file_indices(&self) -> FxHashMap<&str, u32> {
+        (0..).zip(&self.files).map(|(index, file)| (file.name.as_str(), index)).collect()
+    }
+
+    /// The source files at `paths`, whose contents have changed since the
+    /// stages ran, by their indices in [`Session::files`], sorted, for
+    /// [`Pipeline::update`](crate::Pipeline::update). `None` if a change at
+    /// one of the paths may change more than what those files import, so
+    /// that the session must be built anew: if it is not one of the source
+    /// files, or no longer exists, as a new file, a manifest or the
+    /// configuration file is not.
+    ///
+    /// Changes that can't change what the stages find are left out: those to
+    /// the parse cache, which the session writes itself, and those in git's
+    /// own directory, unless only the files that git tracks are scanned.
+    pub fn changed_files(
+        &self,
+        paths: impl IntoIterator<Item = impl AsRef<Path>>,
+    ) -> Option<Vec<u32>> {
+        let indices = self.file_indices();
+        let cache =
+            (self.cache.as_ref()).map(|cache| self.file_system.adjust_canonicalisation(&cache.dir));
+        let mut changed = Vec::new();
+        for path in paths {
+            let path = self.file_system.adjust_canonicalisation(path.as_ref());
+            let in_git = || path.components().any(|component| component.as_os_str() == ".git");
+            if cache.as_ref().is_some_and(|dir| path.starts_with(dir))
+                || (!self.tracked_only && in_git())
+            {
+                continue;
+            }
+            let index = *indices.get(relative_posix(&self.root, &path)?.as_str())?;
+            if !self.file_system.is_file(&path) {
+                return None;
+            }
+            changed.push(index);
+        }
+        changed.sort_unstable();
+        changed.dedup();
+        Some(changed)
+    }
+
+    /// Whether the project is in the directory `dir`, a canonical path: its
+    /// root, and its configuration file, if it was read from one.
+    pub fn is_within(&self, dir: &Path) -> bool {
+        let config = self.config.file.as_ref();
+        let config = config.map(|file| self.file_system.adjust_canonicalisation(&file.path));
+        self.root.starts_with(dir) && config.is_none_or(|config| config.starts_with(dir))
     }
 
     /// Report only on the files under `paths`, which are relative to the

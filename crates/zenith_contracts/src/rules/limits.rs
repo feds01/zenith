@@ -4,7 +4,7 @@
 use zenith_config::LimitsConfig;
 use zenith_graph::{GraphView, Unit};
 
-use crate::{Limit, Link, Violation, contract::UnitResolver, view::Statements};
+use crate::{Limit, Link, Violation, selection::UnitResolver, view::Statements};
 
 /// A compiled `limits` contract.
 #[derive(Debug)]

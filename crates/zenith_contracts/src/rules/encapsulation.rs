@@ -5,7 +5,7 @@ use zenith_config::EncapsulationConfig;
 use zenith_graph::{GraphView, NodeKind, NodeSet, Unit};
 use zenith_utils::glob::{Glob, escape};
 
-use crate::{ContractErrorKind, Link, Violation, contract::UnitResolver, view::Statements};
+use crate::{ContractErrorKind, Link, Violation, selection::UnitResolver, view::Statements};
 
 /// A compiled `encapsulation` contract.
 #[derive(Debug)]

@@ -4,7 +4,7 @@
 use zenith_config::IndependenceConfig;
 use zenith_graph::{Architecture, GraphView, Level, Unit};
 
-use crate::{Chain, Violation, contract::UnitResolver, view::Statements};
+use crate::{Chain, Violation, selection::UnitResolver, view::Statements};
 
 /// A compiled `independence` contract.
 #[derive(Debug)]

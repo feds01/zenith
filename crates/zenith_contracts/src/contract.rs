@@ -3,15 +3,14 @@
 use std::time::{Duration, Instant};
 
 use rayon::prelude::*;
-use zenith_config::{AlertLevel, ContractConfig, IgnoreImport, InContract, Selector};
-use zenith_graph::{Graph, ModuleId, NodeSet, Unit};
+use zenith_config::{AlertLevel, ContractConfig, IgnoreImport};
+use zenith_graph::{Graph, ModuleId, NodeSet};
 use zenith_lang::Workspace;
 use zenith_pipeline::{FileSuppressions, Graphs, Scope, Session};
-use zenith_utils::location::ByteRange;
 
 use crate::{
-    Baseline, ContractError, ContractErrorKind, Selection, UnusedSuppression, Violation,
-    rules::Rule, view::ContractView,
+    Baseline, ContractError, UnusedSuppression, Violation, rules::Rule, selection::UnitResolver,
+    view::ContractView,
 };
 
 /// A contract of the configuration, compiled against a project: its
@@ -40,14 +39,11 @@ impl<'c> Contract<'c> {
         graph: &Graph,
         workspace: &Workspace,
     ) -> Result<Self, Vec<ContractError>> {
-        let mut units = UnitResolver { contract: &config.id, graph, workspace, errors: Vec::new() };
+        let mut units = UnitResolver::new(&config.id, graph, workspace);
         let rule = Rule::compile(&config.kind, &mut units);
         let boundaries = units.members(config.kind.boundaries());
-        if units.errors.is_empty() {
-            Ok(Self { config, rule, boundaries })
-        } else {
-            Err(units.errors)
-        }
+        let errors = units.into_errors();
+        if errors.is_empty() { Ok(Self { config, rule, boundaries }) } else { Err(errors) }
     }
 
     /// Compile every contract in `configs`, as [`Contract::compile`] does.
@@ -225,99 +221,6 @@ impl ContractReport<'_> {
     pub fn finding_count(&self) -> usize {
         let violations: usize = self.violations.iter().map(Violation::finding_count).sum();
         violations + self.unmatched_ignore_errors().len()
-    }
-}
-
-/// Resolves the selectors of one contract into units, collecting the errors.
-pub(crate) struct UnitResolver<'a> {
-    /// The id of the contract.
-    contract: &'a str,
-
-    /// The project's graph.
-    graph: &'a Graph,
-
-    /// The project's workspace packages.
-    workspace: &'a Workspace,
-
-    /// The errors so far.
-    errors: Vec<ContractError>,
-}
-
-impl<'a> UnitResolver<'a> {
-    /// The project's graph.
-    pub(crate) fn graph(&self) -> &'a Graph {
-        self.graph
-    }
-
-    /// The project's workspace packages.
-    pub(crate) fn workspace(&self) -> &'a Workspace {
-        self.workspace
-    }
-
-    /// The units of `selectors`, in order, each unit once even if several
-    /// selectors match it. A path or `pkg:` selector that matches nothing is
-    /// an error.
-    pub(crate) fn units(&mut self, selectors: &[Selector]) -> Vec<Unit> {
-        self.located_units(selectors).into_iter().map(|(unit, _)| unit).collect()
-    }
-
-    /// The members of every unit of `selectors`, as [`Self::units`] finds
-    /// them.
-    pub(crate) fn members(&mut self, selectors: &[Selector]) -> NodeSet {
-        let mut members = NodeSet::new();
-        for unit in self.units(selectors) {
-            members.union_with(&unit.members);
-        }
-        members
-    }
-
-    /// The units of `selectors`, as [`Self::units`] finds them, each with the
-    /// range of the selector that matched it.
-    pub(crate) fn located_units(
-        &mut self,
-        selectors: &[Selector],
-    ) -> Vec<(Unit, Option<ByteRange>)> {
-        let mut units: Vec<(Unit, Option<ByteRange>)> = Vec::new();
-        for selector in selectors {
-            match Selection::try_resolve(selector, self.graph, self.workspace) {
-                Ok(selection) => {
-                    for unit in selection.units {
-                        if !units.iter().any(|(existing, _)| existing.root == unit.root) {
-                            units.push((unit, selector.range()));
-                        }
-                    }
-                }
-                Err(unmatched) => self.error(
-                    ContractErrorKind::UnmatchedSelector { selector: unmatched.selector },
-                    selector.range(),
-                ),
-            }
-        }
-        units
-    }
-
-    /// Report the first pair of `units` that overlap, at the range of the
-    /// later one.
-    pub(crate) fn ensure_apart(&mut self, units: &[(Unit, Option<ByteRange>)]) {
-        for (index, (first, _)) in units.iter().enumerate() {
-            let overlapping = units[index + 1..]
-                .iter()
-                .find(|(second, _)| first.members.intersects(&second.members));
-            if let Some((second, range)) = overlapping {
-                let kind = ContractErrorKind::OverlappingModules {
-                    first: first.label.clone(),
-                    second: second.label.clone(),
-                };
-                self.error(kind, *range);
-                return;
-            }
-        }
-    }
-
-    /// Record an error in the contract, at `range` in the configuration file.
-    pub(crate) fn error(&mut self, kind: ContractErrorKind, range: Option<ByteRange>) {
-        let contract = InContract(self.contract.to_string());
-        self.errors.push(ContractError { contract, kind, range });
     }
 }
 

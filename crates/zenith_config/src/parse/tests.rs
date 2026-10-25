@@ -418,7 +418,7 @@ exhaustive_ignores = ["index", "*.test"]
     assert!(domains.exhaustive);
     assert_eq!(
         domains.exhaustive_ignores,
-        [NamePattern::new("index").unwrap(), NamePattern::new("*.test").unwrap()]
+        ["index", "*.test", "mod.tst"].map(|pattern| NamePattern::new(pattern).unwrap())
     );
     assert!(domains.layers[2].members[0].optional);
     assert_eq!(domains.layers[2].members[0].selector.as_str(), "types");
@@ -547,7 +547,7 @@ layers = ["a"]
     let ContractKind::Layers(layers) = &config.contracts[3].kind else { panic!() };
     assert!(layers.containers.is_empty());
     assert!(!layers.exhaustive);
-    assert!(layers.exhaustive_ignores.is_empty());
+    assert_eq!(layers.exhaustive_ignores, [NamePattern::new("mod.tst").unwrap()]);
     assert!(!layers.allow_indirect_imports);
     assert!(layers.boundaries.is_empty());
 }

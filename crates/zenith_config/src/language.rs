@@ -54,6 +54,12 @@ pub struct Language {
     /// the directory `src/types`.
     pub optional_extensions: &'static [&'static str],
 
+    /// The names of the files that are the module of the directory they are
+    /// in, or the root of a target, rather than a module in it, such as
+    /// Rust's `mod.rs` and `lib.rs`. An exhaustive `layers` contract doesn't
+    /// count them as children of its containers.
+    pub index_files: &'static [&'static str],
+
     /// The selector schemes, without the `:`, that only this language's
     /// projects have, so selectors that use them need the language to be
     /// enabled.

@@ -7,7 +7,7 @@ use toml::{
     de::{DeTable, DeValue, ValueDeserializer},
 };
 use zenith_utils::{
-    glob::{Glob, NamePattern},
+    glob::{Glob, NamePattern, escape},
     location::ByteRange,
 };
 
@@ -197,6 +197,13 @@ impl Parser {
                 Some(table.exhaustive.range),
             );
         }
+        // The index files of the enabled languages, such as Rust's `lib.rs`, are never
+        // children that `exhaustive` requires.
+        let mut exhaustive_ignores =
+            self.parse_patterns(&table.exhaustive_ignores, NamePattern::new);
+        let index_files = self.enabled.iter().flat_map(|language| language.index_files);
+        exhaustive_ignores
+            .extend(index_files.filter_map(|name| NamePattern::new(&escape(name)).ok()));
         LayersConfig {
             layers: table
                 .layers
@@ -206,7 +213,7 @@ impl Parser {
                 .collect(),
             containers: self.parse_selectors(&table.containers),
             exhaustive: table.exhaustive.value,
-            exhaustive_ignores: self.parse_patterns(&table.exhaustive_ignores, NamePattern::new),
+            exhaustive_ignores,
             allow_indirect_imports: table.allow_indirect_imports,
             boundaries: self.parse_boundaries(&table.boundaries, table.allow_indirect_imports),
         }

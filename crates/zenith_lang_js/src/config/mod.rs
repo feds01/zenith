@@ -26,6 +26,7 @@ pub const JS: Language = Language {
     source_extensions: &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"],
     source_file_names: &[],
     optional_extensions: &["ts", "tsx", "mts", "cts", "d.ts", "js", "jsx", "mjs", "cjs"],
+    index_files: &[],
     schemes: &["npm", "node", "bun"],
     parse: |table| Arc::new(JsConfig::parse(table)),
     defaults: || Arc::new(JsConfig::default()),

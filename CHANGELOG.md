@@ -3,6 +3,43 @@
 What changed for zenith's users in each release. dist shows a release's
 section as its notes on GitHub.
 
+## [0.6.0] - 2026-10-25
+
+[Changes since v0.5.0](https://github.com/feds01/zenith/compare/v0.5.0...v0.6.0)
+
+### Features
+
+- **check:** add a structured fix hint to each violation ([#124](https://github.com/feds01/zenith/pull/124))
+- **graph:** add a mermaid output format ([#123](https://github.com/feds01/zenith/pull/123))
+- **check:** add a SARIF output format ([#126](https://github.com/feds01/zenith/pull/126))
+- **check:** add --since <ref> to report only what a branch changed ([#127](https://github.com/feds01/zenith/pull/127))
+- **contracts:** add a limits contract for fan-in and fan-out ([#125](https://github.com/feds01/zenith/pull/125))
+- **ci:** add a GitHub Action that checks, annotates and uploads SARIF ([#130](https://github.com/feds01/zenith/pull/130))
+- **suggest:** propose contracts from the import graph ([#129](https://github.com/feds01/zenith/pull/129))
+- **graph:** add 'graph diff' to show how dependencies changed between refs ([#132](https://github.com/feds01/zenith/pull/132))
+- **pipeline:** read a project's files through a file system interface ([#135](https://github.com/feds01/zenith/pull/135))
+- **lang:** read every language's files through the session's file system ([#136](https://github.com/feds01/zenith/pull/136))
+- **graph:** read 'graph diff' refs from git rather than checking them out ([#137](https://github.com/feds01/zenith/pull/137))
+- **lsp:** add 'zenith lsp' and a VS Code extension to show violations in the editor ([#131](https://github.com/feds01/zenith/pull/131))
+- **suggest:** group same-level layers, skip covered contracts, and suggest from init ([#147](https://github.com/feds01/zenith/pull/147))
+- **config:** leave each language's index files out of exhaustive layers ([#150](https://github.com/feds01/zenith/pull/150))
+- **rust:** name the paths into the standard library ([#152](https://github.com/feds01/zenith/pull/152))
+- **lsp:** re-check incrementally, keeping the graph between saves ([#156](https://github.com/feds01/zenith/pull/156))
+- **rust:** a test import kind for what only tests compile ([#155](https://github.com/feds01/zenith/pull/155))
+- **rust:** see imports through re-exports with reexports = "transparent" ([#159](https://github.com/feds01/zenith/pull/159))
+- **rust:** make foo.rs and foo/ one unit ([#163](https://github.com/feds01/zenith/pull/163))
+
+### Fixes
+
+- **workspace:** stop the whole git process in the test of a stopped reader ([#140](https://github.com/feds01/zenith/pull/140))
+- **contracts:** read the tests' configurations with Rust too ([#162](https://github.com/feds01/zenith/pull/162))
+- **rust:** read a::m as the item m of a when a re-exports it ([#160](https://github.com/feds01/zenith/pull/160))
+
+### Documentation
+
+- **protected:** show how to restrict a third-party dependency ([#122](https://github.com/feds01/zenith/pull/122))
+- **book:** document boundaries, and that except can remove a unit ([#151](https://github.com/feds01/zenith/pull/151))
+
 ## [0.5.0] - 2026-10-23
 
 [Changes since v0.4.0](https://github.com/feds01/zenith/compare/v0.4.0...v0.5.0)

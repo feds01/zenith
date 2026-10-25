@@ -6,6 +6,10 @@ set positional-arguments
 # The name of zenith's binary on this platform
 binary := "zenith" + if os_family() == "windows" { ".exe" } else { "" }
 
+# The workspace version in Cargo.toml, which a release is tagged with, as the
+# root justfile reads it, or an error if it has none
+workspace_version := `sed -n 's/^version = "\(.*\)"/\1/p' ../../Cargo.toml | head -1 | grep .`
+
 # Test the extension in a VS Code that it downloads, with the zenith of this checkout as the binary that it comes with
 test:
     cargo build -q -p zenith
@@ -15,16 +19,13 @@ test:
     bun run check
     bun run test
 
-# Package the extension into `out`, from the release archives in `archives`: a VSIX per platform with its binary, and a universal one without, at the workspace version in Cargo.toml unless given another, and only for `targets` if given any
+# Package the extension into `out`, from the release archives in `archives`: a VSIX per platform with its binary, and a universal one without, at the workspace version unless given another, and only for `targets` if given any (run by the release workflow)
 [no-cd]
 packages archives out version="" *targets:
     #!/usr/bin/env bash
     set -euo pipefail
     shift 3
-    version="{{version}}"
-    if [ -z "$version" ]; then
-        version="$(sed -n 's/^version = "\(.*\)"/\1/p' "{{justfile_directory()}}/Cargo.toml" | head -1)"
-    fi
+    version="{{ if version == "" { workspace_version } else { version } }}"
     out="$(mkdir -p "{{out}}" && cd "{{out}}" && pwd)"
 
     # 1. The binaries, as the npm packages of each platform have them.
@@ -67,27 +68,7 @@ packages archives out version="" *targets:
     rm -rf bin
     package universal
 
-# Package the extension of the release in $PLAN, dist's plan, into `out`, from the archives in `dir`, for `just vscode::publish` (run by the release workflow)
-[no-cd]
-release dir out:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # The version that the plan releases zenith at, if it releases it.
-    version="$(jq --raw-output '.releases[] | select(.app_name == "zenith") | .app_version' <<<"$PLAN")"
-    mkdir -p "{{out}}"
-    if [ -z "$version" ]; then
-        echo "The release has no zenith to package"
-        exit 0
-    fi
-    # The Marketplace takes no pre-release versions, and the extension is
-    # published to both registries or neither.
-    if [[ "$version" == *-* ]]; then
-        echo "::notice title=VS Code::$version is a pre-release, which the VS Code Marketplace doesn't take, so the extension isn't published."
-        exit 0
-    fi
-    "{{just_executable()}}" --justfile "{{justfile()}}" vscode::packages "{{dir}}" "{{out}}" "$version"
-
-# Publish the VSIX files in `dir`, which `just vscode::release` packaged, to the VS Code Marketplace and Open VSX with the tokens in $VSCE_PAT and $OVSX_PAT, skipping what they already have, and everything without both tokens (run by the release workflow)
+# Publish the VSIX files in `dir`, which `just vscode::packages` packaged, to the VS Code Marketplace and Open VSX with the tokens in $VSCE_PAT and $OVSX_PAT, skipping what they already have, and everything without both tokens (run by the release workflow)
 [no-cd]
 publish dir:
     #!/usr/bin/env bash

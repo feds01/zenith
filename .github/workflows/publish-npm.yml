@@ -2,7 +2,8 @@
 # and @feds01/zenith, which depends on them, with npm's trusted publishing:
 # npm trusts the release workflow of this repository, so no token is kept.
 # The staged versions go live once a maintainer approves them, with 2FA. The
-# release workflow that dist generates calls it with the release's plan.
+# release workflow that dist generates calls it with the release's plan, which
+# it doesn't need: the release is of the workspace's version.
 name: Stage the npm packages
 
 on:
@@ -14,24 +15,21 @@ on:
 
 jobs:
   publish-npm-package:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     # The OIDC token that npm exchanges for one that stages the packages.
     permissions:
       contents: read
       id-token: write
-    env:
-      PLAN: ${{ inputs.plan }}
     steps:
       # This repository, for its justfile and the packages' templates in npm/.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           path: zenith
-      # The release's artifacts, the archive of each platform's binary among
-      # them.
+      # The archive of each platform's binary.
       - uses: actions/download-artifact@v8
         with:
-          pattern: artifacts-*
+          pattern: artifacts-build-local-*
           path: artifacts/
           merge-multiple: true
       # Staged publishing needs Node 22.14 and npm 11.15, or later, which the

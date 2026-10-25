@@ -14,14 +14,17 @@ ci = "github"
 installers = ["shell", "powershell", "homebrew"]
 # The Homebrew tap that the formula is published to: `brew install feds01/tap/zenith`
 tap = "feds01/homebrew-tap"
-# Publish the npm packages, the Homebrew formula and the VS Code extension with
-# each release, by our own jobs, which run `just publish-npm`,
-# `just publish-formula` and `just vscode::publish`. The npm packages are staged
-# with npm's trusted publishing, without a token, and go live once a
-# maintainer approves them.
+# Publish the Homebrew formula, the npm packages and the VS Code extension with
+# each release, but not a pre-release, by our own jobs, which run
+# `just publish-formula`, `just publish-npm` and `just vscode::publish`. The
+# npm packages are staged with npm's trusted publishing, without a token, and
+# go live once a maintainer approves them.
 publish-jobs = ["./publish-homebrew", "./publish-npm", "./publish-vscode"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-apple-darwin", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
+# Build only the packages that are released, `cargo build -p zenith`, rather
+# than the whole workspace, its benchmarks among it
+precise-builds = true
 # Path that installers should place binaries in
 install-path = ["$XDG_BIN_HOME/", "$XDG_DATA_HOME/../bin", "~/.local/bin"]
 # Where to host releases
@@ -39,7 +42,7 @@ pr-run-mode = "skip"
 "publish-npm" = { contents = "read", id-token = "write" }
 "publish-vscode" = { contents = "read" }
 
-# The versions of the GitHub actions that the release workflow uses
+# The versions of the GitHub actions that the release workflow uses, newer
+# than dist's defaults, and by tag, as in ci.yml
 [dist.github-action-commits]
-# v7.0.1
-"actions/checkout" = "3d3c42e5aac5ba805825da76410c181273ba90b1"
+"actions/checkout" = "v7"

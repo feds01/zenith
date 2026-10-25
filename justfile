@@ -2,6 +2,10 @@
 
 set positional-arguments
 
+# The workspace version in Cargo.toml, which a release is tagged with, or an
+# error if it has none
+workspace_version := `sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1 | grep .`
+
 # The VS Code extension's recipes, e.g. `just vscode::test`
 mod vscode 'editors/vscode'
 
@@ -179,7 +183,7 @@ release:
     fi
 
     # The version comes from the workspace, and must not be tagged yet.
-    version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+    version="{{workspace_version}}"
     tag="v$version"
     if git rev-parse --quiet --verify "refs/tags/$tag" >/dev/null; then
         fail "tag $tag already exists, bump the version first"
@@ -203,7 +207,7 @@ release:
     git push origin "$tag"
     echo "Once the release workflow has run, approve the npm package on npmjs.com, under Staged Packages."
 
-# Commit the Homebrew formula of each release in $PLAN, dist's plan, to the tap checked out at `tap`, and push it (run by the release workflow)
+# Commit the Homebrew formula, which dist wrote to `tap`/Formula/zenith.rb, to the tap checked out at `tap`, and push it (run by the release workflow)
 [no-cd]
 publish-formula tap:
     #!/usr/bin/env bash
@@ -214,57 +218,42 @@ publish-formula tap:
     export PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"
     brew update
 
-    # Each release with a formula, as a line of JSON. Its formula may be named
-    # other than the app.
-    releases="$(jq --compact-output '.releases[] | select(any(.artifacts[]; endswith(".rb")))' <<<"$PLAN")"
-    while IFS= read -r release; do
-        [ -n "$release" ] || continue
-        formula="$(jq --raw-output '.artifacts[] | select(endswith(".rb"))' <<<"$release")"
-        version="$(jq --raw-output '.app_version' <<<"$release")"
+    # Fix the formula's style, without reformatting its description or homepage.
+    brew style --except-cops FormulaAudit/Homepage,FormulaAudit/Desc,FormulaAuditStrict \
+        --fix Formula/zenith.rb || true
 
-        # Fix the formula's style, without reformatting its description or homepage.
-        brew style --except-cops FormulaAudit/Homepage,FormulaAudit/Desc,FormulaAuditStrict \
-            --fix "Formula/$formula" || true
-
-        git add "Formula/$formula"
-        git commit --message "${formula%.rb} $version"
-    done <<<"$releases"
-
+    # A formula that the tap already has is skipped, so that the job can be
+    # re-run.
+    git add Formula/zenith.rb
+    if git diff --cached --quiet; then
+        echo "The tap already has zenith {{workspace_version}}"
+        exit 0
+    fi
+    git commit --message "zenith {{workspace_version}}"
     git push
 
-# Assemble and pack the npm packages into `out`, from the release archives in `archives`, at the workspace version in Cargo.toml unless given another, and only for `targets` if given any
+# Assemble and pack the npm packages into `out`, from the release archives in `archives`, at the workspace version unless given another, and only for `targets` if given any
 [no-cd]
 npm-packages archives out version="" *targets:
     #!/usr/bin/env bash
     set -euo pipefail
     shift 3
-    version="{{version}}"
-    if [ -z "$version" ]; then
-        version="$(sed -n 's/^version = "\(.*\)"/\1/p' "{{justfile_directory()}}/Cargo.toml" | head -1)"
-    fi
     # An absolute path: npm reads a relative one, like `out/zenith`, as a
     # GitHub repository.
     out="$(mkdir -p "{{out}}" && cd "{{out}}" && pwd)"
-    node "{{justfile_directory()}}/npm/assemble.mjs" "$version" "{{archives}}" "$out" "$@"
+    node "{{justfile_directory()}}/npm/assemble.mjs" "{{ if version == "" { workspace_version } else { version } }}" "{{archives}}" "$out" "$@"
     for package in "$out"/zenith*/; do
         npm pack --json --pack-destination "$out" "$package" | jq --raw-output '.[].filename'
     done
 
-# Stage the npm packages of the release in $PLAN, dist's plan, from the archives in `dir`, for a maintainer to approve, skipping versions already on npm (run by the release workflow)
+# Stage the npm packages of the release, at the workspace version, from the archives in `dir`, for a maintainer to approve, skipping versions already on npm (run by the release workflow)
 [no-cd]
 publish-npm dir:
     #!/usr/bin/env bash
     set -euo pipefail
-    # The version that the plan releases zenith at, if it releases it.
-    version="$(jq --raw-output '.releases[] | select(.app_name == "zenith") | .app_version' <<<"$PLAN")"
-    if [ -z "$version" ]; then
-        echo "The release has no zenith to stage"
-        exit 0
-    fi
-
     # 1. Assemble the packages: one per platform, and @feds01/zenith.
     out="$(mktemp -d)"
-    node "{{justfile_directory()}}/npm/assemble.mjs" "$version" "{{dir}}" "$out"
+    node "{{justfile_directory()}}/npm/assemble.mjs" "{{workspace_version}}" "{{dir}}" "$out"
 
     # 2. Stage the platform packages first, then @feds01/zenith, which depends
     #    on them.

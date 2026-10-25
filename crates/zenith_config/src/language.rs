@@ -59,6 +59,12 @@ pub struct Language {
     /// enabled.
     pub schemes: &'static [&'static str],
 
+    /// The [schemes](Self::schemes) whose names are paths, each with the
+    /// separator of their segments, such as `("rust", "::")` for
+    /// `rust:std::thread`. A selector of one also matches the names under
+    /// those it names, so `rust:std` matches `rust:std::thread::spawn`.
+    pub path_schemes: &'static [(&'static str, &'static str)],
+
     /// Parse its table into its options. An invalid table has the defaults,
     /// so that the language is still enabled.
     pub parse: fn(&mut LanguageTable<'_, '_>) -> Arc<dyn LanguageOptions>,

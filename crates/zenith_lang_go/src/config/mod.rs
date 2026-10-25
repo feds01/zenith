@@ -27,6 +27,7 @@ pub const GO: Language = Language {
     // `go:` names the standard library, and `gomod:` the modules of the
     // dependencies.
     schemes: &["go", "gomod"],
+    path_schemes: &[],
     parse: |table| Arc::new(GoConfig::parse(table)),
     defaults: || Arc::new(GoConfig::default()),
     schema: |generator| generator.subschema_for::<GoTable>(),

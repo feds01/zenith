@@ -26,6 +26,7 @@ pub const PYTHON: Language = Language {
     optional_extensions: &["py", "pyi"],
     // `pypi:` is for third-party packages, `python:` for the standard library.
     schemes: &["pypi", "python"],
+    path_schemes: &[],
     parse: |table| Arc::new(PythonConfig::parse(table)),
     defaults: || Arc::new(PythonConfig::default()),
     schema: |generator| generator.subschema_for::<PythonTable>(),

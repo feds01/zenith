@@ -19,9 +19,9 @@ other scheme that zenith doesn't know.
 
 Package, external and builtin names are matched with name patterns, in which
 `*` matches any run of characters, `/` included, so `npm:*` matches scoped
-packages like `@tanstack/react-query`. A name that is a path written with
-`::`, as those of Rust's standard library are, is matched by each of its
-parents too, so `rust:std` and `rust:std::thread` both match
+packages like `@tanstack/react-query`. A scheme whose names are paths, as
+`rust:` is for Rust's standard library, also matches everything under the
+names it matches, so `rust:std` and `rust:std::thread` both match
 `rust:std::thread::spawn`.
 
 When a path glob matches nested nodes, such as `web/**` matching both

@@ -15,7 +15,8 @@ use crate::{
 };
 
 /// The language of the tests. Its files are `.tst` files, and its schemes are
-/// `ext:` for external packages, and `core:` and `sys:` for builtins.
+/// `ext:` for external packages, and `core:` and `sys:` for builtins, whose
+/// `core:` names are paths written with `::`.
 pub(crate) const TEST: Language = Language {
     name: "test",
     table_names: &["test", "testing"],
@@ -26,6 +27,7 @@ pub(crate) const TEST: Language = Language {
     source_file_names: &[],
     optional_extensions: &["tst", "d.tst"],
     schemes: &["ext", "core", "sys"],
+    path_schemes: &[("core", "::")],
     parse: |table| Arc::new(TestOptions::parse(table)),
     defaults: || Arc::new(TestOptions::default()),
     schema: |generator| generator.subschema_for::<TestTable>(),
@@ -43,6 +45,7 @@ pub(crate) const OTHER: Language = Language {
     source_file_names: &["Otherfile"],
     optional_extensions: &["oth"],
     schemes: &["oth"],
+    path_schemes: &[],
     parse: |table| Arc::new(OtherOptions::parse(table)),
     defaults: || Arc::new(OtherOptions::default()),
     schema: |generator| generator.subschema_for::<OtherTable>(),

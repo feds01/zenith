@@ -13,7 +13,7 @@ use lsp_types::{
 use zenith_diagnostics::{
     Columns, Report, ReportElement, ReportKind, ReportNoteKind, Source, SourceMap, Span,
 };
-use zenith_utils::{fs::adjust_canonicalisation, location::ByteRange};
+use zenith_utils::{fs::adjust_canonicalisation, location::ByteRange, path::rebase};
 
 /// What the diagnostics name as where they come from.
 const SOURCE: &str = "zenith";
@@ -38,10 +38,7 @@ impl Folder {
     /// path as the editor names it, if the file is in it, and `None` if the
     /// path is not absolute.
     fn uri(&self, path: &Path) -> Option<Url> {
-        match path.strip_prefix(&self.canonical) {
-            Ok(relative) => Url::from_file_path(self.path.join(relative)).ok(),
-            Err(_) => Url::from_file_path(path).ok(),
-        }
+        Url::from_file_path(rebase(path, &self.canonical, &self.path)).ok()
     }
 }
 
@@ -57,7 +54,8 @@ pub(crate) struct Diagnostics<'r> {
 }
 
 /// How the editor shows diagnostics: what the characters of positions count,
-/// and the folder that it opened, if it said.
+/// and the folder that it opened, if it said; and whether it can report the
+/// changes to files.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Editor {
     /// What the characters of positions count.
@@ -65,12 +63,17 @@ pub(crate) struct Editor {
 
     /// The folder that the editor opened, if it said.
     pub(crate) folder: Option<Folder>,
+
+    /// Whether the editor can be asked to report the changes to files, in it
+    /// or not, once the server has started.
+    pub(crate) watches_files: bool,
 }
 
 impl Editor {
     /// An editor of `capabilities`, which opened `folder`. Positions count
     /// UTF-8 bytes if it supports them, or else characters, and otherwise
-    /// UTF-16 code units, the protocol's default.
+    /// UTF-16 code units, the protocol's default. It watches files if it lets
+    /// the server register for their changes.
     pub(crate) fn new(capabilities: &ClientCapabilities, folder: Option<PathBuf>) -> Self {
         let general = capabilities.general.as_ref();
         let encodings = general.and_then(|general| general.position_encodings.as_ref());
@@ -81,7 +84,25 @@ impl Editor {
                 (false, true) => Columns::Chars,
                 (false, false) => Columns::Utf16,
             };
-        Self { columns, folder: folder.map(Folder::new) }
+        let workspace = capabilities.workspace.as_ref();
+        let watched = workspace.and_then(|workspace| workspace.did_change_watched_files.as_ref());
+        let watches_files = watched.and_then(|watched| watched.dynamic_registration);
+        Self {
+            columns,
+            folder: folder.map(Folder::new),
+            watches_files: watches_files == Some(true),
+        }
+    }
+
+    /// The path of the file at `uri`, which the editor names, as zenith
+    /// names it if it is in the folder, so that a file that no longer exists
+    /// is named as zenith named it, or `None` if the URI is not of a file.
+    pub(crate) fn path(&self, uri: &Url) -> Option<PathBuf> {
+        let path = uri.to_file_path().ok()?;
+        Some(match &self.folder {
+            Some(folder) => rebase(&path, &folder.path, &folder.canonical),
+            None => path,
+        })
     }
 
     /// What the characters of positions count, as the protocol names it.
@@ -210,7 +231,7 @@ mod tests {
     }
 
     /// An editor of UTF-16 positions that opened no folder.
-    const UTF16: Editor = Editor { columns: Columns::Utf16, folder: None };
+    const UTF16: Editor = Editor { columns: Columns::Utf16, folder: None, watches_files: false };
 
     #[test]
     fn negotiates_utf8_when_the_editor_supports_it() {
@@ -240,7 +261,7 @@ mod tests {
         let source = sources.get(span.source);
         // `/* café 😀 */ ` is 13 characters: 17 bytes, and 14 UTF-16 code units.
         let range = |start, end| Range::new(Position::new(1, start), Position::new(1, end));
-        let editor = |columns| Editor { columns, folder: None };
+        let editor = |columns| Editor { columns, folder: None, watches_files: false };
         for (columns, expected, encoding) in [
             (Columns::Utf8, range(31, 36), PositionEncodingKind::UTF8),
             (Columns::Utf16, range(28, 33), PositionEncodingKind::UTF16),
@@ -314,18 +335,22 @@ mod tests {
         let root = adjust_canonicalisation(env::temp_dir());
         let mut sources = SourceMap::with_root(&root);
         let source = sources.add("web/a.ts", TEXT);
-        let folder = Folder { path: env::temp_dir().join("link"), canonical: root };
-        let editor = Editor { columns: Columns::Utf16, folder: Some(folder) };
+        let folder = Folder { path: env::temp_dir().join("link"), canonical: root.clone() };
+        let editor = Editor { columns: Columns::Utf16, folder: Some(folder), watches_files: false };
         let span = Span::new(source, ByteRange::new(0, 9));
         let location = editor.location(&sources, span).unwrap();
         let named = env::temp_dir().join("link/web/a.ts");
         assert_eq!(location.uri, Url::from_file_path(named).unwrap());
+        // The files that the editor names are named as zenith names them.
+        assert_eq!(editor.path(&location.uri), Some(root.join("web/a.ts")));
 
         // A file outside the folder keeps its own path.
         let mut sources = SourceMap::new();
         let outside = env::temp_dir().parent().unwrap().join("zenith.toml");
         let source = sources.add(outside.display().to_string(), "");
         let location = editor.location(&sources, Span::new(source, ByteRange::new(0, 0))).unwrap();
-        assert_eq!(location.uri, Url::from_file_path(outside).unwrap());
+        assert_eq!(location.uri, Url::from_file_path(&outside).unwrap());
+        assert_eq!(editor.path(&location.uri), Some(outside));
+        assert_eq!(editor.path(&Url::parse("untitled:Untitled-1").unwrap()), None);
     }
 }

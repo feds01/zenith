@@ -1,7 +1,5 @@
 //! The [`BuildGraph`] stage.
 
-use std::mem;
-
 use zenith_graph::{Exports, GraphBuilder, ModuleExports, NodeHandle};
 use zenith_lang::{FileSuppressions, Resolved};
 
@@ -10,8 +8,9 @@ use crate::{
 };
 
 /// Builds the import graph from the parsed files and their resolved imports,
-/// which it takes out of the session. Imports that don't resolve are left out,
-/// and recorded in the session, which also keeps the files' suppressions.
+/// which it leaves in the session, so that it can build the graph again when
+/// they change. Imports that don't resolve are left out, and recorded in the
+/// session, which also keeps the files' suppressions.
 /// If a contract sees through re-exports, it builds the graph through them too,
 /// from what each file exports.
 pub struct BuildGraph;
@@ -22,11 +21,11 @@ impl Stage for BuildGraph {
     }
 
     fn run(&self, session: &mut Session) -> Result<(), PipelineError> {
-        let parsed = mem::take(&mut session.parsed);
-        let resolved = mem::take(&mut session.resolved);
+        let (parsed, resolved) = (session.parsed.clone(), session.resolved.clone());
         let through_reexports = session.needs_graph_through_reexports();
-        let stats = &mut session.stats;
-        let mut file_exports = Vec::new();
+        let (mut unresolved, mut suppressions, mut file_exports) =
+            (Vec::new(), Vec::new(), Vec::new());
+        let (mut non_literal_imports, mut missing_packages) = (0, 0);
 
         // The builder sorts what it is given, so the order of the files
         // doesn't matter.
@@ -42,13 +41,11 @@ impl Stage for BuildGraph {
         let files = session.files.iter().zip(&handles);
         for (((file, &handle), parsed), resolved) in files.zip(parsed).zip(resolved) {
             builder.set_directives(handle, parsed.directives);
-            stats.non_literal_imports += parsed.non_literal_imports.len();
+            non_literal_imports += parsed.non_literal_imports.len();
             if !parsed.suppressions.is_empty() {
                 // The files are sorted, so the suppressions are too.
-                let suppressions = parsed.suppressions;
-                session
-                    .suppressions
-                    .push(FileSuppressions { file: file.name.clone(), suppressions });
+                let file = file.name.clone();
+                suppressions.push(FileSuppressions { file, suppressions: parsed.suppressions });
             }
 
             let scheme = session.backends.of(file).external_scheme();
@@ -67,13 +64,13 @@ impl Stage for BuildGraph {
                         continue;
                     }
                     ResolvedImport::Other(Resolved::External { package, found }) => {
-                        stats.missing_packages += usize::from(!found);
+                        missing_packages += usize::from(!found);
                         builder.add_external(&format!("{scheme}:{package}"))?
                     }
                     ResolvedImport::Other(Resolved::Builtin(name)) => builder.add_builtin(&name)?,
                     ResolvedImport::Other(Resolved::Unresolved(reason)) => {
                         let file = file.name.clone();
-                        session.unresolved.push(UnresolvedImport { file, import, reason: *reason });
+                        unresolved.push(UnresolvedImport { file, import, reason: *reason });
                         continue;
                     }
                     ResolvedImport::Other(Resolved::Ignored(_)) => continue,
@@ -90,7 +87,10 @@ impl Stage for BuildGraph {
         }
 
         // Sorting is stable, so each file's imports stay in source order.
-        session.unresolved.sort_by(|a, b| a.file.cmp(&b.file));
+        unresolved.sort_by(|a, b| a.file.cmp(&b.file));
+        (session.unresolved, session.suppressions) = (unresolved, suppressions);
+        (session.stats.non_literal_imports, session.stats.missing_packages) =
+            (non_literal_imports, missing_packages);
         let graph = builder.finish();
 
         // Through re-exports, each re-export's source is the node its import resolved

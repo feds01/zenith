@@ -4,24 +4,29 @@
 use std::{
     collections::BTreeMap,
     env, fs,
-    io::{BufReader, Write},
+    io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::mpsc::{self, Receiver},
+    sync::{
+        Arc, Mutex,
+        mpsc::{self, Receiver},
+    },
     thread,
     time::{Duration, Instant},
 };
 
-use lsp_server::{Message, Notification, Request, RequestId};
+use lsp_server::{Message, Notification, Request, RequestId, Response};
 use lsp_types::{
-    Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag,
-    DidSaveTextDocumentParams, InitializeParams, Location, MessageType, NumberOrString, Position,
-    PublishDiagnosticsParams, Range, ShowMessageParams, TextDocumentIdentifier, Url,
-    WorkspaceFolder,
+    ClientCapabilities, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
+    DiagnosticTag, DidChangeWatchedFilesClientCapabilities, DidChangeWatchedFilesParams,
+    DidSaveTextDocumentParams, FileChangeType, FileEvent, InitializeParams, Location, MessageType,
+    NumberOrString, Position, PublishDiagnosticsParams, Range, ShowMessageParams,
+    TextDocumentIdentifier, Url, WorkspaceClientCapabilities, WorkspaceFolder,
     notification::{
-        DidSaveTextDocument, Exit, Initialized, Notification as _, PublishDiagnostics, ShowMessage,
+        DidChangeWatchedFiles, DidSaveTextDocument, Exit, Initialized, Notification as _,
+        PublishDiagnostics, ShowMessage,
     },
-    request::{Initialize, Request as _, Shutdown},
+    request::{Initialize, RegisterCapability, Request as _, Shutdown},
 };
 use serde_json::json;
 use tempfile::TempDir;
@@ -49,20 +54,59 @@ struct Editor {
 
     /// The messages that the server writes, as they are read.
     messages: Receiver<Message>,
+
+    /// The lines that the server has logged, as they are read.
+    log: Arc<Mutex<Vec<String>>>,
 }
 
 impl Editor {
     /// Start the server in the parent of `project`, and initialise it with
     /// `project` as the workspace folder, without saying which encodings of
-    /// positions the editor supports.
+    /// positions the editor supports, or that it can report the changes to
+    /// files.
     fn start(project: &Path) -> Self {
+        Self::start_with(project, ClientCapabilities::default())
+    }
+
+    /// [`Editor::start`] an editor that can report the changes to files,
+    /// which agrees to when the server asks it to.
+    fn start_watching(project: &Path) -> Self {
+        let watched = DidChangeWatchedFilesClientCapabilities {
+            dynamic_registration: Some(true),
+            ..DidChangeWatchedFilesClientCapabilities::default()
+        };
+        let workspace = WorkspaceClientCapabilities {
+            did_change_watched_files: Some(watched),
+            ..Default::default()
+        };
+        let capabilities = ClientCapabilities { workspace: Some(workspace), ..Default::default() };
+        let mut editor = Self::start_with(project, capabilities);
+        let Message::Request(request) = editor.receive() else {
+            panic!("expected the request to watch files");
+        };
+        assert_eq!(request.method, RegisterCapability::METHOD);
+        editor.send(Response::new_ok(request.id, json!(null)).into());
+        editor
+    }
+
+    /// [`Editor::start`] an editor of `capabilities`.
+    fn start_with(project: &Path, capabilities: ClientCapabilities) -> Self {
         let mut server = Command::new(env!("CARGO_BIN_EXE_zenith"))
-            .args(["lsp", "--no-cache"])
+            .args(["lsp", "--no-cache", "-v"])
             .current_dir(project.parent().unwrap())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("zenith lsp starts");
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (lines, stderr) = (Arc::clone(&log), BufReader::new(server.stderr.take().unwrap()));
+        thread::spawn(move || {
+            for line in stderr.lines().map_while(Result::ok) {
+                eprintln!("{line}");
+                lines.lock().unwrap().push(line);
+            }
+        });
         let stdin = server.stdin.take().unwrap();
         let mut stdout = BufReader::new(server.stdout.take().unwrap());
         let (sender, messages) = mpsc::channel();
@@ -73,10 +117,11 @@ impl Editor {
                 }
             }
         });
-        let mut editor = Self { server, stdin, messages };
+        let mut editor = Self { server, stdin, messages, log };
 
         let uri = Url::from_directory_path(project).unwrap();
         let params = InitializeParams {
+            capabilities,
             workspace_folders: Some(vec![WorkspaceFolder { uri, name: "project".into() }]),
             ..InitializeParams::default()
         };
@@ -133,6 +178,31 @@ impl Editor {
         let params =
             DidSaveTextDocumentParams { text_document: TextDocumentIdentifier { uri }, text: None };
         self.send(Notification::new(DidSaveTextDocument::METHOD.into(), params).into());
+    }
+
+    /// Wait for the server to log a line that starts with `start`, and take
+    /// the lines it logged until then.
+    fn logged(&self, start: &str) -> Vec<String> {
+        let begun = Instant::now();
+        loop {
+            let mut log = self.log.lock().unwrap();
+            if let Some(found) = log.iter().position(|line| line.starts_with(start)) {
+                return log.drain(..=found).collect();
+            }
+            drop(log);
+            assert!(begun.elapsed() < TIMEOUT, "zenith lsp did not log `{start}`");
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// Report that the files at `paths` have changed, as `typ`.
+    fn changed(&mut self, paths: &[PathBuf], typ: FileChangeType) {
+        let changes = paths
+            .iter()
+            .map(|path| FileEvent::new(Url::from_file_path(path).unwrap(), typ))
+            .collect();
+        let params = DidChangeWatchedFilesParams { changes };
+        self.send(Notification::new(DidChangeWatchedFiles::METHOD.into(), params).into());
     }
 
     /// Shut the server down, and wait for it to exit.
@@ -317,6 +387,68 @@ fn names_files_as_the_editor_names_its_folder() {
     assert_eq!(files, ["web/a.ts", "web/d.ts", "web/e.ts"]);
     let related = published["web/d.ts"][0].related_information.as_ref().unwrap();
     assert_eq!(relative(&opened, &related[0].location.uri), "lib/c.ts");
+
+    editor.shut_down();
+}
+
+#[test]
+fn updates_the_project_with_what_changed_since_the_last_save() {
+    let (_dir, project) = project();
+    let mut editor = Editor::start_watching(&project);
+    assert_eq!(editor.published(&project, 3).len(), 3);
+    editor.logged("info: indexed");
+    // What the server logged up to the end of the update of `files` files, which
+    // read nothing else.
+    let updated = |editor: &Editor, files: &str| {
+        let log = editor.logged("info: updated");
+        assert!(log.iter().all(|line| !line.starts_with("info: indexed")), "{log:?}");
+        assert_eq!(log.last().unwrap(), &format!("info: updated the imports of {files}"));
+    };
+
+    // 1. A file that is saved is updated.
+    fs::write(project.join("web/a.ts"), "export const a = 1;\n").unwrap();
+    editor.save(&project.join("web/a.ts"));
+    assert_eq!(editor.published(&project, 1), BTreeMap::from([("web/a.ts".to_string(), vec![])]));
+    updated(&editor, "1 changed file");
+
+    // 2. So is a file that changed outside the editor, once it is reported, at the
+    //    next save.
+    fs::write(project.join("web/d.ts"), "export const d = 1;\n").unwrap();
+    editor.changed(&[project.join("web/d.ts")], FileChangeType::CHANGED);
+    editor.save(&project.join("web/a.ts"));
+    assert_eq!(editor.published(&project, 1), BTreeMap::from([("web/d.ts".to_string(), vec![])]));
+    updated(&editor, "2 changed files");
+
+    // 3. A new file has the project read from scratch.
+    fs::write(project.join("web/f.ts"), "import { b } from \"../api/b\";\n").unwrap();
+    editor.changed(&[project.join("web/f.ts")], FileChangeType::CREATED);
+    editor.save(&project.join("web/f.ts"));
+    let direct =
+        diagnostic(range(0, 18, 28), "`web` must not import `api`; remove this import", None);
+    assert_eq!(
+        editor.published(&project, 1),
+        BTreeMap::from([("web/f.ts".to_string(), vec![direct])])
+    );
+    editor.logged("info: indexed");
+
+    editor.shut_down();
+}
+
+#[test]
+fn reads_a_project_above_the_folder_from_scratch() {
+    // The editor opened a folder in the project, so it reports none of the
+    // changes outside the folder.
+    let (_dir, project) = project();
+    let mut editor = Editor::start_watching(&project.join("web"));
+    assert_eq!(editor.published(&project, 3).len(), 3);
+    editor.logged("info: indexed");
+
+    // So a save reads the whole project, and finds a change outside the folder.
+    fs::write(project.join("lib/c.ts"), "export const c = 1;\n").unwrap();
+    editor.save(&project.join("web/a.ts"));
+    assert_eq!(editor.published(&project, 1), BTreeMap::from([("web/d.ts".to_string(), vec![])]));
+    let log = editor.logged("info: indexed");
+    assert!(log.iter().all(|line| !line.starts_with("info: updated")), "{log:?}");
 
     editor.shut_down();
 }

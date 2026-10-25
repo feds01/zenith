@@ -60,13 +60,13 @@ pub struct Session {
     pub workspace: Workspace,
 
     /// What the parser found in each file, in the order of `files`. Filled
-    /// in by the [`Parse`](crate::StageKind::Parse) stage, and taken by the
+    /// in by the [`Parse`](crate::StageKind::Parse) stage, and read by the
     /// [`Graph`](crate::StageKind::Graph) stage.
     pub parsed: Vec<ParsedFile>,
 
     /// What each import of each file resolved to, in the order of `files` and
     /// of their imports. Filled in by the
-    /// [`Resolve`](crate::StageKind::Resolve) stage, and taken by the
+    /// [`Resolve`](crate::StageKind::Resolve) stage, and read by the
     /// [`Graph`](crate::StageKind::Graph) stage.
     pub resolved: Vec<Vec<ResolvedImport>>,
 

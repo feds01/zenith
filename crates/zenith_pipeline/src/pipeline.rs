@@ -43,6 +43,31 @@ impl StageKind {
     }
 }
 
+impl StageKind {
+    /// What a stage of this kind does again when the contents of some source
+    /// files change.
+    const fn on_change(self) -> OnChange {
+        match self {
+            StageKind::Discover => OnChange::Keep,
+            StageKind::Parse | StageKind::Resolve => OnChange::RunOnChanged,
+            StageKind::Graph => OnChange::RunAgain,
+        }
+    }
+}
+
+/// What a stage does again when the contents of some source files change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OnChange {
+    /// Nothing, as what it found doesn't depend on what is in the files.
+    Keep,
+
+    /// Run on the changed files alone, as it goes file by file.
+    RunOnChanged,
+
+    /// Run again on every file, as what it finds depends on all of them.
+    RunAgain,
+}
+
 impl fmt::Display for StageKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.name())
@@ -66,7 +91,9 @@ pub trait Stage {
 ///
 /// A command runs the stages it needs with [`Pipeline::run_until`]: `zenith
 /// resolve` only needs the workspace packages, while `zenith graph` needs the
-/// whole graph.
+/// whole graph. One that checks the project again as files change, as `zenith
+/// lsp` does, keeps the pipeline and its session, and
+/// [updates](Pipeline::update) them.
 pub struct Pipeline {
     /// The stages, in the order of their kinds.
     stages: Vec<Box<dyn Stage>>,
@@ -74,7 +101,8 @@ pub struct Pipeline {
     /// How many of the stages have run.
     completed: usize,
 
-    /// How long each stage that ran took, in the order they ran.
+    /// How long each stage that ran took, in the order they ran, or took to
+    /// update the session, once they have updated it.
     timings: Vec<(StageKind, Duration)>,
 }
 
@@ -112,24 +140,70 @@ impl Pipeline {
     ) -> Result<(), PipelineError> {
         while let Some(stage) = self.stages.get(self.completed).filter(|stage| stage.kind() <= last)
         {
-            let start = Instant::now();
-            let result = stage.run(session);
-            let time = start.elapsed();
-            debug!(
-                "{}",
-                message!(pipeline_stage_time, stage = stage.kind(), time = format!("{time:.1?}"))
-            );
-            self.timings.push((stage.kind(), time));
-            result?;
+            run_timed(stage.as_ref(), session, &mut self.timings)?;
             self.completed += 1;
         }
         Ok(())
     }
 
-    /// How long each stage that ran took, in the order they ran.
+    /// Bring what the stages that have run found in `session` up to date with
+    /// the source files at `changed`, by their indices in
+    /// [`Session::files`], whose contents have changed since, as
+    /// [`Session::changed_files`] finds them. The stages that go file by file
+    /// run on those files alone, and those that depend on every file run
+    /// again, unless the files parse and resolve as they did. The stages know
+    /// nothing of it.
+    ///
+    /// The first error stops the update, and is returned. The session is then
+    /// in no fit state to update again, and must be built anew.
+    pub fn update(&mut self, session: &mut Session, changed: &[u32]) -> Result<(), PipelineError> {
+        if changed.is_empty() {
+            return Ok(());
+        }
+        self.timings.clear();
+        let stages = &self.stages[..self.completed];
+        let doing =
+            |on_change| stages.iter().filter(move |stage| stage.kind().on_change() == on_change);
+
+        // 1. Run the stages that go file by file on the changed files alone, and keep
+        //    what they find in place of what they found in them before.
+        let whole = session.focus(changed);
+        let timings = &mut self.timings;
+        let result = (doing(OnChange::RunOnChanged))
+            .try_for_each(|stage| run_timed(stage.as_ref(), session, timings));
+        let differs = session.unfocus(whole);
+        result?;
+
+        // 2. Run the stages that depend on every file again, if what they depend on
+        //    changed: a save that leaves what a file imports as it was, as most do,
+        //    leaves the graph as it was.
+        if !differs {
+            return Ok(());
+        }
+        (doing(OnChange::RunAgain))
+            .try_for_each(|stage| run_timed(stage.as_ref(), session, timings))
+    }
+
+    /// How long each stage that ran took, in the order they ran, or took to
+    /// update the session, if the pipeline last updated one.
     pub fn timings(&self) -> &[(StageKind, Duration)] {
         &self.timings
     }
+}
+
+/// Run `stage` on `session`, and record how long it took in `timings`, and in
+/// the log.
+fn run_timed(
+    stage: &dyn Stage,
+    session: &mut Session,
+    timings: &mut Vec<(StageKind, Duration)>,
+) -> Result<(), PipelineError> {
+    let start = Instant::now();
+    let result = stage.run(session);
+    let time = start.elapsed();
+    debug!("{}", message!(pipeline_stage_time, stage = stage.kind(), time = format!("{time:.1?}")));
+    timings.push((stage.kind(), time));
+    result
 }
 
 #[cfg(test)]
@@ -202,6 +276,31 @@ mod tests {
         assert_eq!(*ran.borrow(), [Discover, Parse, Parse, Graph]);
         let timed: Vec<_> = pipeline.timings().iter().map(|(kind, _)| *kind).collect();
         assert_eq!(timed, [Discover, Parse, Parse, Graph]);
+    }
+
+    #[test]
+    fn an_update_runs_again_the_stages_that_read_the_files() {
+        use StageKind::*;
+        let (mut pipeline, ran) = marks(&[Discover, Parse, Resolve, Graph], &[]);
+        let mut session = session();
+        session.files = vec![crate::SourceFile { name: "a.ts".into(), language: 0 }];
+        pipeline.run_until(&mut session, Resolve).unwrap();
+
+        // No change updates nothing. A change runs the stages that have run again,
+        // but for the one that found the files, and is timed apart from the run.
+        pipeline.update(&mut session, &[]).unwrap();
+        assert_eq!(pipeline.timings().len(), 3);
+        pipeline.update(&mut session, &[0]).unwrap();
+        assert_eq!(*ran.borrow(), [Discover, Parse, Resolve, Parse, Resolve]);
+        let timed: Vec<_> = pipeline.timings().iter().map(|(kind, _)| *kind).collect();
+        assert_eq!(timed, [Parse, Resolve]);
+
+        // Once the graph is built, it is built again only if what the stages that
+        // go file by file found changed, which these find nothing.
+        pipeline.run_until(&mut session, Graph).unwrap();
+        pipeline.update(&mut session, &[0]).unwrap();
+        let timed: Vec<_> = pipeline.timings().iter().map(|(kind, _)| *kind).collect();
+        assert_eq!(timed, [Parse, Resolve]);
     }
 
     #[test]

@@ -3,7 +3,9 @@
 //!
 //! A [`Server`] starts once the editor initialises it. It then checks the
 //! project, publishes what the check found, and does it again whenever the
-//! editor saves a file, until the editor shuts it down. It knows nothing of
+//! editor saves a file, until the editor shuts it down. It tells each check
+//! the [`Changes`] since the last: the files that the editor saved, and those
+//! that it saw change, if it reports the changes to files. It knows nothing of
 //! what is checked: a check gives it what it [`Found`], as
 //! [`Report`](zenith_diagnostics::Report)s, and each report with an excerpt
 //! is a diagnostic on the file of its first excerpt, with its other excerpts
@@ -23,4 +25,4 @@ mod error;
 mod server;
 
 pub use error::ServerError;
-pub use server::{Failure, Found, Server};
+pub use server::{Changes, Failure, Found, Server};

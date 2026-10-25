@@ -32,6 +32,7 @@ mod session;
 mod stages;
 #[cfg(test)]
 mod tests;
+mod update;
 
 pub use backends::Backends;
 pub use error::{FileError, FileErrorKind, PipelineError, UnresolvedImport};

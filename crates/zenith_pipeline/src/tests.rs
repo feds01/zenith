@@ -190,8 +190,8 @@ const lazy = import(name);
     assert_eq!(graph.detail_count(), 5);
     assert_eq!(session.stats.non_literal_imports, 1);
     assert_eq!(session.stats.missing_packages, 1);
-    // The graph stage takes what it was built from.
-    assert!(session.parsed.is_empty() && session.resolved.is_empty());
+    // The graph stage leaves what it was built from, to build it again.
+    assert_eq!((session.parsed.len(), session.resolved.len()), (3, 3));
 }
 
 #[test]
@@ -633,4 +633,103 @@ fn the_scope_is_the_paths_and_the_files_changed_since_a_commit() {
     // Neither is every file.
     session.scope_to(&[], None).unwrap();
     assert!(session.scope.is_everything());
+}
+
+/// Build the graph of `project`, and through its re-exports.
+fn build_through_reexports(project: &Project) -> (Session, Pipeline) {
+    let mut session = project.session("");
+    session.build_graph_through_reexports();
+    let mut pipeline = Pipeline::standard();
+    pipeline.run_until(&mut session, StageKind::Graph).unwrap();
+    (session, pipeline)
+}
+
+#[test]
+fn an_update_finds_what_a_build_would() {
+    let project = varied_project();
+    let (mut session, mut pipeline) = build_through_reexports(&project);
+    assert_eq!(session.parsed.len(), 5);
+    let before = findings(&session);
+
+    // Every file but one changes: what they import, and what they parse to,
+    // can't be read or parse to, and the problems of the file that doesn't.
+    for (file, contents) in [
+        ("app.tsx", "import { b } from './b';\nimport { r } from './recovered';\n"),
+        ("b.ts", "export { app } from './app'; // zenith-ignore e\nimport './gone';\n"),
+        ("binary.ts", "import a from './app';\n"),
+        ("fatal.ts", "import b from './b';\nlet = ;\n"),
+    ] {
+        fs::write(project.root.join(file), contents).unwrap();
+    }
+    let changed = ["app.tsx", "b.ts", "binary.ts", "fatal.ts"].map(|file| project.root.join(file));
+    let changed = session.changed_files(&changed).unwrap();
+    assert_eq!(changed, [0, 1, 2, 3]);
+    pipeline.update(&mut session, &changed).unwrap();
+
+    let (built, _) = build_through_reexports(&project);
+    assert_ne!(findings(&session), before);
+    assert_eq!(findings(&session), findings(&built));
+    let through = |session: &Session| summary(session.graph_through_reexports.as_ref().unwrap());
+    assert_eq!(through(&session), through(&built));
+
+    // It can be updated again, as it keeps what it was built from.
+    fs::write(project.root.join("app.tsx"), "export const app = 1;\n").unwrap();
+    pipeline.update(&mut session, &[0]).unwrap();
+    assert_eq!(findings(&session), findings(&build_through_reexports(&project).0));
+}
+
+#[test]
+fn an_update_that_leaves_the_imports_as_they_were_keeps_the_graph() {
+    let project = Project::new(&[("a.ts", b"import './b';\nexport const a = 1;\n"), ("b.ts", b"")]);
+    let (mut session, mut pipeline) = build_through_reexports(&project);
+    let built =
+        |pipeline: &Pipeline| pipeline.timings().iter().any(|(kind, _)| *kind == StageKind::Graph);
+
+    // What follows the import changes, so the graph stays.
+    fs::write(project.root.join("a.ts"), "import './b';\nexport const a = 2;\n").unwrap();
+    pipeline.update(&mut session, &[0]).unwrap();
+    assert!(!built(&pipeline));
+    assert_eq!(findings(&session), findings(&build_through_reexports(&project).0));
+
+    // A line above the import moves it, so the graph is built again.
+    fs::write(project.root.join("a.ts"), "// a\nimport './b';\nexport const a = 2;\n").unwrap();
+    pipeline.update(&mut session, &[0]).unwrap();
+    assert!(built(&pipeline));
+    assert_eq!(findings(&session), findings(&build_through_reexports(&project).0));
+}
+
+#[test]
+fn only_changes_to_source_files_that_exist_update_a_session() {
+    let project = Project::new(&[
+        ("package.json", br#"{ "name": "acme" }"#),
+        ("a.ts", b""),
+        ("b.ts", b""),
+        ("c.ts", b""),
+    ]);
+    let mut session = project.session("");
+    session.cache = session.cache_settings("1.0.0");
+    Pipeline::standard().run_until(&mut session, StageKind::Graph).unwrap();
+    let root = &project.root;
+
+    // The source files, each once, in order. Changes to the cache, and in git's
+    // directory, change nothing.
+    let paths = [root.join("c.ts"), root.join("a.ts"), root.join("c.ts")];
+    assert_eq!(session.changed_files(&paths), Some(vec![0, 2]));
+    let unrelated = [project.cache().path::<ParsedFile>(), root.join(".git/index")];
+    assert_eq!(session.changed_files(&unrelated), Some(vec![]));
+
+    // A new or deleted file, a manifest, the configuration file, or a file outside
+    // the root needs the session built anew.
+    fs::remove_file(root.join("b.ts")).unwrap();
+    for path in ["b.ts", "d.ts", "package.json", "zenith.toml", "../a.ts"] {
+        assert_eq!(session.changed_files(&[root.join(path)]), None, "{path}");
+    }
+
+    // With only the files that git tracks, git's directory is not unrelated.
+    session.tracked_only = true;
+    assert_eq!(session.changed_files(&[root.join(".git/index")]), None);
+
+    // The project is in the directories above its root.
+    assert!(session.is_within(root) && session.is_within(root.parent().unwrap()));
+    assert!(!session.is_within(&root.join("a")));
 }

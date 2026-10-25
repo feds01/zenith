@@ -8,6 +8,18 @@ that read them.
   the whole project, as `zenith check` does, and publishes a diagnostic on
   each import that breaks a contract, a finding each as in the
   [compact](output.md#compact) format.
+- It keeps the project's import graph from one check to the next. If the
+  editor reports the changes to files, as VS Code does, a save reads and
+  resolves again only the source files that changed since the last check:
+  the one saved, and those that changed outside the editor, such as when a
+  branch is checked out, once the editor reports them. It builds the graph
+  again only if what those files import changed, and then checks every
+  contract again. A new or deleted file, or a change to a file that isn't a
+  source file, such as `zenith.toml`, a manifest or a `tsconfig.json`, has
+  the project read from scratch. So does every save in an editor that
+  doesn't report changes, or when the project's root or `zenith.toml` is
+  above the folder that the editor opened, as an editor reports only the
+  changes in it.
 - A diagnostic is an error or a warning as the contract's severity says, has
   the contract's id as its code, says how to fix the finding, as the
   compact format does, and has the contract's guidance after it. The

@@ -4,7 +4,7 @@
 use divan::Bencher;
 use zenith_benchmark::TempRepo;
 use zenith_config::Config;
-use zenith_contracts::{Contract, Exemptions};
+use zenith_contracts::{Contract, Exemptions, Graphs};
 use zenith_pipeline::{LANGUAGES, Pipeline, Session, StageKind};
 
 // The allocator of the `zenith` binary. CodSpeed measures the allocations
@@ -50,8 +50,12 @@ fn check_contracts(session: &Session) {
         Contract::compile_all(&session.config.contracts, &session.graph, &session.workspace)
             .unwrap();
     let exemptions = Exemptions { suppressions: &session.suppressions, baseline: None };
-    let reports =
-        Contract::check_all(&contracts, session.graphs(), &session.workspace, &exemptions);
+    let reports = Contract::check_all(
+        &contracts,
+        Graphs::new(&session.graph, session.graph_through_reexports.as_ref()),
+        &session.workspace,
+        &exemptions,
+    );
     divan::black_box(reports);
 }
 

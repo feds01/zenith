@@ -55,3 +55,4 @@ pub use selection::{Selection, UnmatchedSelector};
 pub use suggest::Suggestion;
 pub use summary::{Count, Outcome, Summary, SummaryEntry};
 pub use suppressions::{UnusedReason, UnusedSuppression};
+pub use view::Graphs;

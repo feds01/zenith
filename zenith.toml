@@ -13,8 +13,8 @@ type = "layers"
 name = "Crates only depend on the layers below them"
 layers = [
   "pkg:zenith | pkg:zenith_benchmark",
-  "pkg:zenith_contracts",
   "pkg:zenith_pipeline",
+  "pkg:zenith_contracts",
   "pkg:zenith_lang_*",
   "pkg:zenith_config",
   "pkg:zenith_lang",
@@ -30,11 +30,12 @@ name = "Languages know nothing of each other"
 modules = ["pkg:zenith_lang_*"]
 guidance = "Share code between languages through zenith_lang."
 
+# The contracts' tests read their configurations with the real JavaScript.
 [contracts.languages-behind-the-pipeline]
 type = "protected"
 name = "Languages are only reached through the pipeline"
 modules = ["pkg:zenith_lang_*"]
-allowed_importers = ["pkg:zenith_pipeline", "pkg:zenith_benchmark"]
+allowed_importers = ["pkg:zenith_pipeline", "pkg:zenith_benchmark", "crates/zenith_contracts/src/testing.rs"]
 guidance = "Reach a language through the interfaces in zenith_config and zenith_lang."
 
 [contracts.parsers-in-languages]

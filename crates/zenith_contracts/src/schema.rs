@@ -12,11 +12,10 @@ use serde::Serialize;
 use zenith_config::{AlertLevel, ContractKind, Severity};
 use zenith_diagnostics::{Position, ReportKind, Source, SourceMap};
 use zenith_graph::{Graph, ImportDetail, ImportKind};
-use zenith_pipeline::Graphs;
 
 use crate::{
-    Chain, ContractReport, CycleBreaker, CycleScope, Fix, FixAction, Link, Summary, UnusedReason,
-    UnusedSuppression, Violation, reports::import_span,
+    Chain, ContractReport, CycleBreaker, CycleScope, Fix, FixAction, Graphs, Link, Summary,
+    UnusedReason, UnusedSuppression, Violation, reports::import_span,
 };
 
 /// What checking the contracts found, as JSON: the fields that it adds to

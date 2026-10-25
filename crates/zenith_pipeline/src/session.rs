@@ -6,20 +6,18 @@ use std::{
 };
 
 use rustc_hash::FxHashSet;
-use thin_vec::ThinVec;
 use zenith_cache::CacheSettings;
-use zenith_config::{Config, ContractConfig, Reexports};
+use zenith_config::Config;
 use zenith_diagnostics::{Report, SourceId, SourceMap, message};
-use zenith_graph::{Graph, GraphBuilder};
-use zenith_lang::{ParsedFile, Resolved, Suppression, Workspace};
+use zenith_graph::{Graph, GraphBuilder, Scope};
+use zenith_lang::{FileSuppressions, ParsedFile, Resolved, Workspace};
 use zenith_utils::{
     fs::{FileSystem, adjust_canonicalisation, disk},
-    location::Located,
     path::{absolute_path, relative_posix},
 };
 use zenith_workspace::{Git, WalkSettings};
 
-use crate::{Backends, FileError, PipelineError, Scope, UnresolvedImport};
+use crate::{Backends, FileError, PipelineError, UnresolvedImport};
 
 /// A project, and what the stages of the pipeline have found in it so far.
 ///
@@ -105,49 +103,6 @@ pub struct Session {
     pub stats: Stats,
 }
 
-/// The graphs that contracts check against: the import graph, and the graph
-/// through re-exports if a contract needs it. They have the same modules, so
-/// either resolves a contract's selectors.
-#[derive(Debug, Clone, Copy)]
-pub struct Graphs<'g> {
-    /// The import graph.
-    pub graph: &'g Graph,
-
-    /// The import graph through re-exports, if a contract needs it.
-    pub through_reexports: Option<&'g Graph>,
-}
-
-/// Just the import graph, for contracts that don't see through re-exports.
-impl<'g> From<&'g Graph> for Graphs<'g> {
-    fn from(graph: &'g Graph) -> Self {
-        Self { graph, through_reexports: None }
-    }
-}
-
-impl<'g> Graphs<'g> {
-    /// The graph that the contract `config` checks against.
-    ///
-    /// Panics if the contract sees through re-exports but the graph through
-    /// them wasn't built, which the graph stage does when one does.
-    pub fn of(&self, config: &ContractConfig) -> &'g Graph {
-        self.seeing(config.reexports)
-    }
-
-    /// The graph that a contract that sees re-exports as `reexports` checks
-    /// against.
-    ///
-    /// Panics if it sees through them, but the graph through them wasn't
-    /// built.
-    pub fn seeing(&self, reexports: Reexports) -> &'g Graph {
-        match reexports {
-            Reexports::Opaque => self.graph,
-            Reexports::Transparent => self
-                .through_reexports
-                .expect("the graph through re-exports is built for the contracts that need it"),
-        }
-    }
-}
-
 /// What an import resolved to, as the session keeps it until the graph is
 /// built.
 #[derive(Debug, Clone, PartialEq)]
@@ -177,16 +132,6 @@ impl SourceFile {
     pub fn path(&self, root: &Path) -> PathBuf {
         absolute_path(root, &self.name)
     }
-}
-
-/// The `zenith-ignore` comments of a source file.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileSuppressions {
-    /// The file, as a POSIX path relative to the root.
-    pub file: String,
-
-    /// Its suppressions, in source order. There is at least one.
-    pub suppressions: ThinVec<Located<Suppression>>,
 }
 
 /// Counts of what the stages found, beyond what the session holds.
@@ -367,11 +312,6 @@ impl Session {
         let scope = &self.scope;
         self.file_errors.retain(|error| scope.contains(&error.file));
         self.unresolved.retain(|import| scope.contains(&import.file));
-    }
-
-    /// The graphs that the contracts check against.
-    pub fn graphs(&self) -> Graphs<'_> {
-        Graphs { graph: &self.graph, through_reexports: self.graph_through_reexports.as_ref() }
     }
 
     /// Which files to scan, as the configuration says.

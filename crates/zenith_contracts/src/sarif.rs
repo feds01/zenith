@@ -8,10 +8,9 @@ use zenith_diagnostics::{
     ReportElement, ReportKind, Sarif, SarifRule, SourceId, SourceMap, Span, message,
 };
 use zenith_graph::Graph;
-use zenith_pipeline::Graphs;
 
 use crate::{
-    ContractReport, UnusedReason, UnusedSuppression,
+    ContractReport, Graphs, UnusedReason, UnusedSuppression,
     reports::{Finding, identity, kind},
 };
 

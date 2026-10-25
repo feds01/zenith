@@ -2790,7 +2790,7 @@ dependencies = [
  "zenith_diagnostics",
  "zenith_graph",
  "zenith_lang",
- "zenith_pipeline",
+ "zenith_lang_js",
  "zenith_utils",
  "zenith_workspace",
 ]

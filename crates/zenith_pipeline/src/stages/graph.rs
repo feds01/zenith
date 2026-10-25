@@ -3,11 +3,10 @@
 use std::mem;
 
 use zenith_graph::{Exports, GraphBuilder, ModuleExports, NodeHandle};
-use zenith_lang::Resolved;
+use zenith_lang::{FileSuppressions, Resolved};
 
 use crate::{
-    FileSuppressions, PipelineError, ResolvedImport, Session, SourceFile, Stage, StageKind,
-    UnresolvedImport,
+    PipelineError, ResolvedImport, Session, SourceFile, Stage, StageKind, UnresolvedImport,
 };
 
 /// Builds the import graph from the parsed files and their resolved imports,

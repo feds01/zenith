@@ -10,8 +10,7 @@ use std::fmt;
 use serde::Serialize;
 use zenith_config::ContractKind;
 use zenith_diagnostics::message;
-use zenith_graph::{Graph, GraphView, ImportDetail, ModuleId, Route};
-use zenith_pipeline::Scope;
+use zenith_graph::{Graph, GraphView, ImportDetail, ModuleId, Route, Scope};
 
 use crate::view::Statements;
 

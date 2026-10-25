@@ -40,13 +40,13 @@ pub fn baseline(global: &GlobalArgs, args: BaselineCommand) -> Result<ExitStatus
         let ids: Vec<_> = contracts.iter().map(|contract| contract.config.id.as_str()).collect();
         known.follow_renames(ids.iter().copied(), &Git::new(&session.root).renames());
         baseline = known.clone();
-        let graphs = session.graphs();
+        let graphs = project::graphs(&session);
         for contract in &contracts {
             baseline.prune([contract.config.id.as_str()], graphs.of(contract.config));
         }
     } else {
         let exemptions = Exemptions { suppressions: &session.suppressions, baseline: None };
-        baseline.record(&contracts, session.graphs(), &session.workspace, &exemptions);
+        baseline.record(&contracts, project::graphs(&session), &session.workspace, &exemptions);
     }
     if args.contracts.is_empty() {
         baseline.retain(|id| session.config.contract(id).is_some());

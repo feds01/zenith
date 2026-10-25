@@ -5,8 +5,7 @@
 //! whose imports of a name that ends in `/` are imports of the package in that
 //! directory.
 
-use zenith_graph::ImportKind;
-use zenith_pipeline::Scope;
+use zenith_graph::{ImportKind, Scope};
 
 use crate::{
     Violation,

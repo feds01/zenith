@@ -64,8 +64,8 @@ a new kind of responsibility, not for each feature:
   what zenith says to its users, the `Diagnostic` trait through which an
   error makes its report, and how reports render, as text or as a SARIF
   log.
-- `zenith_graph`: the module tree and import graph, views of it, and the
-  algorithms that run on them.
+- `zenith_graph`: the module tree and import graph, views of it, the part
+  of it that a command reports on, and the algorithms that run on them.
 - `zenith_lang`: the interface that each supported language implements, and
   the types they share: what a file imports, its suppressions and syntax
   errors, what an import resolves to, and a project's workspace packages. It

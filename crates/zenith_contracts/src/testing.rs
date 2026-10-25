@@ -1,16 +1,19 @@
 //! Helpers for the crate's unit tests.
 
 use thin_vec::{ThinVec, thin_vec};
-use zenith_config::Config;
+use zenith_config::{Config, Languages};
 use zenith_graph::{Graph, GraphBuilder, ImportDetail, ImportKind, ImportedNames, NodeHandle};
-use zenith_lang::{Suppression, Workspace};
-use zenith_pipeline::{FileSuppressions, LANGUAGES};
+use zenith_lang::{FileSuppressions, Suppression, Workspace};
 use zenith_utils::location::{ByteRange, Located};
 
 use crate::{
     Baseline, Chain, Contract, ContractError, ContractReport, CycleScope, Exemptions, Link,
     UnusedSuppression, Violation,
 };
+
+/// The languages that the tests' configurations are read with: JavaScript,
+/// whose files and packages the tests are written in.
+pub(crate) const LANGUAGES: Languages = Languages::new(&[&zenith_lang_js::JS]);
 
 /// A project for testing contracts: a graph, no workspace packages, a
 /// configuration, suppressions and a baseline.

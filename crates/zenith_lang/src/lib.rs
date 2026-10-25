@@ -16,5 +16,5 @@ pub use comment::{Comment, CommentKind};
 pub use error::SyntaxError;
 pub use parsed::ParsedFile;
 pub use resolved::{ResolveFailure, Resolved, UnresolvedReason};
-pub use suppressions::Suppression;
+pub use suppressions::{FileSuppressions, Suppression};
 pub use workspace::{Workspace, WorkspacePackage};

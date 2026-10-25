@@ -12,6 +12,8 @@ use zenith_contracts::{ContractReport, ContractsJson, Summary, UnusedSuppression
 use zenith_diagnostics::SourceMap;
 use zenith_pipeline::{FileProblemJson, Session, UnresolvedJson};
 
+use crate::project;
+
 /// The version of the JSON output's schema.
 pub const JSON_VERSION: u32 = 1;
 
@@ -69,7 +71,13 @@ impl<'a> CheckJson<'a> {
         CheckJson {
             version: JSON_VERSION,
             passed: !summary.failed(),
-            contracts: ContractsJson::new(checked, unused, summary, session.graphs(), sources),
+            contracts: ContractsJson::new(
+                checked,
+                unused,
+                summary,
+                project::graphs(session),
+                sources,
+            ),
             unresolved: session.unresolved.iter().map(|import| import.json(sources)).collect(),
             file_errors: session.file_errors.iter().flat_map(|error| error.json(sources)).collect(),
             timings,

@@ -6,7 +6,9 @@ use std::{env, path::Path, sync::Arc};
 use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
 use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
-use zenith_contracts::{Baseline, Contract, Suggestion};
+use zenith_contracts::{
+    Baseline, Contract, ContractReport, Exemptions, Graphs, Suggestion, UnusedSuppression,
+};
 use zenith_diagnostics::{Diagnostic, ReportKind, SourceMap, message};
 use zenith_pipeline::{FileError, FileErrorKind, LANGUAGES, Pipeline, Session, StageKind};
 use zenith_utils::fs::{FileSystem, adjust_canonicalisation, disk};
@@ -187,6 +189,26 @@ pub(crate) fn baseline(session: &Session, ignored: bool) -> Result<Option<Baseli
         }
     }
     Ok(baseline)
+}
+
+/// The graphs of `session` that its contracts check against.
+pub(crate) fn graphs(session: &Session) -> Graphs<'_> {
+    Graphs::new(&session.graph, session.graph_through_reexports.as_ref())
+}
+
+/// Check `contracts` against the graphs of `session`, as
+/// [`Contract::check_all`] does, without the imports that its suppressions
+/// and the `baseline` leave out, and find the suppressions that had no
+/// effect.
+pub(crate) fn check<'c, 's>(
+    contracts: &[Contract<'c>],
+    session: &'s Session,
+    baseline: Option<&'s Baseline>,
+) -> (Vec<ContractReport<'c>>, Vec<UnusedSuppression<'s>>) {
+    let exemptions = Exemptions { suppressions: &session.suppressions, baseline };
+    let checked = Contract::check_all(contracts, graphs(session), &session.workspace, &exemptions);
+    let unused = UnusedSuppression::find(&session.config, &exemptions, &checked);
+    (checked, unused)
 }
 
 /// Load the configuration file at `path` in `file_system`. An invalid file is

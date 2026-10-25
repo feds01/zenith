@@ -3,12 +3,12 @@
 //! A path starts with `crate`, `self` or `super`, which are relative to the
 //! module of the importing file, or with the name of a crate: a dependency of
 //! the importing file's package, its own library, or a crate of the standard
-//! library. Otherwise the first segment is a module of the file's own module,
-//! as `use` paths may start with one. The path leads through the modules to
-//! the file of the last one, and what follows is an item in it. Inline
-//! modules and `#[path]` attributes are not followed. A path that starts with
-//! the name of a tool, such as `clippy::too_many_lines` in an `#[allow]`, is
-//! the tool's attribute or lint, not an import.
+//! library, whose paths are builtins of their own. Otherwise the first segment
+//! is a module of the file's own module, as `use` paths may start with one. The
+//! path leads through the modules to the file of the last one, and what follows
+//! is an item in it. Inline modules and `#[path]` attributes are not followed.
+//! A path that starts with the name of a tool, such as `clippy::too_many_lines`
+//! in an `#[allow]`, is the tool's attribute or lint, not an import.
 
 #[cfg(test)]
 mod tests;
@@ -138,7 +138,7 @@ impl<'a> Resolver<'a> {
                 return Resolved::External { package: package.clone(), found: true };
             }
             None if STANDARD_CRATES.contains(&name) => {
-                return Resolved::Builtin(format!("rust:{name}"));
+                return Resolved::Builtin(standard_path(name, rest));
             }
             None => {}
         }
@@ -184,4 +184,21 @@ impl<'a> Resolver<'a> {
             None => Resolved::unresolved(UnresolvedReason::OutsideRoot(file.to_path_buf())),
         }
     }
+}
+
+/// The node of a path into `name`, a crate of the standard library, whose
+/// segments after it are `rest`: the path up to the first item that may be a
+/// type or a constant, after the modules, since what follows is in it. So
+/// `std::thread::spawn` is `rust:std::thread::spawn`, and
+/// `std::collections::HashMap::new` is `rust:std::collections::HashMap`.
+fn standard_path(name: &str, rest: &[&str]) -> String {
+    let mut path = format!("rust:{name}");
+    for segment in rest {
+        path.push_str("::");
+        path.push_str(segment);
+        if segment.starts_with(char::is_uppercase) {
+            break;
+        }
+    }
+    path
 }

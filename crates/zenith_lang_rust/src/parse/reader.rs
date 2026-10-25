@@ -414,16 +414,22 @@ impl<'s> Reader<'s> {
     }
 
     /// Record the path in code `text`, at `range`, as an import of the modules
-    /// that it names, which are the segments before the first that may be a
-    /// type or a constant. A path that starts with a primitive type is not
-    /// an import.
+    /// that it names and the first item after them that may be a type or a
+    /// constant, which the segments up to it are: `std::time::Instant::now`
+    /// imports `std::time::Instant`. A path that starts with a primitive type
+    /// is not an import, and nor is one that starts with a type.
     fn path(&mut self, range: ByteRange, text: &str) {
         let body = text.strip_prefix("::").unwrap_or(text);
         let mut end = 0;
-        for segment in
-            body.split("::").take_while(|segment| !segment.starts_with(char::is_uppercase))
-        {
+        for segment in body.split("::") {
+            let is_item = segment.starts_with(char::is_uppercase);
+            if is_item && end == 0 {
+                break;
+            }
             end += segment.len() + if end == 0 { 0 } else { "::".len() };
+            if is_item {
+                break;
+            }
         }
         let first = body.split("::").next().unwrap_or_default();
         let is_module = matches!(first, "crate" | "self" | "super")

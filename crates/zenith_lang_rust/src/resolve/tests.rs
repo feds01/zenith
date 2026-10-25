@@ -194,9 +194,26 @@ fn the_standard_library_is_builtin() {
     let fixture = Fixture::new();
     for name in ["std", "core", "alloc", "proc_macro", "test"] {
         let resolved = fixture.resolve(AB, &format!("{name}::fmt::Display"));
-        assert_eq!(resolved, Resolved::Builtin(format!("rust:{name}")));
+        assert_eq!(resolved, Resolved::Builtin(format!("rust:{name}::fmt::Display")));
     }
-    assert_eq!(fixture.resolve(AB, "::std::fs"), Resolved::Builtin("rust:std".into()));
+    assert_eq!(fixture.resolve(AB, "::std::fs"), Resolved::Builtin("rust:std::fs".into()));
+}
+
+#[test]
+fn a_path_into_the_standard_library_ends_at_its_first_type() {
+    let fixture = Fixture::new();
+    let builtin = |path: &str| Resolved::Builtin(path.into());
+    let paths = [
+        ("std", "rust:std"),
+        ("std::thread", "rust:std::thread"),
+        ("std::thread::spawn", "rust:std::thread::spawn"),
+        ("std::time::Instant", "rust:std::time::Instant"),
+        ("std::collections::hash_map::Entry::Occupied", "rust:std::collections::hash_map::Entry"),
+        ("std::r#f64::consts::PI", "rust:std::f64::consts::PI"),
+    ];
+    for (specifier, node) in paths {
+        assert_eq!(fixture.resolve(AB, specifier), builtin(node), "{specifier}");
+    }
 }
 
 #[test]
@@ -330,7 +347,7 @@ fn a_file_outside_every_module_tree_has_only_crates_to_import() {
     let fixture = Fixture::new();
     let stray = "crates/app/notes/stray.rs";
     assert_eq!(fixture.failure(stray, "crate::a"), "the file is in no module tree of `app`");
-    assert_eq!(fixture.resolve(stray, "std::fs"), Resolved::Builtin("rust:std".into()));
+    assert_eq!(fixture.resolve(stray, "std::fs"), Resolved::Builtin("rust:std::fs".into()));
     assert_eq!(fixture.file(stray, "app::a"), A);
 }
 

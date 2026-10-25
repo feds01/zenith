@@ -10,7 +10,7 @@ project has, and what each import refers to. Each has a page of its own:
 | [JavaScript and TypeScript](languages/javascript.md) | `[languages.js]` | `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs` | workspace packages | `npm:react` | `node:fs`, `bun:sqlite` |
 | [Go](languages/go.md) | `[languages.go]` | `.go` | modules | `gomod:github.com/pkg/errors` | `go:net/http` |
 | [Python](languages/python.md) | `[languages.python]` | `.py`, `.pyi` | packages with a `pyproject.toml` | `pypi:requests` | `python:os` |
-| [Rust](languages/rust.md) | `[languages.rust]` | `.rs` | crates | `crate:serde` | `rust:std` |
+| [Rust](languages/rust.md) | `[languages.rust]` | `.rs` | crates | `crate:serde` | `rust:std::fs` |
 | [Terraform](languages/terraform.md) | `[languages.terraform]` | `.tf`, `.tofu`, `terragrunt.hcl` | none | `tfmod:hashicorp/consul/aws` | none |
 
 ## Enabling languages

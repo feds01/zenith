@@ -1,0 +1,71 @@
+$ zenith check
+exit: 1
+--- stdout
+error[core-builds-for-the-browser]: `src` must not import `rust:std::fs`
+ --> src/store.rs:1:11
+  |
+1 | use std::{fs, thread};
+  |           ^^ imports `rust:std::fs`
+  |
+  = help: remove this import
+
+error[core-builds-for-the-browser]: `src` must not import `rust:std::thread`
+ --> src/store.rs:1:15
+  |
+1 | use std::{fs, thread};
+  |               ^^^^^^ imports `rust:std::thread`
+  |
+  = help: remove this import
+
+error[core-builds-for-the-browser]: `src` must not import `rust:std::time::Instant`
+ --> src/clock.rs:4:17
+  |
+4 |     let start = std::time::Instant::now();
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^ imports `rust:std::time::Instant`
+  |
+  = help: remove this import
+
+Contracts
+  ✗ core-builds-for-the-browser  forbidden  broken (3 violations)
+
+0 kept, 1 broken · 3 files, 5 imports
+
+$ zenith why src rust:std
+exit: 0
+--- stdout
+chain 1 of 5:
+  src/clock.rs:1
+  -> rust:std::time::Duration
+
+chain 2 of 5:
+  src/clock.rs:4
+  -> rust:std::time::Instant
+
+chain 3 of 5:
+  src/lib.rs:4
+  -> rust:std::collections::HashMap
+
+chain 4 of 5:
+  src/store.rs:1
+  -> rust:std::fs
+
+chain 5 of 5:
+  src/store.rs:1
+  -> rust:std::thread
+
+
+$ zenith resolve src/clock.rs std::time::Instant::now
+exit: 0
+--- stdout
+builtin: rust:std::time::Instant
+
+$ zenith resolve src/lib.rs std::collections::HashMap
+exit: 0
+--- stdout
+builtin: rust:std::collections::HashMap
+
+$ zenith resolve src/store.rs std::thread
+exit: 0
+--- stdout
+builtin: rust:std::thread
+

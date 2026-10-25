@@ -75,13 +75,19 @@ impl Graph {
     }
 
     /// The external packages or builtins named `<scheme>:<name>`, e.g.
-    /// `npm:react`, whose name matches `pattern`, in name order.
+    /// `npm:react`, whose name matches `pattern`, in name order. A name that
+    /// is a path written with `::`, as those of Rust's standard library are,
+    /// also matches by each of its parents, so `std` matches
+    /// `std::thread::spawn`, and so does `std::thread`.
     pub fn find_leaves(&self, scheme: &str, pattern: &NamePattern) -> Vec<ModuleId> {
         let prefix = format!("{scheme}:");
         self.ids_with_prefix(&prefix)
             .filter(|id| {
                 let node = self.node(*id);
-                !node.is_internal() && pattern.is_match(&node.name()[prefix.len()..])
+                let name = &node.name()[prefix.len()..];
+                let mut parents = name.match_indices("::").map(|(end, _)| &name[..end]);
+                !node.is_internal()
+                    && (pattern.is_match(name) || parents.any(|parent| pattern.is_match(parent)))
             })
             .collect()
     }
@@ -175,6 +181,26 @@ mod tests {
         assert_eq!(find("node", "*"), ["node:fs"]);
         assert!(find("bun", "*").is_empty());
         assert!(find("npm", "sharp").is_empty());
+    }
+
+    #[test]
+    fn leaves_named_by_paths_are_found_by_their_parents_too() {
+        let mut builder = GraphBuilder::new();
+        for name in ["rust:std::thread::spawn", "rust:std::time::Instant", "rust:core::fmt"] {
+            builder.add_builtin(name).unwrap();
+        }
+        let graph = builder.finish();
+        let find = |pattern: &str| {
+            let found = graph.find_leaves("rust", &NamePattern::new(pattern).unwrap());
+            names(&graph, found)
+        };
+        assert_eq!(find("std"), ["rust:std::thread::spawn", "rust:std::time::Instant"]);
+        assert_eq!(find("std::{thread,fs}"), ["rust:std::thread::spawn"]);
+        assert_eq!(find("std::time::Instant"), ["rust:std::time::Instant"]);
+        assert_eq!(find("*::fmt"), ["rust:core::fmt"]);
+        // A parent ends at a `::`, not inside a name.
+        assert!(find("std::thr").is_empty());
+        assert!(find("std::time::Inst").is_empty());
     }
 
     #[test]

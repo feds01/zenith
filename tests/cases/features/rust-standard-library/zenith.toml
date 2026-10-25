@@ -1,0 +1,9 @@
+# A core that builds for `wasm32-unknown-unknown`, where threads, the clock,
+# the file system and processes compile but fail at run time. `Duration` and
+# `HashMap` are fine; `Instant`, `thread` and `fs` are not.
+[languages.rust]
+
+[contracts.core-builds-for-the-browser]
+type = "forbidden"
+from = ["src"]
+to = ["rust:std::{thread,fs,process,net}", "rust:std::time::Instant"]

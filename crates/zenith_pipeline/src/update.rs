@@ -98,9 +98,9 @@ impl Session {
 
     /// Hold every file again, as `whole` was set aside, with what the stages
     /// found in the changed files in place of what they found in them
-    /// before. A stage that didn't run found nothing, so what it found before
-    /// stays.
-    pub(crate) fn unfocus(&mut self, whole: Whole) {
+    /// before, and return whether it differs. A stage that didn't run found
+    /// nothing, so what it found before stays.
+    pub(crate) fn unfocus(&mut self, whole: Whole) -> bool {
         let Whole { files, mut parsed, mut resolved, mut file_errors, cache, changed } = whole;
 
         // 1. The problems of the changed files, in place of theirs, sorted by file.
@@ -109,29 +109,33 @@ impl Session {
         file_errors.append(&mut self.file_errors);
         file_errors.sort_by(|a, b| a.file.cmp(&b.file));
 
-        // 2. The imports that resolved to a file name it by its index among every file,
-        //    rather than among the changed files.
+        // 2. What each file parsed and resolved to, in place of theirs, with the
+        //    imports that resolved to a file naming it among every file.
         let indices = file_indices(&files);
-        let found = mem::take(&mut self.resolved).into_iter().map(|imports| {
-            let imports = imports.into_iter();
-            (imports.map(|import| match import {
-                ResolvedImport::File(index) => ResolvedImport::File(changed[index as usize]),
-                ResolvedImport::Other(Resolved::Internal(name)) => match indices.get(name.as_str())
-                {
-                    Some(index) => ResolvedImport::File(*index),
-                    None => ResolvedImport::Other(Resolved::Internal(name)),
-                },
-                other => other,
-            }))
-            .collect()
-        });
-        let found: Vec<_> = found.collect();
-
-        // 3. What each file parsed and resolved to, in place of theirs.
-        put(&mut parsed, mem::take(&mut self.parsed), &changed);
-        put(&mut resolved, found, &changed);
+        let mut found = mem::take(&mut self.resolved);
+        found.iter_mut().flatten().for_each(|import| import.widen(&changed, &indices));
+        let differs = put(&mut parsed, mem::take(&mut self.parsed), &changed)
+            | put(&mut resolved, found, &changed);
         (self.files, self.parsed, self.resolved) = (files, parsed, resolved);
         (self.file_errors, self.cache) = (file_errors, cache);
+        differs
+    }
+}
+
+impl ResolvedImport {
+    /// Name the file that the import resolved to among every file, whose
+    /// `indices` are by name, as it was resolved among the files at
+    /// `changed` alone, by their indices among every file.
+    fn widen(&mut self, changed: &[u32], indices: &FxHashMap<&str, u32>) {
+        let index = match self {
+            Self::File(index) => changed[*index as usize],
+            Self::Other(Resolved::Internal(name)) => match indices.get(name.as_str()) {
+                Some(&index) => index,
+                None => return,
+            },
+            Self::Other(_) => return,
+        };
+        *self = Self::File(index);
     }
 }
 
@@ -141,9 +145,13 @@ pub(crate) fn file_indices(files: &[SourceFile]) -> FxHashMap<&str, u32> {
 }
 
 /// Put `found`, what a stage found in each of the files at `changed`, in
-/// place of what `all` holds for them.
-fn put<T>(all: &mut [T], found: Vec<T>, changed: &[u32]) {
+/// place of what `all` holds for them, and return whether any of it differs.
+fn put<T: PartialEq>(all: &mut [T], found: Vec<T>, changed: &[u32]) -> bool {
+    let mut differs = false;
     for (&index, found) in changed.iter().zip(found) {
-        all[index as usize] = found;
+        let held = &mut all[index as usize];
+        differs |= *held != found;
+        *held = found;
     }
+    differs
 }

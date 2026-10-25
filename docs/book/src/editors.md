@@ -12,7 +12,8 @@ that read them.
   editor reports the changes to files, as VS Code does, a save reads and
   resolves again only the source files that changed since the last check:
   the one saved, and those that changed outside the editor, such as when a
-  branch is checked out, once the editor reports them. Then it checks every
+  branch is checked out, once the editor reports them. It builds the graph
+  again only if what those files import changed, and then checks every
   contract again. A new or deleted file, or a change to a file that isn't a
   source file, such as `zenith.toml`, a manifest or a `tsconfig.json`, has
   the project read from scratch. So does every save in an editor that

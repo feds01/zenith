@@ -679,6 +679,26 @@ fn an_update_finds_what_a_build_would() {
 }
 
 #[test]
+fn an_update_that_leaves_the_imports_as_they_were_keeps_the_graph() {
+    let project = Project::new(&[("a.ts", b"import './b';\nexport const a = 1;\n"), ("b.ts", b"")]);
+    let (mut session, mut pipeline) = build_through_reexports(&project);
+    let built =
+        |pipeline: &Pipeline| pipeline.timings().iter().any(|(kind, _)| *kind == StageKind::Graph);
+
+    // What follows the import changes, so the graph stays.
+    fs::write(project.root.join("a.ts"), "import './b';\nexport const a = 2;\n").unwrap();
+    pipeline.update(&mut session, &[0]).unwrap();
+    assert!(!built(&pipeline));
+    assert_eq!(findings(&session), findings(&build_through_reexports(&project).0));
+
+    // A line above the import moves it, so the graph is built again.
+    fs::write(project.root.join("a.ts"), "// a\nimport './b';\nexport const a = 2;\n").unwrap();
+    pipeline.update(&mut session, &[0]).unwrap();
+    assert!(built(&pipeline));
+    assert_eq!(findings(&session), findings(&build_through_reexports(&project).0));
+}
+
+#[test]
 fn only_changes_to_source_files_that_exist_update_a_session() {
     let project = Project::new(&[
         ("package.json", br#"{ "name": "acme" }"#),

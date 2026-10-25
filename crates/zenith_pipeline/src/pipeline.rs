@@ -151,7 +151,8 @@ impl Pipeline {
     /// [`Session::files`], whose contents have changed since, as
     /// [`Session::changed_files`] finds them. The stages that go file by file
     /// run on those files alone, and those that depend on every file run
-    /// again. The stages know nothing of it.
+    /// again, unless the files parse and resolve as they did. The stages know
+    /// nothing of it.
     ///
     /// The first error stops the update, and is returned. The session is then
     /// in no fit state to update again, and must be built anew.
@@ -170,10 +171,15 @@ impl Pipeline {
         let timings = &mut self.timings;
         let result = (doing(OnChange::RunOnChanged))
             .try_for_each(|stage| run_timed(stage.as_ref(), session, timings));
-        session.unfocus(whole);
+        let differs = session.unfocus(whole);
         result?;
 
-        // 2. Run the stages that depend on every file again.
+        // 2. Run the stages that depend on every file again, if what they depend on
+        //    changed: a save that leaves what a file imports as it was, as most do,
+        //    leaves the graph as it was.
+        if !differs {
+            return Ok(());
+        }
         (doing(OnChange::RunAgain))
             .try_for_each(|stage| run_timed(stage.as_ref(), session, timings))
     }
@@ -289,11 +295,12 @@ mod tests {
         let timed: Vec<_> = pipeline.timings().iter().map(|(kind, _)| *kind).collect();
         assert_eq!(timed, [Parse, Resolve]);
 
-        // So does the graph, on every file, once it has been built.
+        // Once the graph is built, it is built again only if what the stages that
+        // go file by file found changed, which these find nothing.
         pipeline.run_until(&mut session, Graph).unwrap();
         pipeline.update(&mut session, &[0]).unwrap();
         let timed: Vec<_> = pipeline.timings().iter().map(|(kind, _)| *kind).collect();
-        assert_eq!(timed, [Parse, Resolve, Graph]);
+        assert_eq!(timed, [Parse, Resolve]);
     }
 
     #[test]

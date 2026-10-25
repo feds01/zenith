@@ -108,7 +108,7 @@ impl Crates {
     /// tests compile a test import: the files of the tests, benchmarks and
     /// examples, and those of the modules that a file declares for its tests
     /// alone, as `#[cfg(test)] mod tests;` does, with every module in them.
-    pub(crate) fn mark_test_code(&self, files: &mut [(&Path, &mut ParsedFile)]) {
+    pub(crate) fn mark_test_code(&self, files: &mut [(PathBuf, &mut ParsedFile)]) {
         // 1. Where each file sits, and the modules that the files declare for their
         //    tests, by the root of their target and their path from it.
         let positions: Vec<_> =

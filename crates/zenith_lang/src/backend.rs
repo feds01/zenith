@@ -51,9 +51,10 @@ pub trait Backend: Send + Sync {
     /// Settle what only all of its parsed `files` tell, each with its path,
     /// such as which of them only tests compile, as a linker joins the files
     /// of a program. What a file parsed to depends on it alone, so that it can
-    /// be cached; what this changes is not cached. It changes nothing by
+    /// be cached; what this changes is not cached. The files are made as they
+    /// are taken, so a language that takes none costs nothing, as by
     /// default.
-    fn link(&mut self, files: &mut [(&Path, &mut ParsedFile)]) {
+    fn link(&mut self, files: &mut dyn Iterator<Item = (PathBuf, &mut ParsedFile)>) {
         let _ = files;
     }
 

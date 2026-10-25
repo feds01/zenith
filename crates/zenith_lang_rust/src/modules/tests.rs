@@ -1,7 +1,7 @@
 //! Tests of which files only tests compile, on the workspace of
 //! [`Project::workspace`].
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use thin_vec::ThinVec;
 use zenith_graph::{ImportDetail, ImportKind, ImportedNames};
@@ -52,8 +52,7 @@ fn test_files(test_modules: &[(&str, &str)]) -> Vec<&'static str> {
             }
         })
         .collect();
-    let mut files: Vec<(&Path, &mut ParsedFile)> =
-        paths.iter().map(PathBuf::as_path).zip(&mut parsed).collect();
+    let mut files: Vec<(PathBuf, &mut ParsedFile)> = paths.into_iter().zip(&mut parsed).collect();
     project.crates().mark_test_code(&mut files);
     FILES
         .iter()

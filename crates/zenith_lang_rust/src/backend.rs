@@ -69,8 +69,9 @@ impl Backend for RustBackend {
         Box::new(Parser::new(Arc::clone(&self.editions)))
     }
 
-    fn link(&mut self, files: &mut [(&Path, &mut ParsedFile)]) {
-        self.crates.mark_test_code(files);
+    fn link(&mut self, files: &mut dyn Iterator<Item = (PathBuf, &mut ParsedFile)>) {
+        let mut files: Vec<_> = files.collect();
+        self.crates.mark_test_code(&mut files);
     }
 
     fn resolver(&self) -> Result<Box<dyn ImportResolver + '_>, ResolveFailure> {

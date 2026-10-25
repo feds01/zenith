@@ -196,6 +196,22 @@ impl NamePattern {
     pub fn is_match(&self, name: &str) -> bool {
         self.alternatives.iter().any(|pieces| match_pieces(pieces, name))
     }
+
+    /// The pattern, also matching every name under one that it matches, for
+    /// names that are paths written with `separator`: with `::`, `std` then
+    /// matches `std::thread::spawn` too, but not `stdx`. It is still written
+    /// as it was.
+    #[must_use]
+    pub fn with_children(mut self, separator: &str) -> Self {
+        let children: Vec<Vec<Piece>> = (self.alternatives.iter())
+            .map(|pieces| {
+                let separator = separator.chars().map(Piece::Char);
+                pieces.iter().copied().chain(separator).chain([Piece::Star]).collect()
+            })
+            .collect();
+        self.alternatives.extend(children);
+        self
+    }
 }
 
 /// Escape a literal path so it can be embedded in a glob.
@@ -559,6 +575,18 @@ mod tests {
         assert!(NamePattern::new("sharp").unwrap().is_literal());
         assert!(NamePattern::new("@acme/\\{legacy\\}").unwrap().is_literal());
         assert!(!NamePattern::new("@acme/*").unwrap().is_literal());
+    }
+
+    #[test]
+    fn name_patterns_with_children_match_the_names_under_their_matches() {
+        let pattern = |raw: &str| NamePattern::new(raw).unwrap().with_children("::");
+        assert!(pattern("std").is_match("std"));
+        assert!(pattern("std").is_match("std::thread::spawn"));
+        assert!(!pattern("std").is_match("stdx"));
+        assert!(pattern("std::{thread,fs}").is_match("std::fs::read"));
+        assert!(!pattern("std::{thread,fs}").is_match("std::time::Instant"));
+        assert!(!pattern("std::thr").is_match("std::thread"));
+        assert_eq!(pattern("std::{thread,fs}").as_str(), "std::{thread,fs}");
     }
 
     #[test]

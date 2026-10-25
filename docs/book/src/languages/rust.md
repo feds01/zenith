@@ -31,7 +31,9 @@ Every import is a `value` import. Each `use` declaration imports each of its
 leaves, so `use a::{b, c::d}` imports `a::b` and `a::c::d`, and a glob imports
 the path before it. So does an `extern crate`, and so does a path in code that
 starts with `crate`, `self`, `super`, `::` or the name of a crate or module,
-such as `zenith_lang_js::JS` written without a `use`. A `use` path that starts
+such as `zenith_lang_js::JS` written without a `use`. A path in code imports
+its modules and the first item after them that starts with a capital, which
+may be a type: `std::time::Instant::now()` imports `std::time::Instant`. A `use` path that starts
 with a name that another `use` or an `extern crate` brought into scope imports
 what the name stands for: after `use smoltcp::socket::tcp;`, `use tcp::State;`
 imports `smoltcp::socket::tcp::State`. `mod a;` declares a module but doesn't
@@ -67,7 +69,20 @@ the crates that its code may name.
 |---|---|---|
 | a module of the project | `crates/api/src/store.rs` | Its file. A dependency that is a crate of the project resolves into the module tree of its library. |
 | another crate | `crate:serde` | Named by its package. |
-| the standard library | `rust:std` | `std`, `core`, `alloc`, `proc_macro` and `test`. |
+| the standard library | `rust:std::thread` | A path into `std`, `core`, `alloc`, `proc_macro` or `test`, up to its first item that starts with a capital: `std::thread::spawn` is `rust:std::thread::spawn`, and `std::time::Instant::now` is `rust:std::time::Instant`. |
+
+A selector of the standard library matches a path and everything under it, so
+`rust:std` matches every path into `std`, `rust:std::{thread,fs}` the paths into
+its `thread` and `fs` modules, and `rust:std::time::Instant` the type. A core
+that builds for WebAssembly, where threads, the clock and the file system
+compile but fail at run time, can forbid them:
+
+```toml
+[contracts.core-builds-for-the-browser]
+type = "forbidden"
+from = ["pkg:core"]
+to = ["rust:std::{thread,fs,process,net}", "rust:std::time::Instant"]
+```
 
 A path to an item that the crate root re-exports, such as `use crate::Layout`
 after `pub use layout::Layout;` in `lib.rs`, imports `lib.rs`, which imports

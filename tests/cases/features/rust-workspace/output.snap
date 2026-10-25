@@ -63,7 +63,7 @@ external: crate:serde
 $ zenith resolve crates/cli/src/commands.rs std::fs
 exit: 0
 --- stdout
-builtin: rust:std
+builtin: rust:std::fs
 
 $ zenith resolve crates/cli/src/commands.rs missing::thing
 exit: 1

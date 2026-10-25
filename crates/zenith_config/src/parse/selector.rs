@@ -24,7 +24,15 @@ impl Selector {
             let pattern = || NamePattern::new(name);
             match languages.schemes().find(|known| *known == scheme) {
                 Some("pkg") => SelectorTarget::Package(pattern()?),
-                Some(scheme) => SelectorTarget::Scheme { scheme, pattern: pattern()? },
+                Some(scheme) => {
+                    let paths = languages.by_scheme(scheme).map(|language| language.path_schemes);
+                    let separator = paths.into_iter().flatten().find(|(owner, _)| *owner == scheme);
+                    let pattern = match separator {
+                        Some((_, separator)) => pattern()?.with_children(separator),
+                        None => pattern()?,
+                    };
+                    SelectorTarget::Scheme { scheme, pattern }
+                }
                 None => return Err(SelectorError::unknown_scheme(scheme, languages)),
             }
         } else {
@@ -162,6 +170,21 @@ mod tests {
 
     fn parse_ignore(raw: &str) -> Result<IgnoreImport, IgnoreImportError> {
         IgnoreImport::parse(raw, LANGUAGES)
+    }
+
+    #[test]
+    fn a_scheme_of_paths_matches_the_names_under_those_it_names() {
+        let SelectorTarget::Scheme { pattern, .. } = target("core:fmt") else {
+            panic!("expected a scheme");
+        };
+        assert!(pattern.is_match("fmt"));
+        assert!(pattern.is_match("fmt::Display"));
+        assert!(!pattern.is_match("fmtx"));
+        // Names of other schemes are not paths.
+        let SelectorTarget::Scheme { pattern, .. } = target("sys:fmt") else {
+            panic!("expected a scheme");
+        };
+        assert!(!pattern.is_match("fmt::Display"));
     }
 
     #[test]

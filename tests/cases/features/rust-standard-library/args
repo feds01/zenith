@@ -1,0 +1,5 @@
+check
+why src rust:std
+resolve src/clock.rs std::time::Instant::now
+resolve src/lib.rs std::collections::HashMap
+resolve src/store.rs std::thread

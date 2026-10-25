@@ -113,21 +113,21 @@ impl other::Trait for X {}
     assert_eq!(
         specifiers(source),
         [
-            "crate::a",
-            "zenith_lang_js",
+            "crate::a::Thing",
+            "zenith_lang_js::JS",
             "self::b::make",
             "super::c::d::run",
             "::serde::export::go",
-            "other",
+            "other::Trait",
         ]
     );
 }
 
 #[test]
-fn a_path_stops_before_the_first_segment_that_may_be_a_type() {
+fn a_path_ends_at_the_first_segment_that_may_be_a_type() {
     assert_eq!(
-        specifiers("fn f() { a::b::Thing::new(); c::D; E::f(); crate::G; }"),
-        ["a::b", "c", "crate"]
+        specifiers("fn f() { a::b::Thing::new(); c::D; E::f(); crate::G::H; }"),
+        ["a::b::Thing", "c::D", "crate::G"]
     );
 }
 
@@ -208,7 +208,10 @@ macro_rules! m {
     () => { $crate::g::h() };
 }
 ";
-    assert_eq!(specifiers(source), ["serde", "tracing::info", "crate::a::b", "c::d", "::e::f"]);
+    assert_eq!(
+        specifiers(source),
+        ["serde::Serialize", "tracing::info", "crate::a::b", "c::d", "::e::f"]
+    );
 }
 
 #[test]
@@ -252,7 +255,7 @@ fn the_end_of_a_longer_path_in_a_macro_is_not_a_path() {
 #[test]
 fn a_path_in_a_macro_may_go_through_a_primitive_type() {
     let source = "fn f() { assert!(std::f64::consts::PI > 3.0 && u8::MAX > 0); }";
-    assert_eq!(specifiers(source), ["std::f64::consts"]);
+    assert_eq!(specifiers(source), ["std::f64::consts::PI"]);
 }
 
 #[test]
@@ -422,13 +425,13 @@ fn a_missing_token_is_a_syntax_error() {
 #[test]
 fn safe_items_of_an_extern_block_are_valid() {
     let source = "unsafe extern \"C\" {\n    safe fn f();\n    pub safe static X: a::b::T;\n    pub(crate) safe static mut Y: u8;\n}\n";
-    assert_eq!(specifiers(source), ["a::b"]);
+    assert_eq!(specifiers(source), ["a::b::T"]);
 }
 
 #[test]
 fn several_attributes_on_a_parameter_are_valid() {
     let source = "fn f(\n    #[a] #[b::c] #[d] x: u8,\n    #[e]\n    /// f\n    #[g(h = i::j::K)]\n    y: u8,\n) {}\n";
-    assert_eq!(specifiers(source), ["b::c", "i::j"]);
+    assert_eq!(specifiers(source), ["b::c", "i::j::K"]);
     assert!(parse("trait T { fn f(&self, #[a] #[b] x: u8); }\n").errors.is_empty());
 }
 

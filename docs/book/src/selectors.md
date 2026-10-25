@@ -19,7 +19,10 @@ other scheme that zenith doesn't know.
 
 Package, external and builtin names are matched with name patterns, in which
 `*` matches any run of characters, `/` included, so `npm:*` matches scoped
-packages like `@tanstack/react-query`.
+packages like `@tanstack/react-query`. A scheme whose names are paths, as
+`rust:` is for Rust's standard library, also matches everything under the
+names it matches, so `rust:std` and `rust:std::thread` both match
+`rust:std::thread::spawn`.
 
 When a path glob matches nested nodes, such as `web/**` matching both
 `web/src` and `web/src/a.ts`, only the outermost become units, since they

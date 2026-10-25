@@ -28,6 +28,8 @@ pub const RUST: Language = Language {
     index_files: &["lib.rs", "main.rs", "mod.rs"],
     // `crate:` is for external crates, `rust:` for those of the standard library.
     schemes: &["crate", "rust"],
+    // The paths into the standard library, such as `rust:std::thread`, nest.
+    path_schemes: &[("rust", "::")],
     parse: |table| Arc::new(RustConfig::parse(table)),
     defaults: || Arc::new(RustConfig::default()),
     schema: |generator| generator.subschema_for::<RustTable>(),

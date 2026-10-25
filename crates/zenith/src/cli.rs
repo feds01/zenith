@@ -332,6 +332,11 @@ pub struct InitCommand {
     /// Overwrite an existing `zenith.toml`.
     #[arg(long)]
     pub force: bool,
+
+    /// Add the contracts that the code already keeps, as `zenith suggest`
+    /// finds them.
+    #[arg(long)]
+    pub suggest: bool,
 }
 
 /// The output formats of `zenith check`.

@@ -1,0 +1,9 @@
+# The top-level directories depend on each other in no cycle.
+[contracts.directories-acyclic]
+type = "acyclic"
+modules = ["app", "db", "domain", "jobs", "logging"]
+
+# These top-level directories stack in layers: each depends only on the layers below it.
+[contracts.directories-layers]
+type = "layers"
+layers = ["app | jobs", "domain", "db | logging"]

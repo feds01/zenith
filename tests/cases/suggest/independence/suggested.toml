@@ -3,6 +3,15 @@
 type = "acyclic"
 modules = ["pkg:*"]
 
+# These workspace packages stack in layers: each depends only on the layers below it.
+[contracts.packages-layers]
+type = "layers"
+layers = [
+    "pkg:@independence/admin | pkg:@independence/web",
+    "pkg:@independence/ui",
+    "pkg:@independence/utils",
+]
+
 # The workspace packages in `apps` do not depend on each other.
 [contracts.apps-independent]
 type = "independence"

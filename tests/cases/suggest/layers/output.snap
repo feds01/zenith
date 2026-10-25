@@ -6,7 +6,7 @@ exit: 0
 type = "acyclic"
 modules = ["app", "domain", "infra", "scripts"]
 
-# These top-level directories stack in one order: each depends on the next.
+# These top-level directories stack in layers: each depends only on the layers below it.
 [contracts.directories-layers]
 type = "layers"
 layers = ["app", "domain", "infra"]

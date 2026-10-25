@@ -1,0 +1,7 @@
+[contracts.tiers]
+type = "layers"
+layers = ["app", "ui", "infra : lib"]
+
+[contracts.no-cycles]
+type = "acyclic"
+modules = ["*"]

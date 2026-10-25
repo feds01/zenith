@@ -4,7 +4,7 @@ use anyhow::Result;
 use log::warn;
 use zenith_contracts::Suggestion;
 use zenith_diagnostics::message;
-use zenith_pipeline::{LANGUAGES, StageKind};
+use zenith_pipeline::LANGUAGES;
 
 use crate::{ExitStatus, cli::GlobalArgs, project};
 
@@ -14,11 +14,7 @@ pub fn suggest(global: &GlobalArgs) -> Result<ExitStatus> {
     // 1. Open the project, and build its graph, through re-exports if the suggested
     //    contracts see through them.
     let mut session = project::open(global)?;
-    if Suggestion::needs_graph_through_reexports(&session.config) {
-        session.build_graph_through_reexports();
-    }
-    project::run_until(&mut session, StageKind::Graph)?;
-    project::warn_about_unresolved(&session);
+    project::build_graph_for_suggestions(&mut session)?;
 
     // 2. Find the contracts that its code keeps, checked as the configuration's
     //    contracts would be.

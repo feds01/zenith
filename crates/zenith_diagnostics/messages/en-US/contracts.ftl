@@ -159,5 +159,5 @@ contracts_suggest_top_level_packages = top-level workspace packages
 contracts_suggest_directories = top-level directories
 contracts_suggest_packages_in = workspace packages in `{$dir}`
 contracts_suggest_acyclic = The {$modules} depend on each other in no cycle.
-contracts_suggest_layers = These {$modules} stack in one order: each depends on the next.
+contracts_suggest_layers = These {$modules} stack in layers: each depends only on the layers below it.
 contracts_suggest_independence = The {$modules} do not depend on each other.

@@ -1,0 +1,9 @@
+# `app` and `jobs` import `domain`, which imports `db`; `app` imports
+# `logging` too. They stack in layers, each on the level of its longest chain
+# down: `app` and `jobs` side by side at the top, then `domain`, then `db`
+# and `logging`, which import nothing.
+suggest
+# `suggested.toml` holds what `suggest` printed, which the code keeps, and
+# which a second run doesn't suggest again.
+check --config suggested.toml
+suggest --config suggested.toml

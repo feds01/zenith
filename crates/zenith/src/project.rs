@@ -6,7 +6,7 @@ use std::{env, path::Path, sync::Arc};
 use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
 use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
-use zenith_contracts::{Baseline, Contract};
+use zenith_contracts::{Baseline, Contract, Suggestion};
 use zenith_diagnostics::{Diagnostic, ReportKind, SourceMap, message};
 use zenith_pipeline::{FileError, FileErrorKind, LANGUAGES, Pipeline, Session, StageKind};
 use zenith_utils::{
@@ -225,6 +225,18 @@ fn report_file_errors(sources: &mut SourceMap, errors: &[FileError]) {
         })
         .collect();
     reporting::emit(sources, &reports);
+}
+
+/// Run the pipeline on `session` up to the graph that contracts are suggested
+/// from, through re-exports if the suggested contracts see through them, and
+/// warn about the imports that could not be resolved.
+pub(crate) fn build_graph_for_suggestions(session: &mut Session) -> Result<()> {
+    if Suggestion::needs_graph_through_reexports(&session.config) {
+        session.build_graph_through_reexports();
+    }
+    run_until(session, StageKind::Graph)?;
+    warn_about_unresolved(session);
+    Ok(())
 }
 
 /// Warn about the imports of `session` that could not be resolved, and list

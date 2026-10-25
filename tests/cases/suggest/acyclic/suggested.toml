@@ -2,3 +2,8 @@
 [contracts.packages-acyclic]
 type = "acyclic"
 modules = ["pkg:*"]
+
+# These workspace packages stack in layers: each depends only on the layers below it.
+[contracts.packages-layers]
+type = "layers"
+layers = ["pkg:@acyclic/app", "pkg:@acyclic/ui | pkg:@acyclic/utils"]

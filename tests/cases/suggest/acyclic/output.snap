@@ -6,11 +6,17 @@ exit: 0
 type = "acyclic"
 modules = ["pkg:*"]
 
+# These workspace packages stack in layers: each depends only on the layers below it.
+[contracts.packages-layers]
+type = "layers"
+layers = ["pkg:@acyclic/app", "pkg:@acyclic/ui | pkg:@acyclic/utils"]
+
 $ zenith check --config suggested.toml
 exit: 0
 --- stdout
 Contracts
   ✓ packages-acyclic  acyclic  kept
+  ✓ packages-layers   layers   kept
 
-1 kept, 0 broken · 3 files, 2 imports
+2 kept, 0 broken · 3 files, 2 imports
 

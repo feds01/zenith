@@ -8,21 +8,22 @@
 //!
 //! Each contract that a pass proposes is written as TOML, parsed back as a
 //! contract of the configuration, and checked against the same graph that it
-//! was found in, so a suggestion that would be broken is never made.
+//! was found in, so a suggestion that would be broken is never made. Nor is
+//! one that a contract of the configuration already covers.
 
 mod modules;
 mod passes;
 
-use std::fmt;
+use std::{fmt, iter};
 
 use modules::Modules;
 use passes::{Context, PASSES};
-use zenith_config::{Config, Languages, Reexports};
-use zenith_graph::{Graph, GraphView, UnitGraph};
+use zenith_config::{Config, ContractConfig, ContractKind, Languages, Reexports, Selector};
+use zenith_graph::{Graph, GraphView, ModuleId, UnitGraph};
 use zenith_lang::Workspace;
 use zenith_pipeline::Graphs;
 
-use crate::{Contract, Exemptions};
+use crate::{Contract, Exemptions, Selection};
 
 /// A contract that the code already keeps, suggested for the configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,9 +42,11 @@ impl Suggestion {
     /// Suggest the contracts that the code keeps, in the project of `graphs`
     /// and `workspace`, when they are added to `config`, which may enable the
     /// `languages`: an `acyclic` contract, then a `layers` contract, then the
-    /// `independence` contracts in order of their directories. A contract
-    /// whose id `config` or an earlier suggestion already has is not
-    /// suggested.
+    /// `independence` contracts in order of their directories.
+    ///
+    /// A contract is not suggested when a contract of `config` of the same
+    /// type already covers its modules. Its id is one that neither `config`
+    /// nor an earlier suggestion has, with a number after it if it must be.
     ///
     /// Panics if the contracts of `config` see through re-exports by default,
     /// but `graphs` has no graph through them: see
@@ -70,15 +73,28 @@ impl Suggestion {
         let units = UnitGraph::build(&view, &members);
         let context = Context { modules, units, languages };
 
-        // 3. Run each pass, and keep the contracts that it proposes under an id that is
-        //    not taken yet, and that the code keeps.
+        // 3. Run each pass, and keep the contracts that it proposes that no contract of
+        //    the configuration covers, and that the code keeps, under an id that is not
+        //    taken yet.
         let mut suggestions: Vec<Self> = Vec::new();
         for candidate in PASSES.iter().flat_map(|pass| pass.propose(&context)) {
-            let taken = config.contract(&candidate.id).is_some()
-                || suggestions.iter().any(|suggestion| suggestion.id == candidate.id);
-            if !taken && candidate.is_kept(graph, workspace, config, languages) {
-                suggestions.push(candidate);
+            let Some(contract) = candidate.parse(config, languages) else {
+                continue;
+            };
+            let covered = config
+                .contracts
+                .iter()
+                .any(|existing| covers(existing, &contract, graph, workspace));
+            if covered || !is_kept(&contract, graph, workspace) {
+                continue;
             }
+            let taken = |id: &str| {
+                config.contract(id).is_some()
+                    || suggestions.iter().any(|suggestion| suggestion.id == id)
+            };
+            let numbered = (2..).map(|number| format!("{}-{number}", candidate.id));
+            let id = iter::once(candidate.id.clone()).chain(numbered).find(|id| !taken(id));
+            suggestions.push(candidate.with_id(id.expect("some number is free")));
         }
         suggestions
     }
@@ -93,33 +109,78 @@ impl Suggestion {
     /// The suggestion of the contract `id`, for `reason`, whose table `write`
     /// fills in below its header.
     fn new(id: String, reason: String, write: impl FnOnce(&mut String)) -> Self {
-        let mut table = format!("[contracts.{id}]\n");
+        let mut table = Self::header(&id);
         write(&mut table);
         Self { id, reason, table }
     }
 
-    /// Whether the code in the project of `graph` and `workspace` keeps the
-    /// contract, when it is added to `config`, which may enable the
-    /// `languages`. A contract that zenith would not accept is not kept.
-    /// `graph` is the one the contract sees, as it sees re-exports as the
-    /// contracts of `config` do by default.
-    fn is_kept(
-        &self,
-        graph: &Graph,
-        workspace: &Workspace,
-        config: &Config,
-        languages: Languages,
-    ) -> bool {
-        let Ok(contracts) = config.parse_contracts(&self.table, languages) else {
-            return false;
-        };
-        let [contract] = contracts.as_slice() else {
-            return false;
-        };
-        let Ok(compiled) = Contract::compile(contract, graph, workspace) else {
-            return false;
-        };
-        compiled.check(graph, workspace, &Exemptions::default()).is_kept()
+    /// The header of the table of the contract `id`, on a line of its own.
+    fn header(id: &str) -> String {
+        format!("[contracts.{id}]\n")
+    }
+
+    /// The suggestion under the id `id` instead.
+    fn with_id(self, id: String) -> Self {
+        let header = Self::header(&self.id);
+        let body = self.table.strip_prefix(&header).expect("the table starts with its header");
+        Self::new(id, self.reason, |table| table.push_str(body))
+    }
+
+    /// The contract, as a contract of `config`, which may enable the
+    /// `languages`, or `None` if zenith would not accept it.
+    fn parse(&self, config: &Config, languages: Languages) -> Option<ContractConfig> {
+        let contracts = config.parse_contracts(&self.table, languages).ok()?;
+        let [contract] = <[_; 1]>::try_from(contracts).ok()?;
+        Some(contract)
+    }
+}
+
+/// Whether the code in the project of `graph` and `workspace` keeps
+/// `contract`. A contract whose selectors zenith would not accept is not
+/// kept. `graph` is the one the contract sees, as it sees re-exports as the
+/// contracts of the configuration do by default.
+fn is_kept(contract: &ContractConfig, graph: &Graph, workspace: &Workspace) -> bool {
+    let Ok(compiled) = Contract::compile(contract, graph, workspace) else {
+        return false;
+    };
+    compiled.check(graph, workspace, &Exemptions::default()).is_kept()
+}
+
+/// Whether `existing` covers `contract`: it is of the same type, and selects
+/// every module that `contract` does, in the project of `graph` and
+/// `workspace`.
+fn covers(
+    existing: &ContractConfig,
+    contract: &ContractConfig,
+    graph: &Graph,
+    workspace: &Workspace,
+) -> bool {
+    if existing.kind.type_name() != contract.kind.type_name() {
+        return false;
+    }
+    let roots = |kind: &ContractKind| -> Vec<ModuleId> {
+        module_selectors(kind)
+            .into_iter()
+            .flat_map(|selector| Selection::resolve(selector, graph, workspace).units)
+            .map(|unit| unit.root)
+            .collect()
+    };
+    let covered = roots(&existing.kind);
+    roots(&contract.kind).iter().all(|root| covered.contains(root))
+}
+
+/// The selectors of the modules that a contract of the kinds that are
+/// suggested is about: its `modules`, or the members of its layers. A
+/// `layers` contract with containers is about the modules in each, so none of
+/// the project's.
+fn module_selectors(kind: &ContractKind) -> Vec<&Selector> {
+    match kind {
+        ContractKind::Acyclic(config) => config.modules.iter().collect(),
+        ContractKind::Independence(config) => config.modules.iter().collect(),
+        ContractKind::Layers(config) if config.containers.is_empty() => {
+            config.layers.iter().flat_map(|layer| &layer.members).map(|m| &m.selector).collect()
+        }
+        _ => Vec::new(),
     }
 }
 
@@ -186,7 +247,7 @@ mod tests {
 type = \"acyclic\"
 modules = [\"app\", \"domain\", \"infra\", \"scripts\"]
 ",
-                "# These top-level directories stack in one order: each depends on the next.
+                "# These top-level directories stack in layers: each depends only on the layers below it.
 [contracts.directories-layers]
 type = \"layers\"
 layers = [\"app\", \"domain\", \"infra\"]
@@ -233,11 +294,11 @@ layers = [\"app\", \"domain\", \"infra\"]
 
     #[test]
     fn sibling_packages_that_do_not_depend_on_each_other_are_independent() {
-        // The apps are not ordered, so the packages don't stack. Every package
-        // with files is a module, so `pkg:*` selects them.
+        // Every package with files is a module, so `pkg:*` selects them. The
+        // apps are not ordered, so they are one layer of independent siblings.
         let suggestions = suggest(&apps(&PACKAGES));
         let ids: Vec<_> = suggestions.iter().map(|suggestion| suggestion.id.as_str()).collect();
-        assert_eq!(ids, ["packages-acyclic", "apps-independent"]);
+        assert_eq!(ids, ["packages-acyclic", "packages-layers", "apps-independent"]);
         assert_eq!(
             suggestions[0].table,
             "[contracts.packages-acyclic]
@@ -246,7 +307,14 @@ modules = [\"pkg:*\"]
 "
         );
         assert_eq!(
-            suggestions[1].to_string(),
+            suggestions[1].table,
+            "[contracts.packages-layers]
+type = \"layers\"
+layers = [\"pkg:@s/admin | pkg:@s/web\", \"pkg:@s/ui\", \"pkg:@s/utils\"]
+"
+        );
+        assert_eq!(
+            suggestions[2].to_string(),
             "# The workspace packages in `apps` do not depend on each other.
 [contracts.apps-independent]
 type = \"independence\"
@@ -261,7 +329,7 @@ modules = [\"pkg:@s/admin\", \"pkg:@s/web\"]
         let project = apps(&[&PACKAGES[..], &[("@s/icons", "packages/ui/icons")]].concat());
         let suggestions = suggest(&project);
         let ids: Vec<_> = suggestions.iter().map(|suggestion| suggestion.id.as_str()).collect();
-        assert_eq!(ids, ["packages-acyclic", "apps-independent"]);
+        assert_eq!(ids, ["packages-acyclic", "packages-layers", "apps-independent"]);
         assert_eq!(
             suggestions[0].table,
             "[contracts.packages-acyclic]
@@ -276,6 +344,41 @@ modules = [\"pkg:@s/admin\", \"pkg:@s/web\", \"pkg:@s/ui\", \"pkg:@s/utils\"]
         let imports = values(&[("app/main.ts", "domain/order.ts")]);
         let project = Project::new(&imports, &[], include_str!("../fixtures/suggested.toml"));
         assert_eq!(ids(&project), ["directories-layers"]);
+    }
+
+    /// The imports of a project whose top-level directories stack in layers,
+    /// with `infra` and `lib`, which import nothing, side by side at the
+    /// bottom.
+    const STACKED: [(&str, &str); 3] =
+        [("app/main.ts", "infra/db.ts"), ("app/main.ts", "ui/page.ts"), ("ui/page.ts", "lib/x.ts")];
+
+    #[test]
+    fn contracts_whose_modules_the_configuration_covers_are_not_suggested() {
+        // The `layers` and `acyclic` contracts of the configuration select every
+        // directory, under other ids and in other ways; `independence` has no
+        // contract of its type.
+        let covered =
+            Project::new(&values(&STACKED), &[], include_str!("../fixtures/covering.toml"));
+        assert!(ids(&covered).is_empty());
+        // Without it, each is suggested.
+        assert_eq!(ids(&project(&STACKED)), ["directories-acyclic", "directories-layers"]);
+    }
+
+    #[test]
+    fn a_contract_that_covers_only_some_modules_leaves_its_id_to_another() {
+        // `directories-layers` selects only some of the directories, so the
+        // suggestion of all of them takes the next free id.
+        let project = Project::new(&values(&STACKED), &[], include_str!("../fixtures/taken.toml"));
+        let suggestions = suggest(&project);
+        let ids: Vec<_> = suggestions.iter().map(|suggestion| suggestion.id.as_str()).collect();
+        assert_eq!(ids, ["directories-acyclic", "directories-layers-3"]);
+        assert_eq!(
+            suggestions[1].table,
+            "[contracts.directories-layers-3]
+type = \"layers\"
+layers = [\"app\", \"ui\", \"infra | lib\"]
+"
+        );
     }
 
     #[test]

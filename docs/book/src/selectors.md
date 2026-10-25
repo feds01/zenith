@@ -49,7 +49,10 @@ zenith's glob dialect needs no escaping for Next.js and TanStack file names:
 ```
 
 - `path` is any string-form selector.
-- `except` removes the members that its selectors match from each unit.
+- `except` removes the members that its selectors match from each unit. A
+  unit that it empties takes part in nothing, so `except` also removes whole
+  units: in `{ path = "src/parse/*", except = ["src/parse/mod.rs"] }`, the
+  directory's own `mod.rs` is not a sibling of the modules in it.
 - `directive` keeps only the files whose directives include it, exactly as
   written, and makes **each file a unit of its own**, so a violation names the
   file. It only applies to path and `pkg:` selectors.

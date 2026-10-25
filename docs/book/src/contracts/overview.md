@@ -41,3 +41,32 @@ Every contract type takes these options:
 An import between two files is left out of a contract when none of its
 statements count: each statement may be of an excluded kind, suppressed with a
 [comment](../suppressions.md), ignored, or in the [baseline](../baseline.md).
+
+## Boundaries
+
+`forbidden`, `independence` and `layers` contracts follow chains of imports,
+unless `allow_indirect_imports` is set. Their `boundaries` are selectors of
+the modules that a chain may start or end at, but not pass through. A client
+component may call a server action, but only a reference to it ships to the
+browser, so the `"use server"` files are boundaries of a contract about what
+client code bundles:
+
+```toml
+[contracts.client-safety]
+type = "forbidden"
+from = [{ path = "src/**", directive = "use client" }]
+to = ["npm:sharp", "node:*"]
+boundaries = [{ path = "src/**", directive = "use server" }]
+```
+
+A module that imports many others and is imported by them, such as a Rust
+crate root that re-exports its modules, joins each of them to every other in
+a chain through it. As a boundary, it still counts for its own imports, and
+for those into it, but chains no longer pass through it:
+
+```toml
+boundaries = ["crates/*/src/lib.rs"]
+```
+
+Boundaries with `allow_indirect_imports = true` are a configuration error,
+since direct imports pass through nothing.

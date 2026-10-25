@@ -37,6 +37,7 @@ and the search runs again until no chain is left.
 | `from` | required | Selectors. |
 | `to` | required | Selectors, which may be external packages and builtins. |
 | `allow_indirect_imports` | `false` | Only direct imports count. |
+| `boundaries` | `[]` | Selectors of the modules that chains of imports may start or end at, but not pass through. See [boundaries](overview.md#boundaries). |
 
 ## Common options
 

@@ -84,6 +84,7 @@ imports between domains are outside this contract.
 | `exhaustive` | `false` | Every child of every container must be declared as a layer. Needs `containers`. |
 | `exhaustive_ignores` | `[]` | Names of children that `exhaustive` doesn't require, with or without their extension. |
 | `allow_indirect_imports` | `false` | Only direct imports count. |
+| `boundaries` | `[]` | Selectors of the modules that chains of imports may start or end at, but not pass through. See [boundaries](overview.md#boundaries). |
 
 ## Common options
 

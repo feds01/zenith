@@ -35,7 +35,8 @@ pub struct LayersConfig {
     pub exhaustive: bool,
 
     /// The children exempt from the exhaustiveness check, matched against
-    /// the base name with or without its JS/TS extension.
+    /// the base name with or without its extension: those written, then the
+    /// index files of the enabled languages, such as Rust's `lib.rs`.
     pub exhaustive_ignores: Vec<NamePattern>,
 
     /// Whether only direct imports count, rather than chains of imports.

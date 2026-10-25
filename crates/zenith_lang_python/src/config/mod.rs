@@ -24,6 +24,7 @@ pub const PYTHON: Language = Language {
     source_extensions: &["py", "pyi"],
     source_file_names: &[],
     optional_extensions: &["py", "pyi"],
+    index_files: &["__init__.py", "__init__.pyi"],
     // `pypi:` is for third-party packages, `python:` for the standard library.
     schemes: &["pypi", "python"],
     parse: |table| Arc::new(PythonConfig::parse(table)),

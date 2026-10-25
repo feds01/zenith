@@ -548,7 +548,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Children exempt from `exhaustive`: name patterns matched against\nthe base name with or without its JS/TS extension, so `index`\nmatches `index.ts`.",
+              "description": "Children exempt from `exhaustive`: name patterns matched against\nthe base name with or without its JS/TS extension, so `index`\nmatches `index.ts`. The index files of the enabled languages, such\nas Rust's `lib.rs`, `main.rs` and `mod.rs`, are always exempt.",
               "default": []
             },
             "allow_indirect_imports": {

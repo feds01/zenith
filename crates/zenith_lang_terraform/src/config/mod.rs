@@ -25,6 +25,7 @@ pub const TERRAFORM: Language = Language {
     source_extensions: &["tf", "tofu"],
     source_file_names: &["terragrunt.hcl"],
     optional_extensions: &["tf", "tofu"],
+    index_files: &[],
     // `tfmod:` names the modules of registries and repositories.
     schemes: &["tfmod"],
     parse: |table| Arc::new(TerraformConfig::parse(table)),

@@ -82,7 +82,7 @@ imports between domains are outside this contract.
 | `layers` | required | Ordered from highest to lowest; see [Writing layers](#writing-layers). |
 | `containers` | none | Selectors. If set, the layers are relative to each container, and each container is checked on its own. |
 | `exhaustive` | `false` | Every child of every container must be declared as a layer. Needs `containers`. |
-| `exhaustive_ignores` | `[]` | Names of children that `exhaustive` doesn't require, with or without their extension. |
+| `exhaustive_ignores` | `[]` | Names of children that `exhaustive` doesn't require, with or without their extension. A language's index files are never required: Rust's `lib.rs`, `main.rs` and `mod.rs`, and Python's `__init__.py`. |
 | `allow_indirect_imports` | `false` | Only direct imports count. |
 | `boundaries` | `[]` | Selectors of the modules that chains of imports may start or end at, but not pass through. See [boundaries](overview.md#boundaries). |
 

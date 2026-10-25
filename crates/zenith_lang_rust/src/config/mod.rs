@@ -25,6 +25,7 @@ pub const RUST: Language = Language {
     source_extensions: &["rs"],
     source_file_names: &[],
     optional_extensions: &["rs"],
+    index_files: &["lib.rs", "main.rs", "mod.rs"],
     // `crate:` is for external crates, `rust:` for those of the standard library.
     schemes: &["crate", "rust"],
     parse: |table| Arc::new(RustConfig::parse(table)),

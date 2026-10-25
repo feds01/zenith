@@ -407,7 +407,8 @@ contract_table! {
 
         /// Children exempt from `exhaustive`: name patterns matched against
         /// the base name with or without its JS/TS extension, so `index`
-        /// matches `index.ts`.
+        /// matches `index.ts`. The index files of the enabled languages, such
+        /// as Rust's `lib.rs`, `main.rs` and `mod.rs`, are always exempt.
         #[serde(default)]
         exhaustive_ignores: Vec<Located<String>>,
 

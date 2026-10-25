@@ -31,6 +31,7 @@ impl Stage for BuildGraph {
         // doesn't matter.
         let mut builder = GraphBuilder::new();
         builder.set_optional_extensions(session.config.languages.optional_extensions());
+        builder.set_directory_modules(session.config.languages.directory_modules());
         // Every source file is a node, which the imports that resolved to it find
         // by its index.
         let handles = session

@@ -26,7 +26,9 @@ names it matches, so `rust:std` and `rust:std::thread` both match
 
 When a path glob matches nested nodes, such as `web/**` matching both
 `web/src` and `web/src/a.ts`, only the outermost become units, since they
-already contain the others.
+already contain the others. In Rust, a file and the directory beside it of
+the same name, such as `src/crates.rs` and `src/crates/`, are one module, so
+they are one unit, labelled `src/crates`, whichever of them a glob matches.
 
 ## Glob syntax
 

@@ -160,20 +160,26 @@ impl Container {
         }
 
         // 3. An exhaustive contract declares every child of the container, except the
-        //    ignored ones, matched by their name with or without its extension.
+        //    ignored ones, matched by their name with or without its extension. A file
+        //    that is one module with the directory beside it is that directory's.
         let mut undeclared = Vec::new();
         if let Some(container) = container.filter(|_| config.exhaustive) {
             let roots: Vec<_> = all.iter().flat_map(|(member, _)| &member.roots).collect();
             for child in graph.children(container) {
+                if graph.module_root(*child) != *child {
+                    continue;
+                }
                 let declared = roots.iter().any(|root| {
                     graph.is_in_subtree(**root, *child) || graph.is_in_subtree(*child, **root)
                 });
-                let name = graph.node(*child).base_name();
-                let stem = graph.base_stem(*child);
-                let ignored = config
-                    .exhaustive_ignores
-                    .iter()
-                    .any(|pattern| pattern.is_match(name) || pattern.is_match(stem));
+                let mut nodes = [Some(*child), graph.module_file(*child)].into_iter().flatten();
+                let ignored = nodes.any(|node| {
+                    let (name, stem) = (graph.node(node).base_name(), graph.base_stem(node));
+                    config
+                        .exhaustive_ignores
+                        .iter()
+                        .any(|pattern| pattern.is_match(name) || pattern.is_match(stem))
+                });
                 if !declared && !ignored {
                     undeclared.push(*child);
                 }
@@ -256,10 +262,11 @@ impl ResolvedMember {
         };
         let glob = Glob::new(&format!("{}/{}", escape(container), glob.as_str())).ok()?;
         let graph = units.graph();
-        let roots = graph.find_paths(&glob);
+        let found = graph.module_units(graph.find_paths(&glob));
+        let roots: Vec<_> = found.iter().map(|unit| unit.root).collect();
         let mut members = NodeSet::new();
-        for root in &roots {
-            members.union_with(&graph.members(*root));
+        for unit in &found {
+            members.union_with(&unit.members);
         }
         (!roots.is_empty()).then_some((roots, members))
     }
@@ -474,6 +481,28 @@ mod tests {
         assert_eq!(
             project.findings("l"),
             ["domains/orders: `domains/orders/utils.ts` is not a layer"]
+        );
+    }
+
+    #[test]
+    fn a_rust_module_and_its_directory_are_one_layer() {
+        // `crates.rs` and `crates/` are the module `crates`, so the member
+        // `crates` declares both, and its own imports are within the layer.
+        let project = Project::new(
+            &values(&[
+                ("crates/lang/src/crates.rs", "crates/lang/src/crates/manifest.rs"),
+                ("crates/lang/src/crates/manifest.rs", "crates/lang/src/model.rs"),
+                ("crates/lang/src/model.rs", "crates/lang/src/crates.rs"),
+                ("crates/lang/src/lib.rs", "crates/lang/src/crates.rs"),
+            ]),
+            &[],
+            include_str!("fixtures/layers-rust-modules.toml"),
+        );
+        assert_eq!(
+            project.findings("l"),
+            [
+                "crates/lang/src/model -> crates/lang/src/crates: crates/lang/src/model.rs -> crates/lang/src/crates.rs"
+            ]
         );
     }
 

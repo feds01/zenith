@@ -26,6 +26,7 @@ pub const JS: Language = Language {
     source_extensions: &["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"],
     source_file_names: &[],
     optional_extensions: &["ts", "tsx", "mts", "cts", "d.ts", "js", "jsx", "mjs", "cjs"],
+    directory_modules: &[],
     index_files: &[],
     schemes: &["npm", "node", "bun"],
     path_schemes: &[],

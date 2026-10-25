@@ -54,6 +54,11 @@ pub struct Language {
     /// the directory `src/types`.
     pub optional_extensions: &'static [&'static str],
 
+    /// The extensions, without the `.`, of the files that are one module with
+    /// the directory beside them of the same name, as Rust's `foo.rs` and
+    /// `foo/` are, so that a path selector makes them one unit.
+    pub directory_modules: &'static [&'static str],
+
     /// The names of the files that are the module of the directory they are
     /// in, or the root of a target, rather than a module in it, such as
     /// Rust's `mod.rs` and `lib.rs`. An exhaustive `layers` contract doesn't

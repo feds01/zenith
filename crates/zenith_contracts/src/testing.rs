@@ -62,6 +62,7 @@ impl Project {
         let config = Config::parse(toml, LANGUAGES).unwrap_or_else(|errors| panic!("{errors:?}"));
         let mut builder = GraphBuilder::new();
         builder.set_optional_extensions(config.languages.optional_extensions());
+        builder.set_directory_modules(config.languages.directory_modules());
         for (line, (importer, imported, kind)) in (1..).zip(imports) {
             let importer = builder.add_file(importer).unwrap();
             let range = ByteRange::new(line * 100, line * 100 + 10);

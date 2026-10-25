@@ -24,6 +24,7 @@ pub const GO: Language = Language {
     source_extensions: &["go"],
     source_file_names: &[],
     optional_extensions: &["go"],
+    directory_modules: &[],
     index_files: &[],
     // `go:` names the standard library, and `gomod:` the modules of the
     // dependencies.

@@ -4,7 +4,7 @@
 //! A [`UnitGraph`] aggregates the direct imports between the members of a
 //! list of units into weighted dependencies between the units, which are
 //! referred to by their [`UnitId`], the index in that list. It also tells
-//! what each unit reaches, and whether the units stack in one strict order.
+//! what each unit reaches, and the levels that the units stack in.
 
 use std::{cmp::Reverse, collections::VecDeque, iter, mem};
 
@@ -282,37 +282,46 @@ impl UnitGraph {
         reached.indices().filter(|unit| reached[*unit]).collect()
     }
 
-    /// The units that take part in a dependency, importers first, when they
-    /// have only one such order: each unit depends directly on the next, so
-    /// they stack like layers. `None` when there is no dependency, when there
-    /// is a cycle, or when two of the units are not ordered, as when neither
-    /// depends on the other.
+    /// The units that take part in a dependency, in the levels they stack in,
+    /// highest first: each unit is on the level of the longest chain of
+    /// dependencies down from it, so it depends only on units of lower
+    /// levels, and on one of the level just below. The units of a level are
+    /// in order, and none depends on another. `None` when there is no
+    /// dependency, or when there is a cycle.
     ///
-    /// The order is found as a topological sort is: it is the only one when,
-    /// at every step, exactly one unit is left that no unit left imports.
-    pub fn strict_order(&self) -> Option<Vec<UnitId>> {
-        let mut importers: IndexVec<UnitId, usize> = index_vec![0; self.unit_count];
+    /// The levels are found as a topological sort is, from the bottom, a
+    /// round at a time: the lowest level is the units that import none, and
+    /// each next one is the units that import only those of the levels
+    /// found.
+    pub fn levels(&self) -> Option<Vec<Vec<UnitId>>> {
+        let mut imports: IndexVec<UnitId, usize> = index_vec![0; self.unit_count];
         let mut involved: IndexVec<UnitId, bool> = index_vec![false; self.unit_count];
         for dependency in &self.dependencies {
-            importers[dependency.imported] += 1;
+            imports[dependency.importer] += 1;
             involved[dependency.importer] = true;
             involved[dependency.imported] = true;
         }
         let count = involved.iter().filter(|involved| **involved).count();
-        let mut ready: Vec<_> =
-            self.units().filter(|unit| involved[*unit] && importers[*unit] == 0).collect();
-        let mut order = Vec::with_capacity(count);
-        while let [unit] = ready[..] {
-            ready.clear();
-            order.push(unit);
-            for dependency in self.dependencies_of(unit) {
-                importers[dependency.imported] -= 1;
-                if importers[dependency.imported] == 0 {
-                    ready.push(dependency.imported);
+        let mut level: Vec<_> =
+            self.units().filter(|unit| involved[*unit] && imports[*unit] == 0).collect();
+        let mut levels = Vec::new();
+        let mut placed = 0;
+        while !level.is_empty() {
+            let mut next = Vec::new();
+            for unit in &level {
+                for dependency in self.dependencies_on(*unit) {
+                    imports[dependency.importer] -= 1;
+                    if imports[dependency.importer] == 0 {
+                        next.push(dependency.importer);
+                    }
                 }
             }
+            next.sort_unstable();
+            placed += level.len();
+            levels.push(mem::replace(&mut level, next));
         }
-        (count > 0 && order.len() == count).then_some(order)
+        levels.reverse();
+        (count > 0 && placed == count).then_some(levels)
     }
 
     /// Every unit, in order.
@@ -693,9 +702,15 @@ mod tests {
         units.reachable_from(UnitId::new(from)).into_iter().map(UnitId::index).collect()
     }
 
-    /// The strict order of `units`, as indices.
-    fn strict_order(units: &UnitGraph) -> Option<Vec<usize>> {
-        Some(units.strict_order()?.into_iter().map(UnitId::index).collect())
+    /// The levels of `units`, as indices.
+    fn levels(units: &UnitGraph) -> Option<Vec<Vec<usize>>> {
+        let levels = units.levels()?;
+        Some(
+            levels
+                .into_iter()
+                .map(|level| level.into_iter().map(UnitId::index).collect())
+                .collect(),
+        )
     }
 
     #[test]
@@ -713,24 +728,37 @@ mod tests {
     }
 
     #[test]
-    fn a_strict_order_is_the_only_order_of_the_units() {
+    fn units_in_one_strict_order_are_a_level_each() {
         // Each unit depends on the next, whatever else it depends on. The unit
         // that takes part in no dependency is left out.
         let units =
             UnitGraph::new(4, vec![dependency(0, 3, 1), dependency(2, 0, 1), dependency(2, 3, 2)]);
-        assert_eq!(strict_order(&units), Some(vec![2, 0, 3]));
+        assert_eq!(levels(&units), Some(vec![vec![2], vec![0], vec![3]]));
+    }
 
-        // `1` and `2` are not ordered: neither depends on the other.
+    #[test]
+    fn units_that_are_not_ordered_share_a_level() {
+        // `1` and `2` depend on nothing, and `0` on both.
         let units = UnitGraph::new(3, vec![dependency(0, 1, 1), dependency(0, 2, 1)]);
-        assert_eq!(strict_order(&units), None);
+        assert_eq!(levels(&units), Some(vec![vec![0], vec![1, 2]]));
+        // `0` and `1` both depend on `2`.
         let units = UnitGraph::new(3, vec![dependency(0, 2, 1), dependency(1, 2, 1)]);
-        assert_eq!(strict_order(&units), None);
+        assert_eq!(levels(&units), Some(vec![vec![0, 1], vec![2]]));
 
-        // A cycle, and no dependency at all.
+        // A unit is on the level of its longest chain down: nothing depends on
+        // `3`, as on `1`, but `3` depends only on `0`, so it is just above it,
+        // beside `2`.
+        let units =
+            UnitGraph::new(4, vec![dependency(1, 2, 1), dependency(2, 0, 1), dependency(3, 0, 1)]);
+        assert_eq!(levels(&units), Some(vec![vec![1], vec![2, 3], vec![0]]));
+    }
+
+    #[test]
+    fn units_in_a_cycle_or_without_dependencies_have_no_levels() {
         let units =
             UnitGraph::new(3, vec![dependency(0, 1, 1), dependency(1, 2, 1), dependency(2, 1, 1)]);
-        assert_eq!(strict_order(&units), None);
-        assert_eq!(strict_order(&UnitGraph::new(2, Vec::new())), None);
+        assert_eq!(levels(&units), None);
+        assert_eq!(levels(&UnitGraph::new(2, Vec::new())), None);
     }
 
     #[test]

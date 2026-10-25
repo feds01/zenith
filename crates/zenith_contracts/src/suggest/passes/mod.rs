@@ -1,8 +1,8 @@
 //! The passes that propose contracts, one for each kind:
 //!
 //! - [`acyclic`], when the modules depend on each other in no cycle;
-//! - [`layers`], when those that take part in a dependency stack in one strict
-//!   order;
+//! - [`layers`], when those that take part in a dependency stack in levels,
+//!   each depending only on those below it;
 //! - [`independence`], for each set of siblings that don't depend on each
 //!   other.
 //!

@@ -6,7 +6,7 @@ reexports = "transparent"
 type = "acyclic"
 modules = ["a", "b", "c"]
 
-# These top-level directories stack in one order: each depends on the next.
+# These top-level directories stack in layers: each depends only on the layers below it.
 [contracts.directories-layers]
 type = "layers"
 layers = ["b", "a", "c"]

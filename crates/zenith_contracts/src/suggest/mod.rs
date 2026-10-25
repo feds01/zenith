@@ -186,7 +186,7 @@ mod tests {
 type = \"acyclic\"
 modules = [\"app\", \"domain\", \"infra\", \"scripts\"]
 ",
-                "# These top-level directories stack in one order: each depends on the next.
+                "# These top-level directories stack in layers: each depends only on the layers below it.
 [contracts.directories-layers]
 type = \"layers\"
 layers = [\"app\", \"domain\", \"infra\"]
@@ -233,11 +233,11 @@ layers = [\"app\", \"domain\", \"infra\"]
 
     #[test]
     fn sibling_packages_that_do_not_depend_on_each_other_are_independent() {
-        // The apps are not ordered, so the packages don't stack. Every package
-        // with files is a module, so `pkg:*` selects them.
+        // Every package with files is a module, so `pkg:*` selects them. The
+        // apps are not ordered, so they are one layer of independent siblings.
         let suggestions = suggest(&apps(&PACKAGES));
         let ids: Vec<_> = suggestions.iter().map(|suggestion| suggestion.id.as_str()).collect();
-        assert_eq!(ids, ["packages-acyclic", "apps-independent"]);
+        assert_eq!(ids, ["packages-acyclic", "packages-layers", "apps-independent"]);
         assert_eq!(
             suggestions[0].table,
             "[contracts.packages-acyclic]
@@ -246,7 +246,14 @@ modules = [\"pkg:*\"]
 "
         );
         assert_eq!(
-            suggestions[1].to_string(),
+            suggestions[1].table,
+            "[contracts.packages-layers]
+type = \"layers\"
+layers = [\"pkg:@s/admin | pkg:@s/web\", \"pkg:@s/ui\", \"pkg:@s/utils\"]
+"
+        );
+        assert_eq!(
+            suggestions[2].to_string(),
             "# The workspace packages in `apps` do not depend on each other.
 [contracts.apps-independent]
 type = \"independence\"
@@ -261,7 +268,7 @@ modules = [\"pkg:@s/admin\", \"pkg:@s/web\"]
         let project = apps(&[&PACKAGES[..], &[("@s/icons", "packages/ui/icons")]].concat());
         let suggestions = suggest(&project);
         let ids: Vec<_> = suggestions.iter().map(|suggestion| suggestion.id.as_str()).collect();
-        assert_eq!(ids, ["packages-acyclic", "apps-independent"]);
+        assert_eq!(ids, ["packages-acyclic", "packages-layers", "apps-independent"]);
         assert_eq!(
             suggestions[0].table,
             "[contracts.packages-acyclic]

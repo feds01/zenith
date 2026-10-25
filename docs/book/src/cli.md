@@ -116,8 +116,10 @@ than two packages:
 - `acyclic`, when they depend on each other in no cycle. The packages are
   written as `pkg:*`, so it covers the packages added later too, unless a
   package is inside another;
-- `layers`, when those that depend on each other stack in one strict order,
-  each depending on the next;
+- `layers`, when those that depend on each other stack in layers, each
+  depending only on the layers below it. Each sits as low as the packages it
+  depends on let it, and those side by side, which don't depend on each other,
+  are one layer of independent siblings, as in `"pkg:@acme/web | pkg:@acme/admin"`;
 - `independence`, for the packages in one directory, such as `apps`, when none
   of them depends on another.
 

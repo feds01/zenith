@@ -31,7 +31,6 @@ use zenith_config::ContractConfig;
 use zenith_diagnostics::message;
 use zenith_graph::{EdgeSet, Graph, ModuleId};
 use zenith_lang::Workspace;
-use zenith_pipeline::Graphs;
 use zenith_utils::{
     location::{ByteRange, LineIndex},
     text::comment_out_conflict_markers,
@@ -39,7 +38,7 @@ use zenith_utils::{
 };
 use zenith_workspace::Renames;
 
-use crate::{Contract, Exemptions};
+use crate::{Contract, Exemptions, Graphs};
 
 /// The version of the baseline file format that zenith reads and writes.
 pub const BASELINE_VERSION: u32 = 1;

@@ -266,10 +266,10 @@ mod tests {
     use zenith_config::{Config, ContractKind};
     use zenith_graph::{GraphBuilder, ImportDetail, ImportKind, ImportedNames, ModuleId};
     use zenith_lang::WorkspacePackage;
-    use zenith_pipeline::LANGUAGES;
     use zenith_utils::location::ByteRange;
 
     use super::*;
+    use crate::testing::LANGUAGES;
 
     /// The graph and workspace packages of a project.
     struct Project {

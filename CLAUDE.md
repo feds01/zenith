@@ -58,13 +58,14 @@ a new kind of responsibility, not for each feature:
   and the interface through which each language owns its `[languages]` table.
   It knows no language.
 - `zenith_contracts`: selectors, the contract types and the violations they
-  find, suppressions, the baseline, the JSON output of `zenith check`, and
-  the contracts suggested from the import graph.
+  find, suppressions, the baseline, what they find in each output format
+  of `zenith check`, and the contracts suggested from the import graph.
 - `zenith_diagnostics`: reports with source excerpts, the catalogue of
   what zenith says to its users, the `Diagnostic` trait through which an
-  error makes its report, and how reports render.
-- `zenith_graph`: the module tree and import graph, views of it, and the
-  algorithms that run on them.
+  error makes its report, and how reports render, as text or as a SARIF
+  log.
+- `zenith_graph`: the module tree and import graph, views of it, the part
+  of it that a command reports on, and the algorithms that run on them.
 - `zenith_lang`: the interface that each supported language implements, and
   the types they share: what a file imports, its suppressions and syntax
   errors, what an import resolves to, and a project's workspace packages. It
@@ -92,7 +93,6 @@ a new kind of responsibility, not for each feature:
   when it compiles.
 - `zenith_pipeline`: the stages that turn a project into its import graph,
   the session they share, and the registry of the languages zenith reads.
-- `zenith_reporting`: the output formats of `zenith check`.
 - `zenith_utils`: shared helpers: files, paths, globs, locations, terminal
   output and the thread pool.
 - `zenith_workspace`: the file walker and git.

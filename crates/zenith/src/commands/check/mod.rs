@@ -1,11 +1,13 @@
 //! `zenith check`.
 
+mod json;
+
 use std::time::Instant;
 
 use anyhow::Result;
-use zenith_contracts::{CheckJson, Contract, ContractReport};
+use json::CheckJson;
+use zenith_contracts::{ContractReport, Format, Output, Summary};
 use zenith_pipeline::StageKind;
-use zenith_reporting::{Format, Output, Summary};
 use zenith_workspace::Git;
 
 use crate::{
@@ -34,9 +36,8 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     //    the baseline leave out, and find the suppressions that had no effect. Keep
     //    only what involves the files under the paths.
     let start = Instant::now();
-    let graphs = session.graphs();
-    let (mut checked, mut unused) =
-        Contract::check_session(&contracts, &session, baseline.as_ref());
+    let graphs = project::graphs(&session);
+    let (mut checked, mut unused) = project::check(&contracts, &session, baseline.as_ref());
     for report in &mut checked {
         report.narrow(graphs.of(report.config), &session.scope);
     }
@@ -70,8 +71,19 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
         ReportFormat::Sarif => {
             // Code scanning reads paths as relative to the root of the repository.
             let prefix = Git::new(&session.root).root_prefix().unwrap_or_default();
-            let sarif =
-                ContractReport::sarif(&checked, &unused, &session, &mut sources, config, &prefix);
+            let mut sarif = ContractReport::sarif(
+                &checked,
+                &unused,
+                graphs,
+                baseline,
+                &mut sources,
+                config,
+                &prefix,
+            );
+            // The imports that couldn't be resolved are problems of the run.
+            for import in &session.unresolved {
+                sarif.add_notification(&import.report(&mut sources), &sources);
+            }
             println!("{sarif}");
             None
         }

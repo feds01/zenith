@@ -10,7 +10,8 @@
 //! in Fluent files under `messages/`, rather than in its code, which names
 //! each message by id, with [`message!`] or the derive. A [`Reporter`] renders
 //! reports with `annotate-snippets`, in full or a line each, reading the
-//! excerpts from a [`SourceMap`].
+//! excerpts from a [`SourceMap`], and a [`Sarif`] log shows them as the
+//! results of the [`SarifRule`]s they break, for code scanning.
 //!
 //! The [`SourceMap`] is where zenith finds what is in a source and where:
 //! it reads a project's files when they are first needed, names them as
@@ -20,6 +21,7 @@ mod catalogue;
 mod diagnostic;
 mod report;
 mod reporter;
+mod sarif;
 mod source;
 mod store;
 
@@ -28,6 +30,7 @@ pub use report::{
     Report, ReportCodeBlock, ReportElement, ReportKind, ReportNote, ReportNoteKind, ReportSpan,
 };
 pub use reporter::Reporter;
+pub use sarif::{Sarif, SarifRule};
 pub use source::{Columns, Location, Position, Source, SourceId, SourceMap, Span};
 pub use store::DiagnosticStore;
 pub use zenith_macros::{Diagnostic, message};

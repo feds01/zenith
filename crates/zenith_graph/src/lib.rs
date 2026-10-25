@@ -30,6 +30,9 @@
 //! children, and the dependencies between them, as a tree, a Graphviz digraph,
 //! a Mermaid flowchart or JSON. A [`DependencyDiff`] shows how those
 //! dependencies changed from one graph to another.
+//!
+//! A [`Scope`] is the part of a project that a command reports on: the
+//! nodes under some paths, or every node.
 
 mod builder;
 mod cycles;
@@ -43,6 +46,7 @@ mod node_set;
 mod overview;
 mod pathfinding;
 mod reexports;
+mod scope;
 #[cfg(test)]
 mod testing;
 mod unit;
@@ -60,5 +64,6 @@ pub use overview::{
     ChildDependency, ModuleOverview, OverviewChild, OverviewDot, OverviewMermaid, OverviewTree,
 };
 pub use reexports::ModuleExports;
+pub use scope::Scope;
 pub use unit::Unit;
 pub use view::{EdgeSet, GraphView};

@@ -21,9 +21,8 @@ use passes::{Context, PASSES};
 use zenith_config::{Config, ContractConfig, ContractKind, Languages, Reexports, Selector};
 use zenith_graph::{Graph, GraphView, ModuleId, UnitGraph};
 use zenith_lang::Workspace;
-use zenith_pipeline::Graphs;
 
-use crate::{Contract, Exemptions, Selection};
+use crate::{Contract, Exemptions, Graphs, Selection};
 
 /// A contract that the code already keeps, suggested for the configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,10 +196,9 @@ mod tests {
 
     use zenith_graph::ImportKind;
     use zenith_lang::WorkspacePackage;
-    use zenith_pipeline::LANGUAGES;
 
     use super::*;
-    use crate::testing::{Project, values};
+    use crate::testing::{LANGUAGES, Project, values};
 
     /// A project of the value imports `pairs`, without a configuration.
     fn project(pairs: &[(&str, &str)]) -> Project {

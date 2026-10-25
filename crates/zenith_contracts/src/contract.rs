@@ -4,12 +4,11 @@ use std::time::{Duration, Instant};
 
 use rayon::prelude::*;
 use zenith_config::{AlertLevel, ContractConfig, IgnoreImport};
-use zenith_graph::{Graph, ModuleId, NodeSet};
-use zenith_lang::Workspace;
-use zenith_pipeline::{FileSuppressions, Graphs, Scope, Session};
+use zenith_graph::{Graph, ModuleId, NodeSet, Scope};
+use zenith_lang::{FileSuppressions, Workspace};
 
 use crate::{
-    Baseline, ContractError, UnusedSuppression, Violation, rules::Rule, selection::UnitResolver,
+    Baseline, ContractError, Graphs, Violation, rules::Rule, selection::UnitResolver,
     view::ContractView,
 };
 
@@ -120,21 +119,6 @@ impl<'c> Contract<'c> {
             .map(|contract| contract.check(graphs.of(contract.config), workspace, exempts))
             .collect()
     }
-
-    /// Check `contracts` against the graphs of `session`, as
-    /// [`Contract::check_all`] does, without the imports that its
-    /// suppressions and the `baseline` leave out, and find the suppressions
-    /// that had no effect.
-    pub fn check_session<'s>(
-        contracts: &[Self],
-        session: &'s Session,
-        baseline: Option<&'s Baseline>,
-    ) -> (Vec<ContractReport<'c>>, Vec<UnusedSuppression<'s>>) {
-        let exemptions = Exemptions { suppressions: &session.suppressions, baseline };
-        let checked = Self::check_all(contracts, session.graphs(), &session.workspace, &exemptions);
-        let unused = UnusedSuppression::find(&session.config, &exemptions, &checked);
-        (checked, unused)
-    }
 }
 
 /// What the project exempts from its contracts, besides the imports that
@@ -227,7 +211,7 @@ impl ContractReport<'_> {
 #[cfg(test)]
 mod tests {
     use zenith_config::{AlertLevel, Severity};
-    use zenith_pipeline::Scope;
+    use zenith_graph::Scope;
 
     use crate::{
         Violation,

@@ -46,7 +46,7 @@ impl fmt::Display for Output<'_> {
                 if !self.reports.is_empty() {
                     write!(f, "{reporter}\n\n")?;
                 }
-                writeln!(f, "{}", highlight(Modifier::Bold, message!(reporting_contracts)))?;
+                writeln!(f, "{}", highlight(Modifier::Bold, message!(contracts_summary)))?;
                 for line in self.summary.entry_lines() {
                     writeln!(f, "  {line}")?;
                 }

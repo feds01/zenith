@@ -20,7 +20,6 @@ zenith_contracts = { workspace = true }
 zenith_diagnostics = { workspace = true }
 zenith_graph = { workspace = true }
 zenith_pipeline = { workspace = true }
-zenith_reporting = { workspace = true }
 zenith_lang = { workspace = true }
 zenith_lsp = { workspace = true }
 zenith_utils = { workspace = true }
@@ -31,6 +30,7 @@ argfile = { workspace = true }
 clap = { workspace = true }
 log = { workspace = true }
 mimalloc = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]

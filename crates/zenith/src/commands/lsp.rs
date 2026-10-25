@@ -4,7 +4,6 @@ use std::{env, panic, path};
 
 use anyhow::{Error, Result};
 use log::error;
-use zenith_contracts::Contract;
 use zenith_lsp::{Failure, Found, Server};
 use zenith_pipeline::StageKind;
 use zenith_utils::highlight::set_colour_enabled;
@@ -52,10 +51,10 @@ fn check(global: &GlobalArgs) -> Result<Found> {
 
     // 3. Check the contracts, without the imports that suppressions and the
     //    baseline leave out, and find the suppressions that had no effect.
-    let (checked, unused) = Contract::check_session(&contracts, &session, baseline.as_ref());
+    let (checked, unused) = project::check(&contracts, &session, baseline.as_ref());
 
     // 4. Make the diagnostics of what they found.
-    let graphs = session.graphs();
+    let graphs = project::graphs(&session);
     let (mut sources, config) = session.sources();
     let baseline = &session.config.baseline;
     let reports = checked

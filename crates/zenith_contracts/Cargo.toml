@@ -13,8 +13,6 @@ zenith_config = { workspace = true }
 zenith_diagnostics = { workspace = true }
 zenith_graph = { workspace = true }
 zenith_lang = { workspace = true }
-zenith_pipeline = { workspace = true }
-zenith_reporting = { workspace = true }
 zenith_utils = { workspace = true }
 zenith_workspace = { workspace = true }
 
@@ -25,6 +23,8 @@ serde_json = { workspace = true }
 toml = { workspace = true }
 
 [dev-dependencies]
+zenith_lang_js = { workspace = true }
+
 tempfile = { workspace = true }
 thin-vec = { workspace = true }
 

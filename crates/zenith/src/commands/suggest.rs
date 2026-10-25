@@ -19,7 +19,7 @@ pub fn suggest(global: &GlobalArgs) -> Result<ExitStatus> {
     // 2. Find the contracts that its code keeps, checked as the configuration's
     //    contracts would be.
     let suggestions =
-        Suggestion::find(session.graphs(), &session.workspace, &session.config, LANGUAGES);
+        Suggestion::find(project::graphs(&session), &session.workspace, &session.config, LANGUAGES);
 
     // 3. Print them, a blank line apart.
     if suggestions.is_empty() {

@@ -1,4 +1,4 @@
-//! The output of a check as a SARIF 2.1.0 log, which code scanning reads,
+//! Reports as a SARIF 2.1.0 log, which code scanning reads,
 //! such as GitHub's: the rules that are checked, a result for each report
 //! that breaks one, and the problems of the run as notifications.
 //!
@@ -16,7 +16,8 @@ use std::{
 use serde::Serialize;
 use serde_json::{Map, Value};
 use xxhash_rust::xxh3::xxh3_128;
-use zenith_diagnostics::{Report, ReportElement, ReportKind, SourceMap, Span};
+
+use crate::{Report, ReportElement, ReportKind, SourceMap, Span};
 
 /// The version of SARIF that the log follows.
 const VERSION: &str = "2.1.0";
@@ -628,6 +629,6 @@ mod tests {
         let absolute = env!("CARGO_MANIFEST_DIR");
         let uri = ArtifactLocationJson::new(absolute, "apps/").uri;
         assert!(uri.starts_with("file:///"), "{uri}");
-        assert!(uri.ends_with("/crates/zenith_reporting"), "{uri}");
+        assert!(uri.ends_with("/crates/zenith_diagnostics"), "{uri}");
     }
 }

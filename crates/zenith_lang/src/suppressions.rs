@@ -144,6 +144,16 @@ fn join_lines(text: &str) -> String {
     joined
 }
 
+/// The `zenith-ignore` comments of a source file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileSuppressions {
+    /// The file, as a POSIX path relative to the root.
+    pub file: String,
+
+    /// Its suppressions, in source order. There is at least one.
+    pub suppressions: ThinVec<Located<Suppression>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

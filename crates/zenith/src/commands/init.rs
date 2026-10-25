@@ -62,7 +62,7 @@ pub fn init(global: &GlobalArgs, args: InitCommand) -> Result<ExitStatus> {
     let suggestions = match args.suggest {
         true => {
             let config = Config::parse(starter, LANGUAGES).expect("the starter is valid");
-            Suggestion::find(session.graphs(), &session.workspace, &config, LANGUAGES)
+            Suggestion::find(project::graphs(&session), &session.workspace, &config, LANGUAGES)
         }
         false => Vec::new(),
     };

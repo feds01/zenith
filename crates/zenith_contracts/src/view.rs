@@ -1,12 +1,59 @@
-//! The view of the graph that a contract checks against.
+//! The graph that a contract checks against, and its view of it.
 
 use rustc_hash::FxHashSet;
-use zenith_config::{ContractConfig, IgnoreImport};
+use zenith_config::{ContractConfig, IgnoreImport, Reexports};
 use zenith_graph::{EdgeSet, Graph, GraphView, ImportDetail, KindSet, ModuleId, NodeSet};
-use zenith_lang::Workspace;
-use zenith_pipeline::FileSuppressions;
+use zenith_lang::{FileSuppressions, Workspace};
 
 use crate::{Exemptions, Selection, baseline};
+
+/// The graphs that contracts check against: the import graph, and the graph
+/// through re-exports if a contract needs it. They have the same modules, so
+/// either resolves a contract's selectors.
+#[derive(Debug, Clone, Copy)]
+pub struct Graphs<'g> {
+    /// The import graph.
+    pub graph: &'g Graph,
+
+    /// The import graph through re-exports, if a contract needs it.
+    pub through_reexports: Option<&'g Graph>,
+}
+
+/// Just the import graph, for contracts that don't see through re-exports.
+impl<'g> From<&'g Graph> for Graphs<'g> {
+    fn from(graph: &'g Graph) -> Self {
+        Self { graph, through_reexports: None }
+    }
+}
+
+impl<'g> Graphs<'g> {
+    /// The import `graph`, and the graph `through_reexports` if it was built.
+    pub fn new(graph: &'g Graph, through_reexports: Option<&'g Graph>) -> Self {
+        Self { graph, through_reexports }
+    }
+
+    /// The graph that the contract `config` checks against.
+    ///
+    /// Panics if the contract sees through re-exports but the graph through
+    /// them wasn't built, which the pipeline does when one does.
+    pub fn of(&self, config: &ContractConfig) -> &'g Graph {
+        self.seeing(config.reexports)
+    }
+
+    /// The graph that a contract that sees re-exports as `reexports` checks
+    /// against.
+    ///
+    /// Panics if it sees through them, but the graph through them wasn't
+    /// built.
+    pub fn seeing(&self, reexports: Reexports) -> &'g Graph {
+        match reexports {
+            Reexports::Opaque => self.graph,
+            Reexports::Transparent => self
+                .through_reexports
+                .expect("the graph through re-exports is built for the contracts that need it"),
+        }
+    }
+}
 
 /// The view of the graph that a contract checks against: the graph without
 /// the imports that the contract leaves out, and what it left out.

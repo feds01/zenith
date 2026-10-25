@@ -54,9 +54,8 @@ fn is_plain_layer(selectors: &[String], languages: Languages) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use zenith_pipeline::LANGUAGES;
-
     use super::*;
+    use crate::testing::LANGUAGES;
 
     /// Whether the `selectors` are a plain layer.
     fn is_plain(selectors: &[&str]) -> bool {

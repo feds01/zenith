@@ -354,7 +354,7 @@ mod tests {
     use std::{fs, thread};
 
     use tempfile::TempDir;
-    use zenith_utils::{path::adjust_canonicalisation, testing::Overlay};
+    use zenith_utils::{fs::adjust_canonicalisation, testing::Overlay};
 
     use super::*;
 

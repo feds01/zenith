@@ -7,7 +7,6 @@
 mod backend;
 mod config;
 mod crates;
-mod manifest;
 mod modules;
 mod parse;
 mod resolve;

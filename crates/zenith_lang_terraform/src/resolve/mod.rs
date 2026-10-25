@@ -138,7 +138,7 @@ mod tests {
     use std::fs;
 
     use tempfile::TempDir;
-    use zenith_utils::{fs::disk, path::adjust_canonicalisation};
+    use zenith_utils::fs::{adjust_canonicalisation, disk};
 
     use super::*;
 

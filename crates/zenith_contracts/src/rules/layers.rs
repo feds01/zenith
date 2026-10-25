@@ -9,7 +9,7 @@ use zenith_utils::{
 };
 
 use crate::{
-    Chain, ContractErrorKind, Selection, Violation, contract::UnitResolver, view::Statements,
+    Chain, ContractErrorKind, Selection, Violation, selection::UnitResolver, view::Statements,
 };
 
 /// A compiled `layers` contract.

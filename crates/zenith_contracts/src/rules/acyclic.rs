@@ -3,7 +3,7 @@
 use zenith_config::AcyclicConfig;
 use zenith_graph::{GraphView, NodeKind, NodeSet, Unit, UnitGraph};
 
-use crate::{CycleBreaker, CycleScope, Link, Violation, contract::UnitResolver, view::Statements};
+use crate::{CycleBreaker, CycleScope, Link, Violation, selection::UnitResolver, view::Statements};
 
 /// A compiled `acyclic` contract.
 #[derive(Debug)]

@@ -7,9 +7,9 @@ use std::{
 };
 
 use zenith_utils::{
-    fs::read_text,
+    fs::{adjust_canonicalisation, read_text},
     location::{ByteRange, LineIndex},
-    path::{adjust_canonicalisation, relative_posix},
+    path::relative_posix,
 };
 
 /// Identifies a source in a [`SourceMap`].

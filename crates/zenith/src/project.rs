@@ -9,10 +9,7 @@ use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
 use zenith_contracts::{Baseline, Contract, Suggestion};
 use zenith_diagnostics::{Diagnostic, ReportKind, SourceMap, message};
 use zenith_pipeline::{FileError, FileErrorKind, LANGUAGES, Pipeline, Session, StageKind};
-use zenith_utils::{
-    fs::{FileSystem, disk},
-    path::adjust_canonicalisation,
-};
+use zenith_utils::fs::{FileSystem, adjust_canonicalisation, disk};
 
 use crate::{Reported, cli::GlobalArgs, reporting, version::version};
 

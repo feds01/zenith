@@ -13,7 +13,7 @@ use lsp_types::{
 use zenith_diagnostics::{
     Columns, Report, ReportElement, ReportKind, ReportNoteKind, Source, SourceMap, Span,
 };
-use zenith_utils::{location::ByteRange, path::adjust_canonicalisation};
+use zenith_utils::{fs::adjust_canonicalisation, location::ByteRange};
 
 /// What the diagnostics name as where they come from.
 const SOURCE: &str = "zenith";

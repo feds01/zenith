@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use zenith_config::ForbiddenConfig;
 use zenith_graph::{GraphView, NodeSet, Unit};
 
-use crate::{Chain, Violation, contract::UnitResolver, view::Statements};
+use crate::{Chain, Violation, selection::UnitResolver, view::Statements};
 
 /// A compiled `forbidden` contract.
 #[derive(Debug)]

@@ -153,6 +153,14 @@ pub fn disk() -> &'static Arc<dyn FileSystem> {
     &DISK
 }
 
+/// Canonicalise a path: resolve symlinks and, on Windows, strip the `\\?\`
+/// prefix where that is safe. A path that does not exist is normalised
+/// lexically with [`normalize_path`] instead, so symlinks in its existing
+/// ancestors stay unresolved.
+pub fn adjust_canonicalisation<P: AsRef<Path>>(path: P) -> PathBuf {
+    OsFileSystem.adjust_canonicalisation(path.as_ref())
+}
+
 impl FileSystem for OsFileSystem {
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         fs::read(path)
@@ -252,12 +260,23 @@ impl std::error::Error for ReadJsonError {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{env, fs};
 
     use serde_json::json;
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn existing_paths_are_canonicalised() {
+        assert_eq!(adjust_canonicalisation("."), env::current_dir().unwrap());
+    }
+
+    #[test]
+    fn missing_paths_are_normalised() {
+        let cwd = env::current_dir().unwrap();
+        assert_eq!(adjust_canonicalisation("no-such-dir/x/../y.ts"), cwd.join("no-such-dir/y.ts"));
+    }
 
     #[test]
     fn strips_a_byte_order_mark() {

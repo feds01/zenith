@@ -4,7 +4,7 @@
 use zenith_config::ProtectedConfig;
 use zenith_graph::{GraphView, NodeSet, Unit};
 
-use crate::{Link, Violation, contract::UnitResolver, view::Statements};
+use crate::{Link, Violation, selection::UnitResolver, view::Statements};
 
 /// A compiled `protected` contract.
 #[derive(Debug)]

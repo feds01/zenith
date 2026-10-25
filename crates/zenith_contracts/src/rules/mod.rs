@@ -11,7 +11,7 @@ mod protected;
 use zenith_config::ContractKind;
 use zenith_graph::GraphView;
 
-use crate::{Violation, contract::UnitResolver, view::Statements};
+use crate::{Violation, selection::UnitResolver, view::Statements};
 
 /// What a contract checks: one variant per contract type, with the units
 /// that its selectors resolved to.

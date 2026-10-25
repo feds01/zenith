@@ -173,7 +173,7 @@ mod tests {
     use std::fs;
 
     use tempfile::TempDir;
-    use zenith_utils::path::adjust_canonicalisation;
+    use zenith_utils::fs::adjust_canonicalisation;
 
     use super::*;
     use crate::testing::{commit, git};

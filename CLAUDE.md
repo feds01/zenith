@@ -32,7 +32,10 @@ just vscode::test  # the VS Code extension's tests, in VS Code, with this checko
 
 zenith checks its own architecture: the contracts in the root `zenith.toml`
 run in `just lint`, in the pre-commit hook and in CI. A new crate needs a
-place in its `crate-layers` contract.
+place in its `crate-layers` contract, and a new language crate the `config`,
+`backend`, `resolve` and `parse` modules of `language-stages`. Contracts
+also hold inside crates, so a cycle between two modules is a smell to
+untangle, not to ignore.
 
 The toolchain is pinned nightly (`rust-toolchain.toml`). This is needed for the
 `rustfmt.toml` options `imports_granularity` and `group_imports`. Run

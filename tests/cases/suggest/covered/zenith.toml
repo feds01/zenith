@@ -1,0 +1,7 @@
+[contracts.tiers]
+type = "layers"
+layers = ["app : jobs", "domain", "db : logging"]
+
+[contracts.no-cycles]
+type = "acyclic"
+modules = ["*"]

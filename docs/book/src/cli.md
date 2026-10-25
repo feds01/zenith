@@ -136,9 +136,13 @@ contract of the configuration, with its `[analysis]` defaults, so it passes
 
 It never writes a file. Write the suggestions to one to review them, as in
 `zenith suggest > suggested.toml`, and copy the ones you want into
-`zenith.toml`; or let an agent read them. A contract whose id the
-configuration already has is not suggested, so once you have added them, a
-second run only prints what is new.
+`zenith.toml`; or let an agent read them.
+
+A suggestion is left out when a contract of the same type in the configuration
+already selects all of its modules, whatever its id, so once you have added
+them, a second run only prints what is new. A suggestion never takes an id
+that the configuration has: it gets a number after it instead, as in
+`packages-layers-2`.
 
 ## Comparing refs
 

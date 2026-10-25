@@ -1,0 +1,6 @@
+# The contracts of `zenith.toml` select every directory, under other ids, so
+# `layers` and `acyclic` are not suggested again.
+suggest
+# `taken.toml` has a `layers` contract of only some directories, under the
+# id that `suggest` would give its own, so it takes the next one.
+suggest --config taken.toml

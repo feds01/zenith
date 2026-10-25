@@ -1,0 +1,7 @@
+[contracts.directories-layers]
+type = "layers"
+layers = ["app", "ui"]
+
+[contracts.directories-layers-2]
+type = "independence"
+modules = ["infra", "ui"]

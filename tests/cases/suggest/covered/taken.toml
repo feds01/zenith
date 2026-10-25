@@ -1,0 +1,3 @@
+[contracts.directories-layers]
+type = "layers"
+layers = ["app", "domain"]

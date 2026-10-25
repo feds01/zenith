@@ -52,7 +52,11 @@ merged since the last release (see [cliff.toml](cliff.toml)). Merge that to
 `main`, then run `just release` to tag it.
 [cargo-dist](https://opensource.axo.dev/cargo-dist/) builds the binaries and
 installers, and publishes the GitHub release, with the release's section of
-the changelog as its notes, and the Homebrew formula.
+the changelog as its notes, and the Homebrew formula. A pre-release, such as
+`0.7.0-beta.1`, gets only the GitHub release: the formula, the npm packages
+and the VS Code extension wait for a release. Each publishing job skips what
+is already published, so a failed one can be re-run, but an npm package that
+is staged and not yet approved must be approved or rejected first.
 
 A pull request's title is its entry in the changelog, so write it as a
 conventional commit, as in `feat(graph): …`. Features, fixes, performance and
@@ -67,14 +71,12 @@ npmjs.com, under Staged Packages, or with `npm stage approve <id>` (npm 11.15
 or later), the platform packages before `@feds01/zenith`. The release run
 shows the ids, and so does `npm stage list <package>`.
 
-The VS Code extension is packaged by `just vscode::release`, from the same
+The VS Code extension is packaged by `just vscode::packages`, from the same
 archives: a VSIX per platform with its binary, and a universal one without,
 for the other platforms. `just vscode::publish` publishes them to the VS Code
 Marketplace and to Open VSX with the tokens in the repository's secrets
-`VSCE_PAT` and `OVSX_PAT`, which only that step sees. A pre-release version
-isn't published, as the Marketplace takes none, and nor is any version
-until the repository has both tokens. `just vscode::packages` builds
-the VSIX files locally.
+`VSCE_PAT` and `OVSX_PAT`, which only that step sees. No version is
+published until the repository has both tokens.
 
 Before the first release that publishes it:
 

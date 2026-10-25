@@ -13,8 +13,7 @@ use serde::Deserialize;
 use zenith_diagnostics::message;
 use zenith_utils::fs::adjust_canonicalisation;
 
-use super::{Crates, Declared, Found, Target, TargetKind, edition};
-use crate::manifest::Manifest;
+use super::{Crates, Declared, Found, Target, TargetKind, edition, manifest::Manifest};
 
 /// Why Cargo could not say what the crates are.
 #[derive(Debug)]

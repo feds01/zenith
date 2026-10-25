@@ -11,7 +11,7 @@ use serde::{Deserialize, de::IgnoredAny};
 use zenith_diagnostics::message;
 use zenith_utils::{fs::FileSystem, path::normalize_path};
 
-use crate::crates::{Declared, Target, TargetKind};
+use super::{Declared, Target, TargetKind};
 
 /// A `Cargo.toml`. Everything else in it is left unread.
 #[derive(Debug, Default, Deserialize)]

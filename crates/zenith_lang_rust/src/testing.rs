@@ -8,7 +8,7 @@ use std::{
 use tempfile::TempDir;
 use zenith_utils::fs::{adjust_canonicalisation, disk};
 
-use crate::{crates::Crates, manifest::Manifest};
+use crate::crates::{Crates, manifest::Manifest};
 
 /// A project in a temporary directory.
 pub(crate) struct Project {

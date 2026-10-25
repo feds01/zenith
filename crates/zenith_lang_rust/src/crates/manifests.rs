@@ -6,11 +6,7 @@ use std::path::Path;
 use rustc_hash::FxHashMap;
 use zenith_utils::fs::FileSystem;
 
-use super::{Crates, Found};
-use crate::{
-    crates::{TargetKind, edition},
-    manifest::Manifest,
-};
+use super::{Crates, Found, TargetKind, edition, manifest::Manifest};
 
 impl Crates {
     /// The crates of the packages in `manifests`, each with its directory in

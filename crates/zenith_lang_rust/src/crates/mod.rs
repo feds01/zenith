@@ -3,18 +3,18 @@
 //! can.
 
 mod cargo;
+pub(crate) mod manifest;
 mod manifests;
 #[cfg(test)]
 mod tests;
 
 use std::path::{Path, PathBuf};
 
+use manifest::Manifest;
 use ra_ap_syntax::Edition;
 use rustc_hash::FxHashMap;
 use zenith_lang::{Workspace, WorkspacePackage};
 use zenith_utils::{fs::FileSystem, path::relative_posix};
-
-use crate::manifest::Manifest;
 
 /// The crates of the standard library, which every crate may use.
 pub(crate) const STANDARD_CRATES: &[&str] = &["std", "core", "alloc", "proc_macro", "test"];

@@ -47,6 +47,8 @@ $ zenith check src/ui --format compact
 exit: 0
 --- stdout
 1 kept, 0 broken · 4 files, 2 imports
+--- stderr
+warning: no source file is under `src/ui`; check the path, and that zenith scans its files
 
 $ zenith check . --format compact
 exit: 1

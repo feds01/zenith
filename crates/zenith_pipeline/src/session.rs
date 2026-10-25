@@ -287,10 +287,9 @@ impl Session {
         since: Option<&str>,
     ) -> Result<(), PipelineError> {
         // 1. Name the paths relative to the root.
-        let names = paths.iter().map(|path| {
-            relative_posix(&self.root, &adjust_canonicalisation(path))
-                .ok_or_else(|| PipelineError::OutsideRoot(path.clone()))
-        });
+        let names = paths
+            .iter()
+            .map(|path| self.name_of(path).ok_or_else(|| PipelineError::OutsideRoot(path.clone())));
         let mut names: Vec<_> = names.collect::<Result<_, _>>()?;
 
         // 2. Add the files that changed since the commit. If none did, the scope is no
@@ -303,6 +302,24 @@ impl Session {
             _ => Scope::new(names),
         };
         Ok(())
+    }
+
+    /// The `paths`, relative to the working directory, with no source file
+    /// of the session under them: a typo, a file that isn't scanned, or one
+    /// that was deleted.
+    pub fn paths_without_files<'p>(&self, paths: &'p [PathBuf]) -> Vec<&'p Path> {
+        let has_files = |name: String| {
+            let scope = Scope::new(vec![name]);
+            self.files.iter().any(|file| scope.contains(&file.name))
+        };
+        let without = paths.iter().filter(|path| !self.name_of(path).is_some_and(has_files));
+        without.map(PathBuf::as_path).collect()
+    }
+
+    /// The name of `path`, relative to the working directory, as a POSIX
+    /// path relative to the root, or `None` if it is outside the root.
+    fn name_of(&self, path: &Path) -> Option<String> {
+        relative_posix(&self.root, &adjust_canonicalisation(path))
     }
 
     /// Keep only the problems of the files in the session's scope: the files

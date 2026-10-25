@@ -635,6 +635,19 @@ fn the_scope_is_the_paths_and_the_files_changed_since_a_commit() {
     assert!(session.scope.is_everything());
 }
 
+#[test]
+fn the_paths_without_files_are_those_with_no_source_file_under_them() {
+    let project = Project::new(&[("web/a.ts", b""), ("README.md", b"")]);
+    let session = project.build("").unwrap();
+    let paths =
+        ["web", "web/a.ts", "", "web/b.ts", "README.md", "api"].map(|path| project.root.join(path));
+    let expected = ["web/b.ts", "README.md", "api"].map(|path| project.root.join(path));
+    assert_eq!(
+        session.paths_without_files(&paths),
+        expected.iter().map(PathBuf::as_path).collect::<Vec<_>>()
+    );
+}
+
 /// Build the graph of `project`, and through its re-exports.
 fn build_through_reexports(project: &Project) -> (Session, Pipeline) {
     let mut session = project.session("");

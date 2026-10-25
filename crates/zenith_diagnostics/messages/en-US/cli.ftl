@@ -40,6 +40,7 @@ cli_unresolved_unlisted = {cli_unresolved}; run with `-v` to list them
 
 ## `zenith check`.
 
+cli_path_without_files = no source file is under `{$path}`; check the path, and that zenith scans its files
 cli_using_baseline = using the baseline `{$path}`
 cli_baseline_conflicted = the baseline `{$path}` has merge conflict markers, so the entries of both sides count; `zenith baseline --prune` resolves them
 

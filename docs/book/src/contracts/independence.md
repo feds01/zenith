@@ -35,6 +35,7 @@ of it.
 |---|---|---|
 | `modules` | required | Selectors. The units may not overlap. |
 | `allow_indirect_imports` | `false` | Only direct imports count. |
+| `boundaries` | `[]` | Selectors of the modules that chains of imports may start or end at, but not pass through. See [boundaries](overview.md#boundaries). |
 
 ## Common options
 

@@ -69,6 +69,15 @@ the crates that its code may name.
 | another crate | `crate:serde` | Named by its package. |
 | the standard library | `rust:std` | `std`, `core`, `alloc`, `proc_macro` and `test`. |
 
+A path to an item that the crate root re-exports, such as `use crate::Layout`
+after `pub use layout::Layout;` in `lib.rs`, imports `lib.rs`, which imports
+the module it re-exports from. A chain through the root then joins every
+module that imports through it to every module that it re-exports, so a
+contract that follows chains over the modules of a crate sees them all
+depend on each other. Make the crate roots
+[boundaries](../contracts/overview.md#boundaries) of such a contract, as in
+`boundaries = ["crates/*/src/lib.rs"]`, so that chains stop at them.
+
 An inline `mod a { }` block is part of its file, so a path into it, `use`d or
 not, imports nothing. `#[path]` attributes are not followed, and a file
 doesn't import itself. A raw identifier names what it spells: `r#false` is the

@@ -61,7 +61,9 @@ in editors that use it, such as Cursor and VSCodium. It checks each folder of
 the workspace that has a `zenith.toml`, in it or in a folder above it, and
 starts or stops checking a folder as it gains or loses one. It runs a server
 for each project: folders under the same `zenith.toml`, such as the packages
-of a monorepo, share one, which shows each finding once.
+of a monorepo, share one, which shows each finding once. So do the folders of
+a [workspace member](configuration.md#splitting-the-configuration) and the
+root's.
 
 It runs the first of these binaries that it finds:
 

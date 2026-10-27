@@ -38,6 +38,7 @@
     "test": "vscode-test --config __tests__/vscode-test.mjs"
   },
   "dependencies": {
+    "smol-toml": "1.9.0",
     "vscode-languageclient": "11.0.0"
   },
   "devDependencies": {

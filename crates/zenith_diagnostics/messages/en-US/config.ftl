@@ -28,6 +28,16 @@ config_exhaustive_without_containers = `exhaustive` requires `containers`
 config_boundaries_without_chains = `boundaries` has no effect with `allow_indirect_imports = true`, since direct imports pass through nothing
 config_transparent_encapsulation = `encapsulation` contracts can't see through re-exports, since importing through an entry point, which often only re-exports, is what they allow
 config_no_limits = `limits` contracts must set `max_fan_in`, `max_fan_out` or both
+config_root_only = `{$key}` can only be set in the root's configuration file
+config_pattern_parent_dir = `{$pattern}` can't have a `..` segment
+config_unmatched_pattern = `{$pattern}` matches nothing
+    .help = check it for a typo, or for a file or directory that was renamed or removed
+config_includes_member = `{$path}` is the configuration file of the member `{$member}`, so it can't be included
+    .help = a member's file is read as part of the member, which `[workspace] members` lists
+config_part_of_two = `{$path}` is already part of the configuration in `{$first}`
+    .help = a file can be included by the root's files, or by one member's, but not by both
+config_duplicate_contract = contract `{$id}` is defined twice
+    .note = it is first defined in `{$first}`
 
 ## What a value is, and what it should have been, in an "invalid type"
 ## error. serde's own names for other types, such as "a boolean", are shown

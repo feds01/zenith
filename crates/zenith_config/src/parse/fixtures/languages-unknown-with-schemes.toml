@@ -1,0 +1,6 @@
+[languages.tset]
+
+[contracts.no-sharp]
+type = "forbidden"
+from = ["web/src"]
+to = ["ext:sharp", "core:*"]

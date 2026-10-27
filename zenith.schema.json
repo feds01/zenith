@@ -2,6 +2,17 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "include": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Globs of more configuration files whose contracts are read as if they\nwere written in this one, relative to the root, or in a member's file\nto its directory. They skip what `.gitignore` ignores and `[files]\nexclude` excludes."
+    },
+    "workspace": {
+      "$ref": "#/$defs/WorkspaceTable",
+      "description": "The directories of the project that have a `zenith.toml` of their own.\nOnly the root's configuration file may have members."
+    },
     "files": {
       "$ref": "#/$defs/FilesTable",
       "description": "Which files to scan for imports, whatever their language."
@@ -31,7 +42,7 @@
     }
   },
   "title": "zenith.toml",
-  "description": "The configuration of a zenith project. It lives at the project root, which\nall of its paths are relative to.",
+  "description": "The configuration of a zenith project. It lives at the project root, which\nall of its paths are relative to. A file that it includes, or a member's,\nmay only have `include`, `[contracts]`, `[analysis]` and `[files]\nexclude`, and a member's paths are relative to its directory.",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
     "JsTable": {
@@ -207,6 +218,21 @@
         }
       },
       "description": "Terraform, OpenTofu and Terragrunt."
+    },
+    "WorkspaceTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Globs of the directories, relative to the root, whose `zenith.toml`\nadds contracts, and options for them, to this one. The paths in a\nmember's file are relative to its directory, and the ids of its\ncontracts start with it, as `apps.web.layers` for `apps/web`.\nDirectories without a `zenith.toml` are skipped. The globs skip what\n`.gitignore` ignores and `[files] exclude` excludes.",
+          "default": []
+        }
+      },
+      "description": "The directories of the project that have a `zenith.toml` of their own."
     },
     "FilesTable": {
       "type": "object",

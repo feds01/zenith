@@ -71,7 +71,9 @@ impl<T: JsonSchema> JsonSchema for Located<T> {
 }
 
 /// The configuration of a zenith project. It lives at the project root, which
-/// all of its paths are relative to.
+/// all of its paths are relative to. A file that it includes, or a member's,
+/// may only have `include`, `[contracts]`, `[analysis]` and `[files]
+/// exclude`, and a member's paths are relative to its directory.
 // Each table is deserialised on its own, so that every table reports its
 // errors, and each contract's errors name it and point into it. This struct
 // only rejects unknown tables, and describes the tables for the schema.
@@ -80,6 +82,20 @@ impl<T: JsonSchema> JsonSchema for Located<T> {
 #[schemars(title = "zenith.toml")]
 #[expect(dead_code, reason = "the tables are deserialised on their own")]
 pub(crate) struct ConfigFile {
+    /// Globs of more configuration files whose contracts are read as if they
+    /// were written in this one, relative to the root, or in a member's file
+    /// to its directory. They skip what `.gitignore` ignores and `[files]
+    /// exclude` excludes.
+    #[serde(default)]
+    #[schemars(with = "Vec<String>")]
+    pub(crate) include: IgnoredAny,
+
+    /// The directories of the project that have a `zenith.toml` of their own.
+    /// Only the root's configuration file may have members.
+    #[serde(default)]
+    #[schemars(with = "WorkspaceTable")]
+    pub(crate) workspace: IgnoredAny,
+
     /// Which files to scan for imports, whatever their language.
     #[serde(default)]
     #[schemars(with = "FilesTable")]
@@ -116,6 +132,19 @@ pub(crate) struct ConfigFile {
     #[serde(default)]
     #[schemars(with = "IndexMap<String, ContractTable>")]
     pub(crate) contracts: IgnoredAny,
+}
+
+/// The directories of the project that have a `zenith.toml` of their own.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields, expecting = "a table")]
+pub(crate) struct WorkspaceTable {
+    /// Globs of the directories, relative to the root, whose `zenith.toml`
+    /// adds contracts, and options for them, to this one. The paths in a
+    /// member's file are relative to its directory, and the ids of its
+    /// contracts start with it, as `apps.web.layers` for `apps/web`.
+    /// Directories without a `zenith.toml` are skipped. The globs skip what
+    /// `.gitignore` ignores and `[files] exclude` excludes.
+    pub(crate) members: Vec<Located<String>>,
 }
 
 /// Which files to scan for imports, whatever their language.

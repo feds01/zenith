@@ -1,0 +1,4 @@
+# Another file's contract can't have the same id.
+[contracts.no-cycles]
+type = "acyclic"
+modules = ["apps/*"]

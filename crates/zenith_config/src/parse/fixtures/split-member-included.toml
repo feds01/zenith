@@ -1,0 +1,3 @@
+[contracts.extra]
+type = "acyclic"
+modules = ["src/*"]

@@ -1,0 +1,10 @@
+# Paths are relative to `apps/web`, and the contract's id is
+# `apps.web.layers`, as are those of the files it includes.
+include = ["zenith/*.toml"]
+
+[analysis]
+exclude_kinds = ["type"]
+
+[contracts.layers]
+type = "layers"
+layers = ["src/app", "src/features", "src/lib"]

@@ -117,6 +117,18 @@ impl Glob {
         &self.raw
     }
 
+    /// The glob matched under the directory `dir`, a literal POSIX path: it
+    /// matches what this one matches relative to `dir`, as `apps/web/src/*`
+    /// for `src/*` under `apps/web`.
+    pub fn under(&self, dir: &str) -> Self {
+        let dir = escape(dir);
+        let pattern = match self.raw.trim_start_matches("./") {
+            "" | "." => dir,
+            path => format!("{dir}/{path}"),
+        };
+        Self::new(&pattern).expect("a valid glob is valid under a directory")
+    }
+
     /// Whether the glob has no wildcards and no alternation, so it can only
     /// match the one path it spells out.
     pub fn is_literal(&self) -> bool {
@@ -548,6 +560,15 @@ mod tests {
         let glob = Glob::new(&format!("{}/*", escape("app/{weird}*"))).unwrap();
         assert!(glob.is_match("app/{weird}*/x"));
         assert!(!glob.is_match("app/weird/x"));
+    }
+
+    #[test]
+    fn globs_under_a_directory() {
+        let under = |pattern: &str, dir: &str| Glob::new(pattern).unwrap().under(dir);
+        assert_eq!(under("src/*", "apps/web").as_str(), "apps/web/src/*");
+        assert_eq!(under("./src", "apps/web").as_str(), "apps/web/src");
+        assert_eq!(under("{a,b}/**", "apps/web").as_str(), "apps/web/{a,b}/**");
+        assert!(under("src/*", "apps/{x}").is_match("apps/{x}/src/a"));
     }
 
     #[test]

@@ -15,6 +15,6 @@ error: unknown key `resolve`
 6 | [resolve]
   |  ^^^^^^^
   |
-  = help: expected one of `files`, `languages`, `analysis`, `baseline`, `cache`, `contracts`
+  = help: expected one of `include`, `workspace`, `files`, `languages`, `analysis`, `baseline`, `cache`, `contracts`
 
 

@@ -18,6 +18,11 @@ import { y } from "@/app/(dashboard)/types"; // zenith-ignore web-layers
 - A comment after code applies to the imports that start on its own line. A
   comment on a line of its own applies to the imports on the next line.
 - It removes those imports from the contracts it names, and no others.
+- In the files of a [workspace member](configuration.md#splitting-the-configuration),
+  a member's contract may be named by the id it is written with in the
+  member's `zenith.toml`, such as `layers` for `apps.web.layers`. That name
+  is the member's contract there, even if the root has a contract with the
+  same id.
 
 A suppression that has no effect is a warning: one that names no contract,
 names a contract that doesn't exist, or whose contracts, among those checked,

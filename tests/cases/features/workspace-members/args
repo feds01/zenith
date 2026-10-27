@@ -1,0 +1,7 @@
+# The contracts of the root's file, the files it includes and its members'.
+check
+check --format compact
+# Only what involves the files of one member.
+check --format compact apps/admin
+# A member's contract, by its id.
+check --contract apps.web.layers --format compact

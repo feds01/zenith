@@ -1,0 +1,4 @@
+# Paths in an included file are relative to the root, as in the root's file.
+[contracts.apps-independent]
+type = "independence"
+modules = ["apps/*"]

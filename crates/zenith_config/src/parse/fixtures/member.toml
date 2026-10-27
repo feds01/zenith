@@ -1,0 +1,22 @@
+include = ["zenith/*.toml"]
+
+[analysis]
+reexports = "opaque"
+
+[files]
+exclude = ["generated/**"]
+
+[contracts.layers]
+type = "layers"
+layers = ["src/app", "src/lib | ext:react"]
+ignore_imports = ["src/lib/legacy -> src/app"]
+
+[contracts.features]
+type = "layers"
+containers = ["src/features/*"]
+layers = ["ui", "api"]
+
+[contracts.no-ui]
+type = "forbidden"
+from = [{ path = "src", except = ["src/tests"] }]
+to = ["pkg:@acme/ui"]

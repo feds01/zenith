@@ -40,4 +40,4 @@ pub use languages::LANGUAGES;
 pub use pipeline::{Pipeline, Stage, StageKind};
 pub use schema::{FileProblemJson, UnresolvedJson};
 pub use session::{ResolvedImport, Session, SourceFile, Stats};
-pub use stages::{BuildGraph, Discover, Parse, Resolve};
+pub use stages::{BuildGraph, ConfigWalk, Discover, Parse, Resolve};

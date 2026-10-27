@@ -32,8 +32,20 @@ pub(crate) const CONTRACT_TYPES: [&str; 7] =
 #[derive(Debug, Clone)]
 pub struct ContractConfig {
     /// The id, which `--contract`, the baseline and `zenith-ignore` comments
-    /// refer to.
+    /// refer to. A member's contract has the member's directory before the
+    /// id it is written with, as `apps.web.layers` for `[contracts.layers]`
+    /// in `apps/web/zenith.toml`.
     pub id: String,
+
+    /// The position, in [`Config::config_files`](crate::Config::config_files),
+    /// of the configuration file that the contract is written in, which its
+    /// ranges, and those of its selectors, are in.
+    pub file: usize,
+
+    /// The directory of the member whose file the contract is written in,
+    /// relative to the root, which its paths are relative to. `None` for a
+    /// contract of the root.
+    pub member: Option<String>,
 
     /// Where the id is in the configuration file, as the key of its table,
     /// `[contracts.<id>]`.
@@ -78,6 +90,13 @@ impl ContractConfig {
     /// `packages/libs`: every character that ids can't have becomes a `-`.
     pub fn id_part(text: &str) -> String {
         text.chars().map(|c| if Self::is_id_char(c) { c } else { '-' }).collect()
+    }
+
+    /// What the ids of the contracts of the member in `dir`, relative to the
+    /// root, start with: each segment of `dir` as a part of an id, followed
+    /// by a `.`, as `apps.web.` for `apps/web`.
+    pub fn member_prefix(dir: &str) -> String {
+        dir.split('/').map(|segment| Self::id_part(segment) + ".").collect()
     }
 
     /// Whether a contract id may have the character `c`: an ASCII letter or

@@ -1,0 +1,17 @@
+include = ["zenith/*.toml"]
+
+[workspace]
+members = ["apps/*"]
+
+[languages.test]
+
+[analysis]
+reexports = "transparent"
+
+[contracts.root]
+type = "acyclic"
+modules = ["apps/*"]
+
+[contracts.features]
+type = "acyclic"
+modules = ["apps/*/src/*"]

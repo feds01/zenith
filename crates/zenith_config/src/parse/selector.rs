@@ -104,7 +104,13 @@ impl Parser {
 
     /// Parse the string form of a selector, written at `range`.
     fn parse_string_selector(&mut self, raw: &str, range: ByteRange) -> Option<Selector> {
-        let selector = Selector::parse(raw, self.languages).map(|selector| selector.at(range));
+        let selector = Selector::parse(raw, self.languages).map(|selector| {
+            let selector = selector.at(range);
+            match &self.member {
+                Some(member) => selector.in_member(member),
+                None => selector,
+            }
+        });
         let selector = self.check(selector, Some(range), |error| {
             ConfigErrorKind::InvalidSelector { selector: raw.to_string(), error }
         })?;
@@ -112,7 +118,8 @@ impl Parser {
     }
 
     /// Whether the language that owns the scheme of `selector`, if it has
-    /// one, is enabled. If not, record an error at `range`.
+    /// one, is enabled, or `[languages]` doesn't say which are. If not,
+    /// record an error at `range`.
     pub(super) fn check_scheme(&mut self, selector: &Selector, range: ByteRange) -> bool {
         let Some(scheme) = selector.scheme() else {
             return true;
@@ -120,7 +127,7 @@ impl Parser {
         let Some(language) = self.languages.by_scheme(scheme) else {
             return true;
         };
-        if self.enabled.contains(&language) {
+        if self.enabled.contains(&language) || !self.languages_known {
             return true;
         }
         let kind = ConfigErrorKind::DisabledScheme {
@@ -140,8 +147,13 @@ impl Parser {
         entries
             .iter()
             .filter_map(|entry| {
-                let ignore = IgnoreImport::parse(&entry.value, self.languages)
-                    .map(|ignore| ignore.at(entry.range));
+                let ignore = IgnoreImport::parse(&entry.value, self.languages).map(|ignore| {
+                    let ignore = ignore.at(entry.range);
+                    match &self.member {
+                        Some(member) => ignore.in_member(member),
+                        None => ignore,
+                    }
+                });
                 let ignore = self.check(ignore, Some(entry.range), |error| {
                     ConfigErrorKind::InvalidIgnoreImport { entry: entry.value.clone(), error }
                 })?;

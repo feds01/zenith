@@ -7,7 +7,7 @@ mod graph;
 mod parse;
 mod resolve;
 
-pub use discover::Discover;
+pub use discover::{ConfigWalk, Discover};
 pub use graph::BuildGraph;
 pub use parse::Parse;
 pub use resolve::Resolve;

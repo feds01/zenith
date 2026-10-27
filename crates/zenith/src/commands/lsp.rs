@@ -124,7 +124,7 @@ fn check(
     let reports = checked
         .iter()
         .flat_map(|report| {
-            report.diagnostics(graphs.of(report.config), &mut sources, config, baseline)
+            report.diagnostics(graphs.of(report.config), &mut sources, &config, baseline)
         })
         .collect();
     let unnecessary = unused.iter().map(|unused| unused.report(&mut sources)).collect();

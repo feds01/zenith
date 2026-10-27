@@ -57,6 +57,11 @@ impl Parser {
                 continue;
             };
 
+            // A member's contract has the member's directory before its id.
+            let id = match &self.member {
+                Some(member) => ContractConfig::member_prefix(member) + &id,
+                None => id,
+            };
             let contract = self.in_contract(&id, |parser| {
                 let table = parser.parse_contract_table(Spanned::new(span, table))?;
                 Some(parser.parse_contract(id.clone(), id_range, &table, analysis))
@@ -174,6 +179,8 @@ impl Parser {
         ContractConfig {
             name: shared.name.unwrap_or(&id).to_string(),
             id,
+            file: self.file,
+            member: self.member.clone(),
             range,
             severity: shared.severity,
             exclude_kinds,

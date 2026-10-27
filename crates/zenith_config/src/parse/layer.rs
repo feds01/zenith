@@ -83,10 +83,16 @@ impl Parser {
                 None => Ok(layer.at(range)),
             }
         });
-        let layer = self.check(layer, Some(range), |error| ConfigErrorKind::InvalidLayer {
+        let mut layer = self.check(layer, Some(range), |error| ConfigErrorKind::InvalidLayer {
             layer: raw.clone(),
             error,
         })?;
+        // Paths relative to each container are rebased with the containers.
+        if let (Some(member), false) = (&self.member, relative) {
+            layer.members = (layer.members.into_iter())
+                .map(|each| LayerMember { selector: each.selector.in_member(member), ..each })
+                .collect();
+        }
         let on = layer.members.iter().all(|member| self.check_scheme(&member.selector, range));
         on.then_some(layer)
     }

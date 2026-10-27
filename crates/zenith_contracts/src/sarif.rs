@@ -3,7 +3,7 @@
 //! unused suppressions, and a result for each finding.
 
 use serde_json::{Map, json};
-use zenith_config::BaselineConfig;
+use zenith_config::{BaselineConfig, ConfigSources};
 use zenith_diagnostics::{
     ReportElement, ReportKind, Sarif, SarifRule, SourceId, SourceMap, Span, message,
 };
@@ -23,8 +23,8 @@ impl ContractReport<'_> {
     /// `graphs` with the `baseline` configured, and of the `unused`
     /// suppressions: a rule for each contract, and one for unused
     /// suppressions, and a result for each finding, as `--format compact`
-    /// lists them. They point into `sources`, and into `config`, the
-    /// configuration file, if it is there. Their paths start with `prefix`,
+    /// lists them. They point into `sources`, and into the `config` files,
+    /// if it was read from them. Their paths start with `prefix`,
     /// the project root's path in its repository, as [`Sarif::new`] takes
     /// it.
     pub fn sarif(
@@ -33,7 +33,7 @@ impl ContractReport<'_> {
         graphs: Graphs,
         baseline: &BaselineConfig,
         sources: &mut SourceMap,
-        config: Option<SourceId>,
+        config: &ConfigSources,
         prefix: &str,
     ) -> Sarif {
         let mut sarif = Sarif::new(prefix);
@@ -44,6 +44,7 @@ impl ContractReport<'_> {
 
         for report in reports {
             let graph = graphs.of(report.config);
+            let config = config.of(report.config);
             report.add_sarif_results(&mut sarif, graph, sources, config, baseline);
         }
         for unused in unused {
@@ -72,8 +73,8 @@ impl ContractReport<'_> {
     /// each chain, or the other imports of a cycle breaker, as related
     /// locations, and its fix in its properties. Its message is its title,
     /// without the hint of its fix. A finding without an import to point at,
-    /// such as an undeclared module, points at the contract in `config`, the
-    /// configuration file, if it is there.
+    /// such as an undeclared module, points at the contract in `config`, its
+    /// configuration file, if it was read from one.
     fn add_sarif_results(
         &self,
         sarif: &mut Sarif,

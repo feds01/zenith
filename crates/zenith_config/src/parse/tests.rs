@@ -10,9 +10,9 @@ use zenith_utils::{
 };
 
 use crate::{
-    config::{Config, StaleLevel},
+    config::{AnalysisConfig, Config, StaleLevel},
     contracts::{AlertLevel, CONTRACT_TYPES, ContractKind, Reexports, Severity},
-    error::{ConfigError, ConfigErrorKind, InContract, LoadError, SelectorError},
+    error::{ConfigError, ConfigErrorKind, InContract, InvalidFile, LoadError, SelectorError},
     selector::{Selector, SelectorTarget},
     testing::{LANGUAGES, OTHER, TEST, TestOptions},
 };
@@ -190,8 +190,8 @@ fn giving_a_language_under_two_names_is_an_error() {
           [test]"]
     );
     let errors = Config::parse(contents, LANGUAGES).unwrap_err();
-    let report =
-        LoadError::Invalid { path: "zenith.toml".into(), contents: contents.to_string(), errors };
+    let file = InvalidFile { path: "zenith.toml".into(), contents: contents.to_string(), errors };
+    let report = LoadError::invalid([file]);
     let expected = [
         "error: `languages.test` is another name for `languages.testing`, which is already given",
         " --> zenith.toml:4:12",
@@ -211,6 +211,28 @@ fn an_empty_languages_table_enables_no_language() {
     let error = &Config::parse(contents, LANGUAGES).unwrap_err()[0];
     assert_eq!(error.kind, ConfigErrorKind::NoLanguages { example: Some("test".into()) });
     assert_eq!(error.kind.to_string(), "no language is enabled");
+}
+
+#[test]
+fn schemes_are_not_errors_while_the_enabled_languages_are_not_known() {
+    // The root names a language that isn't known, so the one it meant may be the
+    // one whose scheme it uses.
+    let contents = include_str!("fixtures/languages-unknown-with-schemes.toml");
+    assert_eq!(invalid(contents), ["1:12: unknown language `tset`; did you mean `test`? [tset]"]);
+
+    // Nor are they in the files that are part of it.
+    let (root, _) = super::parse_root(contents, LANGUAGES);
+    let member = include_str!("fixtures/member.toml");
+    let (part, errors) = super::parse_part(
+        member,
+        &root.unwrap().languages,
+        &AnalysisConfig::default(),
+        1,
+        Some("apps/web"),
+        LANGUAGES,
+    );
+    assert!(part.is_some());
+    assert_eq!(errors, []);
 }
 
 #[test]
@@ -234,8 +256,8 @@ fn the_tables_of_the_old_shape_are_unknown_keys() {
         invalid(include_str!("fixtures/removed-tables.toml")),
         [
             "2:1: unknown key `include`; did you mean `exclude`? [include]",
-            "4:2: unknown key `resolve`, expected one of `files`, `languages`, `analysis`, \
-             `baseline`, `cache`, `contracts` [resolve]",
+            "4:2: unknown key `resolve`, expected one of `include`, `workspace`, `files`, \
+             `languages`, `analysis`, `baseline`, `cache`, `contracts` [resolve]",
         ]
     );
 }
@@ -282,8 +304,8 @@ fn schemes_of_a_disabled_language_are_errors() {
 
     // The report says how to enable the language.
     let errors = Config::parse(contents, LANGUAGES).unwrap_err();
-    let error =
-        LoadError::Invalid { path: "zenith.toml".into(), contents: contents.into(), errors };
+    let file = InvalidFile { path: "zenith.toml".into(), contents: contents.to_string(), errors };
+    let error = LoadError::invalid([file]);
     let expected = [
         "error: `ext:sharp` uses the `ext:` scheme of the `test` language, which is not enabled",
         " --> zenith.toml:6:7",
@@ -1059,4 +1081,76 @@ ignore_imports = ["ui -> api"]
 
     // Selectors from elsewhere, such as the command line, have none.
     assert_eq!(Selector::parse("ui", LANGUAGES).map(|selector| selector.range()), Ok(None));
+}
+
+#[test]
+fn every_table_is_the_root_s_or_one_that_its_parts_may_have() {
+    let schema = crate::schema::json_schema(LANGUAGES);
+    let mut tables: Vec<_> = schema["properties"].as_object().unwrap().keys().cloned().collect();
+    tables.sort();
+    let mut known: Vec<_> = super::ROOT_TABLES
+        .iter()
+        .chain(&super::PART_TABLES)
+        .map(|table| table.to_string())
+        .collect();
+    known.sort();
+    assert_eq!(tables, known);
+}
+
+#[test]
+fn a_member_s_paths_are_relative_to_it_and_its_ids_start_with_it() {
+    let (root, _) = super::parse_root(include_str!("fixtures/member-root.toml"), LANGUAGES);
+    let root = root.unwrap();
+    let contents = include_str!("fixtures/member.toml");
+    let analysis = &root.config.analysis;
+    let (part, errors) =
+        super::parse_part(contents, &root.languages, analysis, 1, Some("apps/web"), LANGUAGES);
+    assert_eq!(errors, []);
+    let (part, globs) = part.unwrap();
+
+    // The files it includes are under its directory.
+    assert_eq!(globs.include[0].glob.as_str(), "apps/web/zenith/*.toml");
+    assert_eq!(globs.include[0].pattern, "zenith/*.toml");
+
+    // Its globs are under its directory.
+    assert!(part.exclude[0].is_match("apps/web/generated/a.tst"));
+    assert!(!part.exclude[0].is_match("generated/a.tst"));
+
+    // Its ids start with its directory, and its ranges are in its file.
+    let ids: Vec<_> = part.contracts.iter().map(|contract| contract.id.as_str()).collect();
+    assert_eq!(ids, ["apps.web.layers", "apps.web.features", "apps.web.no-ui"]);
+    for contract in &part.contracts {
+        assert_eq!((contract.file, contract.member.as_deref()), (1, Some("apps/web")));
+        let id = contract.id.strip_prefix("apps.web.").unwrap();
+        assert_eq!(&contents[Range::from(contract.range)], id);
+    }
+
+    // Its `[analysis]` overrides the root's options that it sets.
+    let layers = &part.contracts[0];
+    assert_eq!(layers.exclude_kinds, KindSet::TYPE);
+    assert_eq!(layers.reexports, Reexports::Opaque);
+
+    // Its path selectors are under its directory, and the others are as written.
+    let matches = |selector: &Selector, path: &str| match selector.target() {
+        SelectorTarget::Path(glob) => glob.is_match(path),
+        _ => false,
+    };
+    let ContractKind::Layers(config) = &layers.kind else { panic!("expected layers") };
+    let lib = &config.layers[1].members;
+    assert!(matches(&lib[0].selector, "apps/web/src/lib"));
+    assert_eq!(lib[1].selector.scheme(), Some("ext"));
+    assert!(matches(layers.ignore_imports[0].importer(), "apps/web/src/lib/legacy"));
+    assert!(matches(layers.ignore_imports[0].imported(), "apps/web/src/app"));
+
+    // Layers relative to containers stay relative to them.
+    let ContractKind::Layers(config) = &part.contracts[1].kind else { panic!("expected layers") };
+    assert!(matches(&config.containers[0], "apps/web/src/features/cart"));
+    assert!(matches(&config.layers[0].members[0].selector, "ui"));
+
+    let ContractKind::Forbidden(config) = &part.contracts[2].kind else {
+        panic!("expected forbidden")
+    };
+    assert!(matches(&config.from[0], "apps/web/src"));
+    assert!(matches(&config.from[0].except()[0], "apps/web/src/tests"));
+    assert_eq!(config.to[0].scheme(), Some("pkg"));
 }

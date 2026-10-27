@@ -1,0 +1,8 @@
+[languages.test]
+
+[analysis]
+exclude_kinds = ["type"]
+reexports = "transparent"
+
+[files]
+exclude = ["dist/**"]

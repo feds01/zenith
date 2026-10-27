@@ -1,0 +1,45 @@
+$ zenith check
+exit: 1
+--- stdout
+error[apps-independent]: `apps/admin` must not import `apps/web`
+ --> apps/admin/src/main.ts:1:22
+  |
+1 | import { cart } from "../../web/src/features/cart";
+  |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ imports `apps/web/src/features/cart.ts`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
+
+error[apps.web.layers]: `src/lib` must not import `src/features`
+ --> apps/web/src/lib/money.ts:1:22
+  |
+1 | import { cart } from "../features/cart";
+  |                      ^^^^^^^^^^^^^^^^^^ imports `apps/web/src/features/cart.ts`
+  |
+  = help: move the imported code into a module that may be imported here, or remove this import
+
+Contracts
+  ✗ apps-independent  independence  broken (1 violation)
+  ✗ apps.web.layers   layers        broken (1 violation) · 1 suppressed
+  ✓ apps.web.acyclic  acyclic       kept
+
+1 kept, 2 broken · 6 files, 5 imports
+
+$ zenith check --format compact
+exit: 1
+--- stdout
+apps/admin/src/main.ts:1:22: error[apps-independent]: `apps/admin` must not import `apps/web`; move the imported code into a module that may be imported here, or remove this import
+apps/web/src/lib/money.ts:1:22: error[apps.web.layers]: `src/lib` must not import `src/features`; move the imported code into a module that may be imported here, or remove this import
+1 kept, 2 broken · 6 files, 5 imports
+
+$ zenith check --format compact apps/admin
+exit: 1
+--- stdout
+apps/admin/src/main.ts:1:22: error[apps-independent]: `apps/admin` must not import `apps/web`; move the imported code into a module that may be imported here, or remove this import
+2 kept, 1 broken · 6 files, 5 imports
+
+$ zenith check --contract apps.web.layers --format compact
+exit: 1
+--- stdout
+apps/web/src/lib/money.ts:1:22: error[apps.web.layers]: `src/lib` must not import `src/features`; move the imported code into a module that may be imported here, or remove this import
+0 kept, 1 broken · 6 files, 5 imports
+

@@ -1,14 +1,23 @@
 //! A language for the tests of this crate, which knows none of the real
-//! ones: they are defined in their own crates.
+//! ones: they are defined in their own crates, and a walk of a project, which
+//! is the pipeline's.
 
-use std::sync::Arc;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use schemars::JsonSchema;
 use serde::Deserialize;
 use zenith_lang::{Backend, BackendSettings};
-use zenith_utils::glob::{Glob, NamePattern};
+use zenith_utils::{
+    fs::{FileKind, FileSystem},
+    glob::{Glob, NamePattern},
+    path::relative_posix,
+};
 
 use crate::{
+    config::{FilesConfig, ProjectWalk},
     language::{Language, LanguageOptions, Languages},
     parse::LanguageTable,
     schema::Located,
@@ -135,4 +144,45 @@ impl LanguageOptions for OtherOptions {
 pub(crate) struct OtherTable {
     /// Globs of the files to scan.
     pub(crate) include: Option<Vec<Located<String>>>,
+}
+
+/// A walk of every file of a project that the `exclude` globs don't skip,
+/// which knows nothing of `.gitignore`.
+pub(crate) struct TestWalk;
+
+impl ProjectWalk for TestWalk {
+    fn files(
+        &self,
+        file_system: &dyn FileSystem,
+        root: &Path,
+        files: &FilesConfig,
+    ) -> Vec<PathBuf> {
+        walk_files(file_system, root, &files.exclude)
+    }
+}
+
+/// The files of the project at `root`, in `file_system`, that the `exclude`
+/// globs don't skip, as [`TestWalk`] finds them.
+pub(crate) fn walk_files(
+    file_system: &dyn FileSystem,
+    root: &Path,
+    exclude: &[Glob],
+) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        for entry in file_system.read_dir(&dir).unwrap_or_default() {
+            let Some(relative) = relative_posix(root, &entry.path) else {
+                continue;
+            };
+            if exclude.iter().any(|glob| glob.is_match(&relative)) {
+                continue;
+            }
+            match entry.kind {
+                FileKind::Directory => pending.push(entry.path),
+                _ => found.push(entry.path),
+            }
+        }
+    }
+    found
 }

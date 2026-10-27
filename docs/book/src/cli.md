@@ -32,7 +32,7 @@ Every command takes these options:
 
 | Option | |
 |---|---|
-| `--config <path>` | The configuration file, instead of the nearest `zenith.toml`. |
+| `--config <path>` | The configuration file, instead of the nearest `zenith.toml`, or the root's if that is a [workspace member's](configuration.md#splitting-the-configuration). |
 | `--root <dir>` | The project root, instead of the configuration file's directory. |
 | `--tracked` | Only scan the files that git tracks, leaving out untracked ones. Use it in pre-commit hooks, where untracked files aren't part of the commit. Outside a git repository, it is an error. |
 | `--no-cache` | Read and parse every file, without reading or writing the [cache](configuration.md#cache). |

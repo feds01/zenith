@@ -44,9 +44,18 @@ impl Stage for BuildGraph {
             builder.set_directives(handle, parsed.directives);
             non_literal_imports += parsed.non_literal_imports.len();
             if !parsed.suppressions.is_empty() {
-                // The files are sorted, so the suppressions are too.
+                // The files are sorted, so the suppressions are too. Each name is the id
+                // of the contract it names, as a member's files may name its contracts
+                // by their own ids.
+                let mut file_suppressions = parsed.suppressions;
+                for name in file_suppressions.iter_mut().flat_map(|each| &mut each.value.contracts)
+                {
+                    if let Some(contract) = session.config.contract_named(name, &file.name) {
+                        name.clone_from(&contract.id);
+                    }
+                }
                 let file = file.name.clone();
-                suppressions.push(FileSuppressions { file, suppressions: parsed.suppressions });
+                suppressions.push(FileSuppressions { file, suppressions: file_suppressions });
             }
 
             let scheme = session.backends.of(file).external_scheme();

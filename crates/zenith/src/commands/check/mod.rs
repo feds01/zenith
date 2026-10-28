@@ -83,7 +83,7 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
                 graphs,
                 baseline,
                 &mut sources,
-                config,
+                &config,
                 &prefix,
             );
             // The imports that couldn't be resolved are problems of the run.
@@ -102,10 +102,10 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
         for report in &checked {
             reports.extend(match format {
                 Format::Pretty => {
-                    report.reports(graphs.of(report.config), &mut sources, config, baseline)
+                    report.reports(graphs.of(report.config), &mut sources, &config, baseline)
                 }
                 Format::Compact | Format::Github => {
-                    report.findings(graphs.of(report.config), &mut sources, config, baseline)
+                    report.findings(graphs.of(report.config), &mut sources, &config, baseline)
                 }
             });
         }

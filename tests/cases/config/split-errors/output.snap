@@ -1,0 +1,62 @@
+$ zenith check
+exit: 2
+--- stderr
+error: `../shared.toml` can't have a `..` segment
+ --> zenith.toml:2:29
+  |
+2 | include = ["zenith/*.toml", "../shared.toml", "apps/web/zenith.toml"]
+  |                             ^^^^^^^^^^^^^^^^
+
+error: `apps/web/zenith.toml` is the configuration file of the member `apps/web`, so it can't be included
+ --> zenith.toml:2:47
+  |
+2 | include = ["zenith/*.toml", "../shared.toml", "apps/web/zenith.toml"]
+  |                                               ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: a member's file is read as part of the member, which `[workspace] members` lists
+
+error: `libs/**` matches nothing
+ --> zenith.toml:5:22
+  |
+5 | members = ["apps/*", "libs/**"]
+  |                      ^^^^^^^^^
+  |
+  = help: check it for a typo, or for a file or directory that was renamed or removed
+
+error: contract `no-cycles` is defined twice
+ --> zenith/cycles.toml:2:12
+  |
+2 | [contracts.no-cycles]
+  |            ^^^^^^^^^
+  |
+  = note: it is first defined in `zenith.toml`
+
+error: `rules/*.toml` matches nothing
+ --> apps/web/zenith.toml:2:12
+  |
+2 | include = ["rules/*.toml"]
+  |            ^^^^^^^^^^^^^^
+  |
+  = help: check it for a typo, or for a file or directory that was renamed or removed
+
+error: `languages` can only be set in the root's configuration file
+ --> apps/web/zenith.toml:4:2
+  |
+4 | [languages.js]
+  |  ^^^^^^^^^
+
+error: `files.respect_gitignore` can only be set in the root's configuration file
+ --> apps/web/zenith.toml:7:1
+  |
+7 | respect_gitignore = false
+  | ^^^^^^^^^^^^^^^^^
+
+error: unknown key `contract`
+ --> apps/web/zenith.toml:9:2
+  |
+9 | [contract.layers]
+  |  ^^^^^^^^
+  |
+  = help: did you mean `contracts`?
+
+

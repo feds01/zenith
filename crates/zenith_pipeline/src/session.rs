@@ -7,8 +7,8 @@ use std::{
 
 use rustc_hash::FxHashSet;
 use zenith_cache::CacheSettings;
-use zenith_config::Config;
-use zenith_diagnostics::{Report, SourceId, SourceMap, message};
+use zenith_config::{Config, ConfigSources};
+use zenith_diagnostics::{Report, SourceMap, message};
 use zenith_graph::{Graph, GraphBuilder, Scope};
 use zenith_lang::{FileSuppressions, ParsedFile, Resolved, Workspace};
 use zenith_utils::{
@@ -96,7 +96,8 @@ pub struct Session {
     pub unresolved: Vec<UnresolvedImport>,
 
     /// The `zenith-ignore` comments of the files that have any, sorted by
-    /// file. Kept by the [`Graph`](crate::StageKind::Graph) stage.
+    /// file, with each name that names a contract replaced by its id. Kept by
+    /// the [`Graph`](crate::StageKind::Graph) stage.
     pub suppressions: Vec<FileSuppressions>,
 
     /// Counts of what the stages found.
@@ -204,15 +205,11 @@ impl Session {
     }
 
     /// A source map that reads the project's files when reports first need
-    /// them, with the configuration file in it if it was read from one, and
-    /// the id of the configuration file.
-    pub fn sources(&self) -> (SourceMap, Option<SourceId>) {
+    /// them, with the configuration files in it if it was read from them,
+    /// and their sources.
+    pub fn sources(&self) -> (SourceMap, ConfigSources) {
         let mut sources = SourceMap::with_root(&self.root);
-        let config = self
-            .config
-            .file
-            .as_ref()
-            .map(|file| sources.add_file(&file.path, file.contents.as_str()));
+        let config = self.config.add_sources(&mut sources);
         (sources, config)
     }
 

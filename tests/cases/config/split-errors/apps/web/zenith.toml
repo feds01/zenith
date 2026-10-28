@@ -1,0 +1,10 @@
+# Only the root's file enables languages, and decides about `.gitignore`.
+include = ["rules/*.toml"]
+
+[languages.js]
+
+[files]
+respect_gitignore = false
+
+[contract.layers]
+type = "layers"

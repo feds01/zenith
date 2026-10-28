@@ -1,10 +1,12 @@
-//! The [`Discover`] stage.
+//! The [`Discover`] stage, and the walk that the globs of configuration
+//! files are matched against, which finds files as it does.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use zenith_config::{FilesConfig, ProjectWalk};
 use zenith_lang::Workspace;
-use zenith_utils::path::relative_posix;
-use zenith_workspace::{Git, walk};
+use zenith_utils::{fs::FileSystem, glob::Glob, path::relative_posix};
+use zenith_workspace::{Git, WalkSettings, walk};
 
 use crate::{PipelineError, Session, SourceFile, Stage, StageKind};
 
@@ -55,5 +57,29 @@ impl Stage for Discover {
         session.files = files;
         session.workspace = workspace;
         Ok(())
+    }
+}
+
+/// The walk of a project that the globs of its configuration files are
+/// matched against: `zenith_workspace`'s walker, which skips what zenith
+/// never scans, as [`Discover`] does.
+pub struct ConfigWalk;
+
+impl ProjectWalk for ConfigWalk {
+    fn files(
+        &self,
+        file_system: &dyn FileSystem,
+        root: &Path,
+        files: &FilesConfig,
+    ) -> Vec<PathBuf> {
+        let settings = WalkSettings {
+            include: vec![Glob::new("**").expect("`**` is a valid glob")],
+            exclude: files.exclude.clone(),
+            respect_gitignore: files.respect_gitignore,
+            source_extensions: Vec::new(),
+            source_file_names: Vec::new(),
+            manifests: Vec::new(),
+        };
+        walk(file_system, root, &settings).source_files
     }
 }

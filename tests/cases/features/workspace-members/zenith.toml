@@ -1,0 +1,6 @@
+# The root's contracts are split over the files in `zenith/`, and each app may
+# have a `zenith.toml` of its own.
+include = ["zenith/*.toml"]
+
+[workspace]
+members = ["apps/**"]

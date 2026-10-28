@@ -5,12 +5,14 @@ use std::{env, path::Path, sync::Arc};
 
 use anyhow::{Context, Result, bail};
 use log::{debug, info, log_enabled, warn};
-use zenith_config::{CONFIG_FILE_NAME, Config, LoadError};
+use zenith_config::{CONFIG_FILE_NAME, Config, ConfigError, InvalidFile, LoadError};
 use zenith_contracts::{
     Baseline, Contract, ContractReport, Exemptions, Graphs, Suggestion, UnusedSuppression,
 };
 use zenith_diagnostics::{Diagnostic, ReportKind, SourceMap, message};
-use zenith_pipeline::{FileError, FileErrorKind, LANGUAGES, Pipeline, Session, StageKind};
+use zenith_pipeline::{
+    ConfigWalk, FileError, FileErrorKind, LANGUAGES, Pipeline, Session, StageKind,
+};
 use zenith_utils::fs::{FileSystem, adjust_canonicalisation, disk};
 
 use crate::{Reported, cli::GlobalArgs, reporting, version::version};
@@ -18,7 +20,8 @@ use crate::{Reported, cli::GlobalArgs, reporting, version::version};
 /// Open a session for the project that the global options point at.
 ///
 /// The configuration file is `--config`, or `zenith.toml` in `--root`, or else
-/// the nearest `zenith.toml` in or above the current directory. The root is
+/// the nearest `zenith.toml` in or above the current directory, or the root's
+/// that lists it among its members. The root is
 /// `--root`, or else the directory of the configuration file. A project
 /// without a configuration file is rooted at the current directory, and uses
 /// the defaults. With `--tracked`, only the files that git tracks are scanned.
@@ -99,7 +102,7 @@ pub(crate) fn build_at(
     if !commit.is_dir(&project.root) {
         bail!(message!(cli_graph_diff_no_root, reference));
     }
-    let config = project.config.file.as_ref().map(|file| adjust_canonicalisation(&file.path));
+    let config = project.config.root_file().map(|file| adjust_canonicalisation(&file.path));
     let global = GlobalArgs {
         config: config.filter(|path| commit.is_file(path)),
         root: Some(project.root.clone()),
@@ -190,7 +193,10 @@ pub(crate) fn compile_contracts<'s>(
     let selected = configs.iter().filter(|config| ids.is_empty() || ids.contains(&config.id));
     Contract::compile_all(selected, &session.graph, &session.workspace).map_err(|errors| {
         let (sources, config) = session.sources();
-        let reports = errors.iter().map(|error| error.report_in(ReportKind::Error, config));
+        let reports = errors.iter().map(|error| {
+            let contract = session.config.contract(&error.contract.0);
+            error.report_in(ReportKind::Error, contract.and_then(|contract| config.of(contract)))
+        });
         Reported { sources, reports: reports.collect() }.into()
     })
 }
@@ -232,18 +238,20 @@ pub(crate) fn check<'c, 's>(
     (checked, unused)
 }
 
-/// Load the configuration file at `path` in `file_system`. An invalid file is
-/// reported, with its path relative to the project `root` if it is inside it.
+/// Load the configuration file at `path` in `file_system`, with the files it
+/// is split over, under the project `root`. An invalid file is reported, with
+/// its path relative to the root if it is inside it.
 fn load(file_system: &dyn FileSystem, path: &Path, root: &Path) -> Result<Config> {
-    match Config::load(file_system, path, LANGUAGES) {
+    match Config::load(file_system, path, root, LANGUAGES, &ConfigWalk) {
         Ok(config) => Ok(config),
-        Err(LoadError::Invalid { path, contents, errors }) => {
+        Err(LoadError::Invalid { files }) => {
             let mut sources = SourceMap::with_root(root);
-            let source = sources.add_file(&path, contents);
-            let reports = errors
-                .iter()
-                .map(|error| error.report_in(ReportKind::Error, Some(source)))
-                .collect();
+            let mut reports = Vec::new();
+            for InvalidFile { path, contents, errors } in files {
+                let source = sources.add_file(&path, contents);
+                let report = |error: &ConfigError| error.report_in(ReportKind::Error, Some(source));
+                reports.extend(errors.iter().map(report));
+            }
             Err(Reported { sources, reports }.into())
         }
         Err(error) => Err(error.into()),

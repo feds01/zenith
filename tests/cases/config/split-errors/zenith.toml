@@ -1,0 +1,9 @@
+# Each file's errors are shown in it.
+include = ["zenith/*.toml", "../shared.toml", "apps/web/zenith.toml"]
+
+[workspace]
+members = ["apps/*", "libs/**"]
+
+[contracts.no-cycles]
+type = "acyclic"
+modules = ["src/*"]

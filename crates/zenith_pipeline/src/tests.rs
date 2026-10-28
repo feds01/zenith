@@ -10,15 +10,20 @@ use std::{
 
 use tempfile::TempDir;
 use zenith_cache::CacheSettings;
-use zenith_config::{Config, ConfigFile};
+use zenith_config::{Config, ConfigFile, FilesConfig, ProjectWalk};
 use zenith_diagnostics::{ReportElement, Reporter};
 use zenith_graph::{Graph, ImportKind, ModuleId, NodeKind};
 use zenith_lang::{ParsedFile, ResolveFailure, UnresolvedReason};
 use zenith_lang_js::ResolverError;
-use zenith_utils::{fs::adjust_canonicalisation, testing::Overlay};
+use zenith_utils::{
+    fs::{OsFileSystem, adjust_canonicalisation},
+    glob::Glob,
+    path::relative_posix,
+    testing::Overlay,
+};
 use zenith_workspace::testing::{commit, git};
 
-use crate::{FileErrorKind, LANGUAGES, Pipeline, PipelineError, Session, StageKind};
+use crate::{ConfigWalk, FileErrorKind, LANGUAGES, Pipeline, PipelineError, Session, StageKind};
 
 /// A project in a temporary directory.
 struct Project {
@@ -392,14 +397,33 @@ fn the_help_about_unresolved_imports_names_the_options_of_their_languages() {
 }
 
 #[test]
+fn configuration_files_are_walked_for_as_source_files_are() {
+    let project = Project::new(&[
+        (".gitignore", b"build/\n"),
+        ("services/api/zenith.toml", b""),
+        ("services/build/zenith.toml", b""),
+        ("services/node_modules/x/zenith.toml", b""),
+        ("services/skipped/zenith.toml", b""),
+    ]);
+    let files =
+        FilesConfig { exclude: vec![Glob::new("services/skipped").unwrap()], ..Default::default() };
+    let found = ConfigWalk.files(&OsFileSystem, &project.root, &files);
+    let found: Vec<_> =
+        found.iter().filter_map(|path| relative_posix(&project.root, path)).collect();
+    assert_eq!(found, [".gitignore", "services/api/zenith.toml"]);
+}
+
+#[test]
 fn the_configuration_file_is_shown_relative_to_the_root() {
     let project = Project::new(&[]);
-    let mut session = project.session("");
-    assert_eq!(session.sources().1, None);
-    let file = ConfigFile { path: project.root.join("zenith.toml"), contents: String::new() };
-    session.config.file = Some(file);
+    let contents = include_str!("fixtures/one-contract.toml");
+    let mut session = project.session(contents);
+    assert_eq!(session.sources().1.of(&session.config.contracts[0]), None);
+    let file = ConfigFile { path: project.root.join("zenith.toml"), contents: contents.into() };
+    session.config.config_files = vec![file];
     let (sources, config) = session.sources();
-    assert_eq!(sources.get(config.unwrap()).path, "zenith.toml");
+    let source = config.of(&session.config.contracts[0]).unwrap();
+    assert_eq!(sources.get(source).path, "zenith.toml");
 }
 
 #[test]

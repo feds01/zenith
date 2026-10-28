@@ -2,7 +2,9 @@
 //! `ignore_imports` entries that match nothing, in full or a finding each,
 //! and its line of the summary.
 
-use zenith_config::{AlertLevel, BaselineConfig, ContractConfig, ContractKind, Severity};
+use zenith_config::{
+    AlertLevel, BaselineConfig, ConfigSources, ContractConfig, ContractKind, Severity,
+};
 use zenith_diagnostics::{Report, ReportElement, ReportKind, SourceId, SourceMap, Span, message};
 use zenith_graph::{Graph, ImportDetail, ImportKind};
 use zenith_utils::location::ByteRange;
@@ -32,17 +34,17 @@ impl ContractReport<'_> {
     /// with excerpts of its imports, how to fix it and the contract's
     /// guidance, one per `ignore_imports` entry that matches nothing, unless
     /// they are not to be reported, and one of its stale `baseline` entries.
-    /// The excerpts are read from `sources`, and the entries point into
-    /// `config`, the configuration file, if it is there, and the baseline
-    /// file.
+    /// The excerpts are read from `sources`, and the entries point into the
+    /// contract's file of the `config` files, if it was read from one, and
+    /// the baseline file.
     pub fn reports(
         &self,
         graph: &Graph,
         sources: &mut SourceMap,
-        config: Option<SourceId>,
+        config: &ConfigSources,
         baseline: &BaselineConfig,
     ) -> Vec<Report> {
-        ReportBuilder { graph, sources, config, baseline }.reports(self)
+        ReportBuilder { graph, sources, config: config.of(self.config), baseline }.reports(self)
     }
 
     /// What checking the contract found, a report each, for showing a line
@@ -55,16 +57,17 @@ impl ContractReport<'_> {
         &self,
         graph: &Graph,
         sources: &mut SourceMap,
-        config: Option<SourceId>,
+        config: &ConfigSources,
         baseline: &BaselineConfig,
     ) -> Vec<Report> {
-        let findings = self.identified_findings(graph, sources, config, baseline);
+        let findings = self.identified_findings(graph, sources, config.of(self.config), baseline);
         findings.into_iter().map(|finding| finding.report).collect()
     }
 
     /// The findings of the contract, as [`ContractReport::findings`] makes
     /// them, each with what tells it apart from run to run and the links
-    /// after the one it points at, as SARIF shows them.
+    /// after the one it points at, as SARIF shows them. `config` is the
+    /// contract's configuration file, if it was read from one.
     pub(crate) fn identified_findings(
         &self,
         graph: &Graph,
@@ -85,10 +88,11 @@ impl ContractReport<'_> {
         &self,
         graph: &Graph,
         sources: &mut SourceMap,
-        config: Option<SourceId>,
+        config: &ConfigSources,
         baseline: &BaselineConfig,
     ) -> Vec<Report> {
-        let mut builder = ReportBuilder { graph, sources, config, baseline };
+        let mut builder =
+            ReportBuilder { graph, sources, config: config.of(self.config), baseline };
         let findings = builder.findings(self);
         findings.into_iter().map(|finding| builder.with_related(finding)).collect()
     }
@@ -174,8 +178,8 @@ struct ReportBuilder<'a> {
     /// The project's source files, and the configuration file.
     sources: &'a mut SourceMap,
 
-    /// The configuration file in `sources`, which `ignore_imports` entries
-    /// point into, if the configuration was read from a file.
+    /// The contract's configuration file in `sources`, which its
+    /// `ignore_imports` entries point into, if it was read from one.
     config: Option<SourceId>,
 
     /// How the baseline is configured: where its file is, and whether stale
@@ -833,7 +837,8 @@ mod tests {
         // The import is at byte 100, the start of the second line.
         sources.add("a/x.ts", format!("{}\nimport x from './x';\n", " ".repeat(99)));
         let baseline = BaselineConfig::default();
-        let findings = report.findings(&project.graph, &mut sources, None, &baseline);
+        let findings =
+            report.findings(&project.graph, &mut sources, &ConfigSources::default(), &baseline);
         let rendered: Vec<_> = findings
             .iter()
             .map(|finding| {
@@ -866,7 +871,8 @@ mod tests {
         let importer = sources.add("a/z.ts", format!("{}\nimport './w';\n", " ".repeat(99)));
         let next = sources.add("c/w.ts", format!("{}\nimport './y';\n", " ".repeat(199)));
         let baseline = BaselineConfig::default();
-        let diagnostics = report.diagnostics(&project.graph, &mut sources, None, &baseline);
+        let diagnostics =
+            report.diagnostics(&project.graph, &mut sources, &ConfigSources::default(), &baseline);
         let [diagnostic] = diagnostics.as_slice() else { panic!("expected one diagnostic") };
         let block = |source, start, label: Option<&str>| {
             let span = Span::new(source, ByteRange::new(start, start + 10));
@@ -877,7 +883,8 @@ mod tests {
             [block(importer, 100, None), block(next, 200, Some("imports `b/y.ts`"))]
         );
         // The findings point at the first import alone.
-        let findings = report.findings(&project.graph, &mut sources, None, &baseline);
+        let findings =
+            report.findings(&project.graph, &mut sources, &ConfigSources::default(), &baseline);
         assert_eq!(findings[0].contents, diagnostic.contents[..1]);
     }
 
@@ -923,7 +930,8 @@ mod tests {
             "cmd/main.go -> internal/db -> internal/db/conn.go -> internal/cache"
         );
 
-        let findings = report.findings(&project.graph, &mut sources, None, &baseline);
+        let findings =
+            report.findings(&project.graph, &mut sources, &ConfigSources::default(), &baseline);
         let rendered: Vec<_> = findings
             .iter()
             .map(|finding| {

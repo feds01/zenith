@@ -122,6 +122,26 @@ describe("projectOf", () => {
     assert.equal(projectOf(join(root, "other"), []), undefined);
   });
 
+  it("is the root's zenith.toml in a member, and a project's own in one that the root doesn't list", () => {
+    const root = directory({
+      "zenith.toml": '[workspace]\nmembers = ["apps/*", "services/**"]\n',
+      "apps/web/zenith.toml": "",
+      "apps/web/src/a.ts": "",
+      "services/core/api/zenith.toml": "",
+      "tools/zenith.toml": "",
+    });
+    const config = join(root, "zenith.toml");
+    assert.equal(projectOf(join(root, "apps/web"), []), config);
+    assert.equal(projectOf(join(root, "apps/web/src"), []), config);
+    assert.equal(projectOf(join(root, "services/core/api"), []), config);
+    assert.equal(projectOf(join(root, "tools"), []), join(root, "tools/zenith.toml"));
+  });
+
+  it("is a member's own zenith.toml when the root's isn't valid TOML", () => {
+    const root = directory({ "zenith.toml": "[workspace\n", "apps/web/zenith.toml": "" });
+    assert.equal(projectOf(join(root, "apps/web"), []), join(root, "apps/web/zenith.toml"));
+  });
+
   it("is the folder itself when the arguments name its project", () => {
     const root = directory({ "other/a.ts": "" });
     const folder = join(root, "other");

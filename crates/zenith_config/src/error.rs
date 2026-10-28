@@ -230,6 +230,66 @@ pub enum ConfigErrorKind {
     /// limits nothing.
     #[diag(config_no_limits)]
     NoLimits,
+
+    /// A key that only the root's configuration file may have, such as
+    /// `[languages]`, in a file that it includes or in a member's.
+    #[diag(config_root_only)]
+    RootOnly {
+        /// The dotted key, e.g. `files.respect_gitignore`.
+        key: String,
+    },
+
+    /// A glob of `include` or `[workspace] members` with a `..` segment.
+    #[diag(config_pattern_parent_dir)]
+    PatternParentDir {
+        /// The glob as written.
+        pattern: String,
+    },
+
+    /// A glob of `include` that matches no file, or of `[workspace] members`
+    /// that matches no directory.
+    #[diag(config_unmatched_pattern)]
+    #[help]
+    UnmatchedPattern {
+        /// The glob as written.
+        pattern: String,
+    },
+
+    /// A member's own configuration file, which a glob of `include`
+    /// matches.
+    #[diag(config_includes_member)]
+    #[help]
+    IncludesMember {
+        /// The path of the file, relative to the root.
+        path: String,
+
+        /// The directory of the member.
+        member: String,
+    },
+
+    /// A file that a glob of `include` matches, which is part of the
+    /// configuration of another member, or of the root's, already.
+    #[diag(config_part_of_two)]
+    #[help]
+    PartOfTwo {
+        /// The path of the file, relative to the root.
+        path: String,
+
+        /// The path of the configuration file that it is part of already.
+        first: String,
+    },
+
+    /// A contract with the id of one in another configuration file, or in
+    /// another member's.
+    #[diag(config_duplicate_contract)]
+    #[note]
+    DuplicateContract {
+        /// The id.
+        id: String,
+
+        /// The path of the file that the first is written in.
+        first: String,
+    },
 }
 
 impl ConfigErrorKind {
@@ -345,6 +405,13 @@ impl fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
+impl ConfigError {
+    /// Sort `errors` of one file in the order of the file.
+    pub(crate) fn sort(errors: &mut [Self]) {
+        errors.sort_by_key(|error| error.range.map(ByteRange::start));
+    }
+}
+
 /// Why a configuration file could not be loaded.
 #[derive(Debug)]
 pub enum LoadError {
@@ -357,34 +424,60 @@ pub enum LoadError {
         error: io::Error,
     },
 
-    /// The file is invalid.
+    /// The configuration is invalid.
     Invalid {
-        /// The configuration file.
-        path: PathBuf,
-
-        /// The contents of the file, for showing the errors in context.
-        contents: String,
-
-        /// What is wrong, in the order of the file. There is at least one
-        /// error.
-        errors: Vec<ConfigError>,
+        /// The files with errors: the root's first, then the others in the
+        /// order they are read. There is at least one.
+        files: Vec<InvalidFile>,
     },
 }
 
-/// An invalid file is shown as the reports of its errors, without colour.
+impl LoadError {
+    /// The configuration of the `files` is invalid: the errors of each are
+    /// sorted in the order of the file, and those without errors left out.
+    pub(crate) fn invalid(files: impl IntoIterator<Item = InvalidFile>) -> Self {
+        let files = files
+            .into_iter()
+            .filter(|file| !file.errors.is_empty())
+            .map(|mut file| {
+                ConfigError::sort(&mut file.errors);
+                file
+            })
+            .collect();
+        Self::Invalid { files }
+    }
+}
+
+/// A configuration file with errors.
+#[derive(Debug)]
+pub struct InvalidFile {
+    /// The path it was read from.
+    pub path: PathBuf,
+
+    /// Its contents, for showing the errors in context.
+    pub contents: String,
+
+    /// What is wrong, in the order of the file. There is at least one error.
+    pub errors: Vec<ConfigError>,
+}
+
+/// An invalid configuration is shown as the reports of its errors, without
+/// colour.
 impl fmt::Display for LoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Read { path, error } => {
                 f.write_str(&message!(config_read, path = path.display(), error))
             }
-            Self::Invalid { path, contents, errors } => {
+            Self::Invalid { files } => {
                 let mut sources = SourceMap::new();
-                let source = sources.add(path.display().to_string(), contents.as_str());
-                let reports: Vec<_> = errors
-                    .iter()
-                    .map(|error| error.report_in(ReportKind::Error, Some(source)))
-                    .collect();
+                let mut reports = Vec::new();
+                for InvalidFile { path, contents, errors } in files {
+                    let source = sources.add(path.display().to_string(), contents.as_str());
+                    let report =
+                        |error: &ConfigError| error.report_in(ReportKind::Error, Some(source));
+                    reports.extend(errors.iter().map(report));
+                }
                 write!(f, "{}", Reporter::new(&sources, &reports))
             }
         }

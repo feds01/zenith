@@ -33,6 +33,7 @@ impl Parser {
         let DeValue::Table(table) = value.into_inner() else {
             let kind = ConfigErrorKind::NotATable { key: "languages".to_string() };
             self.add_error(kind, Some(range));
+            self.languages_known = false;
             return LanguagesConfig::defaults(self.languages);
         };
         if table.is_empty() {
@@ -55,6 +56,7 @@ impl Parser {
                     alternatives: Alternatives::new(&name, names),
                 };
                 self.add_error(kind, Some(name_range));
+                self.languages_known = false;
                 continue;
             };
             if let Some((_, first, _)) = enabled.iter().find(|(seen, ..)| *seen == language) {

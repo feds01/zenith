@@ -94,6 +94,18 @@ impl Selector {
         Ok(self)
     }
 
+    /// The selector as written in the file of the member in `dir`, relative
+    /// to the root: its path, and those of its `except`, are under `dir`.
+    /// The selectors of packages and of a language's scheme are the same in
+    /// every file.
+    pub(crate) fn in_member(mut self, dir: &str) -> Self {
+        if let SelectorTarget::Path(glob) = &self.target {
+            self.target = SelectorTarget::Path(glob.under(dir));
+        }
+        self.except = self.except.into_iter().map(|except| except.in_member(dir)).collect();
+        self
+    }
+
     /// The selector as written, e.g. `pkg:@acme/*`. For the table form, this
     /// is its `path`.
     pub fn as_str(&self) -> &str {
@@ -178,6 +190,16 @@ impl IgnoreImport {
     /// An entry written as `raw`, from `importer` to `imported`.
     pub(crate) fn new(raw: String, importer: Selector, imported: Selector) -> Self {
         Self { raw, importer, imported, range: None }
+    }
+
+    /// The entry as written in the file of the member in `dir`, as
+    /// [`Selector::in_member`] reads its selectors.
+    pub(crate) fn in_member(self, dir: &str) -> Self {
+        Self {
+            importer: self.importer.in_member(dir),
+            imported: self.imported.in_member(dir),
+            ..self
+        }
     }
 
     /// Record where the entry, and so its selectors, is written.

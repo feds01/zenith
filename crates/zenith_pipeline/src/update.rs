@@ -73,9 +73,9 @@ impl Session {
     }
 
     /// Whether the project is in the directory `dir`, a canonical path: its
-    /// root, and its configuration file, if it was read from one.
+    /// root, and its root's configuration file, if it was read from one.
     pub fn is_within(&self, dir: &Path) -> bool {
-        let config = self.config.file.as_ref();
+        let config = self.config.root_file();
         let config = config.map(|file| self.file_system.adjust_canonicalisation(&file.path));
         self.root.starts_with(dir) && config.is_none_or(|config| config.starts_with(dir))
     }

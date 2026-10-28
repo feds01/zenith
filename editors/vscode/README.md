@@ -11,7 +11,8 @@ shows where the code breaks them, as you save, on the imports that do.
 - A suppression that has no effect is faded.
 - Each folder of a multi-root workspace with a `zenith.toml`, in it or above
   it, is checked. Folders under the same `zenith.toml`, such as the packages
-  of a monorepo, share a server, which shows each finding once.
+  of a monorepo, share a server, which shows each finding once, and so do the
+  folders of a workspace member, with its own `zenith.toml`, and the root's.
 
 The extension runs `zenith lsp`, zenith's language server, which checks the
 whole project whenever a file is saved: see

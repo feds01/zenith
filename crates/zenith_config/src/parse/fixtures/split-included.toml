@@ -1,0 +1,3 @@
+[contracts.included]
+type = "acyclic"
+modules = ["apps/*"]

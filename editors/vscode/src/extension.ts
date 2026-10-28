@@ -27,13 +27,15 @@ let servers: Servers | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<Api> {
   servers = new Servers(context.asAbsolutePath("bin"));
-  const watcher = vscode.workspace.createFileSystemWatcher(`**/${CONFIG_FILE_NAME}`, false, true, false);
+  const watcher = vscode.workspace.createFileSystemWatcher(`**/${CONFIG_FILE_NAME}`);
   const running = servers;
   context.subscriptions.push(
     watcher,
     // A folder that gains or loses its configuration file starts or stops
-    // being checked.
+    // being checked, and one whose root lists it among its members, or stops
+    // listing it, moves to another project.
     watcher.onDidCreate(() => running.sync()),
+    watcher.onDidChange(() => running.sync()),
     watcher.onDidDelete(() => running.sync()),
     vscode.workspace.onDidChangeWorkspaceFolders(() => running.sync()),
     vscode.workspace.onDidChangeConfiguration((event) => running.configurationChanged(event)),

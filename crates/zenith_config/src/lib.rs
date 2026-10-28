@@ -1,8 +1,12 @@
 //! The `zenith.toml` configuration file: finding it, parsing it, and
 //! validating it into a [`Config`].
 //!
-//! [`Config::discover`] finds the nearest configuration file, and
-//! [`Config::load`] reads it and parses it with [`Config::parse`]. Parsing
+//! [`Config::discover`] finds the project's configuration file, and
+//! [`Config::load`] reads it and parses it with [`Config::parse`], with the
+//! files it is split over: those it includes, which are read as if their
+//! contracts were written in it, and those of its members, directories with
+//! a `zenith.toml` of their own, whose paths are relative to the member and
+//! whose ids start with it. Parsing
 //! rejects unknown keys everywhere, with "did you mean" suggestions, and checks
 //! the syntax of every selector, glob, layer and ignored import, so that a
 //! [`Config`] only holds valid values. Every [`ConfigError`] has the byte
@@ -23,14 +27,15 @@ mod contracts;
 mod error;
 mod language;
 mod parse;
+mod parts;
 mod schema;
 mod selector;
 #[cfg(test)]
 mod testing;
 
 pub use config::{
-    AnalysisConfig, BaselineConfig, CONFIG_FILE_NAME, CacheConfig, Config, ConfigFile, FilesConfig,
-    LanguagesConfig, Scanned, StaleLevel,
+    AnalysisConfig, BaselineConfig, CacheConfig, Config, ConfigFile, ConfigSources, FilesConfig,
+    LanguagesConfig, ProjectWalk, Scanned, StaleLevel,
 };
 pub use contracts::{
     AcyclicConfig, AlertLevel, ContractConfig, ContractKind, EncapsulationConfig, ForbiddenConfig,
@@ -38,10 +43,11 @@ pub use contracts::{
     Severity,
 };
 pub use error::{
-    Alternatives, ConfigError, ConfigErrorKind, IgnoreImportError, InContract, LayerError,
-    LoadError, PatternError, SelectorError,
+    Alternatives, ConfigError, ConfigErrorKind, IgnoreImportError, InContract, InvalidFile,
+    LayerError, LoadError, PatternError, SelectorError,
 };
 pub use language::{Language, LanguageOptions, Languages, NEUTRAL_SCHEMES};
 pub use parse::LanguageTable;
+pub use parts::CONFIG_FILE_NAME;
 pub use schema::{Located, json_schema};
 pub use selector::{IgnoreImport, Selector, SelectorTarget};

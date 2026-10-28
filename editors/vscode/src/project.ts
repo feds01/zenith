@@ -4,11 +4,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 
-import type * as Toml from "smol-toml" with { "resolution-mode": "import" };
-
-// smol-toml's types are of its ES module, and it has a CommonJS one too, which
-// this CommonJS extension requires.
-const { parse } = require("smol-toml") as typeof Toml;
+import { parse, type TomlTable } from "smol-toml";
 
 import { isFile } from "./binary";
 import { globMatches } from "./glob";
@@ -74,7 +70,7 @@ function nearestConfig(folder: string): string | undefined {
 function isMember(config: string, member: string): boolean {
   try {
     const workspace = parse(readFileSync(config, "utf8"))["workspace"];
-    const members = typeof workspace === "object" && workspace !== null ? (workspace as Toml.TomlTable)["members"] : [];
+    const members = typeof workspace === "object" && workspace !== null ? (workspace as TomlTable)["members"] : [];
     return Array.isArray(members) && members.some((glob) => typeof glob === "string" && globMatches(glob, member));
   } catch {
     return false;

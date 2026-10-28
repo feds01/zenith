@@ -4,10 +4,16 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 
-import { parse, type TomlTable } from "smol-toml";
+import { parse } from "smol-toml";
+import * as z from "zod/mini";
 
 import { isFile } from "./binary";
 import { globMatches } from "./glob";
+
+/** The part of a configuration file that lists its members. */
+const MEMBERS = z.object({
+  workspace: z.optional(z.object({ members: z.optional(z.array(z.string())) })),
+});
 
 /** The name of zenith's configuration file, as zenith_config names it. */
 export const CONFIG_FILE_NAME = "zenith.toml";
@@ -65,13 +71,14 @@ function nearestConfig(folder: string): string | undefined {
 /**
  * Whether the configuration file at `config` lists the directory `member`, a
  * POSIX path relative to its own, in `[workspace] members`. A file that can't
- * be read, or isn't valid TOML, lists none.
+ * be read, isn't valid TOML, or whose members aren't a list of globs, lists
+ * none.
  */
 function isMember(config: string, member: string): boolean {
   try {
-    const workspace = parse(readFileSync(config, "utf8"))["workspace"];
-    const members = typeof workspace === "object" && workspace !== null ? (workspace as TomlTable)["members"] : [];
-    return Array.isArray(members) && members.some((glob) => typeof glob === "string" && globMatches(glob, member));
+    const parsed = MEMBERS.safeParse(parse(readFileSync(config, "utf8")));
+    const members = parsed.success ? (parsed.data.workspace?.members ?? []) : [];
+    return members.some((glob) => globMatches(glob, member));
   } catch {
     return false;
   }

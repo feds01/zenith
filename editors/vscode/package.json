@@ -40,7 +40,8 @@
   "dependencies": {
     "picomatch": "4.0.3",
     "smol-toml": "1.9.0",
-    "vscode-languageclient": "11.0.0"
+    "vscode-languageclient": "11.0.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/mocha": "10.0.10",

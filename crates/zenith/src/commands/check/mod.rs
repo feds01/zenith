@@ -24,26 +24,27 @@ use crate::{
 pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     // 1. Open the project, scoped to the paths and to the files changed since the
     //    commit of `--since`, if any are given, and build its graph. Warn about the
-    //    paths with no source file under them.
-    let mut session = project::open(global)?;
+    //    paths with no source file under them. The session is leaked: the process
+    //    exits next, and frees its memory faster than dropping it would.
+    let session = Box::leak(Box::new(project::open(global)?));
     session.scope_to(&args.paths, args.since.as_deref())?;
-    let pipeline = project::run_until(&mut session, StageKind::Graph)?;
+    let pipeline = project::run_until(session, StageKind::Graph)?;
     for path in session.paths_without_files(&args.paths) {
         warn!("{}", message!(cli_path_without_files, path = path.display()));
     }
 
     // 2. Compile the contracts to check: every one, or those of `--contract`.
-    let contracts = project::compile_contracts(&session, &args.contracts)?;
+    let contracts = project::compile_contracts(session, &args.contracts)?;
 
     // 3. Read the baseline, unless it is ignored.
-    let baseline = project::baseline(&session, args.no_baseline)?;
+    let baseline = project::baseline(session, args.no_baseline)?;
 
     // 4. Check the contracts in parallel, without the imports that suppressions and
     //    the baseline leave out, and find the suppressions that had no effect. Keep
     //    only what involves the files under the paths.
     let start = Instant::now();
-    let graphs = project::graphs(&session);
-    let (mut checked, mut unused) = project::check(&contracts, &session, baseline.as_ref());
+    let graphs = project::graphs(session);
+    let (mut checked, mut unused) = project::check(&contracts, session, baseline.as_ref());
     for report in &mut checked {
         report.narrow(graphs.of(report.config), &session.scope);
     }
@@ -71,7 +72,7 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     let (mut sources, config) = session.sources();
     let format = match args.format {
         ReportFormat::Json => {
-            println!("{}", CheckJson::new(&session, &checked, &unused, &summary, &mut sources));
+            println!("{}", CheckJson::new(session, &checked, &unused, &summary, &mut sources));
             None
         }
         ReportFormat::Sarif => {

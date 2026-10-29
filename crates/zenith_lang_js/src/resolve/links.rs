@@ -110,6 +110,12 @@ impl LinkedFileSystem {
 
     /// What the links put at `path`, whatever is installed there.
     fn link_at(&self, path: &Path) -> Option<Linked<'_>> {
+        // A path whose text doesn't name `node_modules` can't be in it, which is
+        // quicker to tell than its path relative to it.
+        if path.to_str().is_some_and(|path| !path.contains("node_modules")) {
+            return None;
+        }
+
         // `@acme/ui/src/index.ts`, or `""` for `node_modules` itself.
         let relative = relative_posix(&self.node_modules, path)?;
         if relative.is_empty() || self.scopes.contains(&relative) {

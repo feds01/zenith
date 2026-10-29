@@ -53,10 +53,15 @@ impl<'c> Contract<'c> {
         graph: &Graph,
         workspace: &Workspace,
     ) -> Result<Vec<Self>, Vec<ContractError>> {
+        // Each contract compiles apart from the others, so they compile in
+        // parallel, and stay in order.
+        let configs: Vec<_> = configs.into_iter().collect();
+        let compiled: Vec<_> =
+            configs.into_par_iter().map(|config| Self::compile(config, graph, workspace)).collect();
         let mut contracts = Vec::new();
         let mut errors = Vec::new();
-        for config in configs {
-            match Self::compile(config, graph, workspace) {
+        for compiled in compiled {
+            match compiled {
                 Ok(contract) => contracts.push(contract),
                 Err(contract_errors) => errors.extend(contract_errors),
             }

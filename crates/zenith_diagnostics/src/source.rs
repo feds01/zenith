@@ -6,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use rayon::prelude::*;
 use zenith_utils::{
     fs::{adjust_canonicalisation, read_text},
     location::{ByteRange, LineIndex},
@@ -168,9 +169,21 @@ pub struct SourceMap {
     /// The sources, indexed by their id.
     sources: Vec<Source>,
 
-    /// The id of each source, by the path it is shown as. `None` for a file
-    /// under the root that can't be read, so that it is only tried once.
-    ids: HashMap<String, Option<SourceId>>,
+    /// What the map has of each path that a source is shown as, or that was
+    /// read ahead.
+    entries: HashMap<String, Entry>,
+}
+
+/// What a [`SourceMap`] has of a path.
+#[derive(Debug, Clone)]
+enum Entry {
+    /// The id of the source shown as the path, or `None` for a file under the
+    /// root that can't be read, so that it is only tried once.
+    Id(Option<SourceId>),
+
+    /// The contents of a file under the root that was read ahead, and not yet
+    /// asked for, or `None` if it couldn't be read.
+    ReadAhead(Option<String>),
 }
 
 impl SourceMap {
@@ -189,7 +202,7 @@ impl SourceMap {
     pub fn add(&mut self, path: impl Into<String>, contents: impl Into<String>) -> SourceId {
         let path = path.into();
         let id = SourceId(u32::try_from(self.sources.len()).expect("fewer than 2^32 sources"));
-        self.ids.insert(path.clone(), Some(id));
+        self.entries.insert(path.clone(), Entry::Id(Some(id)));
         self.sources.push(Source::new(path, contents.into()));
         id
     }
@@ -210,17 +223,36 @@ impl SourceMap {
     /// its POSIX path relative to it, is read if it hasn't been yet. `None`
     /// if it can't be read, or if there is no such source.
     pub fn file(&mut self, path: &str) -> Option<SourceId> {
-        if let Some(id) = self.ids.get(path) {
-            return *id;
-        }
-        let root = self.root.as_ref()?;
-        match read_text(&root.join(path)) {
-            Ok(contents) => Some(self.add(path, contents)),
-            Err(_) => {
-                self.ids.insert(path.to_string(), None);
+        let contents = match self.entries.get_mut(path) {
+            Some(Entry::Id(id)) => return *id,
+            Some(Entry::ReadAhead(contents)) => contents.take(),
+            None => read_text(&self.root.as_ref()?.join(path)).ok(),
+        };
+        match contents {
+            Some(contents) => Some(self.add(path, contents)),
+            None => {
+                self.entries.insert(path.to_string(), Entry::Id(None));
                 None
             }
         }
+    }
+
+    /// Read the files under the root at `paths`, POSIX paths relative to it,
+    /// in parallel, so that [`SourceMap::file`] finds them read. They get
+    /// their ids when they are first asked for, as if they hadn't been read
+    /// ahead.
+    pub fn read_ahead<'a>(&mut self, paths: impl IntoIterator<Item = &'a str>) {
+        let Some(root) = &self.root else {
+            return;
+        };
+        let mut unread: Vec<&str> =
+            paths.into_iter().filter(|path| !self.entries.contains_key(*path)).collect();
+        unread.sort_unstable();
+        unread.dedup();
+        let read: Vec<_> = unread.par_iter().map(|path| read_text(&root.join(path)).ok()).collect();
+        let read =
+            unread.into_iter().map(str::to_string).zip(read.into_iter().map(Entry::ReadAhead));
+        self.entries.extend(read);
     }
 
     /// The source with the given id, which must come from this map.
@@ -253,6 +285,27 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn files_read_ahead_get_their_ids_when_first_asked_for() {
+        let dir = TempDir::new().unwrap();
+        let root = adjust_canonicalisation(dir.path());
+        for (name, contents) in [("a.ts", "a"), ("b.ts", "b"), ("c.ts", "c")] {
+            fs::write(root.join(name), contents).unwrap();
+        }
+        let mut sources = SourceMap::with_root(&root);
+        let c = sources.file("c.ts").unwrap();
+
+        // Read ahead in another order than they are asked for, with one that isn't
+        // there, and one that was asked for already.
+        sources.read_ahead(["b.ts", "missing.ts", "a.ts", "c.ts", "b.ts"]);
+        let (a, b) = (sources.file("a.ts").unwrap(), sources.file("b.ts").unwrap());
+        assert_eq!((c, a, b), (SourceId(0), SourceId(1), SourceId(2)));
+        assert_eq!(sources.get(b).contents, "b");
+        assert_eq!(sources.file("c.ts"), Some(c));
+        assert_eq!(sources.file("missing.ts"), None);
+        assert_eq!(sources.file("missing.ts"), None);
+    }
 
     #[test]
     fn gives_each_source_its_own_id() {

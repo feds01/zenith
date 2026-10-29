@@ -184,6 +184,23 @@ impl ContractReport<'_> {
         self.stale_entries.retain(|entry| entry.split(" -> ").any(|name| scope.contains(name)));
     }
 
+    /// The files that the imports of its violations are in, in `graph`, the
+    /// graph the contract was checked against: those that JSON and SARIF
+    /// output point into. A file may come more than once.
+    pub fn files<'a>(&'a self, graph: &'a Graph) -> impl Iterator<Item = &'a str> + 'a {
+        let links = self.violations.iter().flat_map(Violation::links);
+        links.map(|link| graph.name(link.importer))
+    }
+
+    /// The files of the imports that its findings are fixed at, in `graph`,
+    /// as [`ContractReport::files`] gives them: those that a finding a line
+    /// points into, and most of those that its reports in full do.
+    pub fn fix_files<'a>(&'a self, graph: &'a Graph) -> impl Iterator<Item = &'a str> + 'a {
+        let kind = &self.config.kind;
+        let fixes = self.violations.iter().flat_map(move |violation| violation.fixes(kind));
+        fixes.filter_map(|fix| Some(graph.name(fix.link?.importer)))
+    }
+
     /// The `ignore_imports` entries that match no import and break the
     /// contract, because its `unmatched_ignore_imports` is `error`.
     pub fn unmatched_ignore_errors(&self) -> &[&IgnoreImport] {

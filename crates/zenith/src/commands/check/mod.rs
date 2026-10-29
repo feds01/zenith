@@ -69,6 +69,18 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
     //    suppressions: as JSON or SARIF, or as reports in full or a finding a line,
     //    then the summary.
     let (mut sources, config) = session.sources();
+    //    The files that they point into are read all at once first: those of
+    //    every import for JSON and SARIF, and those of the imports that the
+    //    findings are fixed at for the rest.
+    let reports = checked.iter().map(|report| (report, graphs.of(report.config)));
+    match args.format {
+        ReportFormat::Json | ReportFormat::Sarif => {
+            sources.read_ahead(reports.flat_map(|(report, graph)| report.files(graph)));
+        }
+        ReportFormat::Pretty | ReportFormat::Compact | ReportFormat::Github => {
+            sources.read_ahead(reports.flat_map(|(report, graph)| report.fix_files(graph)));
+        }
+    }
     let format = match args.format {
         ReportFormat::Json => {
             println!("{}", CheckJson::new(&session, &checked, &unused, &summary, &mut sources));
@@ -117,7 +129,11 @@ pub fn check(global: &GlobalArgs, args: CheckCommand) -> Result<ExitStatus> {
         } else {
             reports.extend(session.unresolved_report(&mut sources, args.show_unresolved));
         }
-        println!("{}", Output { sources: &sources, reports: &reports, summary: &summary, format });
+        // Formatted whole first, so that it is written in a write or two rather than
+        // a line at a time.
+        let output = Output { sources: &sources, reports: &reports, summary: &summary, format };
+        let output = output.to_string();
+        println!("{output}");
     }
 
     // 7. Fail if a contract of `error` severity is broken, or has stale baseline

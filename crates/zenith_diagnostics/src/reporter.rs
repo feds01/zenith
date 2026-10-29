@@ -4,6 +4,7 @@
 use std::{fmt, ops::Range};
 
 use annotate_snippets::{Annotation, AnnotationKind, Element, Group, Level, Renderer, Snippet};
+use rayon::prelude::*;
 
 use crate::{
     report::{Report, ReportCodeBlock, ReportElement, ReportKind, ReportNoteKind},
@@ -152,18 +153,21 @@ impl<'a> Reporter<'a> {
 
 impl fmt::Display for Reporter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Each report is rendered apart from the others, so they are rendered in
+        // parallel, and shown in order.
         let renderer = self.renderer.clone().short_message(self.style == Style::Short);
         let separator = if self.style == Style::Full { "\n\n" } else { "\n" };
-        for (index, report) in self.reports.iter().enumerate() {
+        let rendered: Vec<String> = (self.reports.par_iter())
+            .map(|report| match self.style {
+                Style::Full | Style::Short => renderer.render(&[self.group(report)]),
+                Style::Github => self.workflow_command(report),
+            })
+            .collect();
+        for (index, report) in rendered.iter().enumerate() {
             if index > 0 {
                 f.write_str(separator)?;
             }
-            match self.style {
-                Style::Full | Style::Short => {
-                    f.write_str(&renderer.render(&[self.group(report)]))?
-                }
-                Style::Github => f.write_str(&self.workflow_command(report))?,
-            }
+            f.write_str(report)?;
         }
         Ok(())
     }

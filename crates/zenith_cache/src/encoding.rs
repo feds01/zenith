@@ -11,13 +11,19 @@
 //! | written at | `u64`, when the run that wrote it started, in nanoseconds since the Unix epoch |
 //! | entries | `u32` count, then each entry |
 //!
-//! An entry is the file's name, its [`Stamp`] and its value, as its
-//! [`Cached`] type encodes it. Numbers are little-endian, a string is its
-//! `u32` length in bytes then its UTF-8 bytes, and a list is its `u32`
-//! length then its items.
+//! An entry is the file's name, its [`Stamp`], and its value, as its
+//! [`Cached`] type encodes it, after the `u32` length in bytes of that
+//! encoding. Numbers are little-endian, a string is its `u32` length in
+//! bytes then its UTF-8 bytes, and a list is its `u32` length then its
+//! items.
 //!
-//! Decoding checks everything, the checksum first, so that a truncated,
-//! corrupt or foreign file is rejected as a whole rather than half read.
+//! Decoding checks the checksum first, then everything but the values, so
+//! that a truncated, corrupt or foreign file is rejected as a whole rather
+//! than half read. Each value is decoded when it is used, which the length
+//! in front of it allows, so that the values that a stage needs are decoded
+//! by the threads that need them.
+
+use std::{fmt, marker::PhantomData, ops::Range, sync::Arc};
 
 use rustc_hash::FxHashMap;
 use xxhash_rust::xxh3::xxh3_64;
@@ -30,7 +36,7 @@ const MAGIC: &[u8; 8] = b"ZENITH\0C";
 
 /// The version of the format. Change it whenever the encoding, or the shape
 /// of a cached value, changes.
-const FORMAT: u32 = 3;
+const FORMAT: u32 = 4;
 
 /// A value that a [`Cache`](crate::Cache) keeps for each file, and how it is
 /// written to its cache file.
@@ -82,7 +88,7 @@ pub(crate) fn encode<'a, T: Cached + 'a>(
     for (name, stamp, value) in entries {
         body.str(name);
         body.stamp(stamp);
-        value.encode(&mut body);
+        body.sized(|body| value.encode(body));
     }
 
     // 2. Put the header in front of them.
@@ -95,10 +101,12 @@ pub(crate) fn encode<'a, T: Cached + 'a>(
     file.bytes
 }
 
-/// Decode a cache file written with `key`.
-pub(crate) fn decode<T: Cached>(bytes: &[u8], key: u64) -> Result<Decoded<T>, Rejected> {
+/// Decode a cache file written with `key`, all but the values of its
+/// entries.
+pub(crate) fn decode<T: Cached>(bytes: Vec<u8>, key: u64) -> Result<Decoded<T>, Rejected> {
     // 1. Check that it is a cache file, of this format and key.
-    let mut decoder = Decoder { bytes };
+    let shared = Arc::new(bytes);
+    let mut decoder = Decoder { bytes: &shared };
     if decoder.take(MAGIC.len()) != Some(MAGIC) {
         return Err(Rejected::Corrupt);
     }
@@ -115,11 +123,48 @@ pub(crate) fn decode<T: Cached>(bytes: &[u8], key: u64) -> Result<Decoded<T>, Re
 
     // 3. Read the rest, and nothing may be left over.
     let written_at = decoder.u64().ok_or(Rejected::Corrupt)?;
-    let entries = decoder.entries().ok_or(Rejected::Corrupt)?;
+    let entries = decoder.entries(&shared).ok_or(Rejected::Corrupt)?;
     if !decoder.bytes.is_empty() {
         return Err(Rejected::Corrupt);
     }
     Ok(Decoded { written_at, entries })
+}
+
+/// The encoding of a value in a cache file, which [`Encoded::decode`]
+/// decodes when the value is used.
+pub(crate) struct Encoded<T> {
+    /// The bytes of the cache file.
+    file: Arc<Vec<u8>>,
+
+    /// Where the value's encoding is in them.
+    range: Range<usize>,
+
+    /// The type of the value.
+    marker: PhantomData<fn() -> T>,
+}
+
+impl<T> Encoded<T> {
+    /// The value encoded at `range` in `file`.
+    pub(crate) fn new(file: Arc<Vec<u8>>, range: Range<usize>) -> Self {
+        Self { file, range, marker: PhantomData }
+    }
+}
+
+impl<T: Cached> Encoded<T> {
+    /// The value, or `None` if its bytes don't hold one, with none left
+    /// over.
+    pub(crate) fn decode(&self) -> Option<T> {
+        let mut decoder = Decoder::new(&self.file[self.range.clone()]);
+        let value = T::decode(&mut decoder)?;
+        decoder.is_empty().then_some(value)
+    }
+}
+
+impl<T> fmt::Debug for Encoded<T> {
+    /// Where the encoding is, rather than the whole file that it is in.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Encoded").field(&self.range).finish()
+    }
 }
 
 /// Writes values into a byte buffer.
@@ -178,6 +223,17 @@ impl Encoder {
         if let Some(value) = value {
             write(self, value);
         }
+    }
+
+    /// What `write` writes, after its length in bytes, so that it can be
+    /// skipped without being read.
+    fn sized(&mut self, write: impl FnOnce(&mut Self)) {
+        let start = self.bytes.len();
+        self.u32(0);
+        write(self);
+        let len = self.bytes.len() - start - 4;
+        let len = u32::try_from(len).expect("a value below 4 GiB").to_le_bytes();
+        self.bytes[start..start + 4].copy_from_slice(&len);
     }
 
     /// A byte range: its start, then its end.
@@ -294,14 +350,20 @@ impl<'a> Decoder<'a> {
         (0..len).map(|_| item(self)).collect()
     }
 
-    fn entries<T: Cached>(&mut self) -> Option<FxHashMap<String, Entry<T>>> {
+    /// The entries of the cache file `file`, whose bytes these are part of,
+    /// without decoding their values.
+    fn entries<T: Cached>(&mut self, file: &Arc<Vec<u8>>) -> Option<FxHashMap<String, Entry<T>>> {
         let len = self.length()?;
         let mut entries = FxHashMap::default();
         entries.reserve(len);
         for _ in 0..len {
             let name = self.str()?.to_string();
-            let entry = Entry { stamp: self.stamp()?, value: T::decode(self)? };
-            entries.insert(name, entry);
+            let stamp = self.stamp()?;
+            let size = self.u32()? as usize;
+            let start = file.len() - self.bytes.len();
+            self.take(size)?;
+            let value = Encoded::new(file.clone(), start..start + size);
+            entries.insert(name, Entry { stamp, value });
         }
         Some(entries)
     }
@@ -357,50 +419,54 @@ pub(crate) mod tests {
 
     #[test]
     fn decodes_what_it_encodes() {
-        let decoded = decode::<Value>(&encoded(), KEY).unwrap();
+        let decoded = decode::<Value>(encoded(), KEY).unwrap();
         assert_eq!(decoded.written_at, 42);
         let entry = &decoded.entries["web/a.ts"];
-        assert_eq!((&entry.value, entry.stamp), (&Value("é".into(), 1), stamp()));
+        assert_eq!((entry.value.decode(), entry.stamp), (Some(Value("é".into(), 1)), stamp()));
 
         // A file without a fingerprint, and an empty cache.
         let unstamped = Stamp { fingerprint: None, hash: 7 };
         let value = Value(String::new(), 0);
         let bytes = encode(KEY, 0, [("a.ts", &unstamped, &value)].into_iter());
-        let decoded = decode::<Value>(&bytes, KEY).unwrap();
+        let decoded = decode::<Value>(bytes, KEY).unwrap();
         assert_eq!(decoded.entries["a.ts"].stamp, unstamped);
-        assert_eq!(decoded.entries["a.ts"].value, value);
+        assert_eq!(decoded.entries["a.ts"].value.decode(), Some(value));
         let bytes = encode::<Value>(KEY, 0, [].into_iter());
-        assert!(decode::<Value>(&bytes, KEY).unwrap().entries.is_empty());
+        assert!(decode::<Value>(bytes, KEY).unwrap().entries.is_empty());
     }
 
     #[test]
     fn rejects_the_files_of_other_keys() {
         let bytes = encoded();
-        assert_eq!(decode::<Value>(&bytes, KEY + 1).unwrap_err(), Rejected::OtherKey);
+        assert_eq!(decode::<Value>(bytes.clone(), KEY + 1).unwrap_err(), Rejected::OtherKey);
 
         let mut other_format = bytes.clone();
         other_format[MAGIC.len()] += 1;
-        assert_eq!(decode::<Value>(&other_format, KEY).unwrap_err(), Rejected::OtherKey);
+        assert_eq!(decode::<Value>(other_format, KEY).unwrap_err(), Rejected::OtherKey);
     }
 
     #[test]
     fn rejects_every_truncation_and_corruption() {
         let bytes = encoded();
         for len in 0..bytes.len() {
-            assert!(decode::<Value>(&bytes[..len], KEY).is_err(), "truncated to {len} bytes");
+            assert!(
+                decode::<Value>(bytes[..len].to_vec(), KEY).is_err(),
+                "truncated to {len} bytes"
+            );
         }
         let mut longer = bytes.clone();
         longer.push(0);
-        assert_eq!(decode::<Value>(&longer, KEY).unwrap_err(), Rejected::Corrupt);
+        assert_eq!(decode::<Value>(longer, KEY).unwrap_err(), Rejected::Corrupt);
 
         // Flipping any bit is caught, by the checksum if nothing else.
         for index in 0..bytes.len() {
             let mut corrupt = bytes.clone();
             corrupt[index] ^= 0b0100_0000;
-            assert!(decode::<Value>(&corrupt, KEY).is_err(), "byte {index} flipped");
+            assert!(decode::<Value>(corrupt, KEY).is_err(), "byte {index} flipped");
         }
-        assert_eq!(decode::<Value>(b"", KEY).unwrap_err(), Rejected::Corrupt);
-        assert_eq!(decode::<Value>(b"not a cache file", KEY).unwrap_err(), Rejected::Corrupt);
+        assert_eq!(decode::<Value>(b"".to_vec(), KEY).unwrap_err(), Rejected::Corrupt);
+        let not_a_cache = b"not a cache file".to_vec();
+        assert_eq!(decode::<Value>(not_a_cache, KEY).unwrap_err(), Rejected::Corrupt);
     }
 
     /// A cache file of one entry, `a.ts`, whose value is written by `value`,
@@ -411,7 +477,7 @@ pub(crate) mod tests {
         body.length(1);
         body.str("a.ts");
         body.stamp(&stamp());
-        value(&mut body);
+        body.sized(value);
         let mut file = Encoder::default();
         file.bytes.extend_from_slice(MAGIC);
         file.u32(FORMAT);
@@ -422,8 +488,28 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn rejects_invalid_values_behind_a_valid_checksum() {
+    fn rejects_a_value_longer_than_the_file() {
+        let mut file = file_with(|encoder| Value("a".into(), 1).encode(encoder));
+        // The length in front of the value, which is the last thing in the file,
+        // says it is a byte longer than it is.
+        let at = file.len() - 4 - 2 - 4 - 1;
+        let len = u32::from_le_bytes(file[at..at + 4].try_into().unwrap()) + 1;
+        file[at..at + 4].copy_from_slice(&len.to_le_bytes());
+        let checksum = xxh3_64(&file[MAGIC.len() + 4 + 8 + 8..]);
+        file[MAGIC.len() + 4 + 8..MAGIC.len() + 4 + 8 + 8].copy_from_slice(&checksum.to_le_bytes());
+        assert_eq!(decode::<Value>(file, KEY).unwrap_err(), Rejected::Corrupt);
+    }
+
+    #[test]
+    fn invalid_values_behind_a_valid_checksum_do_not_decode() {
         let file = file_with(|encoder| Value("a".into(), 2).encode(encoder));
-        assert_eq!(decode::<Value>(&file, KEY).unwrap_err(), Rejected::Corrupt);
+        assert_eq!(decode::<Value>(file, KEY).unwrap().entries["a.ts"].value.decode(), None);
+
+        // Nor does a value with bytes left over.
+        let file = file_with(|encoder| {
+            Value("a".into(), 1).encode(encoder);
+            encoder.u8(0);
+        });
+        assert_eq!(decode::<Value>(file, KEY).unwrap().entries["a.ts"].value.decode(), None);
     }
 }

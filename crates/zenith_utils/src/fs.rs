@@ -1,12 +1,15 @@
 //! Reading files: the [`FileSystem`] that zenith reads a project through,
-//! [`OsFileSystem`] for the disk, and helpers that read the disk directly.
+//! [`OsFileSystem`] for the disk, [`ListingCache`], which lists each
+//! directory of another once, and helpers that read the disk directly.
 
 use std::{
+    collections::{HashMap, HashSet},
+    ffi::OsString,
     fmt,
     fs::{self, File, FileType, Metadata},
     io::{self, Read},
     path::{Path, PathBuf},
-    sync::{Arc, LazyLock},
+    sync::{Arc, LazyLock, PoisonError, RwLock},
 };
 
 use serde_json::Value;
@@ -161,6 +164,94 @@ pub fn adjust_canonicalisation<P: AsRef<Path>>(path: P) -> PathBuf {
     OsFileSystem.adjust_canonicalisation(path.as_ref())
 }
 
+/// Another [`FileSystem`], which lists each directory once to tell whether
+/// it lists a path, for lookups that ask that of the same directories again
+/// and again, as module lookups do. A directory's listing is kept for as long
+/// as this lives, so it should live no longer than the lookups that share it.
+/// Everything else is asked of the other file system.
+#[derive(Debug)]
+pub struct ListingCache<'a> {
+    /// The other file system.
+    file_system: &'a dyn FileSystem,
+
+    /// The names of the entries of each directory listed so far, or `None`
+    /// for one that couldn't be listed.
+    listings: RwLock<HashMap<PathBuf, Option<Arc<HashSet<OsString>>>>>,
+}
+
+impl<'a> ListingCache<'a> {
+    /// A cache of the listings of `file_system`'s directories.
+    pub fn new(file_system: &'a dyn FileSystem) -> Self {
+        Self { file_system, listings: RwLock::default() }
+    }
+
+    /// The names of the entries of the directory `dir`, listed the first time
+    /// that they are asked for, or `None` if it can't be listed.
+    fn names(&self, dir: &Path) -> Option<Arc<HashSet<OsString>>> {
+        let listings = self.listings.read().unwrap_or_else(PoisonError::into_inner);
+        if let Some(names) = listings.get(dir) {
+            return names.clone();
+        }
+        drop(listings);
+        let names = self.file_system.read_dir(dir).ok().map(|entries| {
+            let names =
+                entries.into_iter().filter_map(|entry| entry.path.file_name().map(Into::into));
+            Arc::new(names.collect())
+        });
+        let mut listings = self.listings.write().unwrap_or_else(PoisonError::into_inner);
+        listings.entry(dir.to_path_buf()).or_insert(names).clone()
+    }
+}
+
+impl FileSystem for ListingCache<'_> {
+    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        self.file_system.read(path)
+    }
+
+    fn kind(&self, path: &Path) -> io::Result<FileKind> {
+        self.file_system.kind(path)
+    }
+
+    fn link_kind(&self, path: &Path) -> io::Result<FileKind> {
+        self.file_system.link_kind(path)
+    }
+
+    fn read_dir(&self, path: &Path) -> io::Result<Vec<DirEntry>> {
+        self.file_system.read_dir(path)
+    }
+
+    fn read_link(&self, path: &Path) -> io::Result<PathBuf> {
+        self.file_system.read_link(path)
+    }
+
+    fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
+        self.file_system.canonicalize(path)
+    }
+
+    fn on_disk(&self) -> bool {
+        self.file_system.on_disk()
+    }
+
+    fn listed_files(&self, dir: &Path) -> Option<Vec<DirEntry>> {
+        self.file_system.listed_files(dir)
+    }
+
+    fn read_text(&self, path: &Path) -> io::Result<String> {
+        self.file_system.read_text(path)
+    }
+
+    fn read_json(&self, path: &Path) -> Result<Value, ReadJsonError> {
+        self.file_system.read_json(path)
+    }
+
+    fn is_listed(&self, path: &Path) -> bool {
+        let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+            return false;
+        };
+        self.names(dir).is_some_and(|names| names.contains(name))
+    }
+}
+
 impl FileSystem for OsFileSystem {
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         fs::read(path)
@@ -266,6 +357,29 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn a_listing_cache_keeps_each_listing() {
+        let dir = TempDir::new().unwrap();
+        let root = adjust_canonicalisation(dir.path());
+        fs::write(root.join("config.rs"), "").unwrap();
+        let cache = ListingCache::new(&OsFileSystem);
+
+        // Spelt as it is listed, and only so, as on the disk.
+        assert!(cache.is_listed(&root.join("config.rs")));
+        assert!(!cache.is_listed(&root.join("Config.rs")));
+        assert!(!cache.is_listed(&root.join("missing/config.rs")));
+        assert_eq!(
+            cache.is_listed(&root.join("Config.rs")),
+            OsFileSystem.is_listed(&root.join("Config.rs"))
+        );
+
+        // A file added later isn't listed, as the directory was listed before.
+        fs::write(root.join("later.rs"), "").unwrap();
+        assert!(!cache.is_listed(&root.join("later.rs")));
+        assert!(ListingCache::new(&OsFileSystem).is_listed(&root.join("later.rs")));
+        assert!(cache.is_file(&root.join("later.rs")));
+    }
 
     #[test]
     fn existing_paths_are_canonicalised() {

@@ -17,7 +17,11 @@ use std::path::Path;
 
 use zenith_diagnostics::message;
 use zenith_lang::{Resolved, UnresolvedReason};
-use zenith_utils::{fs::FileSystem, glob::NamePattern, path::relative_posix};
+use zenith_utils::{
+    fs::{FileSystem, ListingCache},
+    glob::NamePattern,
+    path::relative_posix,
+};
 
 use crate::{
     crates::{Crate, Crates, Dependency, STANDARD_CRATES, Target},
@@ -34,8 +38,9 @@ pub(crate) struct Resolver<'a> {
     /// The canonical project root.
     root: &'a Path,
 
-    /// The file system that the modules' files are looked up in.
-    file_system: &'a dyn FileSystem,
+    /// The file system that the modules' files are looked up in, which lists
+    /// each directory once, as every import looks its modules up.
+    file_system: ListingCache<'a>,
 
     /// The crates of the project.
     crates: &'a Crates,
@@ -58,6 +63,7 @@ impl<'a> Resolver<'a> {
         items: &'a Items,
         ignore_unresolved: &'a [NamePattern],
     ) -> Self {
+        let file_system = ListingCache::new(file_system);
         Self { root, file_system, crates, items, ignore_unresolved }
     }
 
@@ -167,7 +173,7 @@ impl<'a> Resolver<'a> {
             let own = all.len();
             all.push(name);
             all.extend(rest);
-            let (file, depth) = target.module_file(self.file_system, &all);
+            let (file, depth) = target.module_file(&self.file_system, &all);
             if depth > own {
                 return self.file(&file, path);
             }
@@ -192,13 +198,13 @@ impl<'a> Resolver<'a> {
         importer: &Path,
         name: Option<&str>,
     ) -> Resolved {
-        let (file, depth) = target.module_file(self.file_system, modules);
+        let (file, depth) = target.module_file(&self.file_system, modules);
         if let Some(name) = name
             && let Some((last, parents)) = modules.split_last()
             && depth == modules.len()
             && *last == name.strip_prefix("r#").unwrap_or(name)
         {
-            let (parent, parent_depth) = target.module_file(self.file_system, parents);
+            let (parent, parent_depth) = target.module_file(&self.file_system, parents);
             if parent_depth == parents.len() && self.items.has(&parent, name) {
                 return self.file(&parent, importer);
             }

@@ -11,9 +11,10 @@
 //! has the same modules, and imports to where each name is defined instead.
 
 use compact_str::CompactString;
+use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{Exports, Graph, ImportedNames, ModuleId};
+use crate::{Exports, Graph, ImportDetail, ImportedNames, ModuleId};
 
 /// What each module exports, by module, with the source of each re-export
 /// as the node it resolved to. A module without an entry is taken to be code
@@ -33,45 +34,19 @@ impl Graph {
     /// that may come from an external package through `export *`. An import
     /// of only a name's type becomes a type import.
     pub fn through_reexports(&self, exports: &ModuleExports) -> Graph {
+        // Each importer's imports are followed apart from the others'.
         let names = Names { exports };
-        let mut imports = Vec::with_capacity(self.detail_count());
-        for (importer, imported) in self.edges() {
-            let pass_through = exports.get(&imported).is_some_and(|exports| exports.pass_through);
-            for detail in self.details(importer, imported) {
-                let ImportedNames::Names(taken) = &detail.names else {
-                    imports.push((importer, imported, detail.clone()));
-                    continue;
-                };
-                if !pass_through {
-                    imports.push((importer, imported, detail.clone()));
-                    continue;
+        let imports = (0..self.node_count())
+            .into_par_iter()
+            .map(ModuleId::new)
+            .flat_map_iter(|importer| {
+                let mut imports = Vec::new();
+                for &imported in self.imports_of(importer) {
+                    names.follow_imports(self, importer, imported, &mut imports);
                 }
-
-                // Where each name goes: to the modules that define it, or to the
-                // pass-through module if it can't be followed. A pass-through module may
-                // re-export the importer's own names.
-                let mut targets = Vec::new();
-                for name in taken {
-                    match names.definitions(imported, &name.name, name.type_only) {
-                        Some(definitions) => targets.extend(definitions),
-                        None => targets.push((imported, name.type_only)),
-                    }
-                }
-                targets.retain(|(target, _)| *target != importer);
-
-                // One detail per module that the statement imports, a type import
-                // only if every name that goes there is a type.
-                targets.sort_unstable();
-                targets.dedup_by_key(|(target, _)| *target);
-                for (target, type_only) in targets {
-                    let detail = match target == imported {
-                        true => detail.clone(),
-                        false => detail.with_type_only(type_only),
-                    };
-                    imports.push((importer, target, detail));
-                }
-            }
-        }
+                imports
+            })
+            .collect();
         self.with_imports(imports)
     }
 }
@@ -89,6 +64,54 @@ struct Names<'e> {
 }
 
 impl Names<'_> {
+    /// Add the imports of `imported` by `importer`, in `graph`, to `imports`,
+    /// each import of names from a pass-through module replaced by imports of
+    /// the modules that define them.
+    fn follow_imports(
+        &self,
+        graph: &Graph,
+        importer: ModuleId,
+        imported: ModuleId,
+        imports: &mut Vec<(ModuleId, ModuleId, ImportDetail)>,
+    ) {
+        let exports = self.exports;
+        let pass_through = exports.get(&imported).is_some_and(|exports| exports.pass_through);
+        for detail in graph.details(importer, imported) {
+            let ImportedNames::Names(taken) = &detail.names else {
+                imports.push((importer, imported, detail.clone()));
+                continue;
+            };
+            if !pass_through {
+                imports.push((importer, imported, detail.clone()));
+                continue;
+            }
+
+            // Where each name goes: to the modules that define it, or to the
+            // pass-through module if it can't be followed. A pass-through module may
+            // re-export the importer's own names.
+            let mut targets = Vec::new();
+            for name in taken {
+                match self.definitions(imported, &name.name, name.type_only) {
+                    Some(definitions) => targets.extend(definitions),
+                    None => targets.push((imported, name.type_only)),
+                }
+            }
+            targets.retain(|(target, _)| *target != importer);
+
+            // One detail per module that the statement imports, a type import
+            // only if every name that goes there is a type.
+            targets.sort_unstable();
+            targets.dedup_by_key(|(target, _)| *target);
+            for (target, type_only) in targets {
+                let detail = match target == imported {
+                    true => detail.clone(),
+                    false => detail.with_type_only(type_only),
+                };
+                imports.push((importer, target, detail));
+            }
+        }
+    }
+
     /// The modules that define `name` as `module` exports it, each with
     /// whether only its type gets there, or `None` if they can't be told.
     /// `type_only` is whether only its type is wanted.

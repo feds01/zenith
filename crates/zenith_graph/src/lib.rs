@@ -52,7 +52,7 @@ mod testing;
 mod unit;
 mod view;
 
-pub use builder::{FileHandle, GraphBuilder, GraphError, NodeHandle};
+pub use builder::{FileHandle, GraphBuilder, GraphError, NodeHandle, NodeIds};
 pub use cycles::{UnitDependency, UnitGraph, UnitId};
 pub use diff::DependencyDiff;
 pub use exports::{Exports, ImportedName, ImportedNames, ReExport};

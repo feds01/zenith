@@ -19,7 +19,6 @@ use zenith_utils::{
     fs::{FileSystem, disk},
     glob::NamePattern,
     path::{is_extension, relative_posix},
-    pool::DropInBackground,
     specifier::{package_from_path, package_name, split_query, split_scheme, squash_builtin},
 };
 
@@ -95,13 +94,12 @@ impl std::error::Error for ResolverError {}
 #[derive(Debug)]
 pub struct Resolver {
     /// The configured `oxc_resolver`, which sees the workspace packages
-    /// linked into the root `node_modules`. Its caches hold every path it
-    /// looked up, which takes a while to free in a large project.
-    inner: DropInBackground<ResolverGeneric<LinkedFileSystem>>,
+    /// linked into the root `node_modules`.
+    inner: ResolverGeneric<LinkedFileSystem>,
 
     /// The same, sharing its caches, but without `tsconfig.json` files, for
     /// files whose `tsconfig.json` can't be loaded.
-    without_tsconfig: DropInBackground<ResolverGeneric<LinkedFileSystem>>,
+    without_tsconfig: ResolverGeneric<LinkedFileSystem>,
 
     /// The files whose `tsconfig.json` couldn't be loaded, and why.
     tsconfig_errors: Mutex<FxHashMap<PathBuf, ResolveError>>,
@@ -216,8 +214,8 @@ impl Resolver {
         let without_tsconfig = ResolveOptions { tsconfig: None, ..options.clone() };
         let inner = ResolverGeneric::new_with_file_system(file_system, options);
         Ok(Self {
-            without_tsconfig: DropInBackground::new(inner.clone_with_options(without_tsconfig)),
-            inner: DropInBackground::new(inner),
+            without_tsconfig: inner.clone_with_options(without_tsconfig),
+            inner,
             tsconfig_errors: Mutex::default(),
             root,
             conditions,

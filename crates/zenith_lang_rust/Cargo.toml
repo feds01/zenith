@@ -16,6 +16,7 @@ zenith_lang = { workspace = true }
 zenith_utils = { workspace = true }
 
 compact_str = { workspace = true }
+smol_str = { workspace = true }
 log = { workspace = true }
 ra_ap_syntax = { workspace = true }
 rustc-hash = { workspace = true }

@@ -4,7 +4,9 @@ use std::borrow::Cow;
 
 use thin_vec::ThinVec;
 use zenith_cache::{Cached, Decoder, Encoder};
-use zenith_graph::{Exports, ImportDetail, ImportKind, ImportedName, ImportedNames, ReExport};
+use zenith_graph::{
+    Exports, ImportDetail, ImportKind, ImportedName, ImportedNames, NameList, ReExport,
+};
 use zenith_utils::location::Located;
 
 use crate::{ParsedFile, Suppression, SyntaxError};
@@ -72,8 +74,7 @@ impl Cached for ParsedFile {
             let (range, kind, specifier) =
                 (decoder.range()?, decode_kind(decoder)?, decoder.str()?);
             // An import of no names takes `All`.
-            let names = decoder
-                .option(|decoder| Some(decode_names(decoder)?).filter(|names| !names.is_empty()))?;
+            let names = decoder.option(decode_name_list)?.flatten();
             let names = names.map_or(ImportedNames::All, ImportedNames::Names);
             Some(ImportDetail { range, kind, specifier: specifier.into(), names })
         })?;
@@ -122,7 +123,27 @@ fn encode_names(encoder: &mut Encoder, names: &[ImportedName]) {
 }
 
 fn decode_names(decoder: &mut Decoder<'_>) -> Option<ThinVec<ImportedName>> {
-    decoder.list(|decoder| Some(ImportedName::new(decoder.str()?, decoder.bool()?)))
+    decoder.list(decode_name)
+}
+
+/// The names that an import takes, `Some(None)` if there are none, which an
+/// import of no names takes as `All`. They are read straight into the list,
+/// which needs as many as it was told: after one that can't be read, the rest
+/// are left blank, and the list thrown away.
+fn decode_name_list(decoder: &mut Decoder<'_>) -> Option<Option<NameList>> {
+    let len = decoder.length()?;
+    let mut failed = false;
+    let names = (0..len).map(|_| {
+        let name = if failed { None } else { decode_name(decoder) };
+        failed |= name.is_none();
+        name.unwrap_or_else(|| ImportedName::new("", false))
+    });
+    let names = NameList::new(names);
+    (!failed).then_some(names)
+}
+
+fn decode_name(decoder: &mut Decoder<'_>) -> Option<ImportedName> {
+    Some(ImportedName::new(decoder.str()?, decoder.bool()?))
 }
 
 fn encode_exports(encoder: &mut Encoder, exports: &Exports<u32>) {
@@ -173,9 +194,10 @@ mod tests {
                 kind,
                 names: match i % 2 {
                     0 => ImportedNames::All,
-                    _ => ImportedNames::Names(
-                        [ImportedName::new("a", false), ImportedName::new("b", true)].into(),
-                    ),
+                    _ => ImportedNames::of([
+                        ImportedName::new("a", false),
+                        ImportedName::new("b", true),
+                    ]),
                 },
             })
             .collect();
@@ -247,6 +269,26 @@ mod tests {
         encoder.range(ByteRange::new(0, 1));
         encoder.u8(ImportKind::ALL.len() as u8);
         encoder.str("./a");
+        let bytes = encoder.into_bytes();
+        assert_eq!(ParsedFile::decode(&mut Decoder::new(&bytes)), None);
+    }
+
+    #[test]
+    fn rejects_names_that_cannot_be_read() {
+        // Three names, of which the second's `type_only` is not a boolean.
+        let mut encoder = Encoder::default();
+        encoder.length(1);
+        encoder.range(ByteRange::new(0, 1));
+        encoder.u8(ImportKind::Value as u8);
+        encoder.str("./a");
+        encoder.bool(true);
+        encoder.length(3);
+        encoder.str("a");
+        encoder.bool(false);
+        encoder.str("b");
+        encoder.u8(2);
+        encoder.str("c");
+        encoder.bool(false);
         let bytes = encoder.into_bytes();
         assert_eq!(ParsedFile::decode(&mut Decoder::new(&bytes)), None);
     }

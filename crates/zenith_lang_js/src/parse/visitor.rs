@@ -102,23 +102,21 @@ impl<'a> Visit<'a> for ImportVisitor {
             });
         // A namespace import takes everything, and so does a side-effect import.
         let names = self.names(|| match &it.specifiers {
-            Some(specifiers) => specifiers
-                .iter()
-                .map(|specifier| match specifier {
-                    ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
-                        Some(ImportedName::new(
-                            specifier.imported.name().as_str(),
-                            it.import_kind.is_type() || specifier.import_kind.is_type(),
-                        ))
-                    }
-                    ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => {
-                        Some(ImportedName::new("default", it.import_kind.is_type()))
-                    }
-                    ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => None,
-                })
-                .collect::<Option<_>>()
-                .map_or(ImportedNames::All, ImportedNames::of),
-            None => ImportedNames::All,
+            Some(specifiers)
+                if !specifiers.iter().any(|specifier| {
+                    matches!(specifier, ImportDeclarationSpecifier::ImportNamespaceSpecifier(_))
+                }) =>
+            {
+                ImportedNames::of(specifiers.iter().map(|specifier| match specifier {
+                    ImportDeclarationSpecifier::ImportSpecifier(specifier) => ImportedName::new(
+                        specifier.imported.name().as_str(),
+                        it.import_kind.is_type() || specifier.import_kind.is_type(),
+                    ),
+                    // A default import: a namespace import took `All`.
+                    _ => ImportedName::new("default", it.import_kind.is_type()),
+                }))
+            }
+            _ => ImportedNames::All,
         });
         self.import(it.source.value.as_str(), ImportKind::of_static(type_only), it.span, names);
     }
@@ -133,7 +131,7 @@ impl<'a> Visit<'a> for ImportVisitor {
                 let type_only = it.export_kind.is_type() || specifier.export_kind.is_type();
                 ImportedName::new(specifier.local.name().as_str(), type_only)
             });
-            ImportedNames::of(names.collect())
+            ImportedNames::of(names)
         });
         self.import(it.source.value.as_str(), ImportKind::of_static(type_only), it.span, names);
     }
@@ -188,7 +186,7 @@ mod tests {
         parsed
             .imports
             .into_iter()
-            .map(|import| (import.specifier.into_string(), import.kind))
+            .map(|import| (import.specifier.to_string(), import.kind))
             .collect()
     }
 

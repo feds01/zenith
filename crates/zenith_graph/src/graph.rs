@@ -1,10 +1,12 @@
 //! The graph: the module tree of a project, its external packages and
 //! builtins, and the imports between them.
 
-use compact_str::CompactString;
+use std::sync::Arc;
+
 use index_vec::{IndexSlice, IndexVec};
 use rayon::prelude::*;
 use serde::Serialize;
+use smol_str::SmolStr;
 use thin_vec::ThinVec;
 use zenith_utils::location::ByteRange;
 
@@ -129,8 +131,9 @@ pub struct ImportDetail {
 
     /// The specifier as written in the source, e.g. `@acme/ui` or `./api`.
     /// Most specifiers are short enough to be stored inline, without an
-    /// allocation of their own.
-    pub specifier: CompactString,
+    /// allocation of their own, and a longer one is shared by every copy of
+    /// the import.
+    pub specifier: SmolStr,
 
     /// How the import is made.
     pub kind: ImportKind,
@@ -162,13 +165,16 @@ impl ImportDetail {
 /// Every query returns nodes in ascending id order (that is, by name), except
 /// [`Graph::subtree`], which is in tree order. Queries panic if given a
 /// [`ModuleId`] that is out of range for this graph.
+///
+/// A graph made from another with other imports, such as the graph through
+/// re-exports, shares its module tree.
 #[derive(Debug)]
 pub struct Graph {
     /// Every node, indexed by id, so sorted by name.
-    nodes: IndexVec<ModuleId, Node>,
+    nodes: Arc<IndexVec<ModuleId, Node>>,
 
     /// The children of every node.
-    children: Adjacency,
+    children: Arc<Adjacency>,
 
     /// The nodes each node imports. The position of an import in
     /// `imports.targets` is its edge index into `detail_offsets`.
@@ -187,11 +193,11 @@ pub struct Graph {
     /// The internal nodes in a preorder traversal of the module tree (with
     /// children in id order), then the external packages and builtins in id
     /// order. Every subtree is a contiguous range of it.
-    preorder: Vec<ModuleId>,
+    preorder: Arc<[ModuleId]>,
 
     /// The packages, or `None` if there are none, as in most graphs, which
     /// then pay nothing for them.
-    packages: Option<Box<Packages>>,
+    packages: Option<Arc<Packages>>,
 
     /// The extensions, without the `.`, that a path glob may leave off a
     /// file's path: those of the languages that the files are in.
@@ -269,7 +275,7 @@ impl Graph {
             .collect();
         let packages = (!flags.is_empty()).then(|| {
             let parents = nodes.iter().map(|node| node.parent).collect();
-            Box::new(Packages { flags, parents })
+            Arc::new(Packages { flags, parents })
         });
 
         let mut nodes: IndexVec<ModuleId, Node> = nodes
@@ -285,13 +291,13 @@ impl Graph {
         let preorder = assign_preorder(&mut nodes, &children);
 
         Self {
-            nodes,
-            children,
+            nodes: Arc::new(nodes),
+            children: Arc::new(children),
             imports,
             importers,
             detail_offsets,
             details,
-            preorder,
+            preorder: preorder.into(),
             packages,
             optional_extensions,
             directory_modules,

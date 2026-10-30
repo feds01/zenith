@@ -10,6 +10,8 @@
 //! report violations that the bundle doesn't have. The graph through re-exports
 //! has the same modules, and imports to where each name is defined instead.
 
+use std::{mem, ops::Range};
+
 use compact_str::CompactString;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -34,28 +36,77 @@ impl Graph {
     /// that may come from an external package through `export *`. An import
     /// of only a name's type becomes a type import.
     pub fn through_reexports(&self, exports: &ModuleExports) -> Graph {
-        // Each importer's imports are followed apart from the others'.
+        // Each importer's imports are followed apart from the others', and each
+        // piece of the work keeps its room to follow them in. The graph sorts the
+        // imports, so the order of the pieces doesn't matter.
         let names = Names { exports };
-        let imports = (0..self.node_count())
+        let pieces: Vec<Vec<_>> = (0..self.node_count())
             .into_par_iter()
             .map(ModuleId::new)
-            .flat_map_iter(|importer| {
-                let mut imports = Vec::new();
-                for &imported in self.imports_of(importer) {
-                    names.follow_imports(self, importer, imported, &mut imports);
-                }
-                imports
-            })
+            .fold(
+                || (Scratch::default(), Vec::new()),
+                |(mut scratch, mut imports), importer| {
+                    for &imported in self.imports_of(importer) {
+                        names.follow_imports(self, importer, imported, &mut scratch, &mut imports);
+                    }
+                    (scratch, imports)
+                },
+            )
+            .map(|(_, imports)| imports)
             .collect();
+        let mut imports = Vec::with_capacity(pieces.iter().map(Vec::len).sum());
+        for piece in pieces {
+            imports.extend(piece);
+        }
         self.with_imports(imports)
     }
 }
 
-/// The `(pass-through module, name)` pairs met while following one name: `None`
-/// while the pair is being followed, then the modules that define the name as
-/// the pass-through module exports it, each with whether only its type gets
-/// there.
-type Followed = FxHashMap<(ModuleId, CompactString), Option<Vec<(ModuleId, bool)>>>;
+/// A module that defines a name, and whether only its type gets there.
+type Definition = (ModuleId, bool);
+
+/// The room that following names takes, kept from name to name.
+#[derive(Default)]
+struct Scratch {
+    /// The `(pass-through module, name)` pairs met while following one name:
+    /// `None` while the pair is being followed, then where the modules that
+    /// define the name, as the pass-through module exports it, are in
+    /// `found`.
+    followed: FxHashMap<(ModuleId, CompactString), Option<Range<usize>>>,
+
+    /// The definitions found while following one name, each pair's together.
+    found: Vec<Definition>,
+
+    /// The definitions that the stars of the pass-through modules being
+    /// followed bring, until each module's are all found and moved to
+    /// `found` together.
+    stars: Vec<Definition>,
+
+    /// The modules asked about whether they export a name.
+    seen: FxHashSet<ModuleId>,
+
+    /// The modules that the names of one import statement go to.
+    targets: Vec<Definition>,
+}
+
+impl Scratch {
+    /// Add `definitions` to `found`, with only their types getting there if
+    /// `type_only`, and say where they are.
+    fn add(&mut self, definitions: Range<usize>, type_only: bool) -> Range<usize> {
+        let start = self.found.len();
+        self.found.extend_from_within(definitions);
+        for (_, type_only_there) in &mut self.found[start..] {
+            *type_only_there |= type_only;
+        }
+        start..self.found.len()
+    }
+
+    /// Add one definition to `found`, and say where it is.
+    fn add_one(&mut self, definition: Definition) -> Range<usize> {
+        self.found.push(definition);
+        self.found.len() - 1..self.found.len()
+    }
+}
 
 /// Follows names through the exports of modules.
 struct Names<'e> {
@@ -72,6 +123,7 @@ impl Names<'_> {
         graph: &Graph,
         importer: ModuleId,
         imported: ModuleId,
+        scratch: &mut Scratch,
         imports: &mut Vec<(ModuleId, ModuleId, ImportDetail)>,
     ) {
         let exports = self.exports;
@@ -89,10 +141,15 @@ impl Names<'_> {
             // Where each name goes: to the modules that define it, or to the
             // pass-through module if it can't be followed. A pass-through module may
             // re-export the importer's own names.
-            let mut targets = Vec::new();
+            let mut targets = mem::take(&mut scratch.targets);
+            targets.clear();
             for name in taken {
-                match self.definitions(imported, &name.name, name.type_only) {
-                    Some(definitions) => targets.extend(definitions),
+                match self.definitions(imported, &name.name, scratch) {
+                    Some(definitions) => {
+                        targets.extend((scratch.found[definitions].iter()).map(
+                            |&(definition, type_only)| (definition, type_only || name.type_only),
+                        ))
+                    }
                     None => targets.push((imported, name.type_only)),
                 }
             }
@@ -102,49 +159,44 @@ impl Names<'_> {
             // only if every name that goes there is a type.
             targets.sort_unstable();
             targets.dedup_by_key(|(target, _)| *target);
-            for (target, type_only) in targets {
+            for &(target, type_only) in &targets {
                 let detail = match target == imported {
                     true => detail.clone(),
                     false => detail.with_type_only(type_only),
                 };
                 imports.push((importer, target, detail));
             }
+            scratch.targets = targets;
         }
     }
 
-    /// The modules that define `name` as `module` exports it, each with
-    /// whether only its type gets there, or `None` if they can't be told.
-    /// `type_only` is whether only its type is wanted.
+    /// Where in `scratch.found` the modules that define `name` as `module`
+    /// exports it are, each with whether only its type gets there, or `None`
+    /// if they can't be told.
     fn definitions(
         &self,
         module: ModuleId,
         name: &str,
-        type_only: bool,
-    ) -> Option<Vec<(ModuleId, bool)>> {
-        let definitions = self.follow(module, name, &mut Followed::default())?;
-        let definitions = definitions
-            .into_iter()
-            .map(|(definition, type_only_there)| (definition, type_only || type_only_there));
-        let definitions: Vec<_> = definitions.collect();
+        scratch: &mut Scratch,
+    ) -> Option<Range<usize>> {
+        scratch.followed.clear();
+        scratch.found.clear();
+        scratch.stars.clear();
+        let definitions = self.follow(module, name, scratch)?;
         (!definitions.is_empty()).then_some(definitions)
     }
 
-    /// The modules that define `name` as `module` exports it, each with
-    /// whether only its type gets there, none if it doesn't export it, or
-    /// `None` if that can't be told.
-    fn follow(
-        &self,
-        module: ModuleId,
-        name: &str,
-        followed: &mut Followed,
-    ) -> Option<Vec<(ModuleId, bool)>> {
+    /// Where in `scratch.found` the modules that define `name` as `module`
+    /// exports it are, each with whether only its type gets there: none if it
+    /// doesn't export it, or `None` if that can't be told.
+    fn follow(&self, module: ModuleId, name: &str, scratch: &mut Scratch) -> Option<Range<usize>> {
         // 1. A module of code defines what it exports, and so does a pass-through
         //    module what it defines itself, as a Rust module may.
         let Some(exports) = self.exports.get(&module).filter(|exports| exports.pass_through) else {
-            return Some(vec![(module, false)]);
+            return Some(scratch.add_one((module, false)));
         };
         if exports.names.iter().any(|defined| defined.name == name) {
-            return Some(vec![(module, false)]);
+            return Some(scratch.add_one((module, false)));
         }
 
         // 2. A pair met before has the definitions found then, as when two pass-through
@@ -152,12 +204,12 @@ impl Names<'_> {
         //    of re-exports comes back to, adds none: those on the rest of the cycle are
         //    found where it started.
         let key = (module, CompactString::from(name));
-        match followed.get(&key) {
+        match scratch.followed.get(&key) {
             Some(Some(definitions)) => return Some(definitions.clone()),
-            Some(None) => return Some(Vec::new()),
+            Some(None) => return Some(0..0),
             None => {}
         }
-        followed.insert(key.clone(), None);
+        scratch.followed.insert(key.clone(), None);
 
         // 3. A name the pass-through module re-exports by name comes from its source:
         //    the whole source, for `export * as name`, or for a name that the source
@@ -166,41 +218,53 @@ impl Names<'_> {
         let definitions = match exports.reexports.iter().find(|reexport| reexport.name == name) {
             Some(reexport) => match &reexport.imported {
                 Some(imported)
-                    if self.exports_name(reexport.source, imported, &mut FxHashSet::default())
-                        != Some(false) =>
+                    if self.exports_name(reexport.source, imported, scratch) != Some(false) =>
                 {
-                    let definitions = self.follow(reexport.source, imported, followed)?;
-                    with_type_only(definitions, reexport.type_only)
+                    let definitions = self.follow(reexport.source, imported, scratch)?;
+                    scratch.add(definitions, reexport.type_only)
                 }
-                _ => vec![(reexport.source, reexport.type_only)],
+                _ => scratch.add_one((reexport.source, reexport.type_only)),
             },
 
             // 4. Any other name, but `default`, may come through `export *` from the modules that
             //    export it. If one of them may, but can't be told to, the name can't be followed.
+            //    Those of each star wait in `stars`, as following the next adds to `found`.
             None if name == "default" => return None,
             None => {
-                let mut definitions = Vec::new();
+                let waiting = scratch.stars.len();
                 for (star, star_type_only) in &exports.stars {
-                    match self.exports_name(*star, name, &mut FxHashSet::default()) {
+                    match self.exports_name(*star, name, scratch) {
                         Some(true) => {
-                            let found = self.follow(*star, name, followed)?;
-                            definitions.extend(with_type_only(found, *star_type_only));
+                            let found = self.follow(*star, name, scratch)?;
+                            let found = &scratch.found[found];
+                            let found = found.iter().map(|&(definition, type_only)| {
+                                (definition, type_only || *star_type_only)
+                            });
+                            scratch.stars.extend(found);
                         }
                         Some(false) => {}
                         None => return None,
                     }
                 }
-                definitions
+                let start = scratch.found.len();
+                scratch.found.extend(scratch.stars.drain(waiting..));
+                start..scratch.found.len()
             }
         };
-        followed.insert(key, Some(definitions.clone()));
+        scratch.followed.insert(key, Some(definitions.clone()));
         Some(definitions)
     }
 
     /// Whether `module` exports `name`, or `None` if that can't be told, as
-    /// for an external package. `seen` holds the modules asked about so far,
-    /// which a cycle of `export *` comes back to.
-    fn exports_name(
+    /// for an external package.
+    fn exports_name(&self, module: ModuleId, name: &str, scratch: &mut Scratch) -> Option<bool> {
+        scratch.seen.clear();
+        self.exports_name_unseen(module, name, &mut scratch.seen)
+    }
+
+    /// [`Self::exports_name`], where `seen` holds the modules asked about so
+    /// far, which a cycle of `export *` comes back to.
+    fn exports_name_unseen(
         &self,
         module: ModuleId,
         name: &str,
@@ -227,7 +291,7 @@ impl Names<'_> {
         }
         let mut exported = Some(false);
         for (star, _) in &exports.stars {
-            match self.exports_name(*star, name, seen) {
+            match self.exports_name_unseen(*star, name, seen) {
                 Some(true) => return Some(true),
                 Some(false) => {}
                 None => exported = None,
@@ -235,14 +299,6 @@ impl Names<'_> {
         }
         exported
     }
-}
-
-/// `definitions`, with only their types getting there if `type_only`.
-fn with_type_only(definitions: Vec<(ModuleId, bool)>, type_only: bool) -> Vec<(ModuleId, bool)> {
-    let definitions = definitions.into_iter();
-    definitions
-        .map(|(definition, type_only_there)| (definition, type_only || type_only_there))
-        .collect()
 }
 
 #[cfg(test)]
@@ -278,15 +334,12 @@ mod tests {
             };
             let names = match import.names {
                 ["*"] => ImportedNames::All,
-                names => ImportedNames::of(
-                    names
-                        .iter()
-                        .map(|name| match name.strip_suffix(":type") {
-                            Some(name) => ImportedName::new(name, true),
-                            None => ImportedName::new(*name, false),
-                        })
-                        .collect(),
-                ),
+                names => {
+                    ImportedNames::of(names.iter().map(|name| match name.strip_suffix(":type") {
+                        Some(name) => ImportedName::new(name, true),
+                        None => ImportedName::new(*name, false),
+                    }))
+                }
             };
             let detail = ImportDetail {
                 range: ByteRange::new(line * 100, line * 100 + 10),
@@ -301,7 +354,7 @@ mod tests {
             .iter()
             .map(|(module, exports)| {
                 let id = |name: &str| graph.id(name).unwrap_or_else(|| panic!("no `{name}`"));
-                (id(module), exports.clone().map(|source| Some(id(source))))
+                (id(module), exports.map(|source| Some(id(source))))
             })
             .collect();
         (graph, exports)

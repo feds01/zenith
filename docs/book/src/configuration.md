@@ -131,7 +131,15 @@ taken from the cache without being read if its size, times and inode are
 unchanged, or without being parsed if its contents are. The cache never
 changes what a check finds.
 
-The cache is one file in `[cache] dir`, `.zenith_cache` by default. zenith creates the directory, with a
+zenith also keeps the files that it found when it last walked the project,
+with the directories and ignore files that the walk read. While none of them
+has changed, the next run takes the files from the cache instead of walking
+again; adding, removing or renaming a file, or editing an ignore file, makes
+it walk again. What changed within two seconds of a run starting is never
+trusted, so a run right after an edit may walk again.
+
+The cache is two files in `[cache] dir`, `.zenith_cache` by default: `parse.bin`, what was found in
+each file, and `walk.bin`, what the walk found. zenith creates the directory, with a
 `.gitignore` that ignores everything in it, so it is never committed. A new
 version of zenith, or a configuration that needs more from each file, such as
 `reexports = "transparent"`, starts a new cache; a cache that is corrupt, or

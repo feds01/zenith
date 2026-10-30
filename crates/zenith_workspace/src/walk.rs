@@ -2,14 +2,19 @@
 //! `teamsearch` and `bracketlint`.
 
 use std::{
+    env,
+    hash::Hash,
     mem,
     path::{Path, PathBuf},
-    sync::{Mutex, PoisonError},
+    sync::{
+        Mutex, PoisonError,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use ignore::{
     DirEntry, Match, ParallelVisitor, ParallelVisitorBuilder, WalkBuilder, WalkState,
-    gitignore::{Gitignore, GitignoreBuilder},
+    gitignore::{Gitignore, GitignoreBuilder, gitconfig_excludes_path},
 };
 use log::warn;
 use rustc_hash::FxHashMap;
@@ -106,13 +111,90 @@ pub struct WalkResult {
 pub fn walk(file_system: &dyn FileSystem, root: &Path, settings: &WalkSettings) -> WalkResult {
     match file_system.listed_files(root) {
         Some(files) => walk_listed(file_system, root, files, settings, true),
-        None => walk_with(root, settings, true),
+        None => walk_with(root, settings, true, None),
     }
 }
 
+/// What a walk of the disk depends on, besides its
+/// [inputs](WalkSettings::inputs): what it finds can only change if what is
+/// at one of these paths does.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WalkDependencies {
+    /// The paths of whose contents it depends on, files or directories, or
+    /// that nothing is there.
+    pub contents: Vec<PathBuf>,
+
+    /// The paths at which it depends only on the kind of what is there,
+    /// if anything.
+    pub kinds: Vec<PathBuf>,
+}
+
+/// What a walk of the disk at `root` depends on outside the directories that
+/// it reads, which is known before it walks: the ignore files above the root,
+/// whether they are there or not, the `.git` and `.jj` above it, which make
+/// the repository that it is in, the files that that repository's excludes
+/// are read from, and git's global excludes and the configuration that says
+/// where they are.
+pub fn walk_dependencies_outside(root: &Path, settings: &WalkSettings) -> WalkDependencies {
+    let mut dependencies = WalkDependencies::default();
+    for dir in root.ancestors() {
+        if dir != root {
+            dependencies.contents.extend([dir.join(".gitignore"), dir.join(".ignore")]);
+        }
+        dependencies.contents.extend(repository_paths(dir));
+        dependencies.kinds.extend([dir.join(".git"), dir.join(".jj")]);
+    }
+    if settings.respect_gitignore {
+        dependencies.contents.extend(global_exclude_paths());
+    }
+    dependencies.contents.sort_unstable();
+    dependencies.contents.dedup();
+    dependencies
+}
+
+/// [`walk`] of the disk, and what what it finds depends on inside the
+/// directories that it reads: those directories, those it skips as build
+/// output, the ignore files in them, and the files that the excludes of the
+/// repositories inside are read from, each that isn't there with the nearest
+/// directory above it that is, which shows when it appears. What depends on
+/// the rest is [`walk_dependencies_outside`]. `None` instead if the walk ran
+/// into an error, so that what it found may not be all there is.
+pub fn walk_recording(
+    root: &Path,
+    settings: &WalkSettings,
+) -> (WalkResult, Option<WalkDependencies>) {
+    let recording = Recording::default();
+    let result = walk_with(root, settings, true, Some(&recording));
+    if recording.failed.load(Ordering::Relaxed) {
+        return (result, None);
+    }
+    let mut contents = recording.paths.into_inner().unwrap_or_else(PoisonError::into_inner);
+    contents.extend(ignore_files(root));
+    contents.push(root.to_path_buf());
+    contents.sort_unstable();
+    contents.dedup();
+    (result, Some(WalkDependencies { contents, kinds: Vec::new() }))
+}
+
+/// What a walk records, as [`walk_recording`] needs it.
+#[derive(Debug, Default)]
+struct Recording {
+    /// The paths that the walk reads.
+    paths: Mutex<Vec<PathBuf>>,
+
+    /// Whether the walk ran into an error.
+    failed: AtomicBool,
+}
+
 /// [`walk`], choosing whether git's global excludes apply, so that tests don't
-/// depend on the developer's git configuration.
-fn walk_with(root: &Path, settings: &WalkSettings, git_global: bool) -> WalkResult {
+/// depend on the developer's git configuration. With `recording`, what the
+/// walk reads, as [`walk_recording`] needs it, is recorded in it.
+fn walk_with(
+    root: &Path,
+    settings: &WalkSettings,
+    git_global: bool,
+    recording: Option<&Recording>,
+) -> WalkResult {
     let respect = settings.respect_gitignore;
     let walker = WalkBuilder::new(root)
         .hidden(false)
@@ -128,7 +210,7 @@ fn walk_with(root: &Path, settings: &WalkSettings, git_global: bool) -> WalkResu
         .build_parallel();
 
     let result = Mutex::new(WalkResult::default());
-    walker.visit(&mut VisitorBuilder { root, settings, result: &result });
+    walker.visit(&mut VisitorBuilder { root, settings, result: &result, recording });
 
     let mut result = result.into_inner().unwrap_or_else(PoisonError::into_inner);
     // Each path is found once, and comparing them by components would cost more
@@ -304,11 +386,7 @@ fn matcher(file_system: &dyn FileSystem, path: &Path, dir: &Path) -> Option<Giti
 /// `dir`: in its `.git` directory, or in the common directory of the linked
 /// worktree or submodule that its `.git` file points to.
 fn info_exclude(dir: &Path) -> Option<PathBuf> {
-    let git = dir.join(".git");
-    let git_dir = match git.is_dir() {
-        true => git,
-        false => dir.join(OsFileSystem.read_text(&git).ok()?.strip_prefix("gitdir:")?.trim()),
-    };
+    let git_dir = git_dir(dir)?;
     let common = match OsFileSystem.read_text(&git_dir.join("commondir")) {
         Ok(common) => git_dir.join(common.trim()),
         Err(_) => git_dir,
@@ -316,7 +394,90 @@ fn info_exclude(dir: &Path) -> Option<PathBuf> {
     Some(common.join("info/exclude"))
 }
 
+/// The git directory of the repository whose worktree is at `dir`: its
+/// `.git` directory, or the one that its `.git` file points to.
+fn git_dir(dir: &Path) -> Option<PathBuf> {
+    let git = dir.join(".git");
+    match git.is_dir() {
+        true => Some(git),
+        false => Some(dir.join(OsFileSystem.read_text(&git).ok()?.strip_prefix("gitdir:")?.trim())),
+    }
+}
+
+/// The ignore files in the directory `dir` that are there. One that appears
+/// changes the directory's entries, so those that aren't there needn't be
+/// recorded with the directory.
+fn ignore_files(dir: &Path) -> impl Iterator<Item = PathBuf> {
+    let files = [dir.join(".gitignore"), dir.join(".ignore")];
+    files.into_iter().filter(|file| OsFileSystem.link_kind(file).is_ok())
+}
+
+/// The files that the excludes of a repository whose worktree may be at
+/// `dir` are found from: its `.git` file, if it is one, the `commondir` in
+/// the git directory, and the `info/exclude` that leads to.
+fn repository_paths(dir: &Path) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    let git = dir.join(".git");
+    if git.is_file() {
+        paths.push(git);
+    }
+    if let Some(git_dir) = git_dir(dir) {
+        paths.push(git_dir.join("commondir"));
+        paths.extend(info_exclude(dir));
+    }
+    paths
+}
+
+/// The files that git's global excludes may be read from, and the
+/// configuration files that may say where they are, as the walk finds
+/// them.
+fn global_exclude_paths() -> Vec<PathBuf> {
+    let home = env::home_dir();
+    let config = (env::var_os("XDG_CONFIG_HOME").filter(|dir| !dir.is_empty()))
+        .map(PathBuf::from)
+        .or_else(|| Some(home.as_ref()?.join(".config")));
+    let mut paths: Vec<PathBuf> =
+        env::var_os("GIT_CONFIG_GLOBAL").map(PathBuf::from).into_iter().collect();
+    paths.extend(home.map(|home| home.join(".gitconfig")));
+    paths.extend(
+        config.iter().flat_map(|config| [config.join("git/config"), config.join("git/ignore")]),
+    );
+    let system = env::var_os("GIT_CONFIG_SYSTEM").filter(|path| !path.is_empty());
+    paths.push(system.map_or_else(|| "/etc/gitconfig".into(), PathBuf::from));
+    paths.extend(gitconfig_excludes_path());
+    paths
+}
+
 impl WalkSettings {
+    /// What a walk of the disk with these settings depends on besides what
+    /// is at the paths that [`walk_recording`] records: the settings, the
+    /// working directory, and the environment variables that say where
+    /// git's configuration is. Hash it into the key of what is kept of the
+    /// walk.
+    pub fn inputs(&self) -> impl Hash + use<> {
+        let globs = |globs: &[Glob]| -> Vec<String> {
+            globs.iter().map(|glob| glob.as_str().to_string()).collect()
+        };
+        let variables = [
+            "HOME",
+            "XDG_CONFIG_HOME",
+            "GIT_CONFIG_GLOBAL",
+            "GIT_CONFIG_SYSTEM",
+            "GIT_CONFIG_NOSYSTEM",
+        ];
+        let environment: Vec<_> = variables.iter().map(env::var_os).collect();
+        (
+            globs(&self.include),
+            globs(&self.exclude),
+            self.respect_gitignore,
+            self.source_extensions.clone(),
+            self.source_file_names.clone(),
+            self.manifests.clone(),
+            env::current_dir().ok(),
+            environment,
+        )
+    }
+
     /// Whether the walk skips the directory `name` in `file_system`, at the
     /// POSIX path `relative` to the root, and at `path`.
     fn skips_dir(
@@ -373,6 +534,9 @@ struct VisitorBuilder<'a> {
 
     /// The result that every visitor merges into.
     result: &'a Mutex<WalkResult>,
+
+    /// What the walk reads, if it is recorded, which every visitor adds to.
+    recording: Option<&'a Recording>,
 }
 
 impl<'s> ParallelVisitorBuilder<'s> for VisitorBuilder<'s> {
@@ -382,6 +546,8 @@ impl<'s> ParallelVisitorBuilder<'s> for VisitorBuilder<'s> {
             settings: self.settings,
             local: WalkResult::default(),
             result: self.result,
+            local_recorded: Vec::new(),
+            recording: self.recording,
         })
     }
 }
@@ -400,6 +566,46 @@ struct Visitor<'a> {
 
     /// The result to merge into.
     result: &'a Mutex<WalkResult>,
+
+    /// The paths this thread found that the walk reads, if they are
+    /// recorded.
+    local_recorded: Vec<PathBuf>,
+
+    /// What the walk reads, to merge into, if it is recorded.
+    recording: Option<&'a Recording>,
+}
+
+impl Visitor<'_> {
+    /// Record what the walk reads of the directory at `path`, named `name`,
+    /// if it records anything: if it walks it, its entries and the ignore
+    /// files among them, and if it skips it as build output, its entries,
+    /// which say whether it is a package. A `.git` makes the repository whose
+    /// excludes apply in the directory that it is in.
+    fn record_dir(&mut self, path: &Path, name: &str, skipped: bool) {
+        if self.recording.is_none() {
+            return;
+        }
+        if !skipped {
+            self.local_recorded.extend(ignore_files(path));
+            self.local_recorded.push(path.to_path_buf());
+        } else if PACKAGE_OUTPUT_DIRS.contains(&name) {
+            self.local_recorded.push(path.to_path_buf());
+        }
+        // The repository that the root is in is one of what the walk depends on
+        // outside the directories it reads.
+        if name == ".git"
+            && let Some(parent) = path.parent()
+            && parent != self.root
+        {
+            for path in repository_paths(parent) {
+                if OsFileSystem.link_kind(&path).is_err() {
+                    let existing = path.ancestors().skip(1).find(|dir| dir.is_dir());
+                    self.local_recorded.extend(existing.map(Path::to_path_buf));
+                }
+                self.local_recorded.push(path);
+            }
+        }
+    }
 }
 
 impl Drop for Visitor<'_> {
@@ -408,6 +614,10 @@ impl Drop for Visitor<'_> {
         let mut result = self.result.lock().unwrap_or_else(PoisonError::into_inner);
         result.source_files.extend(local.source_files);
         result.manifests.extend(local.manifests);
+        if let Some(recording) = self.recording {
+            let local = mem::take(&mut self.local_recorded);
+            recording.paths.lock().unwrap_or_else(PoisonError::into_inner).extend(local);
+        }
     }
 }
 
@@ -417,6 +627,9 @@ impl ParallelVisitor for Visitor<'_> {
             Ok(entry) => entry,
             Err(error) => {
                 warn!("{error}");
+                if let Some(recording) = self.recording {
+                    recording.failed.store(true, Ordering::Relaxed);
+                }
                 return WalkState::Continue;
             }
         };
@@ -436,10 +649,14 @@ impl ParallelVisitor for Visitor<'_> {
 
         if file_type.is_dir() {
             let skip = self.settings.skips_dir(&OsFileSystem, &relative, &name, path);
+            self.record_dir(path, &name, skip);
             return if skip { WalkState::Skip } else { WalkState::Continue };
         }
 
         // This also skips symlinks, which the walk doesn't follow.
+        if name == ".git" {
+            self.record_dir(path, &name, true);
+        }
         if file_type.is_file() {
             self.settings.collect_file(&relative, &name, path, &mut self.local);
         }
@@ -547,7 +764,7 @@ mod tests {
             };
             (relative(&result.source_files), relative(&result.manifests))
         };
-        let walked = relative(walk_with(root, settings, false));
+        let walked = relative(walk_with(root, settings, false, None));
         let files = Listed.listed_files(root).unwrap();
         let listed = relative(walk_listed(&Listed, root, files, settings, false));
         assert_eq!(listed, walked, "the walk of the listed files differs");
@@ -681,6 +898,86 @@ mod tests {
         write(&root, ".ignore", "!a.ts\n");
         write(&root, "src/.gitignore", "*.ts\n");
         assert_eq!(found(&root, &settings(&[])).0, ["src/a.ts"]);
+    }
+
+    #[test]
+    fn records_what_the_walk_of_the_disk_depends_on() {
+        let (_dir, root) = project(&[
+            "package.json",
+            "src/a.ts",
+            "src/lib/b.ts",
+            "dist/c.js",
+            "node_modules/x/index.js",
+            "generated/d.ts",
+            "vendor/repo/e.ts",
+        ]);
+        fs::create_dir(root.join(".git")).unwrap();
+        write(&root, ".gitignore", "generated/\n");
+        write(&root, "src/.ignore", "");
+        write(&root, ".git/info/exclude", "");
+        write(&root, "vendor/repo/.git", "gitdir: ../../.git/modules/repo\n");
+        write(&root, ".git/modules/repo/info/exclude", "");
+
+        let settings = settings(&[]);
+        let (result, dependencies) = walk_recording(&root, &settings);
+        let dependencies = dependencies.unwrap();
+        assert_eq!(result.source_files, walk_with(&root, &settings, true, None).source_files);
+
+        let relative = |paths: &[PathBuf]| -> Vec<String> {
+            let inside = paths.iter().filter_map(|path| relative_posix(&root, path));
+            inside.filter(|path| !path.starts_with(".git/")).collect()
+        };
+        // The directories that the walk read, with the ignore files that are there,
+        // the build output that it skipped, and the repositories' files, not what
+        // it never reads: dependencies, ignored directories and git's own.
+        assert_eq!(
+            relative(&dependencies.contents),
+            [
+                "",
+                ".gitignore",
+                "dist",
+                "src",
+                "src/.ignore",
+                "src/lib",
+                "vendor",
+                "vendor/repo",
+                "vendor/repo/.git",
+            ]
+        );
+        // The submodule's excludes, and the git directory above its `commondir`,
+        // which isn't there.
+        let submodule = root.join("vendor/repo/../../.git/modules/repo");
+        assert!(dependencies.contents.contains(&submodule.join("info/exclude")));
+        assert!(dependencies.contents.contains(&submodule.join("commondir")));
+        assert!(dependencies.contents.contains(&submodule));
+        assert!(dependencies.kinds.is_empty());
+
+        // Outside, the root repository's excludes, and above the root, its ignore
+        // files and only whether there is a `.git` or `.jj`, and what kind.
+        let outside = walk_dependencies_outside(&root, &settings);
+        let parent = root.parent().unwrap();
+        assert!(outside.contents.contains(&root.join(".git/info/exclude")));
+        assert!(outside.contents.contains(&parent.join(".gitignore")));
+        assert!(!outside.contents.contains(&parent.to_path_buf()));
+        assert!(outside.kinds.contains(&parent.join(".git")));
+        assert!(outside.kinds.contains(&parent.join(".jj")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_walk_that_runs_into_an_error_records_nothing() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (_dir, root) = project(&["src/a.ts", "locked/b.ts"]);
+        let locked = root.join("locked");
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        let (result, dependencies) = walk_recording(&root, &settings(&[]));
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+
+        // Unless the tests run as root, which reads it anyway.
+        if result.source_files.len() == 1 {
+            assert_eq!(dependencies, None);
+        }
     }
 
     #[test]

@@ -12,6 +12,7 @@ publish = { workspace = true }
 zenith_utils = { workspace = true }
 
 log = { workspace = true }
+rayon = { workspace = true }
 rustc-hash = { workspace = true }
 tempfile = { workspace = true }
 xxhash-rust = { workspace = true }

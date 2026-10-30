@@ -2752,6 +2752,7 @@ name = "zenith_cache"
 version = "0.6.0"
 dependencies = [
  "log",
+ "rayon",
  "rustc-hash 2.1.3",
  "tempfile",
  "xxhash-rust",

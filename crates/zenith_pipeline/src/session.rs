@@ -149,6 +149,9 @@ pub struct Stats {
     /// The source files whose imports came from the parse cache, rather than
     /// the parser.
     pub cached_files: usize,
+
+    /// Whether what the walk found came from the cache, rather than walking.
+    pub cached_walk: bool,
 }
 
 impl Session {

@@ -84,6 +84,17 @@ impl Project {
             }
         }
     }
+
+    /// [`Project::backdate`] the files, and the directories, the cache's
+    /// among them, so that the walk of the project is trusted.
+    fn backdate_all(&self) {
+        self.backdate();
+        let hour_ago = SystemTime::now() - Duration::from_secs(3_600);
+        let cache = self.cache().dir;
+        for dir in [&self.root, &cache] {
+            fs::File::open(dir).unwrap().set_modified(hour_ago).unwrap();
+        }
+    }
 }
 
 /// The imports of the file `name`: what each imports, and the specifier and
@@ -588,6 +599,34 @@ fn changed_added_and_removed_files_are_found() {
     let session = project.build_cached("1.0.0");
     assert_eq!(session.stats.cached_files, 3);
     assert_eq!(files(&session.graph), ["a.ts", "c.ts", "d.ts"]);
+}
+
+#[test]
+fn the_walk_is_kept_until_what_it_read_changes() {
+    let project = Project::new(&[("a.ts", b""), ("b.ts", b"")]);
+    let names = |names: &[&str]| names.iter().map(|name| name.to_string()).collect::<Vec<_>>();
+    let walk = |project: &Project| {
+        let session = project.build_cached("1.0.0");
+        let files = files(&session.graph).into_iter().map(str::to_string).collect::<Vec<_>>();
+        (session.stats.cached_walk, files)
+    };
+
+    // The first walk is kept, once what it read is old enough to trust.
+    assert_eq!(walk(&project), (false, names(&["a.ts", "b.ts"])));
+    project.backdate_all();
+    assert_eq!(walk(&project), (false, names(&["a.ts", "b.ts"])));
+    assert_eq!(walk(&project), (true, names(&["a.ts", "b.ts"])));
+
+    // A file added, or an ignore file changed, is found by walking again.
+    fs::write(project.root.join("c.ts"), "").unwrap();
+    assert_eq!(walk(&project), (false, names(&["a.ts", "b.ts", "c.ts"])));
+    project.backdate_all();
+    fs::write(project.root.join(".gitignore"), "b.ts\n").unwrap();
+    project.backdate_all();
+    assert_eq!(walk(&project), (false, names(&["a.ts", "c.ts"])));
+    assert_eq!(walk(&project), (true, names(&["a.ts", "c.ts"])));
+    fs::write(project.root.join(".gitignore"), "c.ts\n").unwrap();
+    assert_eq!(walk(&project), (false, names(&["a.ts", "b.ts"])));
 }
 
 #[test]

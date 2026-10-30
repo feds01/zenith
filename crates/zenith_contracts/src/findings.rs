@@ -263,6 +263,27 @@ impl Violation {
         }
     }
 
+    /// Every link of the violation: those of its chains, with their extra
+    /// heads and tails, its illegal imports, the imports of its cycle
+    /// breakers, or those over its limit.
+    pub(crate) fn links(&self) -> Vec<&Link> {
+        match self {
+            Self::Dependency { chains, .. } => chains
+                .iter()
+                .flat_map(|chain| {
+                    chain.links.iter().chain(&chain.extra_heads).chain(&chain.extra_tails)
+                })
+                .collect(),
+            Self::IllegalImports { imports, .. } | Self::LimitExceeded { imports, .. } => {
+                imports.iter().collect()
+            }
+            Self::Cycle { breakers, .. } => {
+                breakers.iter().flat_map(|breaker| &breaker.imports).collect()
+            }
+            Self::UndeclaredModule { .. } => Vec::new(),
+        }
+    }
+
     /// The direct imports that a baseline records to leave the violation
     /// out: the first links of its chains, made by the importing unit's own
     /// code, the illegal imports, the imports of the cycle breakers, or the

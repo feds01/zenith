@@ -17,7 +17,9 @@ rayon = { workspace = true }
 rustc-hash = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
+smol_str = { workspace = true }
 thin-vec = { workspace = true }
+triomphe = { workspace = true }
 zenith_diagnostics = { workspace = true }
 zenith_utils = { workspace = true }
 

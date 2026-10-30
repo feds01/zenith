@@ -9,6 +9,7 @@ use ra_ap_syntax::{
     ast::{self, HasAttrs, HasGenericArgs, HasName, HasVisibility},
 };
 use rustc_hash::{FxHashMap, FxHashSet};
+use smol_str::SmolStr;
 use thin_vec::ThinVec;
 use zenith_graph::{Exports, ImportDetail, ImportKind, ImportedName, ImportedNames, ReExport};
 use zenith_lang::{ParsedFile, Suppression, SyntaxError};
@@ -583,7 +584,7 @@ impl<'s> Reader<'s> {
     /// stands for, if another declaration brought it into scope: `use
     /// smoltcp::socket::tcp;` then `use tcp::State;` imports
     /// `smoltcp::socket::tcp::State`.
-    fn unalias(&self, specifier: &mut CompactString, declaration: usize) {
+    fn unalias(&self, specifier: &mut SmolStr, declaration: usize) {
         // A few steps follow a chain of names, and stop a cycle.
         for _ in 0..8 {
             let (first, rest) = specifier.split_once("::").unwrap_or((specifier, ""));
@@ -594,7 +595,7 @@ impl<'s> Reader<'s> {
                 return;
             }
             *specifier = match rest {
-                "" => path.clone(),
+                "" => SmolStr::new(path),
                 rest => format!("{path}::{rest}").into(),
             };
         }
@@ -762,7 +763,7 @@ fn taken(specifier: &str) -> ImportedNames {
     let mut items = body.split("::").skip(1);
     let name = items.find(|segment| segment.starts_with(char::is_uppercase));
     let name = name.unwrap_or_else(|| last_segment(body));
-    ImportedNames::of(ThinVec::from([ImportedName::new(name, false)]))
+    ImportedNames::of([ImportedName::new(name, false)])
 }
 
 /// The last segment of a path.

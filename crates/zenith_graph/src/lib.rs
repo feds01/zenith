@@ -55,7 +55,7 @@ mod view;
 pub use builder::{FileHandle, GraphBuilder, GraphError, NodeHandle, NodeIds};
 pub use cycles::{UnitDependency, UnitGraph, UnitId};
 pub use diff::DependencyDiff;
-pub use exports::{Exports, ImportedName, ImportedNames, ReExport};
+pub use exports::{Exports, ImportedName, ImportedNames, NameList, ReExport};
 pub use graph::{Graph, ImportDetail, ModuleId, Node, NodeKind};
 pub use kinds::{ImportKind, KindSet};
 pub use layers::{Architecture, LayerId, LayerRef, Level, LevelId, PackageDependency, Route};

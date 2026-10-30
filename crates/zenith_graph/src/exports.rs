@@ -3,8 +3,11 @@
 //! only re-exports other modules, can be followed to the modules that define
 //! what it takes.
 
+use std::{fmt, ops::Deref};
+
 use compact_str::CompactString;
 use thin_vec::ThinVec;
+use triomphe::ThinArc;
 
 /// What an import statement takes from the module it imports.
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -19,17 +22,59 @@ pub enum ImportedNames {
     /// `import b, { a } from "./m"`, in source order. Never empty: an import of
     /// no names (`import {} from "./m"`) runs the module, so it takes
     /// `All`.
-    Names(ThinVec<ImportedName>),
+    Names(NameList),
 }
 
 impl ImportedNames {
     /// The names, or `All` if there are none, which an import of no names
     /// takes.
-    pub fn of(names: ThinVec<ImportedName>) -> Self {
-        match names.is_empty() {
-            true => Self::All,
-            false => Self::Names(names),
-        }
+    pub fn of<I>(names: I) -> Self
+    where
+        I: IntoIterator<Item = ImportedName>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        NameList::new(names).map_or(Self::All, Self::Names)
+    }
+}
+
+/// The names that an import statement takes, which every copy of the import
+/// shares: copying it, as the graph does for each module the names come
+/// from, copies none of them. Never empty.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct NameList(ThinArc<(), ImportedName>);
+
+impl NameList {
+    /// `names`, or `None` if there are none.
+    pub fn new<I>(names: I) -> Option<Self>
+    where
+        I: IntoIterator<Item = ImportedName>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let names = names.into_iter();
+        (names.len() > 0).then(|| Self(ThinArc::from_header_and_iter((), names)))
+    }
+}
+
+impl Deref for NameList {
+    type Target = [ImportedName];
+
+    fn deref(&self) -> &[ImportedName] {
+        &self.0.slice
+    }
+}
+
+impl<'a> IntoIterator for &'a NameList {
+    type Item = &'a ImportedName;
+    type IntoIter = std::slice::Iter<'a, ImportedName>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl fmt::Debug for NameList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
     }
 }
 
@@ -89,30 +134,30 @@ impl<S> Default for Exports<S> {
     }
 }
 
-impl<S> Exports<S> {
+impl<S: Copy> Exports<S> {
     /// These exports, with the source of each re-export mapped by `source`.
     /// A re-export or star whose source maps to `None` is left out, as one
     /// whose import couldn't be resolved.
-    pub fn map<T>(self, mut source: impl FnMut(S) -> Option<T>) -> Exports<T> {
+    pub fn map<T>(&self, mut source: impl FnMut(S) -> Option<T>) -> Exports<T> {
         Exports {
             pass_through: self.pass_through,
-            names: self.names,
+            names: self.names.clone(),
             reexports: self
                 .reexports
-                .into_iter()
+                .iter()
                 .filter_map(|reexport| {
                     Some(ReExport {
-                        name: reexport.name,
+                        name: reexport.name.clone(),
                         source: source(reexport.source)?,
-                        imported: reexport.imported,
+                        imported: reexport.imported.clone(),
                         type_only: reexport.type_only,
                     })
                 })
                 .collect(),
             stars: self
                 .stars
-                .into_iter()
-                .filter_map(|(star, type_only)| Some((source(star)?, type_only)))
+                .iter()
+                .filter_map(|&(star, type_only)| Some((source(star)?, type_only)))
                 .collect(),
         }
     }

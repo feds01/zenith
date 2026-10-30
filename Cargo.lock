@@ -2828,7 +2828,9 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "smol_str",
  "thin-vec",
+ "triomphe",
  "zenith_diagnostics",
  "zenith_utils",
 ]
@@ -2922,6 +2924,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "smol_str",
  "tempfile",
  "thin-vec",
  "toml",

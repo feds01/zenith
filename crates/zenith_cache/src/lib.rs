@@ -17,10 +17,10 @@
 //!   but its contents hash the same, e.g. after a checkout or a `touch`.
 //!
 //! Anything else is computed again. The cache never changes what a run
-//! finds: a file whose stamp doesn't match is processed as if there were no
-//! cache, and a cache file that is missing, corrupt, or written by another
-//! version of zenith or for other inputs is ignored, and replaced at the end
-//! of the run.
+//! finds: a file whose stamp doesn't match, or whose value doesn't decode, is
+//! processed as if there were no cache, and a cache file that is missing,
+//! corrupt, or written by another version of zenith or for other inputs is
+//! ignored, and replaced at the end of the run.
 //!
 //! Concurrent runs are safe: a run reads the whole file at once, and
 //! replaces it by renaming a complete temporary file over it, so the file is
@@ -36,6 +36,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use encoding::Encoded;
 pub use encoding::{Cached, Decoder, Encoder};
 use log::debug;
 use rustc_hash::FxHashMap;
@@ -128,13 +129,13 @@ pub struct Stamp {
 }
 
 /// A file's entry in the cache.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct Entry<T> {
     /// When the file was last seen.
     stamp: Stamp,
 
-    /// What was found in it.
-    value: T,
+    /// What was found in it, decoded when it is used.
+    value: Encoded<T>,
 }
 
 /// Where a file's value came from.
@@ -208,7 +209,7 @@ impl<T: Cached> Cache<T> {
         let decoded = fs::read(&path)
             .map_err(|error| debug!("no cache at `{}`: {error}", path.display()))
             .and_then(|bytes| {
-                encoding::decode(&bytes, cache.key).map_err(|rejected| match rejected {
+                encoding::decode(bytes, cache.key).map_err(|rejected| match rejected {
                     Rejected::OtherKey => debug!(
                         "ignoring the cache at `{}`, of another version of zenith or other inputs",
                         path.display()
@@ -249,7 +250,7 @@ impl<T: Cached> Cache<T> {
     /// entry in this cache, if that shows the file is unchanged, or else from
     /// `compute`, given its contents. Off the disk, a file has no metadata to
     /// trust, so it is always read, and its entry used if its contents hash
-    /// the same.
+    /// the same. An entry whose value doesn't decode is not used.
     pub fn lookup(
         &self,
         file_system: &dyn FileSystem,
@@ -262,8 +263,13 @@ impl<T: Cached> Cache<T> {
         let on_disk = file_system.on_disk();
         let entry = match entry {
             Some(entry) if on_disk && self.is_unchanged(path, entry.stamp) => {
-                let Entry { stamp, value } = entry;
-                return Lookup { value: Ok(value), stamp: Some(stamp), origin: Origin::Unchanged };
+                match entry.value.decode() {
+                    Some(value) => {
+                        let (stamp, origin) = (Some(entry.stamp), Origin::Unchanged);
+                        return Lookup { value: Ok(value), stamp, origin };
+                    }
+                    None => None,
+                }
             }
             entry => entry,
         };
@@ -283,9 +289,10 @@ impl<T: Cached> Cache<T> {
 
         // 3. Reuse the entry if the contents hash the same, and compute the value
         //    otherwise.
-        let (value, origin) = match entry {
-            Some(entry) if entry.stamp.hash == stamp.hash => (entry.value, Origin::Verified),
-            _ => (compute(&source), Origin::Computed),
+        let cached = entry.filter(|entry| entry.stamp.hash == stamp.hash);
+        let (value, origin) = match cached.and_then(|entry| entry.value.decode()) {
+            Some(value) => (value, Origin::Verified),
+            None => (compute(&source), Origin::Computed),
         };
         Lookup { value: Ok(value), stamp: Some(stamp), origin }
     }
@@ -340,6 +347,8 @@ fn nanos_since_epoch(time: SystemTime) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use tempfile::TempDir;
     use zenith_utils::{fs::OsFileSystem, testing::Overlay};
 
@@ -369,10 +378,19 @@ mod tests {
         Cache { settings, key: 0, written_at, entries: FxHashMap::default() }
     }
 
-    /// An entry that `compute` never makes, so that a test can tell whether
-    /// it was used.
+    /// The value of [`entry`], which `compute` never makes, so that a test
+    /// can tell whether it was used.
+    fn cached() -> Value {
+        Value("from the cache".into(), 0)
+    }
+
+    /// An entry of [`cached`].
     fn entry(fingerprint: Option<Fingerprint>, hash: u128) -> Entry<Value> {
-        Entry { stamp: Stamp { fingerprint, hash }, value: Value("from the cache".into(), 0) }
+        let mut encoder = Encoder::default();
+        cached().encode(&mut encoder);
+        let bytes = encoder.into_bytes();
+        let range = 0..bytes.len();
+        Entry { stamp: Stamp { fingerprint, hash }, value: Encoded::new(Arc::new(bytes), range) }
     }
 
     /// The value of the file at `path`, computed from its contents.
@@ -399,7 +417,7 @@ mod tests {
         let same = Some(entry(Some(fingerprint), xxh3_128(SOURCE.as_bytes())));
         let found = cache.lookup(&off_disk, &path, same, compute);
         assert_eq!(found.origin, Origin::Verified);
-        assert_eq!(found.value.unwrap(), Value("from the cache".into(), 0));
+        assert_eq!(found.value.unwrap(), cached());
     }
 
     #[test]
@@ -411,7 +429,7 @@ mod tests {
         let cache = cache_written(fingerprint, RACY_WINDOW + Duration::from_millis(1));
         let found = lookup(&cache, &path, stale());
         assert_eq!(found.origin, Origin::Unchanged);
-        assert_eq!(found.value.unwrap(), stale().unwrap().value);
+        assert_eq!(found.value.unwrap(), cached());
         assert_eq!(found.stamp, Some(stale().unwrap().stamp));
 
         // A file modified within the window of the run that recorded it could have
@@ -435,7 +453,7 @@ mod tests {
         for recorded in [Some(old), None] {
             let found = lookup(&cache, &path, Some(entry(recorded, hash)));
             assert_eq!(found.origin, Origin::Verified);
-            assert_eq!(found.value.unwrap(), entry(None, 0).value);
+            assert_eq!(found.value.unwrap(), cached());
             // The new stamp has the new fingerprint.
             assert_eq!(found.stamp, Some(Stamp { fingerprint: Some(fingerprint), hash }));
         }
@@ -452,6 +470,21 @@ mod tests {
             assert_eq!(found.origin, Origin::Computed);
             assert_eq!(found.value.unwrap(), Value(SOURCE.into(), 1));
             assert_eq!(found.stamp, Some(Stamp { fingerprint: Some(fingerprint), hash }));
+        }
+    }
+
+    #[test]
+    fn entries_whose_values_do_not_decode_are_computed() {
+        let (_dir, path, fingerprint) = file(SOURCE);
+        let hash = xxh3_128(SOURCE.as_bytes());
+        let cache = cache_written(fingerprint, Duration::from_secs(60));
+        let invalid = Arc::new(vec![1, 2, 3]);
+        for recorded in [Some(fingerprint), None] {
+            let value = Encoded::new(invalid.clone(), 0..invalid.len());
+            let entry = Entry { stamp: Stamp { fingerprint: recorded, hash }, value };
+            let found = lookup(&cache, &path, Some(entry));
+            assert_eq!(found.origin, Origin::Computed);
+            assert_eq!(found.value.unwrap(), Value(SOURCE.into(), 1));
         }
     }
 
@@ -473,7 +506,7 @@ mod tests {
         assert!(Cache::<Value>::load(settings.clone(), "inputs").is_empty());
 
         let stamp = Stamp { fingerprint: None, hash: 1 };
-        let value = entry(None, 0).value;
+        let value = cached();
         let started = SystemTime::UNIX_EPOCH + Duration::from_secs(10);
         let cache = Cache::<Value>::load(settings.clone(), "inputs");
         cache.save(started, [("a.ts", &stamp, &value)].into_iter()).unwrap();
@@ -485,8 +518,10 @@ mod tests {
         let mut cache = Cache::<Value>::load(settings.clone(), "inputs");
         assert_eq!(cache.written_at, 10_000_000_000);
         assert_eq!(cache.len(), 1);
-        assert_eq!(cache.take("a.ts"), Some(Entry { stamp, value }));
-        assert_eq!((cache.take("a.ts"), cache.len()), (None, 0));
+        let entry = cache.take("a.ts").unwrap();
+        assert_eq!((entry.stamp, entry.value.decode()), (stamp, Some(value)));
+        assert!(cache.take("a.ts").is_none());
+        assert_eq!(cache.len(), 0);
 
         // Another version, other inputs, or a corrupt file, is an empty cache.
         let other = CacheSettings { version: "1.0.1".into(), ..settings.clone() };

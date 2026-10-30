@@ -3,7 +3,7 @@
 use std::{
     fs,
     ops::Range,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -92,9 +92,26 @@ impl Project {
         let hour_ago = SystemTime::now() - Duration::from_secs(3_600);
         let cache = self.cache().dir;
         for dir in [&self.root, &cache] {
-            fs::File::open(dir).unwrap().set_modified(hour_ago).unwrap();
+            open_to_set_times(dir).set_modified(hour_ago).unwrap();
         }
     }
+}
+
+/// The directory `dir`, opened so that its times can be set, which Windows
+/// only allows with the flag that opens a directory, and the right to write
+/// its attributes.
+fn open_to_set_times(dir: &Path) -> fs::File {
+    let mut options = fs::OpenOptions::new();
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
+        const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+        options.access_mode(FILE_WRITE_ATTRIBUTES).custom_flags(FILE_FLAG_BACKUP_SEMANTICS);
+    }
+    #[cfg(not(windows))]
+    options.read(true);
+    options.open(dir).unwrap()
 }
 
 /// The imports of the file `name`: what each imports, and the specifier and

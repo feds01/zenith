@@ -354,13 +354,17 @@ impl<'a> Decoder<'a> {
         (len <= self.bytes.len()).then_some(len)
     }
 
-    /// A list, reading each item with `item`.
-    pub fn list<T, C>(&mut self, mut item: impl FnMut(&mut Self) -> Option<T>) -> Option<C>
+    /// A list, reading each item with `item`. The collection is made with
+    /// room for every item, where collecting the `Option`s would grow it
+    /// item by item.
+    pub fn list<T, C>(&mut self, item: impl FnMut(&mut Self) -> Option<T>) -> Option<C>
     where
         C: FromIterator<T>,
     {
-        let len = self.length()?;
-        (0..len).map(|_| item(self)).collect()
+        let left = self.length()?;
+        let mut items = Items { decoder: self, item, left, failed: false };
+        let list = C::from_iter(&mut items);
+        (!items.failed).then_some(list)
     }
 
     /// The entries of the cache file `file`, whose bytes these are part of,
@@ -393,6 +397,43 @@ impl<'a> Decoder<'a> {
             changed: self.u64()?,
             inode: self.u64()?,
         })
+    }
+}
+
+/// The items of a list as [`Decoder::list`] reads them, which says how many
+/// there are, and ends at the first that can't be read.
+struct Items<'d, 'a, F> {
+    /// The decoder they are read from.
+    decoder: &'d mut Decoder<'a>,
+
+    /// Reads one item.
+    item: F,
+
+    /// How many are left to read.
+    left: usize,
+
+    /// Whether an item couldn't be read.
+    failed: bool,
+}
+
+impl<'a, T, F: FnMut(&mut Decoder<'a>) -> Option<T>> Iterator for Items<'_, 'a, F> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        if self.left == 0 || self.failed {
+            return None;
+        }
+        self.left -= 1;
+        let item = (self.item)(self.decoder);
+        self.failed = item.is_none();
+        item
+    }
+
+    // Fewer items than the hint come only after one that can't be read, when the
+    // list is thrown away.
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let left = if self.failed { 0 } else { self.left };
+        (left, Some(left))
     }
 }
 

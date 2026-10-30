@@ -4,6 +4,7 @@
 //! project root, on every platform.
 
 use std::{
+    borrow::Cow,
     cmp::Ordering,
     iter,
     path::{Component, MAIN_SEPARATOR, MAIN_SEPARATOR_STR, Path, PathBuf, is_separator},
@@ -25,15 +26,21 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
 /// inside `root`. A `..` component counts as outside, since it can lead out of
 /// `root`.
 pub fn relative_posix(root: &Path, path: &Path) -> Option<String> {
+    relative_posix_cow(root, path).map(Cow::into_owned)
+}
+
+/// [`relative_posix`], borrowed from `path` where it can be, as it usually
+/// can on platforms whose separator is `/`.
+pub fn relative_posix_cow<'p>(root: &Path, path: &'p Path) -> Option<Cow<'p, str>> {
     // Zenith names every file it finds and every import it resolves, so take
     // the usual case, a normalised path inside the root, as text.
-    relative_text(root, path).or_else(|| relative_by_components(root, path))
+    relative_text(root, path).or_else(|| relative_by_components(root, path).map(Cow::Owned))
 }
 
 /// [`relative_posix`] for a UTF-8 `path` that starts with the text of `root`
 /// and a separator, and has no empty, `.` or `..` segments after it. `None`
 /// for any other path, which [`relative_by_components`] decides on.
-fn relative_text(root: &Path, path: &Path) -> Option<String> {
+fn relative_text<'p>(root: &Path, path: &'p Path) -> Option<Cow<'p, str>> {
     let (root, path) = (root.to_str()?, path.to_str()?);
     let rest = path.strip_prefix(root)?;
     let rest = if root.ends_with(is_separator) { rest } else { rest.strip_prefix(is_separator)? };
@@ -41,8 +48,8 @@ fn relative_text(root: &Path, path: &Path) -> Option<String> {
         return None;
     }
     Some(match MAIN_SEPARATOR {
-        '/' => rest.to_owned(),
-        _ => rest.replace(is_separator, "/"),
+        '/' => Cow::Borrowed(rest),
+        _ => Cow::Owned(rest.replace(is_separator, "/")),
     })
 }
 
@@ -230,7 +237,7 @@ mod tests {
                 assert_eq!(relative_posix(root, path), expected, "{root:?} {path:?}");
                 // The text form only answers when it agrees.
                 if let Some(text) = relative_text(root, path) {
-                    assert_eq!(Some(text), expected, "{root:?} {path:?}");
+                    assert_eq!(Some(text.into_owned()), expected, "{root:?} {path:?}");
                 }
             }
         }

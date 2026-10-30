@@ -566,8 +566,9 @@ impl ImportParts {
     /// imported, then detail, so that each run of one pair is an edge, and
     /// the edges are sorted too.
     fn group(node_count: usize, imports: Vec<(ModuleId, ModuleId, ImportDetail)>) -> Self {
-        let mut edges = Vec::new();
-        let mut detail_offsets = Vec::new();
+        let edge_count = imports.chunk_by(|a, b| (a.0, a.1) == (b.0, b.1)).count();
+        let mut edges = Vec::with_capacity(edge_count);
+        let mut detail_offsets = Vec::with_capacity(edge_count + 1);
         let mut details = Vec::with_capacity(imports.len());
         for (importer, imported, detail) in imports {
             if edges.last() != Some(&(importer, imported)) {

@@ -18,7 +18,7 @@ use zenith_lang::{ResolveFailure, Resolved, UnresolvedReason};
 use zenith_utils::{
     fs::{FileSystem, disk},
     glob::NamePattern,
-    path::{is_extension, relative_posix},
+    path::{is_extension, relative_posix_cow},
     specifier::{package_from_path, package_name, split_query, split_scheme, squash_builtin},
 };
 
@@ -336,10 +336,10 @@ impl Resolver {
 
     /// Classify the file that `specifier` resolved to.
     fn classify(&self, specifier: &str, path: &Path) -> Resolved {
-        if let Some(relative) = relative_posix(&self.root, path)
+        if let Some(relative) = relative_posix_cow(&self.root, path)
             && !relative.split('/').any(|segment| segment == "node_modules")
         {
-            return Resolved::Internal(relative);
+            return Resolved::Internal(relative.into_owned());
         }
         let (specifier, _) = split_query(specifier);
         match package_name(specifier).map(str::to_string).or_else(|| package_from_path(path)) {

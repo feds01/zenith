@@ -12,4 +12,6 @@ pub mod testing;
 mod walk;
 
 pub use git::{CommitFileSystem, Git, GitError, Renames, TrackedFiles};
-pub use walk::{WalkResult, WalkSettings, walk};
+pub use walk::{
+    WalkDependencies, WalkResult, WalkSettings, walk, walk_dependencies_outside, walk_recording,
+};

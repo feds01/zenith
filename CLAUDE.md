@@ -53,7 +53,8 @@ a new kind of responsibility, not for each feature:
   `tests/ui.rs`.
 - `zenith_benchmark`: the benchmarks, and the synthetic monorepo they run on.
 - `zenith_cache`: the cache of what zenith found in each file between runs,
-  and its file format.
+  and of what a stage found in the whole project while what it read is
+  unchanged, and their file format.
 - `zenith_config`: the `zenith.toml` types, schema, discovery and validation,
   and the interface through which each language owns its `[languages]` table.
   It knows no language.

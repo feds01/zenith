@@ -22,11 +22,15 @@
 //! corrupt, or written by another version of zenith or for other inputs is
 //! ignored, and replaced at the end of the run.
 //!
+//! A [`Snapshot`] keeps one value that a stage made from the whole project,
+//! rather than one for each file, while what it read is unchanged.
+//!
 //! Concurrent runs are safe: a run reads the whole file at once, and
 //! replaces it by renaming a complete temporary file over it, so the file is
 //! always one run's cache, whichever wrote last.
 
 mod encoding;
+mod snapshot;
 
 use std::{
     fs::{self, Metadata},
@@ -40,6 +44,7 @@ use encoding::Encoded;
 pub use encoding::{Cached, Decoder, Encoder};
 use log::debug;
 use rustc_hash::FxHashMap;
+pub use snapshot::{Observed, Snapshot};
 use tempfile::NamedTempFile;
 use xxhash_rust::xxh3::{Xxh3, xxh3_128};
 use zenith_utils::fs::{FileSystem, read_text_with_metadata};
@@ -68,6 +73,53 @@ impl CacheSettings {
     /// The path of the cache file of `T`s.
     pub fn path<T: Cached>(&self) -> PathBuf {
         self.dir.join(T::FILE)
+    }
+
+    /// The key of the cache files of values computed with `inputs`, by this
+    /// version of zenith. Every input is hashed into it, rather than named,
+    /// so a new one can't be left out.
+    fn key(&self, inputs: impl Hash) -> u64 {
+        let mut hasher = Xxh3::new();
+        (self.version.as_str(), inputs).hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// The cache file of `T`s, as `decode` decodes it, or `None` if it is
+    /// missing, or `decode` rejects it.
+    fn read<T: Cached, D>(&self, decode: impl FnOnce(Vec<u8>) -> Result<D, Rejected>) -> Option<D> {
+        let path = self.path::<T>();
+        let bytes = fs::read(&path)
+            .map_err(|error| debug!("no cache file at `{}`: {error}", path.display()))
+            .ok()?;
+        decode(bytes)
+            .map_err(|rejected| match rejected {
+                Rejected::OtherKey => debug!(
+                    "ignoring the cache file at `{}`, of another version of zenith or other inputs",
+                    path.display()
+                ),
+                Rejected::Corrupt => {
+                    debug!("ignoring the cache file at `{}`, which is corrupt", path.display())
+                }
+            })
+            .ok()
+    }
+
+    /// Replace the cache file of `T`s with `bytes`.
+    fn write<T: Cached>(&self, bytes: &[u8]) -> io::Result<()> {
+        // 1. Create the directory, which git should ignore wherever it is.
+        let dir = &self.dir;
+        fs::create_dir_all(dir)?;
+        let gitignore = dir.join(".gitignore");
+        if !gitignore.exists() {
+            fs::write(gitignore, "# Created by zenith.\n*\n")?;
+        }
+
+        // 2. Write the whole file next to the cache file, then rename it over it, so
+        //    that other runs read either the old cache or the new one.
+        let mut file = NamedTempFile::new_in(dir)?;
+        file.write_all(bytes)?;
+        file.persist(self.path::<T>()).map_err(|error| error.error)?;
+        Ok(())
     }
 }
 
@@ -114,6 +166,14 @@ impl Fingerprint {
         #[cfg(not(any(unix, windows)))]
         let (changed, inode) = (0, 0);
         Some(Self { len: metadata.len(), modified, changed, inode })
+    }
+
+    /// Whether the fingerprint can be trusted to tell that what it was taken
+    /// of is unchanged, given that it was recorded by a run that started at
+    /// `written_at`, in nanoseconds since the Unix epoch: whether it was last
+    /// modified more than [`RACY_WINDOW`] before.
+    fn trusted(&self, written_at: u64) -> bool {
+        self.modified.saturating_add(RACY_WINDOW.as_nanos() as u64) < written_at
     }
 }
 
@@ -200,26 +260,11 @@ impl<T: Cached> Cache<T> {
     /// is missing, corrupt, or written by another version of zenith or with
     /// other inputs is an empty cache.
     pub fn load(settings: CacheSettings, inputs: impl Hash) -> Self {
-        let mut hasher = Xxh3::new();
-        (settings.version.as_str(), inputs).hash(&mut hasher);
-        let mut cache =
-            Self { key: hasher.finish(), settings, written_at: 0, entries: FxHashMap::default() };
+        let key = settings.key(inputs);
+        let mut cache = Self { key, settings, written_at: 0, entries: FxHashMap::default() };
 
-        let path = cache.settings.path::<T>();
-        let decoded = fs::read(&path)
-            .map_err(|error| debug!("no cache at `{}`: {error}", path.display()))
-            .and_then(|bytes| {
-                encoding::decode(bytes, cache.key).map_err(|rejected| match rejected {
-                    Rejected::OtherKey => debug!(
-                        "ignoring the cache at `{}`, of another version of zenith or other inputs",
-                        path.display()
-                    ),
-                    Rejected::Corrupt => {
-                        debug!("ignoring the cache at `{}`, which is corrupt", path.display())
-                    }
-                })
-            });
-        if let Ok(decoded) = decoded {
+        if let Some(decoded) = cache.settings.read::<T, _>(|bytes| encoding::decode(bytes, key)) {
+            let path = cache.settings.path::<T>();
             debug!("read the cache of {} files from `{}`", decoded.entries.len(), path.display());
             (cache.written_at, cache.entries) = (decoded.written_at, decoded.entries);
         }
@@ -304,8 +349,7 @@ impl<T: Cached> Cache<T> {
         let Some(recorded) = stamp.fingerprint else {
             return false;
         };
-        let trusted = recorded.modified.saturating_add(RACY_WINDOW.as_nanos() as u64);
-        trusted < self.written_at
+        recorded.trusted(self.written_at)
             && fs::metadata(path).ok().as_ref().and_then(Fingerprint::new) == Some(recorded)
     }
 
@@ -319,22 +363,8 @@ impl<T: Cached> Cache<T> {
     where
         T: 'a,
     {
-        // 1. Create the directory, which git should ignore wherever it is.
-        let dir = &self.settings.dir;
-        fs::create_dir_all(dir)?;
-        let gitignore = dir.join(".gitignore");
-        if !gitignore.exists() {
-            fs::write(gitignore, "# Created by zenith.\n*\n")?;
-        }
-
-        // 2. Write the whole file next to the cache file, then rename it over it, so
-        //    that other runs read either the old cache or the new one.
         let written_at = nanos_since_epoch(started).unwrap_or(0);
-        let bytes = encoding::encode(self.key, written_at, entries);
-        let mut file = NamedTempFile::new_in(dir)?;
-        file.write_all(&bytes)?;
-        file.persist(self.settings.path::<T>()).map_err(|error| error.error)?;
-        Ok(())
+        self.settings.write::<T>(&encoding::encode(self.key, written_at, entries))
     }
 }
 

@@ -92,6 +92,27 @@ pub(crate) fn encode<'a, T: Cached + 'a>(
     }
 
     // 2. Put the header in front of them.
+    wrap(key, body)
+}
+
+/// Decode a cache file written with `key`, all but the values of its
+/// entries.
+pub(crate) fn decode<T: Cached>(bytes: Vec<u8>, key: u64) -> Result<Decoded<T>, Rejected> {
+    // 1. Check the header and the checksum.
+    let shared = Arc::new(bytes);
+    let mut decoder = unwrap(&shared, key)?;
+
+    // 2. Read the rest, and nothing may be left over.
+    let written_at = decoder.u64().ok_or(Rejected::Corrupt)?;
+    let entries = decoder.entries(&shared).ok_or(Rejected::Corrupt)?;
+    if !decoder.bytes.is_empty() {
+        return Err(Rejected::Corrupt);
+    }
+    Ok(Decoded { written_at, entries })
+}
+
+/// The bytes of a cache file with `key`: the header, then `body`.
+pub(crate) fn wrap(key: u64, body: Encoder) -> Vec<u8> {
     let mut file = Encoder::default();
     file.bytes.extend_from_slice(MAGIC);
     file.u32(FORMAT);
@@ -101,12 +122,11 @@ pub(crate) fn encode<'a, T: Cached + 'a>(
     file.bytes
 }
 
-/// Decode a cache file written with `key`, all but the values of its
-/// entries.
-pub(crate) fn decode<T: Cached>(bytes: Vec<u8>, key: u64) -> Result<Decoded<T>, Rejected> {
-    // 1. Check that it is a cache file, of this format and key.
-    let shared = Arc::new(bytes);
-    let mut decoder = Decoder { bytes: &shared };
+/// A decoder of the body of the cache file `bytes`, once its header shows
+/// that it is a cache file of this format and `key`, and its checksum that
+/// its body is whole.
+pub(crate) fn unwrap(bytes: &[u8], key: u64) -> Result<Decoder<'_>, Rejected> {
+    let mut decoder = Decoder { bytes };
     if decoder.take(MAGIC.len()) != Some(MAGIC) {
         return Err(Rejected::Corrupt);
     }
@@ -114,20 +134,11 @@ pub(crate) fn decode<T: Cached>(bytes: Vec<u8>, key: u64) -> Result<Decoded<T>, 
     if format != FORMAT || decoder.u64().ok_or(Rejected::Corrupt)? != key {
         return Err(Rejected::OtherKey);
     }
-
-    // 2. Check the rest against its checksum before reading it.
     let checksum = decoder.u64().ok_or(Rejected::Corrupt)?;
     if xxh3_64(decoder.bytes) != checksum {
         return Err(Rejected::Corrupt);
     }
-
-    // 3. Read the rest, and nothing may be left over.
-    let written_at = decoder.u64().ok_or(Rejected::Corrupt)?;
-    let entries = decoder.entries(&shared).ok_or(Rejected::Corrupt)?;
-    if !decoder.bytes.is_empty() {
-        return Err(Rejected::Corrupt);
-    }
-    Ok(Decoded { written_at, entries })
+    Ok(decoder)
 }
 
 /// The encoding of a value in a cache file, which [`Encoded::decode`]
@@ -243,13 +254,15 @@ impl Encoder {
     }
 
     fn stamp(&mut self, stamp: &Stamp) {
-        self.option(stamp.fingerprint.as_ref(), |encoder, fingerprint| {
-            let Fingerprint { len, modified, changed, inode } = *fingerprint;
-            for value in [len, modified, changed, inode] {
-                encoder.u64(value);
-            }
-        });
+        self.option(stamp.fingerprint.as_ref(), Self::fingerprint);
         self.u128(stamp.hash);
+    }
+
+    pub(crate) fn fingerprint(&mut self, fingerprint: &Fingerprint) {
+        let Fingerprint { len, modified, changed, inode } = *fingerprint;
+        for value in [len, modified, changed, inode] {
+            self.u64(value);
+        }
     }
 }
 
@@ -369,15 +382,17 @@ impl<'a> Decoder<'a> {
     }
 
     fn stamp(&mut self) -> Option<Stamp> {
-        let fingerprint = self.option(|decoder| {
-            Some(Fingerprint {
-                len: decoder.u64()?,
-                modified: decoder.u64()?,
-                changed: decoder.u64()?,
-                inode: decoder.u64()?,
-            })
-        })?;
+        let fingerprint = self.option(Self::fingerprint)?;
         Some(Stamp { fingerprint, hash: self.u128()? })
+    }
+
+    pub(crate) fn fingerprint(&mut self) -> Option<Fingerprint> {
+        Some(Fingerprint {
+            len: self.u64()?,
+            modified: self.u64()?,
+            changed: self.u64()?,
+            inode: self.u64()?,
+        })
     }
 }
 

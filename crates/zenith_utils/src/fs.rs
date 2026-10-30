@@ -1,17 +1,25 @@
 //! Reading files: the [`FileSystem`] that zenith reads a project through,
 //! [`OsFileSystem`] for the disk, [`ListingCache`], which lists each
-//! directory of another once, and helpers that read the disk directly.
+//! directory of another once, [`Recorder`], which records what is read
+//! through another, and helpers that read the disk directly.
 
 use std::{
+    borrow::Borrow,
     collections::{HashMap, HashSet},
     ffi::OsString,
     fmt,
     fs::{self, File, FileType, Metadata},
+    hash::{Hash, Hasher},
     io::{self, Read},
-    path::{Path, PathBuf},
-    sync::{Arc, LazyLock, PoisonError, RwLock},
+    mem,
+    path::{Path, PathBuf, is_separator},
+    sync::{
+        Arc, LazyLock, Mutex, PoisonError, RwLock,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
+use rustc_hash::FxHashSet;
 use serde_json::Value;
 
 use crate::path::normalize_path;
@@ -107,7 +115,7 @@ pub trait FileSystem: fmt::Debug + Send + Sync {
 }
 
 /// What a path names, as a [`FileSystem`] tells it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FileKind {
     /// A file.
     File,
@@ -252,6 +260,318 @@ impl FileSystem for ListingCache<'_> {
     }
 }
 
+/// Another [`FileSystem`], which records what is asked of it while it
+/// [records](Recorder::record), so that what is made from what was read can
+/// be kept while that is unchanged. Everything is asked of the other file
+/// system.
+///
+/// What is at a path under the project's root shows in the entries of the
+/// directories above it, up to the root, since a link among them could lead
+/// elsewhere, and what is at a path outside it only in what is there.
+#[derive(Debug)]
+pub struct Recorder {
+    /// The other file system.
+    file_system: Arc<dyn FileSystem>,
+
+    /// The canonical root of the project.
+    root: PathBuf,
+
+    /// Whether it records.
+    recording: AtomicBool,
+
+    /// What was asked while it recorded, in parts that threads mostly don't
+    /// share, so they seldom wait for one another.
+    asked: Box<[Mutex<Asked>]>,
+}
+
+/// What a [`Recorder`] was asked about a path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Question {
+    /// What is there, if anything, without following a link at its end.
+    Entry,
+
+    /// Nothing: it was found to be a file, so not a directory whose entries
+    /// tell what is under it, since nothing is.
+    File,
+
+    /// What is there, following links.
+    Kind,
+
+    /// The contents of the file there, or the entries of the directory.
+    Contents,
+}
+
+/// What a [`Recorder`] was asked while it recorded.
+#[derive(Debug, Default)]
+struct Asked {
+    /// The directories under the root, the root among them, that hold a path
+    /// asked about.
+    dirs: FxHashSet<Text>,
+
+    /// The paths under the root that were found to be files.
+    files: Vec<PathBuf>,
+
+    /// The paths whose contents were read.
+    contents: Vec<PathBuf>,
+
+    /// The paths at which what is there was asked, following links, and
+    /// those outside the root at which it was asked at all, each with what
+    /// was there.
+    kinds: Vec<(PathBuf, Seen)>,
+}
+
+/// What was at a path when it was asked about, following links, or `None`
+/// for nothing.
+type Seen = Option<FileKind>;
+
+/// What was read through a [`Recorder`] while it recorded: what is at
+/// these paths now tells whether it would read the same again.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Recorded {
+    /// The paths whose contents were read, files or directories, and the
+    /// directories under the root whose entries tell what is at a path
+    /// asked about, in no particular order.
+    pub contents: Vec<PathBuf>,
+
+    /// The paths at which what is there was asked, following links, and
+    /// those outside the root at which it was asked at all, each with what
+    /// was there then, following links, or `None` for nothing, in no
+    /// particular order. No directory that was recorded tells what is at
+    /// them, so a value made from what was read depends on it being the
+    /// same.
+    pub kinds: Vec<(PathBuf, Option<FileKind>)>,
+}
+
+/// A path, told apart from others by its text, which is far quicker to hash
+/// than its components, as a path is hashed.
+#[derive(Debug)]
+struct Text(PathBuf);
+
+impl Text {
+    /// The text of `path`.
+    fn of(path: &Path) -> &[u8] {
+        path.as_os_str().as_encoded_bytes()
+    }
+}
+
+impl PartialEq for Text {
+    fn eq(&self, other: &Self) -> bool {
+        Text::of(&self.0) == Text::of(&other.0)
+    }
+}
+
+impl Eq for Text {}
+
+impl Hash for Text {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Text::of(&self.0).hash(state);
+    }
+}
+
+/// So that a path is looked up by its text, without a copy of it.
+impl Borrow<[u8]> for Text {
+    fn borrow(&self) -> &[u8] {
+        Text::of(&self.0)
+    }
+}
+
+impl Recorded {
+    /// Add what `other` recorded, which may name the same paths.
+    pub fn merge(&mut self, other: &Self) {
+        self.contents.extend(other.contents.iter().cloned());
+        self.kinds.extend(other.kinds.iter().cloned());
+    }
+}
+
+impl Recorder {
+    /// The parts of what was asked, which threads share when there are more.
+    const PARTS: usize = 64;
+
+    /// A recorder of what is read from `file_system` of the project at the
+    /// canonical `root`.
+    pub fn new(file_system: Arc<dyn FileSystem>, root: &Path) -> Self {
+        Self {
+            file_system,
+            root: root.to_path_buf(),
+            recording: AtomicBool::new(false),
+            asked: (0..Self::PARTS).map(|_| Mutex::default()).collect(),
+        }
+    }
+
+    /// Run `work`, recording what is read through this file system
+    /// meanwhile, by any thread. Nothing else should read through it then.
+    pub fn record<R>(&self, work: impl FnOnce() -> R) -> (R, Recorded) {
+        self.recording.store(true, Ordering::Relaxed);
+        let result = work();
+        self.recording.store(false, Ordering::Relaxed);
+        (result, self.take())
+    }
+
+    /// Run `work` without recording what it reads, for what a value made
+    /// from what is recorded doesn't depend on.
+    pub fn unrecorded<R>(&self, work: impl FnOnce() -> R) -> R {
+        let recording = self.recording.swap(false, Ordering::Relaxed);
+        let result = work();
+        self.recording.store(recording, Ordering::Relaxed);
+        result
+    }
+
+    /// Whether it records.
+    fn records(&self) -> bool {
+        self.recording.load(Ordering::Relaxed)
+    }
+
+    /// Note that `question` was asked about `path`, if it records, with what
+    /// was `seen` there if that matters.
+    fn ask(&self, question: Question, path: &Path, seen: impl FnOnce() -> Seen) {
+        if !self.records() {
+            return;
+        }
+        let parent = path.parent().filter(|parent| self.is_under_root(parent));
+        let seen = match (question, parent) {
+            (Question::Kind, _) | (Question::Entry | Question::File, None) => Some(seen()),
+            _ => None,
+        };
+        let part = rayon::current_thread_index().map_or(0, |index| index + 1) % Self::PARTS;
+        let mut asked = self.asked[part].lock().unwrap_or_else(PoisonError::into_inner);
+        // Most paths asked about share their directory with others.
+        if let Some(parent) = parent
+            && !asked.dirs.contains(Text::of(parent))
+        {
+            asked.dirs.insert(Text(parent.to_path_buf()));
+        }
+        match (question, seen) {
+            (Question::Contents, _) => asked.contents.push(path.to_path_buf()),
+            (_, Some(seen)) => asked.kinds.push((path.to_path_buf(), seen)),
+            (Question::File, None) => asked.files.push(path.to_path_buf()),
+            (Question::Entry | Question::Kind, None) => {}
+        }
+    }
+
+    /// Note what was `found` at `path`: a file, or something under one.
+    fn found(&self, path: &Path, found: &io::Result<FileKind>) {
+        let file = match found {
+            Ok(FileKind::File | FileKind::Other) => Some(path),
+            Err(error) if error.kind() == io::ErrorKind::NotADirectory => path.parent(),
+            _ => None,
+        };
+        if let Some(file) = file {
+            self.ask(Question::File, file, || Some(FileKind::File));
+        }
+    }
+
+    /// What is at `path`, following links, or `None` for nothing.
+    fn seen(&self, path: &Path) -> Seen {
+        self.file_system.kind(path).ok()
+    }
+
+    /// What was recorded, which is then forgotten.
+    fn take(&self) -> Recorded {
+        // 1. Gather what each thread was asked.
+        let mut all = Asked::default();
+        for part in &self.asked {
+            let asked = mem::take(&mut *part.lock().unwrap_or_else(PoisonError::into_inner));
+            all.dirs.extend(asked.dirs);
+            all.files.extend(asked.files);
+            all.contents.extend(asked.contents);
+            all.kinds.extend(asked.kinds);
+        }
+
+        // 2. Add the directories above those, up to the root. Each one's are added with
+        //    it, so the climb stops at one that is already there.
+        let mut above = FxHashSet::default();
+        for Text(dir) in &all.dirs {
+            for dir in dir.ancestors().skip(1).take_while(|dir| self.is_under_root(dir)) {
+                if all.dirs.contains(Text::of(dir)) || above.contains(Text::of(dir)) {
+                    break;
+                }
+                above.insert(Text(dir.to_path_buf()));
+            }
+        }
+
+        // 3. A path found to be a file holds nothing, so isn't a directory to record.
+        let unique =
+            |paths: Vec<PathBuf>| -> FxHashSet<Text> { paths.into_iter().map(Text).collect() };
+        let files = unique(all.files);
+        let dirs = (all.dirs.into_iter().chain(above)).filter(|dir| !files.contains(dir));
+        let mut contents = unique(all.contents);
+        contents.extend(dirs);
+        let kinds: FxHashSet<(Text, Seen)> =
+            all.kinds.into_iter().map(|(path, seen)| (Text(path), seen)).collect();
+        Recorded {
+            contents: contents.into_iter().map(|Text(path)| path).collect(),
+            kinds: kinds.into_iter().map(|(Text(path), seen)| (path, seen)).collect(),
+        }
+    }
+
+    /// Whether `dir` is the root or under it, told by their text, as quickly
+    /// as the many paths that a resolver asks about need.
+    fn is_under_root(&self, dir: &Path) -> bool {
+        let root = self.root.as_os_str().as_encoded_bytes();
+        let rest = dir.as_os_str().as_encoded_bytes().strip_prefix(root);
+        rest.is_some_and(|rest| match rest.first() {
+            None => true,
+            Some(next) => {
+                root.last().is_some_and(|last| is_separator(char::from(*last)))
+                    || is_separator(char::from(*next))
+            }
+        })
+    }
+}
+
+impl FileSystem for Recorder {
+    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        self.ask(Question::Contents, path, || None);
+        self.file_system.read(path)
+    }
+
+    fn kind(&self, path: &Path) -> io::Result<FileKind> {
+        let kind = self.file_system.kind(path);
+        self.ask(Question::Kind, path, || kind.as_ref().ok().copied());
+        self.found(path, &kind);
+        kind
+    }
+
+    fn link_kind(&self, path: &Path) -> io::Result<FileKind> {
+        let kind = self.file_system.link_kind(path);
+        self.ask(Question::Entry, path, || match &kind {
+            Ok(FileKind::Symlink) => self.seen(path),
+            kind => kind.as_ref().ok().copied(),
+        });
+        self.found(path, &kind);
+        kind
+    }
+
+    fn read_dir(&self, path: &Path) -> io::Result<Vec<DirEntry>> {
+        self.ask(Question::Contents, path, || None);
+        self.file_system.read_dir(path)
+    }
+
+    fn read_link(&self, path: &Path) -> io::Result<PathBuf> {
+        self.ask(Question::Entry, path, || self.seen(path));
+        self.file_system.read_link(path)
+    }
+
+    fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
+        let canonical = self.file_system.canonicalize(path);
+        self.ask(Question::Kind, path, || canonical.as_ref().ok().and_then(|_| self.seen(path)));
+        canonical
+    }
+
+    fn on_disk(&self) -> bool {
+        self.file_system.on_disk()
+    }
+
+    fn listed_files(&self, dir: &Path) -> Option<Vec<DirEntry>> {
+        self.file_system.listed_files(dir)
+    }
+
+    fn read_text(&self, path: &Path) -> io::Result<String> {
+        self.ask(Question::Contents, path, || None);
+        self.file_system.read_text(path)
+    }
+}
+
 impl FileSystem for OsFileSystem {
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         fs::read(path)
@@ -357,6 +677,48 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn a_recorder_records_what_is_read_while_it_records() {
+        let dir = TempDir::new().unwrap();
+        let outside = adjust_canonicalisation(dir.path());
+        let root = outside.join("project");
+        fs::create_dir_all(root.join("src/lib")).unwrap();
+        fs::write(root.join("src/a.ts"), "").unwrap();
+        fs::write(root.join("package.json"), "{}").unwrap();
+        let recorder = Recorder::new(disk().clone(), &root);
+
+        // Nothing is recorded but what is read while it records.
+        recorder.link_kind(&root.join("b.ts")).unwrap_err();
+        let ((), recorded) = recorder.record(|| {
+            // What is at a path under the root is in the directories above it,
+            // and nothing is under a file.
+            recorder.link_kind(&root.join("src/lib/missing.ts")).unwrap_err();
+            recorder.link_kind(&root.join("src/a.ts/tsconfig.json")).unwrap_err();
+            // Contents are recorded themselves, as are what is at a path,
+            // following links, and what is at one outside the root.
+            recorder.read(&root.join("package.json")).unwrap();
+            recorder.kind(&root.join("src")).unwrap();
+            recorder.link_kind(&outside.join("node_modules")).unwrap_err();
+        });
+        let sorted = |mut paths: Vec<PathBuf>| {
+            paths.sort();
+            paths
+        };
+        let contents = ["", "package.json", "src", "src/lib"].map(|path| root.join(path));
+        assert_eq!(sorted(recorded.contents), contents);
+        let kinds =
+            [(outside.join("node_modules"), None), (root.join("src"), Some(FileKind::Directory))];
+        let mut recorded_kinds = recorded.kinds;
+        recorded_kinds.sort_by(|(a, _), (b, _)| a.cmp(b));
+        assert_eq!(recorded_kinds, kinds);
+
+        // What it recorded is forgotten, and what is read unrecorded never noted.
+        let ((), recorded) = recorder.record(|| {
+            recorder.unrecorded(|| recorder.read(&root.join("package.json")).unwrap());
+        });
+        assert_eq!(recorded, Recorded::default());
+    }
 
     #[test]
     fn a_listing_cache_keeps_each_listing() {

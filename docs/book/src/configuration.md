@@ -138,8 +138,18 @@ again; adding, removing or renaming a file, or editing an ignore file, makes
 it walk again. What changed within two seconds of a run starting is never
 trusted, so a run right after an edit may walk again.
 
-The cache is two files in `[cache] dir`, `.zenith_cache` by default: `parse.bin`, what was found in
-each file, and `walk.bin`, what the walk found. zenith creates the directory, with a
+zenith keeps what each file's imports resolved to as well, with the
+directories, `package.json` and `tsconfig.json` files and other manifests
+that resolving them, and finding the workspace packages, read. While none of
+them has changed, a file whose imports are the same takes what they resolved
+to from the cache; adding, removing or renaming a source file or a manifest,
+installing a package or editing a `tsconfig.json` resolves every file's
+imports again. Rust files resolve theirs on every run, since what they
+resolve to depends on what other files define.
+
+The cache is three files in `[cache] dir`, `.zenith_cache` by default: `parse.bin`, what was found in
+each file, `walk.bin`, what the walk found, and `resolve.bin`, what the
+imports resolved to. zenith creates the directory, with a
 `.gitignore` that ignores everything in it, so it is never committed. A new
 version of zenith, or a configuration that needs more from each file, such as
 `reexports = "transparent"`, starts a new cache; a cache that is corrupt, or

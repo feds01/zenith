@@ -3,6 +3,7 @@
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
+    time::SystemTime,
 };
 
 use rustc_hash::FxHashSet;
@@ -12,7 +13,7 @@ use zenith_diagnostics::{Report, SourceMap, message};
 use zenith_graph::{Graph, GraphBuilder, Scope};
 use zenith_lang::{FileSuppressions, ParsedFile, Resolved, Workspace};
 use zenith_utils::{
-    fs::{FileSystem, adjust_canonicalisation, disk},
+    fs::{FileSystem, Recorded, Recorder, adjust_canonicalisation, disk},
     path::{absolute_path, relative_posix},
 };
 use zenith_workspace::{Git, WalkSettings};
@@ -30,6 +31,22 @@ pub struct Session {
 
     /// The file system that the project's files are read from.
     pub file_system: Arc<dyn FileSystem>,
+
+    /// The same file system, which records what the backends read for the
+    /// stages that keep what they make from it.
+    pub(crate) recorder: Arc<Recorder>,
+
+    /// What the backends read to find the packages, from when the
+    /// [`Discover`](crate::StageKind::Discover) stage started finding them,
+    /// if it recorded that, as it does with a cache on the disk. What the
+    /// [`Resolve`](crate::StageKind::Resolve) stage keeps depends on it.
+    pub(crate) read_by_discovery: Option<(SystemTime, Recorded)>,
+
+    /// The manifests that the walk found, among which the backends found the
+    /// packages, so which of them there are is something else that what the
+    /// [`Resolve`](crate::StageKind::Resolve) stage keeps depends on. Found by
+    /// the [`Discover`](crate::StageKind::Discover) stage.
+    pub(crate) manifests: Vec<PathBuf>,
 
     /// The project's configuration.
     pub config: Config,
@@ -118,7 +135,7 @@ pub enum ResolvedImport {
 }
 
 /// A source file to scan.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SourceFile {
     /// Its POSIX path relative to the root, which is its name in the graph.
     pub name: String,
@@ -152,6 +169,10 @@ pub struct Stats {
 
     /// Whether what the walk found came from the cache, rather than walking.
     pub cached_walk: bool,
+
+    /// The source files whose imports resolved as they did in an earlier
+    /// run, which the cache kept, rather than being resolved again.
+    pub cached_resolutions: usize,
 }
 
 impl Session {
@@ -170,10 +191,15 @@ impl Session {
         config: Config,
     ) -> Self {
         let builds_graph_through_reexports = config.needs_graph_through_reexports();
+        let recorder = Arc::new(Recorder::new(file_system, &root));
+        let file_system: Arc<dyn FileSystem> = recorder.clone();
         Self {
             backends: Backends::new(&config, &root, &file_system, builds_graph_through_reexports),
             root,
             file_system,
+            recorder,
+            read_by_discovery: None,
+            manifests: Vec::new(),
             config,
             tracked_only: false,
             scope: Scope::default(),

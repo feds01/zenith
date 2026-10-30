@@ -57,6 +57,10 @@ impl Backend for JsBackend {
             .map_err(|error| ResolveFailure::new(error.to_string()))?;
         Ok(Box::new(resolver))
     }
+
+    fn resolves_by_specifier(&self) -> bool {
+        true
+    }
 }
 
 impl SourceParser for Parser {

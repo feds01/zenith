@@ -49,3 +49,4 @@ pipeline_stage_time = the {$stage} stage took {$time}
 pipeline_unchanged_files = {$unchanged} of {$total} files are unchanged since the last run
 pipeline_cache_not_written = could not write the parse cache to `{$dir}`: {$error}
 pipeline_walk_not_saved = could not write what the walk found to the cache in `{$dir}`: {$error}
+pipeline_resolutions_not_saved = could not write the resolved imports to the cache in `{$dir}`: {$error}

@@ -1,6 +1,7 @@
-//! How what the parser finds in a file is kept in zenith's cache.
+//! How what the parser finds in a file, and what an import resolves to, are
+//! kept in zenith's cache.
 
-use std::borrow::Cow;
+use std::{borrow::Cow, path::PathBuf};
 
 use thin_vec::ThinVec;
 use zenith_cache::{Cached, Decoder, Encoder};
@@ -9,7 +10,7 @@ use zenith_graph::{
 };
 use zenith_utils::location::Located;
 
-use crate::{ParsedFile, Suppression, SyntaxError};
+use crate::{ParsedFile, ResolveFailure, Resolved, Suppression, SyntaxError, UnresolvedReason};
 
 /// Everything the parser finds in a file, which depends only on its
 /// contents and the options it parsed with.
@@ -106,6 +107,96 @@ impl Cached for ParsedFile {
     }
 }
 
+impl Resolved {
+    /// Write what an import resolved to, as [`Resolved::decode`] reads it.
+    pub fn encode(&self, encoder: &mut Encoder) {
+        match self {
+            Self::Internal(name) => {
+                encoder.u8(0);
+                encoder.str(name);
+            }
+            Self::Package(name) => {
+                encoder.u8(1);
+                encoder.str(name);
+            }
+            Self::External { package, found } => {
+                encoder.u8(2);
+                encoder.str(package);
+                encoder.bool(*found);
+            }
+            Self::Builtin(name) => {
+                encoder.u8(3);
+                encoder.str(name);
+            }
+            Self::Unresolved(reason) => {
+                encoder.u8(4);
+                encode_reason(encoder, reason);
+            }
+            Self::Ignored(reason) => {
+                encoder.u8(5);
+                encode_reason(encoder, reason);
+            }
+        }
+    }
+
+    /// Read what an import resolved to, as [`Resolved::encode`] wrote it, or
+    /// `None` if the bytes don't hold it.
+    pub fn decode(decoder: &mut Decoder<'_>) -> Option<Self> {
+        Some(match decoder.u8()? {
+            0 => Self::Internal(decoder.str()?.to_string()),
+            1 => Self::Package(decoder.str()?.to_string()),
+            2 => Self::External { package: decoder.str()?.to_string(), found: decoder.bool()? },
+            3 => Self::Builtin(decoder.str()?.to_string()),
+            4 => Self::unresolved(decode_reason(decoder)?),
+            5 => Self::Ignored(Box::new(decode_reason(decoder)?)),
+            _ => return None,
+        })
+    }
+}
+
+fn encode_reason(encoder: &mut Encoder, reason: &UnresolvedReason) {
+    match reason {
+        UnresolvedReason::Failed(failure) => {
+            encoder.u8(0);
+            encoder.str(&failure.to_string());
+            encoder.bool(failure.is_config_error());
+        }
+        UnresolvedReason::NotExported { package, subpath } => {
+            encoder.u8(1);
+            encoder.str(package);
+            encoder.str(subpath);
+        }
+        UnresolvedReason::OutsideRoot(path) => {
+            // A path that isn't UTF-8 is only shown, so is kept as it is shown.
+            encoder.u8(2);
+            encoder.str(&path.to_string_lossy());
+        }
+        UnresolvedReason::UnsupportedScheme(scheme) => {
+            encoder.u8(3);
+            encoder.str(scheme);
+        }
+    }
+}
+
+fn decode_reason(decoder: &mut Decoder<'_>) -> Option<UnresolvedReason> {
+    Some(match decoder.u8()? {
+        0 => {
+            let (message, config_error) = (decoder.str()?, decoder.bool()?);
+            UnresolvedReason::Failed(match config_error {
+                true => ResolveFailure::config_error(message),
+                false => ResolveFailure::new(message),
+            })
+        }
+        1 => UnresolvedReason::NotExported {
+            package: decoder.str()?.to_string(),
+            subpath: decoder.str()?.to_string(),
+        },
+        2 => UnresolvedReason::OutsideRoot(PathBuf::from(decoder.str()?)),
+        3 => UnresolvedReason::UnsupportedScheme(decoder.str()?.to_string()),
+        _ => return None,
+    })
+}
+
 fn encode_kind(encoder: &mut Encoder, kind: ImportKind) {
     encoder.u8(kind as u8);
 }
@@ -181,6 +272,35 @@ mod tests {
     use zenith_utils::location::ByteRange;
 
     use super::*;
+
+    #[test]
+    fn decodes_what_imports_resolved_to_as_encoded() {
+        let reasons = [
+            UnresolvedReason::Failed(ResolveFailure::new("not found")),
+            UnresolvedReason::Failed(ResolveFailure::config_error("bad tsconfig.json")),
+            UnresolvedReason::NotExported { package: "@acme/ui".into(), subpath: "./x".into() },
+            UnresolvedReason::OutsideRoot(PathBuf::from("/elsewhere/a.ts")),
+            UnresolvedReason::UnsupportedScheme("virtual".into()),
+        ];
+        let resolved = [
+            Resolved::Internal("web/a.ts".into()),
+            Resolved::Package("services/api".into()),
+            Resolved::External { package: "react".into(), found: true },
+            Resolved::Builtin("node:fs".into()),
+        ]
+        .into_iter()
+        .chain(reasons.clone().map(Resolved::unresolved))
+        .chain(reasons.map(|reason| Resolved::Ignored(Box::new(reason))));
+        for resolved in resolved {
+            let mut encoder = Encoder::default();
+            resolved.encode(&mut encoder);
+            let bytes = encoder.into_bytes();
+            let mut decoder = Decoder::new(&bytes);
+            assert_eq!(Resolved::decode(&mut decoder), Some(resolved));
+            assert!(decoder.is_empty());
+        }
+        assert_eq!(Resolved::decode(&mut Decoder::new(&[6])), None);
+    }
 
     /// A file with something in every list and every kind of import.
     fn parsed_file() -> ParsedFile {

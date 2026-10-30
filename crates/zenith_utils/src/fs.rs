@@ -290,9 +290,9 @@ enum Question {
     /// What is there, if anything, without following a link at its end.
     Entry,
 
-    /// Nothing: it was found to be a file, so not a directory whose entries
-    /// tell what is under it, since nothing is.
-    File,
+    /// Nothing: it was found not to be a directory, as a file isn't, so not
+    /// one whose entries tell what is under it, since nothing is.
+    NoDirectory,
 
     /// What is there, following links.
     Kind,
@@ -308,8 +308,8 @@ struct Asked {
     /// asked about.
     dirs: FxHashSet<Text>,
 
-    /// The paths under the root that were found to be files.
-    files: Vec<PathBuf>,
+    /// The paths under the root that were found not to be directories.
+    no_dirs: Vec<PathBuf>,
 
     /// The paths whose contents were read.
     contents: Vec<PathBuf>,
@@ -429,7 +429,7 @@ impl Recorder {
         }
         let parent = path.parent().filter(|parent| self.is_under_root(parent));
         let seen = match (question, parent) {
-            (Question::Kind, _) | (Question::Entry | Question::File, None) => Some(seen()),
+            (Question::Kind, _) | (Question::Entry | Question::NoDirectory, None) => Some(seen()),
             _ => None,
         };
         let part = rayon::current_thread_index().map_or(0, |index| index + 1) % Self::PARTS;
@@ -443,20 +443,24 @@ impl Recorder {
         match (question, seen) {
             (Question::Contents, _) => asked.contents.push(path.to_path_buf()),
             (_, Some(seen)) => asked.kinds.push((path.to_path_buf(), seen)),
-            (Question::File, None) => asked.files.push(path.to_path_buf()),
+            (Question::NoDirectory, None) => asked.no_dirs.push(path.to_path_buf()),
             (Question::Entry | Question::Kind, None) => {}
         }
     }
 
-    /// Note what was `found` at `path`: a file, or something under one.
+    /// Note what was `found` at `path`: a file, or something under what
+    /// isn't a directory.
     fn found(&self, path: &Path, found: &io::Result<FileKind>) {
-        let file = match found {
-            Ok(FileKind::File | FileKind::Other) => Some(path),
-            Err(error) if error.kind() == io::ErrorKind::NotADirectory => path.parent(),
-            _ => None,
-        };
-        if let Some(file) = file {
-            self.ask(Question::File, file, || Some(FileKind::File));
+        match found {
+            Ok(FileKind::File | FileKind::Other) => {
+                self.ask(Question::NoDirectory, path, || Some(FileKind::File));
+            }
+            Err(error) if is_under_no_directory(error) => {
+                if let Some(parent) = path.parent() {
+                    self.ask(Question::NoDirectory, parent, || self.seen(parent));
+                }
+            }
+            _ => {}
         }
     }
 
@@ -472,7 +476,7 @@ impl Recorder {
         for part in &self.asked {
             let asked = mem::take(&mut *part.lock().unwrap_or_else(PoisonError::into_inner));
             all.dirs.extend(asked.dirs);
-            all.files.extend(asked.files);
+            all.no_dirs.extend(asked.no_dirs);
             all.contents.extend(asked.contents);
             all.kinds.extend(asked.kinds);
         }
@@ -489,11 +493,11 @@ impl Recorder {
             }
         }
 
-        // 3. A path found to be a file holds nothing, so isn't a directory to record.
+        // 3. A path found not to be a directory holds nothing, so isn't one to record.
         let unique =
             |paths: Vec<PathBuf>| -> FxHashSet<Text> { paths.into_iter().map(Text).collect() };
-        let files = unique(all.files);
-        let dirs = (all.dirs.into_iter().chain(above)).filter(|dir| !files.contains(dir));
+        let no_dirs = unique(all.no_dirs);
+        let dirs = (all.dirs.into_iter().chain(above)).filter(|dir| !no_dirs.contains(dir));
         let mut contents = unique(all.contents);
         contents.extend(dirs);
         let kinds: FxHashSet<(Text, Seen)> =
@@ -609,6 +613,21 @@ impl FileSystem for OsFileSystem {
 
     fn on_disk(&self) -> bool {
         true
+    }
+}
+
+/// Whether `error`, from asking about a path, says that what would hold it
+/// isn't a directory. Windows says so for a missing directory too, with an
+/// error that only tells that the path's directory wasn't found.
+fn is_under_no_directory(error: &io::Error) -> bool {
+    /// The error of Windows for a path whose directory wasn't found.
+    const ERROR_PATH_NOT_FOUND: i32 = 3;
+    match error.kind() {
+        io::ErrorKind::NotADirectory => true,
+        io::ErrorKind::NotFound => {
+            cfg!(windows) && error.raw_os_error() == Some(ERROR_PATH_NOT_FOUND)
+        }
+        _ => false,
     }
 }
 

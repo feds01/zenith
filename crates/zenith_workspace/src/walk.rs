@@ -21,7 +21,7 @@ use rustc_hash::FxHashMap;
 use zenith_utils::{
     fs::{self, FileKind, FileSystem, OsFileSystem},
     glob::Glob,
-    path::{compare_paths, relative_posix},
+    path::{compare_paths, relative_posix, relative_posix_cow},
     pool::thread_count,
 };
 
@@ -635,7 +635,7 @@ impl ParallelVisitor for Visitor<'_> {
         };
 
         let path = entry.path();
-        let Some(relative) = relative_posix(self.root, path) else {
+        let Some(relative) = relative_posix_cow(self.root, path) else {
             return WalkState::Continue;
         };
         if relative.is_empty() {

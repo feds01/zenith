@@ -4,6 +4,7 @@
 use std::{fmt, mem};
 
 use index_vec::{IndexVec, index_vec};
+use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use thin_vec::ThinVec;
 use zenith_diagnostics::message;
@@ -30,6 +31,17 @@ index_vec::define_index_type! {
     pub struct NodeHandle = u32;
     DEBUG_FORMAT = "NodeHandle({})";
     MAX_INDEX = u32::MAX as usize;
+}
+
+/// The id in a built graph of each handle that its builder gave out.
+#[derive(Debug)]
+pub struct NodeIds(IndexVec<NodeHandle, ModuleId>);
+
+impl NodeIds {
+    /// The id of the node with `handle`.
+    pub fn get(&self, handle: impl Into<NodeHandle>) -> ModuleId {
+        self.0[handle.into()]
+    }
 }
 
 impl From<FileHandle> for NodeHandle {
@@ -253,12 +265,13 @@ impl GraphBuilder {
     /// A file that imports the package it is in gets no edge, as one that
     /// imports itself gets none, and a detail recorded twice is kept once.
     /// Nothing is added unless `package` is a directory path, or the root.
+    /// Returns the handle of the package.
     pub fn add_package_import(
         &mut self,
         importer: FileHandle,
         package: &str,
         detail: ImportDetail,
-    ) -> Result<(), GraphError> {
+    ) -> Result<NodeHandle, GraphError> {
         let package = match package.is_empty() {
             true => NodeHandle::new(0),
             false if is_relative_posix(package) => self.directory(package)?,
@@ -269,11 +282,17 @@ impl GraphBuilder {
             self.nodes[package].package = true;
             self.imports.push(PendingImport { importer, imported: package, detail });
         }
-        Ok(())
+        Ok(package)
     }
 
     /// Finish building: assign ids in name order, and sort every list.
     pub fn finish(self) -> Graph {
+        self.finish_with_ids().0
+    }
+
+    /// Build the graph, as [`GraphBuilder::finish`] does, with the id that
+    /// each handle got in it.
+    pub fn finish_with_ids(self) -> (Graph, NodeIds) {
         let GraphBuilder { handles, mut nodes, imports, optional_extensions, directory_modules } =
             self;
 
@@ -309,10 +328,11 @@ impl GraphBuilder {
             .into_iter()
             .map(|import| (ids[import.importer], ids[import.imported], import.detail))
             .collect();
-        imports.sort_unstable();
+        imports.par_sort_unstable();
         imports.dedup();
 
-        Graph::from_parts(parts, imports, optional_extensions, directory_modules)
+        let graph = Graph::from_parts(parts, imports, optional_extensions, directory_modules);
+        (graph, NodeIds(ids))
     }
 
     /// Add an external package or builtin.
@@ -422,6 +442,28 @@ mod tests {
             assert!(graph.members(ModuleId::ROOT).is_empty());
             assert_eq!(graph.edges().count(), 0);
             assert_eq!(graph.detail_count(), 0);
+        }
+    }
+
+    #[test]
+    fn each_handle_has_the_id_of_its_node() {
+        let mut builder = GraphBuilder::new();
+        let app = builder.add_file("web/src/app.ts").unwrap();
+        let react = builder.add_external("npm:react").unwrap();
+        let fs = builder.add_builtin("node:fs").unwrap();
+        let package = builder.add_package_import(app, "internal/db", detail(1, ImportKind::Value));
+        let root = builder.add_package_import(app, "", detail(2, ImportKind::Value));
+        let handles = [
+            (NodeHandle::from(app), "web/src/app.ts"),
+            (react, "npm:react"),
+            (fs, "node:fs"),
+            (package.unwrap(), "internal/db"),
+            (root.unwrap(), ""),
+        ];
+
+        let (graph, ids) = builder.finish_with_ids();
+        for (handle, name) in handles {
+            assert_eq!(ids.get(handle), id(&graph, name), "{name}");
         }
     }
 

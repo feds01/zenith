@@ -3,6 +3,7 @@
 
 use compact_str::CompactString;
 use index_vec::{IndexSlice, IndexVec};
+use rayon::prelude::*;
 use serde::Serialize;
 use thin_vec::ThinVec;
 use zenith_utils::location::ByteRange;
@@ -303,7 +304,7 @@ impl Graph {
         &self,
         mut imports: Vec<(ModuleId, ModuleId, ImportDetail)>,
     ) -> Self {
-        imports.sort_unstable();
+        imports.par_sort_unstable();
         imports.dedup();
         let ImportParts { imports, importers, detail_offsets, details } =
             ImportParts::group(self.node_count(), imports);

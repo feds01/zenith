@@ -1,11 +1,9 @@
 //! The [`BuildGraph`] stage.
 
-use zenith_graph::{Exports, GraphBuilder, ModuleExports, NodeHandle};
+use zenith_graph::{Exports, FileHandle, GraphBuilder, ModuleExports, NodeHandle};
 use zenith_lang::{FileSuppressions, Resolved};
 
-use crate::{
-    PipelineError, ResolvedImport, Session, SourceFile, Stage, StageKind, UnresolvedImport,
-};
+use crate::{PipelineError, ResolvedImport, Session, Stage, StageKind, UnresolvedImport};
 
 /// Builds the import graph from the parsed files and their resolved imports,
 /// which it leaves in the session, so that it can build the graph again when
@@ -61,38 +59,46 @@ impl Stage for BuildGraph {
             let scheme = session.backends.of(file).external_scheme();
             let mut targets = Vec::new();
             for (import, resolved) in parsed.imports.into_iter().zip(resolved) {
-                if through_reexports {
-                    targets.push(target_name(&session.files, scheme, &resolved));
-                }
-                let target: NodeHandle = match resolved {
-                    ResolvedImport::File(index) => handles[index as usize].into(),
+                // The node that the import resolved to, if it is in the graph, and that
+                // it is imported, unless it is a whole package, imported on its own.
+                let target: Option<NodeHandle> = match resolved {
+                    ResolvedImport::File(index) => {
+                        let target = handles[index as usize].into();
+                        builder.add_import(handle, target, import);
+                        Some(target)
+                    }
                     ResolvedImport::Other(Resolved::Internal(target)) => {
-                        builder.add_file(&target)?.into()
+                        let target = builder.add_file(&target)?.into();
+                        builder.add_import(handle, target, import);
+                        Some(target)
                     }
                     ResolvedImport::Other(Resolved::Package(dir)) => {
-                        builder.add_package_import(handle, &dir, import)?;
-                        continue;
+                        Some(builder.add_package_import(handle, &dir, import)?)
                     }
                     ResolvedImport::Other(Resolved::External { package, found }) => {
                         missing_packages += usize::from(!found);
-                        builder.add_external(&format!("{scheme}:{package}"))?
+                        let target = builder.add_external(&format!("{scheme}:{package}"))?;
+                        builder.add_import(handle, target, import);
+                        Some(target)
                     }
-                    ResolvedImport::Other(Resolved::Builtin(name)) => builder.add_builtin(&name)?,
+                    ResolvedImport::Other(Resolved::Builtin(name)) => {
+                        let target = builder.add_builtin(&name)?;
+                        builder.add_import(handle, target, import);
+                        Some(target)
+                    }
                     ResolvedImport::Other(Resolved::Unresolved(reason)) => {
                         let file = file.name.clone();
                         unresolved.push(UnresolvedImport { file, import, reason: *reason });
-                        continue;
+                        None
                     }
-                    ResolvedImport::Other(Resolved::Ignored(_)) => continue,
+                    ResolvedImport::Other(Resolved::Ignored(_)) => None,
                 };
-                builder.add_import(handle, target, import);
+                if through_reexports {
+                    targets.push(target);
+                }
             }
             if through_reexports {
-                file_exports.push(FileExports {
-                    file: &file.name,
-                    exports: parsed.exports,
-                    targets,
-                });
+                file_exports.push(FileExports { file: handle, exports: parsed.exports, targets });
             }
         }
 
@@ -101,19 +107,19 @@ impl Stage for BuildGraph {
         (session.unresolved, session.suppressions) = (unresolved, suppressions);
         (session.stats.non_literal_imports, session.stats.missing_packages) =
             (non_literal_imports, missing_packages);
-        let graph = builder.finish();
+        let (graph, ids) = builder.finish_with_ids();
 
         // Through re-exports, each re-export's source is the node its import resolved
         // to, if it did.
         if through_reexports {
             let exports: ModuleExports = file_exports
                 .into_iter()
-                .filter_map(|FileExports { file, exports, targets }| {
+                .map(|FileExports { file, exports, targets }| {
                     let exports = exports.map(|import| {
-                        let target = targets.get(import as usize)?.as_deref()?;
-                        graph.id(target)
+                        let target = (*targets.get(import as usize)?)?;
+                        Some(ids.get(target))
                     });
-                    Some((graph.id(file)?, exports))
+                    (ids.get(file), exports)
                 })
                 .collect();
             session.graph_through_reexports = Some(graph.through_reexports(&exports));
@@ -123,32 +129,15 @@ impl Stage for BuildGraph {
     }
 }
 
-/// The name of the node that an import resolved to, given the session's
-/// `files` and the `scheme` of external packages, or `None` if it isn't in the
-/// graph.
-fn target_name(files: &[SourceFile], scheme: &str, resolved: &ResolvedImport) -> Option<String> {
-    match resolved {
-        ResolvedImport::File(index) => Some(files[*index as usize].name.clone()),
-        ResolvedImport::Other(Resolved::Internal(name) | Resolved::Package(name)) => {
-            Some(name.clone())
-        }
-        ResolvedImport::Other(Resolved::External { package, .. }) => {
-            Some(format!("{scheme}:{package}"))
-        }
-        ResolvedImport::Other(Resolved::Builtin(name)) => Some(name.clone()),
-        ResolvedImport::Other(Resolved::Unresolved(_) | Resolved::Ignored(_)) => None,
-    }
-}
-
 /// What a file exports, as the graph through re-exports needs it.
-struct FileExports<'s> {
-    /// The file's name.
-    file: &'s str,
+struct FileExports {
+    /// The file.
+    file: FileHandle,
 
     /// What it exports, with each re-export's source as the index of its
     /// import.
     exports: Exports<u32>,
 
-    /// The name of the node each of its imports resolved to, in order.
-    targets: Vec<Option<String>>,
+    /// The node each of its imports resolved to, in order, if it did.
+    targets: Vec<Option<NodeHandle>>,
 }

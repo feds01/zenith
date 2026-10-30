@@ -66,8 +66,10 @@ pub trait Backend: Send + Sync {
     fn resolver(&self) -> Result<Box<dyn ImportResolver + '_>, ResolveFailure>;
 }
 
-/// Parses the source files of a language.
-pub trait SourceParser {
+/// Parses the source files of a language. The parse stage keeps a parser of
+/// each language for each worker thread, in a table that the threads share,
+/// so a parser must be `Send`.
+pub trait SourceParser: Send {
     /// What the file at `path`, whose text is `source`, imports.
     fn parse_source(&mut self, path: &Path, source: &str) -> ParsedFile;
 }

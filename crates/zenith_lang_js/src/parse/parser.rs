@@ -20,8 +20,9 @@ use super::{convert::IntoLang, exports::ProgramHelpers, visitor::ImportVisitor};
 /// A parser owns the arena that syntax trees are allocated in. Between files
 /// it resets the arena rather than freeing it, so a parser that is reused
 /// soon stops allocating, and the results own nothing from it. Parsing is the
-/// hottest part of a run, so keep one parser per thread, e.g. with rayon's
-/// `map_init(Parser::new, |parser, path| parser.parse_file(path))`.
+/// hottest part of a run, so keep one parser per thread for the whole run,
+/// e.g. in a [`PerThread`](zenith_utils::pool::PerThread): rayon's `map_init`
+/// makes one for each piece the work splits into, thousands in a large run.
 ///
 /// ```
 /// # use std::path::Path;

@@ -13,7 +13,7 @@ use zenith_graph::{Graph, GraphBuilder, Scope};
 use zenith_lang::{FileSuppressions, ParsedFile, Resolved, Workspace};
 use zenith_utils::{
     fs::{FileSystem, adjust_canonicalisation, disk},
-    path::{absolute_path, relative_posix},
+    path::{absolute_path, absolute_path_into, relative_posix},
 };
 use zenith_workspace::{Git, WalkSettings};
 
@@ -132,6 +132,12 @@ impl SourceFile {
     /// name, since a project has many, and few stages need their path.
     pub fn path(&self, root: &Path) -> PathBuf {
         absolute_path(root, &self.name)
+    }
+
+    /// [`Self::path`], made in `path`, whose room it reuses, for a stage that
+    /// needs the path of every file.
+    pub fn path_into<'p>(&self, root: &Path, path: &'p mut PathBuf) -> &'p Path {
+        absolute_path_into(root, &self.name, path)
     }
 }
 

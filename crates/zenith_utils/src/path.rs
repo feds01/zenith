@@ -96,6 +96,17 @@ pub fn absolute_path(root: &Path, name: &str) -> PathBuf {
     }
 }
 
+/// [`absolute_path`], made in `path`, whose room it reuses.
+pub fn absolute_path_into<'p>(root: &Path, name: &str, path: &'p mut PathBuf) -> &'p Path {
+    path.as_mut_os_string().clear();
+    path.push(root);
+    match MAIN_SEPARATOR {
+        '/' => path.push(name),
+        _ => path.push(name.replace('/', MAIN_SEPARATOR_STR)),
+    }
+    path
+}
+
 /// `path` at the same place under the directory `to` as it is under `from`,
 /// such as a file named through a symlink to a directory named without it,
 /// or `path` itself if it is not under `from`.

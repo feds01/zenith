@@ -1,8 +1,11 @@
 //! The [`Resolve`] stage.
 
+use std::path::PathBuf;
+
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use zenith_lang::Resolved;
+use zenith_utils::pool::PerThread;
 
 use crate::{PipelineError, ResolvedImport, Session, Stage, StageKind};
 
@@ -23,6 +26,7 @@ impl Stage for Resolve {
         // their names don't pile up until the graph is built.
         let indices: FxHashMap<&str, u32> =
             (0..).zip(&session.files).map(|(index, file)| (file.name.as_str(), index)).collect();
+        let paths = PerThread::new(PathBuf::new);
         let resolved = session
             .files
             .par_iter()
@@ -30,16 +34,18 @@ impl Stage for Resolve {
             .map(|(file, parsed)| {
                 let resolver = &resolvers[usize::from(file.language)];
                 let imports = parsed.imports.iter();
-                let path = file.path(root);
-                imports
-                    .map(|import| match resolver.resolve_import(&path, import) {
-                        Resolved::Internal(name) => match indices.get(name.as_str()) {
-                            Some(index) => ResolvedImport::File(*index),
-                            None => ResolvedImport::Other(Resolved::Internal(name)),
-                        },
-                        other => ResolvedImport::Other(other),
-                    })
-                    .collect()
+                paths.with(|path| {
+                    let path = file.path_into(root, path);
+                    imports
+                        .map(|import| match resolver.resolve_import(path, import) {
+                            Resolved::Internal(name) => match indices.get(name.as_str()) {
+                                Some(index) => ResolvedImport::File(*index),
+                                None => ResolvedImport::Other(Resolved::Internal(name)),
+                            },
+                            other => ResolvedImport::Other(other),
+                        })
+                        .collect()
+                })
             })
             .collect();
 

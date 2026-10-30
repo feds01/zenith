@@ -1,12 +1,13 @@
 //! The [`Parse`] stage.
 
-use std::{io, mem, time::SystemTime};
+use std::{io, mem, path::PathBuf, time::SystemTime};
 
 use log::{debug, info};
 use rayon::prelude::*;
 use zenith_cache::{Cache, Lookup, Origin};
 use zenith_diagnostics::message;
 use zenith_lang::ParsedFile;
+use zenith_utils::pool::PerThread;
 
 use crate::{FileError, FileErrorKind, PipelineError, Session, SourceFile, Stage, StageKind};
 
@@ -68,17 +69,17 @@ impl Stage for Parse {
 /// session.
 fn parse_all(session: &mut Session) -> Vec<ParsedFile> {
     let (root, file_system) = (&session.root, &*session.file_system);
+    let workers = PerThread::new(|| (session.backends.parsers(), PathBuf::new()));
     let results: Vec<io::Result<ParsedFile>> = session
         .files
         .par_iter()
-        .map_init(
-            || session.backends.parsers(),
-            |parsers, file| {
-                let path = file.path(root);
-                let source = file_system.read_text(&path)?;
-                Ok(parsers[usize::from(file.language)].parse_source(&path, &source))
-            },
-        )
+        .map(|file| {
+            workers.with(|(parsers, path)| {
+                let path = file.path_into(root, path);
+                let source = file_system.read_text(path)?;
+                Ok(parsers[usize::from(file.language)].parse_source(path, &source))
+            })
+        })
         .collect();
     let files = session.files.iter().zip(results);
     files.map(|(file, result)| read_or_default(&mut session.file_errors, file, result)).collect()
@@ -95,18 +96,19 @@ fn parse_cached(session: &mut Session, mut cache: Cache<ParsedFile>) -> Vec<Pars
 
     // 2. Parse each file, unless its entry shows that it hasn't changed.
     let (root, file_system) = (&session.root, &*session.file_system);
+    let workers = PerThread::new(|| (session.backends.parsers(), PathBuf::new()));
     let results: Vec<Lookup<ParsedFile>> = session
         .files
         .par_iter()
         .zip(entries)
-        .map_init(
-            || session.backends.parsers(),
-            |parsers, (file, entry)| {
-                let path = file.path(root);
-                let parser = &mut parsers[usize::from(file.language)];
-                cache.lookup(file_system, &path, entry, |source| parser.parse_source(&path, source))
-            },
-        )
+        .map(|(file, entry)| {
+            workers.with(|(parsers, path)| {
+                let path = file.path_into(root, path);
+                cache.lookup(file_system, path, entry, |source| {
+                    parsers[usize::from(file.language)].parse_source(path, source)
+                })
+            })
+        })
         .collect();
 
     // 3. Move the read errors to the session.

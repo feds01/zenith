@@ -56,6 +56,15 @@ use crate::encoding::Rejected;
 /// modification times in common use, FAT's two seconds.
 const RACY_WINDOW: Duration = Duration::from_secs(2);
 
+/// The hash of `value` in every run of this version of zenith, with which
+/// the cache tells values apart without keeping them, as it does the inputs
+/// in its keys.
+pub fn stable_hash(value: impl Hash) -> u64 {
+    let mut hasher = Xxh3::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
 /// Where to keep the cache, and the version of zenith that it is for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CacheSettings {
@@ -79,9 +88,7 @@ impl CacheSettings {
     /// version of zenith. Every input is hashed into it, rather than named,
     /// so a new one can't be left out.
     fn key(&self, inputs: impl Hash) -> u64 {
-        let mut hasher = Xxh3::new();
-        (self.version.as_str(), inputs).hash(&mut hasher);
-        hasher.finish()
+        stable_hash((self.version.as_str(), inputs))
     }
 
     /// The cache file of `T`s, as `decode` decodes it, or `None` if it is

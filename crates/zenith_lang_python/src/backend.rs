@@ -75,6 +75,10 @@ impl Backend for PythonBackend {
         let file_system = self.file_system.clone();
         Ok(Box::new(Resolver::new(&self.root, file_system, &self.roots, &self.ignore_unresolved)))
     }
+
+    fn resolves_by_specifier(&self) -> bool {
+        true
+    }
 }
 
 impl SourceParser for Parser {

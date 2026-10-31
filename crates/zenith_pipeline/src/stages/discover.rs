@@ -28,7 +28,9 @@ use crate::{PipelineError, Session, SourceFile, Stage, StageKind};
 ///
 /// With [`Session::cache`] set, a walk of the disk is kept in the cache, and
 /// taken from it instead of walking again while nothing that the walk read
-/// has changed: see [`Snapshot`].
+/// has changed: see [`Snapshot`]. What the backends read to find the packages
+/// is recorded then, since what the [`Resolve`](crate::StageKind::Resolve)
+/// stage keeps depends on it.
 pub struct Discover;
 
 impl Stage for Discover {
@@ -66,19 +68,39 @@ impl Stage for Discover {
             })
             .collect();
 
-        // 3. Each language finds its packages among its manifests.
-        let mut workspace = Workspace::default();
-        for backend in session.backends.iter_mut() {
-            let names = backend.manifests();
-            let manifests: Vec<PathBuf> = (found.manifests.iter())
-                .filter(|path| {
-                    path.file_name().is_some_and(|name| names.iter().any(|known| name == *known))
-                })
-                .cloned()
-                .collect();
-            workspace.merge(backend.discover(&manifests));
-        }
+        // 3. Each language finds its packages among its manifests, recording what one
+        //    that keeps what its imports resolve to reads with a cache on the disk,
+        //    since what the Resolve stage keeps depends on what it finds.
+        let (backends, recorder) = (&mut session.backends, &session.recorder);
+        let mut discover = || {
+            let mut workspace = Workspace::default();
+            for backend in backends.iter_mut() {
+                let names = backend.manifests();
+                let manifests: Vec<PathBuf> = (found.manifests.iter())
+                    .filter(|path| {
+                        path.file_name()
+                            .is_some_and(|name| names.iter().any(|known| name == *known))
+                    })
+                    .cloned()
+                    .collect();
+                workspace.merge(match backend.resolves_by_specifier() {
+                    true => backend.discover(&manifests),
+                    false => recorder.unrecorded(|| backend.discover(&manifests)),
+                });
+            }
+            workspace
+        };
+        let (workspace, read) = match session.cache.is_some() && session.file_system.on_disk() {
+            true => {
+                let started = SystemTime::now();
+                let (workspace, read) = session.recorder.record(discover);
+                (workspace, Some((started, read)))
+            }
+            false => (discover(), None),
+        };
 
+        session.read_by_discovery = read;
+        session.manifests = found.manifests;
         session.files = files;
         session.workspace = workspace;
         Ok(())

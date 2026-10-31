@@ -64,6 +64,18 @@ pub trait Backend: Send + Sync {
     /// A resolver of the imports of its files, shared between threads. Run
     /// [`discover`](Self::discover) first.
     fn resolver(&self) -> Result<Box<dyn ImportResolver + '_>, ResolveFailure>;
+
+    /// Whether what an import resolves to depends only on its specifier, the
+    /// path of its file, the manifests that [`discover`](Self::discover) was
+    /// given, and what the backend reads through its file system as it finds
+    /// the packages and resolves, so that it can be kept between runs while
+    /// what was read is unchanged. A language whose imports also resolve by
+    /// the names that they take, as an override of
+    /// [`ImportResolver::resolve_import`] may, or by what other files hold,
+    /// doesn't.
+    fn resolves_by_specifier(&self) -> bool {
+        false
+    }
 }
 
 /// Parses the source files of a language.

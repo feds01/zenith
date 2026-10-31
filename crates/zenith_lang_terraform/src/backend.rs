@@ -70,6 +70,10 @@ impl Backend for TerraformBackend {
             ignore_unresolved: &self.ignore_unresolved,
         }))
     }
+
+    fn resolves_by_specifier(&self) -> bool {
+        true
+    }
 }
 
 impl SourceParser for Parser {

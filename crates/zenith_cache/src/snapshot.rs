@@ -32,6 +32,7 @@ use std::{
 
 use log::debug;
 use rayon::prelude::*;
+use zenith_utils::fs::FileKind;
 
 use crate::{
     CacheSettings, Cached, Encoder, Fingerprint,
@@ -67,6 +68,13 @@ impl<T: Cached> Snapshot<T> {
     /// is no such value, or its file is missing, corrupt, or written by
     /// another version of zenith or with other inputs.
     pub fn load(&self) -> Option<T> {
+        self.load_observed().map(|(value, _)| value)
+    }
+
+    /// [`Snapshot::load`], with what is at the paths that the value depends
+    /// on, as they were recorded, for a value made from it and from more to
+    /// be [saved](Snapshot::save) with them as what it depended on before.
+    pub fn load_observed(&self) -> Option<(T, Observed)> {
         let decoded = self.settings.read::<T, _>(|bytes| decode::<T>(&bytes, self.key))?;
         let trusted = |recorded: &State| match recorded {
             State::Fingerprint(fingerprint) => fingerprint.trusted(decoded.written_at),
@@ -86,7 +94,7 @@ impl<T: Cached> Snapshot<T> {
             return None;
         }
         debug!("reusing the snapshot at `{}`", path.display());
-        Some(decoded.value)
+        Some((decoded.value, Observed(Some(decoded.paths))))
     }
 
     /// What is at `contents` and `kinds` now, as [`Snapshot::save`] records
@@ -135,6 +143,16 @@ impl<T: Cached> Snapshot<T> {
             return Ok(());
         };
         states.extend(after);
+        // A path in both is recorded once, by its fingerprint if it has one. The
+        // paths are sorted by their text, which is quicker to compare.
+        fn text(path: &Path) -> &[u8] {
+            path.as_os_str().as_encoded_bytes()
+        }
+        let by_kind = |state: &State| !matches!(state, State::Fingerprint(_));
+        states.par_sort_unstable_by(|(a, a_state), (b, b_state)| {
+            text(a).cmp(text(b)).then(by_kind(a_state).cmp(&by_kind(b_state)))
+        });
+        states.dedup_by(|(a, _), (b, _)| text(a) == text(b));
         let states: Option<Vec<_>> =
             states.iter().map(|(path, state)| Some((path.to_str()?, *state))).collect();
         let Some(states) = states else {
@@ -150,6 +168,33 @@ impl<T: Cached> Snapshot<T> {
 /// `None` if what was at one of them couldn't be told.
 #[derive(Debug)]
 pub struct Observed(Option<Vec<(PathBuf, State)>>);
+
+impl Observed {
+    /// What was `seen` at some paths while a value was made from them,
+    /// following links: what each was, or `None` for nothing. Saved as what
+    /// the value depended on before, so that it is only saved if what is at
+    /// each is still as it was seen.
+    pub fn seen(seen: impl IntoIterator<Item = (PathBuf, Option<FileKind>)>) -> Self {
+        let state = |kind| match kind {
+            None => State::Missing,
+            Some(FileKind::Directory) => State::Directory,
+            Some(FileKind::File | FileKind::Symlink | FileKind::Other) => State::File,
+        };
+        Self(Some(seen.into_iter().map(|(path, kind)| (path, state(kind))).collect()))
+    }
+
+    /// What was observed at these paths and at those of `other`.
+    #[must_use]
+    pub fn and(self, other: Self) -> Self {
+        match (self.0, other.0) {
+            (Some(mut paths), Some(other)) => {
+                paths.extend(other);
+                Self(Some(paths))
+            }
+            _ => Self(None),
+        }
+    }
+}
 
 /// What is at `contents`, by fingerprint, and at `kinds`, by kind, or
 /// `None` if what is at one of them can't be told.
@@ -253,7 +298,15 @@ impl State {
     fn of(path: &Path, contents: bool) -> io::Result<Self> {
         let metadata = match fs::metadata(path) {
             Ok(metadata) => metadata,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Self::Missing),
+            // Nothing is under a file.
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                return Ok(Self::Missing);
+            }
             Err(error) => return Err(error),
         };
         Ok(match contents {
@@ -343,6 +396,25 @@ mod tests {
     }
 
     #[test]
+    fn a_value_made_from_what_another_depended_on_and_more_is_saved_with_both() {
+        let (dir, settings) = project();
+        let snapshot = Snapshot::<Value>::new(settings.clone(), "inputs");
+        save(&snapshot, dir.path(), later());
+        let (_, before) = snapshot.load_observed().unwrap();
+
+        // `src` is recorded once.
+        let contents = [dir.path().join("src"), dir.path().join("b")];
+        snapshot.save(later(), &Value("more".into(), 1), &before, &contents, &[]).unwrap();
+        let bytes = fs::read(settings.path::<Value>()).unwrap();
+        let decoded = decode::<Value>(&bytes, snapshot.key).unwrap();
+        let paths: Vec<_> = (decoded.paths.iter())
+            .map(|(path, _)| path.strip_prefix(dir.path()).unwrap().to_str().unwrap())
+            .collect();
+        assert_eq!(paths, [".git", ".gitignore", "b", "src", "src/a.ts"]);
+        assert_eq!(snapshot.load(), Some(Value("more".into(), 1)));
+    }
+
+    #[test]
     fn a_change_at_any_path_invalidates_it() {
         let changes: [fn(&Path); 4] = [
             |root| fs::write(root.join("src/b.ts"), "").unwrap(),
@@ -371,6 +443,22 @@ mod tests {
         snapshot.save(later(), &Value("found".into(), 1), &before, &[], &[]).unwrap();
         assert_eq!(snapshot.load(), None);
         assert!(!snapshot.settings.path::<Value>().exists());
+    }
+
+    #[test]
+    fn what_was_seen_while_a_value_was_made_must_still_be_there_to_save_it() {
+        let (dir, settings) = project();
+        let snapshot = Snapshot::<Value>::new(settings, "inputs");
+        let seen = |kind| Observed::seen([(dir.path().join("lib"), kind)]);
+        fs::create_dir(dir.path().join("lib")).unwrap();
+        snapshot.save(later(), &Value("found".into(), 1), &seen(None), &[], &[]).unwrap();
+        assert_eq!(snapshot.load(), None);
+
+        let before = seen(Some(FileKind::Directory)).and(snapshot.observe(&[], &[]));
+        snapshot.save(later(), &Value("found".into(), 1), &before, &[], &[]).unwrap();
+        assert_eq!(snapshot.load(), Some(Value("found".into(), 1)));
+        fs::remove_dir(dir.path().join("lib")).unwrap();
+        assert_eq!(snapshot.load(), None);
     }
 
     #[test]

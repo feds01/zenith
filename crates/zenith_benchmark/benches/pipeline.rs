@@ -55,7 +55,7 @@ fn session(source_files: usize, last: Option<StageKind>) -> Session {
     session
 }
 
-/// The parse caches that [`warm_cache`] has written, by repository size.
+/// The caches that [`warm_cache`] has written, by repository size.
 static WARM_CACHES: Mutex<BTreeMap<usize, TempDir>> = Mutex::new(BTreeMap::new());
 
 /// A guard that removes the directories of the warm caches when it's
@@ -73,20 +73,20 @@ fn cache_settings(dir: &TempDir) -> CacheSettings {
     CacheSettings { dir: dir.path().to_path_buf(), version: "benchmark".to_string() }
 }
 
-/// The settings of a parse cache of the shared repository of
-/// `source_files` files, written once, by a run long enough after the
-/// repository was written that every file is trusted to be unchanged, as
-/// they are after an edit-and-check loop has run a few times.
+/// The settings of a cache of the shared repository of `source_files`
+/// files, written once, by a run of every stage up to the graph long enough
+/// after the repository was written that every file is trusted to be
+/// unchanged, as they are after an edit-and-check loop has run a few times.
 fn warm_cache(source_files: usize) -> CacheSettings {
     let mut caches = WARM_CACHES.lock().unwrap_or_else(PoisonError::into_inner);
     let dir = caches.entry(source_files).or_insert_with(|| {
-        let mut session = session(source_files, Some(StageKind::Discover));
+        let mut session = session(source_files, None);
         // Files modified within two seconds of a run that caches them are read again
         // on the next run, so wait out that window.
         thread::sleep(Duration::from_millis(2_100));
         let dir = TempDir::new().unwrap();
         session.cache = Some(cache_settings(&dir));
-        Parse.run(&mut session).unwrap();
+        Pipeline::standard().run_until(&mut session, StageKind::Graph).unwrap();
         dir
     });
     cache_settings(dir)
@@ -174,8 +174,9 @@ fn parse_warm_cache(bencher: Bencher, source_files: usize) {
         });
 }
 
-/// Runs every stage up to the graph with a parse cache that has every file,
-/// as a command on a project that hasn't changed does.
+/// Runs every stage up to the graph with a cache that has every file and
+/// what every stage found, as a command on a project that hasn't changed
+/// does.
 #[divan::bench(args = SIZES, sample_count = 10, sample_size = 1)]
 fn pipeline_warm_cache(bencher: Bencher, source_files: usize) {
     #[cfg(not(codspeed))]
@@ -190,5 +191,7 @@ fn pipeline_warm_cache(bencher: Bencher, source_files: usize) {
         })
         .bench_local_refs(|session| {
             Pipeline::standard().run_until(session, StageKind::Graph).unwrap();
+            assert!(session.stats.cached_walk);
+            assert_eq!(session.stats.cached_resolutions, source_files);
         });
 }

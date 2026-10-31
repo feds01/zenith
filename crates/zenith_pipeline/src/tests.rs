@@ -62,7 +62,12 @@ impl Project {
     /// Run the standard pipeline on the project, with its parse cache for
     /// zenith `version`.
     fn build_cached(&self, version: &str) -> Session {
-        let mut session = self.session("");
+        self.build_cached_with("", version)
+    }
+
+    /// [`Project::build_cached`], configured by `toml`.
+    fn build_cached_with(&self, toml: &str, version: &str) -> Session {
+        let mut session = self.session(toml);
         session.cache = session.cache_settings(version);
         Pipeline::standard().run_until(&mut session, StageKind::Graph).unwrap();
         session
@@ -85,14 +90,24 @@ impl Project {
         }
     }
 
-    /// [`Project::backdate`] the files, and the directories, the cache's
-    /// among them, so that the walk of the project is trusted.
-    fn backdate_all(&self) {
-        self.backdate();
+    /// Set back the modification time of every file and directory in the
+    /// project, those in the cache among them, by an hour, so that what the
+    /// cache keeps of them is trusted.
+    fn backdate_tree(&self) {
         let hour_ago = SystemTime::now() - Duration::from_secs(3_600);
-        let cache = self.cache().dir;
-        for dir in [&self.root, &cache] {
-            open_to_set_times(dir).set_modified(hour_ago).unwrap();
+        let mut dirs = vec![self.root.clone()];
+        while let Some(dir) = dirs.pop() {
+            for entry in fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                match path.is_dir() {
+                    true => dirs.push(path),
+                    false => {
+                        let file = fs::File::options().write(true).open(path).unwrap();
+                        file.set_modified(hour_ago).unwrap();
+                    }
+                }
+            }
+            open_to_set_times(&dir).set_modified(hour_ago).unwrap();
         }
     }
 }
@@ -630,20 +645,121 @@ fn the_walk_is_kept_until_what_it_read_changes() {
 
     // The first walk is kept, once what it read is old enough to trust.
     assert_eq!(walk(&project), (false, names(&["a.ts", "b.ts"])));
-    project.backdate_all();
+    project.backdate_tree();
     assert_eq!(walk(&project), (false, names(&["a.ts", "b.ts"])));
     assert_eq!(walk(&project), (true, names(&["a.ts", "b.ts"])));
 
     // A file added, or an ignore file changed, is found by walking again.
     fs::write(project.root.join("c.ts"), "").unwrap();
     assert_eq!(walk(&project), (false, names(&["a.ts", "b.ts", "c.ts"])));
-    project.backdate_all();
+    project.backdate_tree();
     fs::write(project.root.join(".gitignore"), "b.ts\n").unwrap();
-    project.backdate_all();
+    project.backdate_tree();
     assert_eq!(walk(&project), (false, names(&["a.ts", "c.ts"])));
     assert_eq!(walk(&project), (true, names(&["a.ts", "c.ts"])));
     fs::write(project.root.join(".gitignore"), "c.ts\n").unwrap();
     assert_eq!(walk(&project), (false, names(&["a.ts", "b.ts"])));
+}
+
+#[test]
+fn resolutions_are_kept_until_what_the_resolvers_read_changes() {
+    let project = Project::new(&[
+        ("a.ts", b"import './b';\nimport 'lib';\n"),
+        ("b.ts", b"import '@app/a';\n"),
+        ("tsconfig.json", br#"{"compilerOptions": {"paths": {"@app/*": ["./*"]}}}"#),
+        ("node_modules/.keep", b""),
+    ]);
+    // How many files' resolutions were kept, and the findings, which must be
+    // those of a run without the cache.
+    let resolve = |project: &Project| {
+        let session = project.build_cached("1.0.0");
+        assert_eq!(findings(&session), findings(&project.build("").unwrap()));
+        (session.stats.cached_resolutions, session.stats.missing_packages)
+    };
+
+    // They are kept once what the resolvers read is old enough to trust.
+    assert_eq!(resolve(&project), (0, 1));
+    project.backdate_tree();
+    assert_eq!(resolve(&project), (0, 1));
+    assert_eq!(resolve(&project), (2, 1));
+
+    // A file whose imports changed is resolved again, and the others kept, with
+    // what both were resolved from.
+    fs::write(project.root.join("a.ts"), "import './b';\nimport 'lib';\nimport './c';\n").unwrap();
+    assert_eq!(resolve(&project), (1, 1));
+    assert_eq!(resolve(&project), (2, 1));
+    fs::write(project.root.join("node_modules/.keep"), "changed").unwrap();
+    fs::create_dir(project.root.join("node_modules/other")).unwrap();
+    assert_eq!(resolve(&project), (0, 1));
+    project.backdate_tree();
+    assert_eq!(resolve(&project), (0, 1));
+    assert_eq!(resolve(&project), (2, 1));
+
+    // A package installed where a resolver looked for it.
+    fs::create_dir_all(project.root.join("node_modules/lib")).unwrap();
+    fs::write(project.root.join("node_modules/lib/index.js"), "").unwrap();
+    assert_eq!(resolve(&project), (0, 0));
+    project.backdate_tree();
+    assert_eq!(resolve(&project), (0, 0));
+    assert_eq!(resolve(&project), (2, 0));
+
+    // A `tsconfig.json` that maps `@app/*` elsewhere.
+    let imports_a = |project: &Project| {
+        let session = project.build_cached("1.0.0");
+        imports_of(&session.graph, "b.ts").iter().any(|(imported, _, _)| imported == "a.ts")
+    };
+    assert!(imports_a(&project));
+    let tsconfig = br#"{"compilerOptions": {"paths": {"@app/*": ["./lib/*"]}}}"#;
+    fs::write(project.root.join("tsconfig.json"), tsconfig).unwrap();
+    assert_eq!(resolve(&project).0, 0);
+    assert!(!imports_a(&project));
+}
+
+#[test]
+fn resolutions_are_not_kept_once_a_manifest_is_added() {
+    let project = Project::new(&[
+        ("package.json", br#"{"workspaces": ["packages/*"]}"#),
+        ("a.ts", b"import '@acme/new';\n"),
+        ("packages/new/index.ts", b""),
+    ]);
+    // How many files' resolutions were kept, and whether `a.ts` imports the
+    // package in `packages/new`, as a run without the cache finds.
+    let resolve = |project: &Project| {
+        let session = project.build_cached("1.0.0");
+        assert_eq!(findings(&session), findings(&project.build("").unwrap()));
+        let imports = imports_of(&session.graph, "a.ts");
+        let package = imports.iter().any(|(name, ..)| name == "packages/new/index.ts");
+        (session.stats.cached_resolutions, package)
+    };
+    resolve(&project);
+    project.backdate_tree();
+    resolve(&project);
+    assert_eq!(resolve(&project), (2, false));
+
+    // The manifest of a package, in a directory that resolving read nothing of.
+    let manifest = br#"{"name": "@acme/new", "main": "index.ts"}"#;
+    fs::write(project.root.join("packages/new/package.json"), manifest).unwrap();
+    assert_eq!(resolve(&project), (0, true));
+}
+
+#[test]
+fn only_languages_that_resolve_by_specifier_keep_resolutions() {
+    let project = Project::new(&[
+        ("Cargo.toml", b"[package]\nname = \"app\"\n"),
+        ("src/lib.rs", b"mod a;\n"),
+        ("src/a.rs", b""),
+        ("app.ts", b"import './missing';\n"),
+    ]);
+    let kept = |project: &Project| {
+        let mut session = project.session("[languages.js]\n[languages.rust]\n");
+        session.cache = session.cache_settings("1.0.0");
+        Pipeline::standard().run_until(&mut session, StageKind::Graph).unwrap();
+        session.stats.cached_resolutions
+    };
+    kept(&project);
+    project.backdate_tree();
+    kept(&project);
+    assert_eq!(kept(&project), 1);
 }
 
 #[test]

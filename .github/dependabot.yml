@@ -16,6 +16,7 @@ updates:
     ignore:
       # Kept back: see the comments in the root Cargo.toml.
       - dependency-name: lsp-types
+      - dependency-name: tree-sitter-gomod-orchard
     commit-message:
       prefix: "build(deps)"
 

@@ -1,4 +1,4 @@
-//! A stand-in for [`unicode_names2`](https://crates.io/crates/unicode_names2),
+//! A stand-in for Ruff's `ruff_unicode_names2`,
 //! which Ruff's parser uses only to decode the `\N{…}` escapes of string
 //! literals. Its table of character names is most of a megabyte, and zenith
 //! never reads what a string holds, but for the module that

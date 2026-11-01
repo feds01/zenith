@@ -1,0 +1,14 @@
+[package]
+name = "ruff_unicode_names2"
+version = "0.0.20"
+description = "A stand-in for ruff_unicode_names2, without its table of character names"
+edition = { workspace = true }
+license = { workspace = true }
+publish = false
+
+# As the crate that it stands in for names its library.
+[lib]
+name = "unicode_names2"
+
+[lints]
+workspace = true

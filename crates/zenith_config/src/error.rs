@@ -864,7 +864,7 @@ mod tests {
         let mut sources = SourceMap::new();
         let report = error.report_in(ReportKind::Error, Some(sources.add("zenith.toml", "")));
         let expected =
-            ["error: unknown value `fatal`", "  |", "  = help: expected `error` or `warn`"];
+            ["error: unknown value `fatal`", " |", " = help: expected `error` or `warn`"];
         assert_eq!(Reporter::new(&sources, &[report]).to_string(), expected.join("\n"));
     }
 }

@@ -10,8 +10,8 @@ error[ui-not-types]: `src/ui` must not import `src/types`
   = help: remove this import
 
 warning: 1 import could not be resolved
-  |
-  = note:   src/ui/avatar.ts:3:1  `./missing`  (Cannot find module './missing')
+ |
+ = note:   src/ui/avatar.ts:3:1  `./missing`  (Cannot find module './missing')
 
 Contracts
   ✗ ui-not-types  forbidden  broken (1 violation)

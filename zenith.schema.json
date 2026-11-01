@@ -405,6 +405,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "forbidden"
+            },
             "from": {
               "type": "array",
               "items": {
@@ -467,10 +471,6 @@
             "guidance": {
               "type": "string",
               "description": "Text shown under the violations, e.g. how to fix them."
-            },
-            "type": {
-              "type": "string",
-              "const": "forbidden"
             }
           },
           "required": [
@@ -484,6 +484,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "independence"
+            },
             "modules": {
               "type": "array",
               "items": {
@@ -539,10 +543,6 @@
             "guidance": {
               "type": "string",
               "description": "Text shown under the violations, e.g. how to fix them."
-            },
-            "type": {
-              "type": "string",
-              "const": "independence"
             }
           },
           "required": [
@@ -555,6 +555,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "layers"
+            },
             "layers": {
               "type": "array",
               "items": {
@@ -630,10 +634,6 @@
             "guidance": {
               "type": "string",
               "description": "Text shown under the violations, e.g. how to fix them."
-            },
-            "type": {
-              "type": "string",
-              "const": "layers"
             }
           },
           "required": [
@@ -646,6 +646,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "protected"
+            },
             "modules": {
               "type": "array",
               "items": {
@@ -696,10 +700,6 @@
             "guidance": {
               "type": "string",
               "description": "Text shown under the violations, e.g. how to fix them."
-            },
-            "type": {
-              "type": "string",
-              "const": "protected"
             }
           },
           "required": [
@@ -713,6 +713,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "acyclic"
+            },
             "modules": {
               "type": "array",
               "items": {
@@ -770,10 +774,6 @@
             "guidance": {
               "type": "string",
               "description": "Text shown under the violations, e.g. how to fix them."
-            },
-            "type": {
-              "type": "string",
-              "const": "acyclic"
             }
           },
           "required": [
@@ -786,6 +786,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "encapsulation"
+            },
             "modules": {
               "type": "array",
               "items": {
@@ -846,10 +850,6 @@
             "guidance": {
               "type": "string",
               "description": "Text shown under the violations, e.g. how to fix them."
-            },
-            "type": {
-              "type": "string",
-              "const": "encapsulation"
             }
           },
           "required": [
@@ -862,6 +862,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "type": {
+              "type": "string",
+              "const": "limits"
+            },
             "modules": {
               "type": "array",
               "items": {
@@ -917,10 +921,6 @@
             "guidance": {
               "type": "string",
               "description": "Text shown under the violations, e.g. how to fix them."
-            },
-            "type": {
-              "type": "string",
-              "const": "limits"
             }
           },
           "required": [

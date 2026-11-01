@@ -25,6 +25,7 @@ oxc_diagnostics = { workspace = true }
 oxc_parser = { workspace = true }
 oxc_resolver = { workspace = true }
 oxc_span = { workspace = true }
+oxc_str = { workspace = true }
 rustc-hash = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }

@@ -2881,6 +2881,7 @@ dependencies = [
  "oxc_parser",
  "oxc_resolver",
  "oxc_span",
+ "oxc_str",
  "rustc-hash 2.1.3",
  "schemars",
  "serde",

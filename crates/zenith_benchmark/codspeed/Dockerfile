@@ -6,9 +6,9 @@ FROM rust:1-bookworm
 
 # Keep in step with the runner of CodSpeedHQ/action@v5, which
 # .github/workflows/codspeed.yml uses.
-ARG CODSPEED_VERSION=5.4.2
+ARG CODSPEED_VERSION=5.6.1
 # Keep in step with cargo-codspeed in .github/workflows/codspeed.yml.
-ARG CARGO_CODSPEED_VERSION=5.0.2
+ARG CARGO_CODSPEED_VERSION=6.0.0
 
 RUN set -eu; \
     name="codspeed-runner-$(uname -m)-unknown-linux-musl"; \

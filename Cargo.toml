@@ -83,6 +83,8 @@ tempfile = { version = "3.27.0" }
 thin-vec = { version = "0.2.21" }
 tree-sitter = { version = "0.27.1" }
 tree-sitter-go = { version = "0.25.0" }
+# 0.5.8 rejects names of one character and absolute paths, so `module m` and
+# `replace a => /opt/a`, which Go allows, would be syntax errors.
 tree-sitter-gomod-orchard = { version = "0.5.3" }
 tree-sitter-hcl = { version = "1.1.0" }
 triomphe = { version = "0.1.17", default-features = false }

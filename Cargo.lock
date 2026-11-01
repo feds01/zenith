@@ -2340,9 +2340,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-gomod-orchard"
-version = "0.5.3"
+version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8755c634adc6dafdd0c622920be61facd377b6583949ff7904eee577ce01645d"
+checksum = "3d237b29aebbbff10caafcd62f573bad48448edb4ee228bf8c61614564b4c576"
 dependencies = [
  "cc",
  "tree-sitter-language",

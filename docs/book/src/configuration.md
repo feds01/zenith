@@ -153,4 +153,6 @@ imports resolved to. zenith creates the directory, with a
 `.gitignore` that ignores everything in it, so it is never committed. A new
 version of zenith, or a configuration that needs more from each file, such as
 `reexports = "transparent"`, starts a new cache; a cache that is corrupt, or
-can't be written, is skipped.
+can't be written, is skipped. A `version` file records which version of zenith
+keeps the cache, and a new version deletes the cache files that another left
+in the directory, and nothing else there.

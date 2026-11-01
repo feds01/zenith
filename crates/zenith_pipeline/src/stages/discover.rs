@@ -39,11 +39,15 @@ impl Stage for Discover {
     }
 
     fn run(&self, session: &mut Session) -> Result<(), PipelineError> {
-        // 1. Walk the project, or take what the last walk found.
+        // 1. Walk the project, or take what the last walk found, once what another
+        //    version of zenith left in the cache is gone.
         let root = &session.root;
         let settings = session.walk_settings();
         let kept = match &session.cache {
-            Some(cache) if session.file_system.on_disk() => Some(walk_kept(cache, root, &settings)),
+            Some(cache) if session.file_system.on_disk() => {
+                cache.drop_other_versions();
+                Some(walk_kept(cache, root, &settings))
+            }
             _ => None,
         };
         session.stats.cached_walk = kept.as_ref().is_some_and(|(_, cached)| *cached);

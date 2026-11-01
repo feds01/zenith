@@ -23,7 +23,7 @@
 //! in front of it allows, so that the values that a stage needs are decoded
 //! by the threads that need them.
 
-use std::{fmt, marker::PhantomData, ops::Range, sync::Arc};
+use std::{fmt, fs::File, io::Read, marker::PhantomData, ops::Range, path::Path, sync::Arc};
 
 use rustc_hash::FxHashMap;
 use xxhash_rust::xxh3::xxh3_64;
@@ -72,6 +72,13 @@ pub(crate) enum Rejected {
 
     /// It is truncated, corrupt, or not a cache file at all.
     Corrupt,
+}
+
+/// Whether the file at `path` is a cache file of any format, as its first
+/// bytes tell.
+pub(crate) fn is_cache_file(path: &Path) -> bool {
+    let mut start = [0; MAGIC.len()];
+    File::open(path).and_then(|mut file| file.read_exact(&mut start)).is_ok() && start == *MAGIC
 }
 
 /// Encode the cache file of the run that started at `written_at`, with

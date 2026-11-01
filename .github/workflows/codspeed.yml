@@ -50,7 +50,7 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           # Keep in step with `codspeed-divan-compat` in Cargo.toml
-          tool: cargo-codspeed@5.0.3
+          tool: cargo-codspeed@6.0.0
 
       - name: Build the benchmarks
         run: cargo codspeed build -m simulation -m memory -p zenith_benchmark

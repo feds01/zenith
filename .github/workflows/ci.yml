@@ -150,7 +150,7 @@ jobs:
       # Node runs VS Code's test runner, and the script that assembles the npm
       # packages that the extension takes its binaries from.
       - name: Install Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       # Pinned, as it isn't GitHub's own.

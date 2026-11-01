@@ -31,7 +31,7 @@ jobs:
           merge-multiple: true
       # Node runs vsce and ovsx, and assembles the binaries as the npm packages
       # have them, and Bun builds the extension.
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       # Pinned, as they aren't GitHub's own, and each step here could publish

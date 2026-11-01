@@ -20,7 +20,9 @@
 //! finds: a file whose stamp doesn't match, or whose value doesn't decode, is
 //! processed as if there were no cache, and a cache file that is missing,
 //! corrupt, or written by another version of zenith or for other inputs is
-//! ignored, and replaced at the end of the run.
+//! ignored, and replaced at the end of the run. A run of a new version also
+//! [deletes](CacheSettings::drop_other_versions) the cache files that another
+//! left, those it no longer writes among them.
 //!
 //! A [`Snapshot`] keeps one value that a stage made from the whole project,
 //! rather than one for each file, while what it read is unchanged.
@@ -55,6 +57,10 @@ use crate::encoding::Rejected;
 /// fingerprint to be trusted on the next run. This covers the coarsest
 /// modification times in common use, FAT's two seconds.
 const RACY_WINDOW: Duration = Duration::from_secs(2);
+
+/// The name of the file in the cache directory that holds the version of
+/// zenith that last kept its cache there.
+const VERSION_FILE: &str = "version";
 
 /// The hash of `value` in every run of this version of zenith, with which
 /// the cache tells values apart without keeping them, as it does the inputs
@@ -91,6 +97,39 @@ impl CacheSettings {
         stable_hash((self.version.as_str(), inputs))
     }
 
+    /// Delete the cache files in the directory if another version of zenith
+    /// left them, or one from before versions were recorded. Only cache files
+    /// are deleted, as the directory may be shared with other files. A file
+    /// that can't be deleted does no harm, as its key keeps it from being used.
+    pub fn drop_other_versions(&self) {
+        // 1. Nothing is left to drop if this version kept the cache last.
+        let version = self.dir.join(VERSION_FILE);
+        if fs::read_to_string(&version).is_ok_and(|kept_by| kept_by == self.version) {
+            return;
+        }
+
+        // 2. Delete the cache files, if there is a directory to hold them.
+        let Ok(entries) = fs::read_dir(&self.dir) else {
+            return;
+        };
+        for path in entries.flatten().map(|entry| entry.path()) {
+            if !encoding::is_cache_file(&path) {
+                continue;
+            }
+            match fs::remove_file(&path) {
+                Ok(()) => debug!("dropped the cache file at `{}`", path.display()),
+                Err(error) => {
+                    debug!("could not drop the cache file at `{}`: {error}", path.display());
+                }
+            }
+        }
+
+        // 3. Record that it is this version's cache now.
+        if let Err(error) = fs::write(&version, &self.version) {
+            debug!("could not write `{}`: {error}", version.display());
+        }
+    }
+
     /// The cache file of `T`s, as `decode` decodes it, or `None` if it is
     /// missing, or `decode` rejects it.
     fn read<T: Cached, D>(&self, decode: impl FnOnce(Vec<u8>) -> Result<D, Rejected>) -> Option<D> {
@@ -113,12 +152,17 @@ impl CacheSettings {
 
     /// Replace the cache file of `T`s with `bytes`.
     fn write<T: Cached>(&self, bytes: &[u8]) -> io::Result<()> {
-        // 1. Create the directory, which git should ignore wherever it is.
+        // 1. Create the directory, which git should ignore wherever it is, and record
+        //    the version that keeps its cache there.
         let dir = &self.dir;
         fs::create_dir_all(dir)?;
         let gitignore = dir.join(".gitignore");
         if !gitignore.exists() {
             fs::write(gitignore, "# Created by zenith.\n*\n")?;
+        }
+        let version = dir.join(VERSION_FILE);
+        if !version.exists() {
+            fs::write(version, &self.version)?;
         }
 
         // 2. Write the whole file next to the cache file, then rename it over it, so
@@ -566,5 +610,66 @@ mod tests {
         assert!(Cache::<Value>::load(settings.clone(), "other inputs").is_empty());
         fs::write(settings.path::<Value>(), b"corrupt").unwrap();
         assert!(Cache::<Value>::load(settings, "inputs").is_empty());
+    }
+
+    /// Settings with a saved cache of `Value`s in `dir`, and a second cache
+    /// file, as of a kind that a later version no longer writes.
+    fn saved_cache(dir: &Path) -> (CacheSettings, PathBuf) {
+        let settings = settings(dir);
+        let stamp = Stamp { fingerprint: None, hash: 1 };
+        let started = SystemTime::UNIX_EPOCH + Duration::from_secs(10);
+        let cache = Cache::<Value>::load(settings.clone(), "inputs");
+        cache.save(started, [("a.ts", &stamp, &cached())].into_iter()).unwrap();
+        let retired = settings.dir.join("retired.bin");
+        fs::copy(settings.path::<Value>(), &retired).unwrap();
+        (settings, retired)
+    }
+
+    #[test]
+    fn another_version_drops_the_cache_files_and_nothing_else() {
+        let dir = TempDir::new().unwrap();
+        let (settings, retired) = saved_cache(dir.path());
+        let notes = settings.dir.join("notes.bin");
+        fs::write(&notes, "not a cache file").unwrap();
+        fs::create_dir(settings.dir.join("nested")).unwrap();
+
+        // The version that wrote them keeps them.
+        settings.drop_other_versions();
+        assert!(settings.path::<Value>().exists() && retired.exists());
+
+        let other = CacheSettings { version: "1.0.1".into(), ..settings.clone() };
+        other.drop_other_versions();
+        assert!(!settings.path::<Value>().exists() && !retired.exists());
+        assert!(notes.exists() && settings.dir.join("nested").exists());
+        assert!(settings.dir.join(".gitignore").exists());
+
+        // What it then writes stays, as it has recorded that it keeps the cache.
+        let stamp = Stamp { fingerprint: None, hash: 1 };
+        let started = SystemTime::UNIX_EPOCH + Duration::from_secs(10);
+        let cache = Cache::<Value>::load(other.clone(), "inputs");
+        cache.save(started, [("a.ts", &stamp, &cached())].into_iter()).unwrap();
+        other.drop_other_versions();
+        assert_eq!(Cache::<Value>::load(other, "inputs").len(), 1);
+    }
+
+    #[test]
+    fn a_cache_with_no_version_recorded_is_dropped() {
+        let dir = TempDir::new().unwrap();
+        let (settings, retired) = saved_cache(dir.path());
+        fs::remove_file(settings.dir.join(VERSION_FILE)).unwrap();
+        settings.drop_other_versions();
+        assert!(!settings.path::<Value>().exists() && !retired.exists());
+    }
+
+    #[test]
+    fn dropping_makes_no_directory_and_survives_a_file_in_its_place() {
+        let dir = TempDir::new().unwrap();
+        let settings = settings(dir.path());
+        settings.drop_other_versions();
+        assert!(!settings.dir.exists());
+
+        fs::write(&settings.dir, "").unwrap();
+        settings.drop_other_versions();
+        assert!(settings.dir.is_file());
     }
 }

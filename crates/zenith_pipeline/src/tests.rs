@@ -795,6 +795,29 @@ fn a_corrupt_cache_or_one_of_another_version_is_replaced() {
 }
 
 #[test]
+fn a_new_version_deletes_the_cache_files_of_the_last() {
+    let project = varied_project();
+    project.build_cached("1.0.0");
+
+    // A file of the kind that the new version no longer writes, which nothing
+    // would otherwise replace, and one that isn't the cache's.
+    let dir = project.cache().dir;
+    let retired = dir.join("retired.bin");
+    fs::copy(project.cache().path::<ParsedFile>(), &retired).unwrap();
+    let other = dir.join("other.txt");
+    fs::write(&other, "not a cache file").unwrap();
+
+    project.build_cached("1.0.0");
+    assert!(retired.exists());
+
+    let session = project.build_cached("1.1.0");
+    assert_eq!(session.stats.cached_files, 0);
+    assert!(!retired.exists());
+    assert!(other.exists());
+    assert_eq!(project.build_cached("1.1.0").stats.cached_files, 4);
+}
+
+#[test]
 fn a_cache_that_cannot_be_written_is_skipped() {
     let project = varied_project();
     // The cache directory is a file.

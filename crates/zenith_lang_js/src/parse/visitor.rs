@@ -7,6 +7,7 @@ use oxc_ast::ast::{
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::Span;
+use oxc_str::JSStr;
 use thin_vec::ThinVec;
 use zenith_graph::{ImportDetail, ImportKind, ImportedName, ImportedNames};
 use zenith_utils::location::Located;
@@ -52,14 +53,15 @@ impl ImportVisitor {
     }
 
     /// Record an import of `specifier` made by the code at `span`, which
-    /// takes the `names` of the module.
-    fn import(&mut self, specifier: &str, kind: ImportKind, span: Span, names: ImportedNames) {
-        self.imports.push(ImportDetail {
-            range: span.into_lang(),
-            specifier: specifier.into(),
-            kind,
-            names,
-        });
+    /// takes the `names` of the module. A specifier with a lone surrogate,
+    /// which no file can be named by, is kept with it escaped, so that it is
+    /// reported as unresolved.
+    fn import(&mut self, specifier: JSStr<'_>, kind: ImportKind, span: Span, names: ImportedNames) {
+        let specifier = match specifier.as_str() {
+            Some(specifier) => specifier.into(),
+            None => specifier.display().to_string().into(),
+        };
+        self.imports.push(ImportDetail { range: span.into_lang(), specifier, kind, names });
     }
 
     /// Record a dynamic import or `require` call made by the code at `span`,
@@ -67,10 +69,8 @@ impl ImportVisitor {
     /// literal, or a template literal without substitutions, to be resolved.
     fn call(&mut self, argument: Option<&Expression>, kind: ImportKind, span: Span) {
         let specifier = match argument {
-            Some(Expression::StringLiteral(literal)) => Some(literal.value.as_str()),
-            Some(Expression::TemplateLiteral(template)) => {
-                template.single_quasi().map(|quasi| quasi.as_str())
-            }
+            Some(Expression::StringLiteral(literal)) => Some(literal.value),
+            Some(Expression::TemplateLiteral(template)) => template.single_quasi(),
             _ => None,
         };
         match specifier {
@@ -118,7 +118,7 @@ impl<'a> Visit<'a> for ImportVisitor {
             }
             _ => ImportedNames::All,
         });
-        self.import(it.source.value.as_str(), ImportKind::of_static(type_only), it.span, names);
+        self.import(it.source.value, ImportKind::of_static(type_only), it.span, names);
     }
 
     fn visit_export_from_declaration(&mut self, it: &ExportFromDeclaration<'a>) {
@@ -133,12 +133,12 @@ impl<'a> Visit<'a> for ImportVisitor {
             });
             ImportedNames::of(names)
         });
-        self.import(it.source.value.as_str(), ImportKind::of_static(type_only), it.span, names);
+        self.import(it.source.value, ImportKind::of_static(type_only), it.span, names);
     }
 
     fn visit_export_all_declaration(&mut self, it: &ExportAllDeclaration<'a>) {
         let kind = ImportKind::of_static(it.export_kind.is_type());
-        self.import(it.source.value.as_str(), kind, it.span, ImportedNames::All);
+        self.import(it.source.value, kind, it.span, ImportedNames::All);
     }
 
     fn visit_ts_import_equals_declaration(&mut self, it: &TSImportEqualsDeclaration<'a>) {
@@ -146,12 +146,12 @@ impl<'a> Visit<'a> for ImportVisitor {
         if let TSModuleReference::ExternalModuleReference(reference) = &it.module_reference {
             let kind =
                 if it.import_kind.is_type() { ImportKind::Type } else { ImportKind::Require };
-            self.import(reference.expression.value.as_str(), kind, it.span, ImportedNames::All);
+            self.import(reference.expression.value, kind, it.span, ImportedNames::All);
         }
     }
 
     fn visit_ts_import_type(&mut self, it: &TSImportType<'a>) {
-        self.import(it.source.value.as_str(), ImportKind::Type, it.span, ImportedNames::All);
+        self.import(it.source.value, ImportKind::Type, it.span, ImportedNames::All);
         // Its type arguments may hold more import types.
         walk::walk_ts_import_type(self, it);
     }
@@ -364,6 +364,16 @@ mod tests {
         ] {
             let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
             assert_eq!(parsed.imports, [], "{source}");
+            assert_eq!(parsed.non_literal_imports, [], "{source}");
+        }
+    }
+
+    #[test]
+    fn a_specifier_with_a_lone_surrogate_is_kept_escaped() {
+        for source in ["import '\\uD800';", "import('\\uD800');", "require(`\\uD800`);"] {
+            let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
+            let specifiers: Vec<_> = parsed.imports.iter().map(|i| i.specifier.as_str()).collect();
+            assert_eq!(specifiers, ["\\ud800"], "{source}");
             assert_eq!(parsed.non_literal_imports, [], "{source}");
         }
     }

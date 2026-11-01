@@ -157,8 +157,7 @@ fn reports_each_variant_with_its_own_messages() {
 
     let mismatch =
         ReadError::Mismatch { expected: '"', found: '\'', position: Position(3), hint: None };
-    let expected =
-        ["error: expected \", found '", "  |", "  = help: quote it", "  = note: at byte 3"];
+    let expected = ["error: expected \", found '", " |", " = help: quote it", " = note: at byte 3"];
     assert_eq!(render(&sources, mismatch.report(ReportKind::Error)), expected.join("\n"));
 
     let mut report = Report::error("in `a.txt`");
@@ -171,10 +170,10 @@ fn reports_each_variant_with_its_own_messages() {
     mismatch.add_to(&mut report);
     let expected = [
         "error: in `a.txt`",
-        "  |",
-        "  = help: quote it",
-        "  = note: at byte 3",
-        "  = note: at byte 5",
+        " |",
+        " = help: quote it",
+        " = note: at byte 3",
+        " = note: at byte 5",
     ];
     assert_eq!(render(&sources, report), expected.join("\n"));
 }

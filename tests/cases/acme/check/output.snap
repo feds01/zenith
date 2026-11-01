@@ -127,8 +127,8 @@ error[legacy-freeze]: `@acme/ai` must not import `legacy-editor`
   = help: legacy-editor is frozen. Use the new editor APIs instead.
 
 warning: 1 import could not be resolved
-  |
-  = help: use `--show-unresolved` to list them, or `[languages.js] ignore_unresolved` to silence expected ones
+ |
+ = help: use `--show-unresolved` to list them, or `[languages.js] ignore_unresolved` to silence expected ones
 
 Contracts
   ✗ web-layers              layers         broken (2 violations) · 1 suppressed
@@ -156,8 +156,8 @@ error[package-tiers]: `pkg:@acme/utils` must not import `pkg:@acme/api`
   = help: move the imported code into a module that may be imported here, or remove this import
 
 warning: 1 import could not be resolved
-  |
-  = note:   sdk/src/client.ts:3:1  `./does-not-exist`  (Cannot find module './does-not-exist')
+ |
+ = note:   sdk/src/client.ts:3:1  `./does-not-exist`  (Cannot find module './does-not-exist')
 
 Contracts
   ✗ package-tiers  layers  broken (1 violation)
@@ -186,8 +186,8 @@ error[web-layers]: `web/src/lib` must not import `web/src/domains`
   = help: Lower layers must not import higher ones. Move the shared code down a layer.
 
 warning: 1 import could not be resolved
-  |
-  = help: use `--show-unresolved` to list them, or `[languages.js] ignore_unresolved` to silence expected ones
+ |
+ = help: use `--show-unresolved` to list them, or `[languages.js] ignore_unresolved` to silence expected ones
 
 Contracts
   ✗ web-layers      layers     broken (2 violations) · 1 suppressed

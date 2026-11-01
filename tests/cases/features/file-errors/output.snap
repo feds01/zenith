@@ -9,8 +9,8 @@ exit: 0
   └─recovered.ts
 --- stderr
 warning: could not read `src/binary.ts`: stream did not contain valid UTF-8
-  |
-  = note: its imports are missing from the graph
+ |
+ = note: its imports are missing from the graph
 
 warning: Unexpected token
  --> src/fatal.ts:3:14

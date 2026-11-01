@@ -18,8 +18,8 @@ error[no-repository-modules]: `live` must not import `tfmod:github.com/acme/modu
    = help: remove this import
 
 warning: 1 import could not be resolved
-  |
-  = note:   modules/app/main.tf:10:12  `../rds`  (no directory `modules/rds` in the project)
+ |
+ = note:   modules/app/main.tf:10:12  `../rds`  (no directory `modules/rds` in the project)
 
 Contracts
   ✗ modules-below-stacks   layers        broken (1 violation)

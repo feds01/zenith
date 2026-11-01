@@ -236,8 +236,8 @@ mod tests {
         report.add_help("move the shared code down a layer");
         let expected = [
             "warning[web-layers]: `web` must not import `api`",
-            "  |",
-            "  = help: move the shared code down a layer",
+            " |",
+            " = help: move the shared code down a layer",
         ];
         assert_eq!(Reporter::new(&sources, &[report]).to_string(), expected.join("\n"));
     }

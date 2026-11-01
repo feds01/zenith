@@ -180,8 +180,8 @@ mod tests {
         let error = io::Error::new(io::ErrorKind::InvalidData, "not UTF-8");
         let expected = [
             "warning: could not read `a.ts`: not UTF-8",
-            "  |",
-            "  = note: its imports are missing from the graph",
+            " |",
+            " = note: its imports are missing from the graph",
         ];
         assert_eq!(render(FileErrorKind::Read(error), None), expected.join("\n"));
     }
@@ -210,8 +210,8 @@ mod tests {
         let errors = thin_vec![syntax_error(8, 9, "Unexpected token")];
         let expected = [
             "warning: `a.ts` has syntax errors",
-            "  |",
-            "  = note: some of its imports may be missing from the graph",
+            " |",
+            " = note: some of its imports may be missing from the graph",
         ];
         assert_eq!(render(FileErrorKind::Syntax(errors), None), expected.join("\n"));
     }

@@ -38,6 +38,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
+      # Ruff's repository, which Cargo checks out whole, has paths too long for
+      # Windows otherwise.
+      - name: Enable long paths on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - name: Checkout source code
         uses: actions/checkout@v7
       - name: Install Rust

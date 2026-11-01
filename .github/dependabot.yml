@@ -13,6 +13,11 @@ updates:
       rust-dependencies:
         patterns: ["*"]
         exclude-patterns: ["oxc*", "codspeed*"]
+    ignore:
+      # Kept back: see the comments in the root Cargo.toml.
+      - dependency-name: lsp-types
+      - dependency-name: get-size2
+      - dependency-name: get-size-derive2
     commit-message:
       prefix: "build(deps)"
 

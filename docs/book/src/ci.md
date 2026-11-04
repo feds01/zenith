@@ -8,7 +8,7 @@ step fails when a contract is broken.
 ```yaml
 steps:
   - uses: actions/checkout@v7
-  - uses: feds01/zenith@v0.6.0
+  - uses: feds01/zenith@v0.7.0
 ```
 
 Uploading to code scanning needs the `security-events: write` permission:
@@ -31,14 +31,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: feds01/zenith@v0.6.0
+      - uses: feds01/zenith@v0.7.0
 ```
 
 ## Inputs
 
 | Input | Default | |
 |---|---|---|
-| `version` | the action's | The version of zenith to install from npm, such as `0.6.0`, or a dist-tag, such as `latest`. See [the version](#the-version-of-zenith). |
+| `version` | the action's | The version of zenith to install from npm, such as `0.7.0`, or a dist-tag, such as `latest`. See [the version](#the-version-of-zenith). |
 | `config` | | The configuration file, instead of the nearest `zenith.toml`. |
 | `upload-sarif` | `true` | `true` to upload the results to code scanning, as a [SARIF](output.md#sarif) log, or `false` to annotate them instead. Any other value is an error. |
 | `category` | `zenith` | The category of the upload. Give each run of the action in a repository its own, or each upload replaces the results of the others. |
@@ -60,13 +60,13 @@ zenith and give its path as `binary`.
 
 ## The version of zenith
 
-Used at a release tag, such as `feds01/zenith@v0.6.0`, the action installs
+Used at a release tag, such as `feds01/zenith@v0.7.0`, the action installs
 the zenith of that release, so pinning the action pins zenith too. At any
 other ref, it installs the `latest` release unless `version` names one, so
 set `version` when you:
 
 - pin the action by the SHA of a commit, as in
-  `feds01/zenith@<sha> # v0.6.0`;
+  `feds01/zenith@<sha> # v0.7.0`;
 - call it from a composite action of your own, where the action's ref isn't
   reliable ([actions/runner#2473](https://github.com/actions/runner/issues/2473)).
 
@@ -86,7 +86,7 @@ the workflows of pull requests from forks can't upload to it. Annotate those
 instead:
 
 ```yaml
-- uses: feds01/zenith@v0.6.0
+- uses: feds01/zenith@v0.7.0
   with:
     upload-sarif: ${{ github.event.pull_request.head.repo.fork != true }}
 ```
@@ -102,11 +102,11 @@ code scanning finds the files of a project anywhere in it. Running the action
 on two projects of one repository, give each its own `category`:
 
 ```yaml
-- uses: feds01/zenith@v0.6.0
+- uses: feds01/zenith@v0.7.0
   with:
     config: web/zenith.toml
     category: zenith-web
-- uses: feds01/zenith@v0.6.0
+- uses: feds01/zenith@v0.7.0
   with:
     config: services/zenith.toml
     category: zenith-services

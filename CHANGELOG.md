@@ -3,6 +3,32 @@
 What changed for zenith's users in each release. dist shows a release's
 section as its notes on GitHub.
 
+## [0.7.0] - 2026-11-04
+
+[Changes since v0.6.0](https://github.com/feds01/zenith/compare/v0.6.0...v0.7.0)
+
+### Features
+
+- **config:** split the configuration over several files ([#167](https://github.com/feds01/zenith/pull/167))
+- **cache:** delete what another version of zenith left in the cache ([#182](https://github.com/feds01/zenith/pull/182))
+- **js:** a mock import kind for what tests mock ([#191](https://github.com/feds01/zenith/pull/191))
+
+### Fixes
+
+- **js:** see vi.importActual and jest.requireActual as imports ([#192](https://github.com/feds01/zenith/pull/192))
+
+### Performance
+
+- **cache:** decode each value on the thread that uses it ([#168](https://github.com/feds01/zenith/pull/168))
+- **graph:** build the graph through re-exports in parallel ([#171](https://github.com/feds01/zenith/pull/171))
+- **rust:** list each directory once when looking modules up ([#173](https://github.com/feds01/zenith/pull/173))
+- **check:** read and render the findings in parallel, and print them at once ([#170](https://github.com/feds01/zenith/pull/170))
+- compile contracts in parallel, and leave the session to the process's exit ([#172](https://github.com/feds01/zenith/pull/172))
+- **pipeline:** keep what the walk found while nothing that it read changes ([#169](https://github.com/feds01/zenith/pull/169))
+- **graph:** share imports and the module tree instead of copying them ([#176](https://github.com/feds01/zenith/pull/176))
+- size collections up front, and borrow relative paths ([#177](https://github.com/feds01/zenith/pull/177))
+- **resolve:** keep what imports resolved to while nothing it read changes ([#178](https://github.com/feds01/zenith/pull/178))
+
 ## [0.6.0] - 2026-10-25
 
 [Changes since v0.5.0](https://github.com/feds01/zenith/compare/v0.5.0...v0.6.0)

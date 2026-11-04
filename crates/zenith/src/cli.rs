@@ -395,6 +395,8 @@ pub enum ImportKindArg {
     Require,
     /// Imports that only tests compile, such as Rust's `#[cfg(test)]` code.
     Test,
+    /// Tests' mocks of modules, such as `vi.mock()` and `jest.mock()`.
+    Mock,
 }
 
 impl From<ImportKindArg> for ImportKind {
@@ -405,6 +407,7 @@ impl From<ImportKindArg> for ImportKind {
             ImportKindArg::Dynamic => ImportKind::Dynamic,
             ImportKindArg::Require => ImportKind::Require,
             ImportKindArg::Test => ImportKind::Test,
+            ImportKindArg::Mock => ImportKind::Mock,
         }
     }
 }

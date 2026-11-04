@@ -1,0 +1,74 @@
+$ zenith check
+exit: 1
+--- stdout
+error[api-client-not-mocked]: `src/app` must not import `src/api`
+ --> src/app/profile.test.ts:5:9
+  |
+5 | vi.mock("../api/client", () => ({ fetchUser: vi.fn() }));
+  |         ^^^^^^^^^^^^^^^ imports `src/api/client.ts`
+  |
+ ::: src/app/settings.test.ts:4:3
+  |
+4 |   "../api/client",
+  |   ^^^^^^^^^^^^^^^ imports `src/api/client.ts`
+  |
+  = help: remove these imports
+  = help: Stub the network rather than mock the API client.
+
+error[app-without-api-client]: `src/app` must not import `src/api`
+ --> src/app/profile.test.ts:2:27
+  |
+2 | import { fetchUser } from "../api/client";
+  |                           ^^^^^^^^^^^^^^^ imports `src/api/client.ts`
+  |
+ ::: src/app/profile.ts:1:27
+  |
+1 | import { fetchUser } from "../api/client";
+  |                           ^^^^^^^^^^^^^^^ imports `src/api/client.ts`
+  |
+ ::: src/app/settings.test.ts:4:3
+  |
+4 |   "../api/client",
+  |   ^^^^^^^^^^^^^^^ imports `src/api/client.ts`
+  |
+  = help: remove these imports
+
+Contracts
+  ✗ api-client-not-mocked   forbidden  broken (2 violations)
+  ✗ app-without-api-client  forbidden  broken (3 violations)
+
+0 kept, 2 broken · 5 files, 9 imports
+
+$ zenith why src/app src/api
+exit: 0
+--- stdout
+chain 1 of 3:
+  src/app/profile.test.ts:2, 5 (mock)
+  -> src/api/client.ts
+
+chain 2 of 3:
+  src/app/profile.ts:1
+  -> src/api/client.ts
+
+chain 3 of 3:
+  src/app/settings.test.ts:3 (mock)
+  -> src/api/client.ts
+
+
+$ zenith graph src --exclude-kind value --exclude-kind type --exclude-kind dynamic --exclude-kind require
+exit: 0
+--- stdout
+src/ (5 files)
+├─api/ (1 file)
+│ └─client.ts
+├─app/ (3 files)
+│ ├─profile.test.ts
+│ ├─profile.ts
+│ └─settings.test.ts
+└─flags/ (1 file)
+  └─index.ts
+
+dependencies between the children of `src`:
+  src/app -> src/api (2 imports)
+  src/app -> src/flags (1 import)
+

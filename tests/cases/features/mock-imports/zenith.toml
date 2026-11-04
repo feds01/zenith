@@ -1,0 +1,14 @@
+# The app's tests import the API client, as its code does, and some mock it.
+# Leaving out every kind but `mock` makes a contract about the mocks alone.
+[contracts.api-client-not-mocked]
+type = "forbidden"
+from = ["src/app"]
+to = ["src/api"]
+exclude_kinds = ["value", "type", "dynamic", "require", "test"]
+guidance = "Stub the network rather than mock the API client."
+
+# Every kind counts, so the app's own imports of the client break it too.
+[contracts.app-without-api-client]
+type = "forbidden"
+from = ["src/app"]
+to = ["src/api"]

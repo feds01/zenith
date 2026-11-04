@@ -30,16 +30,21 @@ pub enum ImportKind {
     /// An import that only tests compile, such as one in Rust's
     /// `#[cfg(test)]` code or in a crate's `tests` directory.
     Test,
+
+    /// A test's mock of a module, or mocked copy of it: `vi.mock("s")`,
+    /// `jest.requireMock("s")` and the like.
+    Mock,
 }
 
 impl ImportKind {
     /// Every import kind, in declaration order.
-    pub const ALL: [ImportKind; 5] = [
+    pub const ALL: [ImportKind; 6] = [
         ImportKind::Value,
         ImportKind::Type,
         ImportKind::Dynamic,
         ImportKind::Require,
         ImportKind::Test,
+        ImportKind::Mock,
     ];
 
     /// The kind of a static import or re-export: [`ImportKind::Type`] if it
@@ -56,6 +61,7 @@ impl ImportKind {
             ImportKind::Dynamic => "dynamic",
             ImportKind::Require => "require",
             ImportKind::Test => "test",
+            ImportKind::Mock => "mock",
         }
     }
 
@@ -90,6 +96,9 @@ bitflags! {
 
         /// [`ImportKind::Test`].
         const TEST = ImportKind::Test.bit();
+
+        /// [`ImportKind::Mock`].
+        const MOCK = ImportKind::Mock.bit();
     }
 }
 
@@ -130,8 +139,14 @@ mod tests {
         for (index, kind) in ImportKind::ALL.into_iter().enumerate() {
             assert_eq!(kind as usize, index);
         }
-        let flags =
-            [KindSet::VALUE, KindSet::TYPE, KindSet::DYNAMIC, KindSet::REQUIRE, KindSet::TEST];
+        let flags = [
+            KindSet::VALUE,
+            KindSet::TYPE,
+            KindSet::DYNAMIC,
+            KindSet::REQUIRE,
+            KindSet::TEST,
+            KindSet::MOCK,
+        ];
         assert_eq!(ImportKind::ALL.map(KindSet::from), flags);
         assert_eq!(KindSet::all().kinds().collect::<Vec<_>>(), ImportKind::ALL);
     }

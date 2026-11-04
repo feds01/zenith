@@ -42,6 +42,7 @@ Each import statement is recorded with its kind:
 | `type` | `import type …`, `export type …`, imports whose every name is `type`, and TypeScript import types such as `typeof import("s")` |
 | `dynamic` | `import("s")` with a literal specifier |
 | `require` | `require("s")` with a literal specifier, and `import x = require("s")` |
+| `mock` | a test's mock of `"s"`, or mocked copy of it, with a literal specifier: Vitest's `vi.mock("s")`, `vi.mock(import("s"))`, `vi.doMock("s")` and `vi.importMock("s")`, Jest's `jest.mock("s")`, `jest.doMock("s")`, `jest.setMock("s")`, `jest.unstable_mockModule("s")`, `jest.requireMock("s")` and `jest.createMockFromModule("s")`, and Bun's and Node's `mock.module("s")`. Jest's virtual mocks, of modules that don't exist, are skipped |
 
 Imports whose specifier isn't a literal, such as `import(path)`, are skipped
 and counted; `-v` lists them. A file's [directives](../concepts.md#directives),

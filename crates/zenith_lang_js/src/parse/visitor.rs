@@ -14,34 +14,42 @@ use zenith_utils::location::Located;
 
 use super::convert::IntoLang;
 
-/// The calls through which a test mocks a module, or makes a mocked copy of
-/// it, as the object and the method called on it: Vitest's, Jest's, and Bun's
-/// and Node's `mock.module`.
-const MOCK_CALLS: [(&str, &str); 10] = [
-    ("vi", "mock"),
-    ("vi", "doMock"),
-    ("vi", "importMock"),
-    ("jest", "mock"),
-    ("jest", "doMock"),
-    ("jest", "setMock"),
-    ("jest", "unstable_mockModule"),
-    ("jest", "requireMock"),
-    ("jest", "createMockFromModule"),
-    ("mock", "module"),
+/// The calls through which a test reaches a module, as the object, the method
+/// called on it and the kind of import it makes: Vitest's, Jest's, and Bun's
+/// and Node's `mock.module`. Most mock the module, or make a mocked copy of
+/// it, while `importActual` and `requireActual` load the module itself, past
+/// its mock.
+const TEST_CALLS: [(&str, &str, ImportKind); 12] = [
+    ("vi", "mock", ImportKind::Mock),
+    ("vi", "doMock", ImportKind::Mock),
+    ("vi", "importMock", ImportKind::Mock),
+    ("vi", "importActual", ImportKind::Dynamic),
+    ("jest", "mock", ImportKind::Mock),
+    ("jest", "doMock", ImportKind::Mock),
+    ("jest", "setMock", ImportKind::Mock),
+    ("jest", "unstable_mockModule", ImportKind::Mock),
+    ("jest", "requireMock", ImportKind::Mock),
+    ("jest", "createMockFromModule", ImportKind::Mock),
+    ("jest", "requireActual", ImportKind::Require),
+    ("mock", "module", ImportKind::Mock),
 ];
 
-/// Whether `callee` is one of the [`MOCK_CALLS`]. Its object may be the
-/// property of another, as in Node's `t.mock.module("s")`.
-fn is_mock_call(callee: &Expression) -> bool {
+/// The kind of import that `callee` makes, if it is one of the
+/// [`TEST_CALLS`]. Its object may be the property of another, as in Node's
+/// `t.mock.module("s")`.
+fn test_call_kind(callee: &Expression) -> Option<ImportKind> {
     let Expression::StaticMemberExpression(member) = callee else {
-        return false;
+        return None;
     };
     let object = match &member.object {
         Expression::Identifier(object) => &object.name,
         Expression::StaticMemberExpression(object) => &object.property.name,
-        _ => return false,
+        _ => return None,
     };
-    MOCK_CALLS.iter().any(|(name, method)| object == name && member.property.name == *method)
+    TEST_CALLS
+        .iter()
+        .find(|(name, method, _)| object == name && member.property.name == *method)
+        .map(|(_, _, kind)| *kind)
 }
 
 /// Whether a mock's `options` make it virtual, as Jest's `{ virtual: true }`
@@ -107,7 +115,7 @@ impl ImportVisitor {
         self.imports.push(ImportDetail { range: span.into_lang(), specifier, kind, names });
     }
 
-    /// Record a dynamic import, `require` or mock call made by the code at
+    /// Record a dynamic import, `require` or test call made by the code at
     /// `span`, whose specifier argument is `argument`. The specifier must
     /// be a string literal, or a template literal without substitutions, to
     /// be resolved.
@@ -211,14 +219,14 @@ impl<'a> Visit<'a> for ImportVisitor {
             && let [argument] = it.arguments.as_slice()
         {
             self.call(argument.as_expression(), ImportKind::Require, it.span);
-        } else if is_mock_call(&it.callee)
+        } else if let Some(kind) = test_call_kind(&it.callee)
             && let [argument, rest @ ..] = it.arguments.as_slice()
             && !is_virtual(rest.get(1))
         {
-            // Vitest also takes the module as `import("s")`, which mocks it
-            // rather than loading it, so it isn't a dynamic import too.
+            // Vitest also takes the module of a mock as `import("s")`, which
+            // names it rather than loading it, so it isn't a dynamic import too.
             if let Some(Expression::ImportExpression(import)) = argument.as_expression() {
-                self.call(Some(&import.source), ImportKind::Mock, it.span);
+                self.call(Some(&import.source), kind, it.span);
                 if let Some(type_arguments) = &it.type_arguments {
                     self.visit_ts_type_parameter_instantiation(type_arguments);
                 }
@@ -227,7 +235,7 @@ impl<'a> Visit<'a> for ImportVisitor {
                 }
                 return;
             }
-            self.call(argument.as_expression(), ImportKind::Mock, it.span);
+            self.call(argument.as_expression(), kind, it.span);
         }
         walk::walk_call_expression(self, it);
     }
@@ -430,6 +438,24 @@ mod tests {
     }
 
     #[test]
+    fn actual_imports() {
+        use ImportKind::*;
+        check(
+            "x.test.ts",
+            &[
+                ("const a = await vi.importActual('s');", Dynamic),
+                ("const a = await vi.importActual<typeof A>(`s`);", Dynamic),
+                ("const a = jest.requireActual('s');", Require),
+            ],
+        );
+        // A mock that keeps some of the module's real exports.
+        assert_eq!(
+            kinds("x.test.ts", "vi.mock('a', async () => ({ ...(await vi.importActual('a')) }));"),
+            [("a".to_string(), Mock), ("a".to_string(), Dynamic)]
+        );
+    }
+
+    #[test]
     fn import_types() {
         use ImportKind::*;
         check(
@@ -461,7 +487,6 @@ mod tests {
             "const url = import.meta.url;",
             "import a = A.B;",
             "vi.unmock('s');",
-            "vi.importActual('s');",
             "vi.mock();",
         ] {
             let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
@@ -490,6 +515,7 @@ const d = require('./' + name);
 const e = require(...names);
 const f = import('./f');
 vi.mock(name);
+const g = jest.requireActual(name);
 ";
         let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
         assert_eq!(kinds("x.ts", source), [("./f".to_string(), Dynamic)]);
@@ -506,7 +532,8 @@ vi.mock(name);
                 (Require, "require(name)"),
                 (Require, "require('./' + name)"),
                 (Require, "require(...names)"),
-                (Mock, "vi.mock(name)")
+                (Mock, "vi.mock(name)"),
+                (Require, "jest.requireActual(name)")
             ]
         );
     }

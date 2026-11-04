@@ -1,9 +1,9 @@
 //! The syntax tree visitor that finds imports and classifies them by kind.
 
 use oxc_ast::ast::{
-    CallExpression, ExportAllDeclaration, ExportFromDeclaration, Expression, ImportDeclaration,
-    ImportDeclarationSpecifier, ImportExpression, TSImportEqualsDeclaration, TSImportType,
-    TSModuleReference,
+    Argument, CallExpression, ExportAllDeclaration, ExportFromDeclaration, Expression,
+    ImportDeclaration, ImportDeclarationSpecifier, ImportExpression, ObjectPropertyKind,
+    TSImportEqualsDeclaration, TSImportType, TSModuleReference,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::Span;
@@ -13,6 +13,49 @@ use zenith_graph::{ImportDetail, ImportKind, ImportedName, ImportedNames};
 use zenith_utils::location::Located;
 
 use super::convert::IntoLang;
+
+/// The calls through which a test mocks a module, or makes a mocked copy of
+/// it, as the object and the method called on it: Vitest's, Jest's, and Bun's
+/// and Node's `mock.module`.
+const MOCK_CALLS: [(&str, &str); 10] = [
+    ("vi", "mock"),
+    ("vi", "doMock"),
+    ("vi", "importMock"),
+    ("jest", "mock"),
+    ("jest", "doMock"),
+    ("jest", "setMock"),
+    ("jest", "unstable_mockModule"),
+    ("jest", "requireMock"),
+    ("jest", "createMockFromModule"),
+    ("mock", "module"),
+];
+
+/// Whether `callee` is one of the [`MOCK_CALLS`]. Its object may be the
+/// property of another, as in Node's `t.mock.module("s")`.
+fn is_mock_call(callee: &Expression) -> bool {
+    let Expression::StaticMemberExpression(member) = callee else {
+        return false;
+    };
+    let object = match &member.object {
+        Expression::Identifier(object) => &object.name,
+        Expression::StaticMemberExpression(object) => &object.property.name,
+        _ => return false,
+    };
+    MOCK_CALLS.iter().any(|(name, method)| object == name && member.property.name == *method)
+}
+
+/// Whether a mock's `options` make it virtual, as Jest's `{ virtual: true }`
+/// does: it stands in for a module that doesn't exist, so it imports nothing.
+fn is_virtual(options: Option<&Argument>) -> bool {
+    let Some(Argument::ObjectExpression(options)) = options else {
+        return false;
+    };
+    options.properties.iter().any(|property| {
+        matches!(property, ObjectPropertyKind::ObjectProperty(property)
+            if property.key.is_specific_id("virtual")
+                && matches!(&property.value, Expression::BooleanLiteral(value) if value.value))
+    })
+}
 
 /// Collects the imports of one file as it walks the syntax tree.
 #[derive(Default)]
@@ -64,9 +107,10 @@ impl ImportVisitor {
         self.imports.push(ImportDetail { range: span.into_lang(), specifier, kind, names });
     }
 
-    /// Record a dynamic import or `require` call made by the code at `span`,
-    /// whose specifier argument is `argument`. The specifier must be a string
-    /// literal, or a template literal without substitutions, to be resolved.
+    /// Record a dynamic import, `require` or mock call made by the code at
+    /// `span`, whose specifier argument is `argument`. The specifier must
+    /// be a string literal, or a template literal without substitutions, to
+    /// be resolved.
     fn call(&mut self, argument: Option<&Expression>, kind: ImportKind, span: Span) {
         let specifier = match argument {
             Some(Expression::StringLiteral(literal)) => Some(literal.value),
@@ -167,6 +211,23 @@ impl<'a> Visit<'a> for ImportVisitor {
             && let [argument] = it.arguments.as_slice()
         {
             self.call(argument.as_expression(), ImportKind::Require, it.span);
+        } else if is_mock_call(&it.callee)
+            && let [argument, rest @ ..] = it.arguments.as_slice()
+            && !is_virtual(rest.get(1))
+        {
+            // Vitest also takes the module as `import("s")`, which mocks it
+            // rather than loading it, so it isn't a dynamic import too.
+            if let Some(Expression::ImportExpression(import)) = argument.as_expression() {
+                self.call(Some(&import.source), ImportKind::Mock, it.span);
+                if let Some(type_arguments) = &it.type_arguments {
+                    self.visit_ts_type_parameter_instantiation(type_arguments);
+                }
+                for argument in rest {
+                    self.visit_argument(argument);
+                }
+                return;
+            }
+            self.call(argument.as_expression(), ImportKind::Mock, it.span);
         }
         walk::walk_call_expression(self, it);
     }
@@ -329,6 +390,46 @@ mod tests {
     }
 
     #[test]
+    fn mock_calls() {
+        use ImportKind::*;
+        check(
+            "x.test.ts",
+            &[
+                ("vi.mock('s');", Mock),
+                ("vi.mock(`s`, () => ({ a: 1 }));", Mock),
+                ("vi.mock('s', { spy: true });", Mock),
+                ("vi.mock(import('s'), async (original) => ({ ...(await original()) }));", Mock),
+                ("vi.doMock('s');", Mock),
+                ("const a = await vi.importMock('s');", Mock),
+                ("jest.mock('s', () => ({}), { virtual: false });", Mock),
+                ("jest.doMock('s');", Mock),
+                ("jest.unstable_mockModule('s', () => ({}));", Mock),
+                ("jest.setMock('s', { a: 1 });", Mock),
+                ("const a = jest.requireMock('s');", Mock),
+                ("const a = jest.createMockFromModule('s');", Mock),
+                ("import.meta.jest.mock('s', () => ({}));", Mock),
+                ("mock.module('s', () => ({}));", Mock),
+                ("t.mock.module('s', { namedExports: {} });", Mock),
+            ],
+        );
+        // A factory's own imports are found too.
+        assert_eq!(
+            kinds("x.test.ts", "vi.mock(import('a'), () => import('b'));"),
+            [("a".to_string(), Mock), ("b".to_string(), Dynamic)]
+        );
+        assert_eq!(
+            kinds("x.test.ts", "vi.mock('a', () => require('b'));"),
+            [("a".to_string(), Mock), ("b".to_string(), Require)]
+        );
+        assert_eq!(
+            kinds("x.test.ts", "vi.mock<typeof import('t')>(import('a'));"),
+            [("a".to_string(), Mock), ("t".to_string(), Type)]
+        );
+        // A virtual mock stands in for a module that doesn't exist.
+        assert_eq!(kinds("x.test.js", "jest.mock('s', () => ({}), { virtual: true });"), []);
+    }
+
+    #[test]
     fn import_types() {
         use ImportKind::*;
         check(
@@ -350,8 +451,6 @@ mod tests {
     #[test]
     fn non_imports() {
         for source in [
-            "vi.mock('s');",
-            "jest.mock('s', () => ({}));",
             "require.resolve('s');",
             "module.require('s');",
             "a.require('s');",
@@ -361,6 +460,9 @@ mod tests {
             "// import a from 's';",
             "const url = import.meta.url;",
             "import a = A.B;",
+            "vi.unmock('s');",
+            "vi.importActual('s');",
+            "vi.mock();",
         ] {
             let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
             assert_eq!(parsed.imports, [], "{source}");
@@ -387,6 +489,7 @@ const c = require(name);
 const d = require('./' + name);
 const e = require(...names);
 const f = import('./f');
+vi.mock(name);
 ";
         let parsed = Parser::new().parse_source(Path::new("x.ts"), source);
         assert_eq!(kinds("x.ts", source), [("./f".to_string(), Dynamic)]);
@@ -402,7 +505,8 @@ const f = import('./f');
                 (Dynamic, "import(`./${name}`)"),
                 (Require, "require(name)"),
                 (Require, "require('./' + name)"),
-                (Require, "require(...names)")
+                (Require, "require(...names)"),
+                (Mock, "vi.mock(name)")
             ]
         );
     }

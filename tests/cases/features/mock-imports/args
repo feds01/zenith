@@ -1,0 +1,3 @@
+check
+why src/app src/api
+graph src --exclude-kind value --exclude-kind type --exclude-kind dynamic --exclude-kind require

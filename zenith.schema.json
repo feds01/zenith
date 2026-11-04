@@ -331,6 +331,11 @@
           "type": "string",
           "const": "test",
           "description": "An import that only tests compile, such as one in Rust's\n`#[cfg(test)]` code or in a crate's `tests` directory."
+        },
+        {
+          "type": "string",
+          "const": "mock",
+          "description": "A test's mock of a module, or mocked copy of it: `vi.mock(\"s\")`,\n`jest.requireMock(\"s\")` and the like."
         }
       ],
       "description": "How an import is made. Contracts can exclude imports of given kinds, e.g.\nto exempt type-only imports."

@@ -59,13 +59,16 @@ Each import statement is recorded with its kind:
 | `dynamic` | an import made while the code runs, such as JavaScript's `import("s")` |
 | `require` | a CommonJS `require("s")` |
 | `test` | an import that only tests compile, such as one in Rust's `#[cfg(test)]` code |
+| `mock` | a test's mock of a module, such as Vitest's `vi.mock("s")` |
 
 The [languages](languages.md) page lists the statements that make each kind.
 Contracts can leave out imports by kind with
 [`exclude_kinds`](contracts/overview.md#common-options): type-only imports
 are erased at runtime, so they are often excluded, and leaving out the test
-imports makes the contracts about production code. `[analysis] exclude_kinds`
-leaves them out of every contract.
+imports makes the contracts about production code. Tests' mocks count like
+any other import; leaving out every kind but `mock` makes a contract about
+them alone, such as one that forbids mocking a package but lets tests import
+it. `[analysis] exclude_kinds` leaves them out of every contract.
 
 ## Re-exports
 

@@ -1,0 +1,21 @@
+# Haskell is enabled by its table. The packages of a cabal project each
+# describe their components in a `.cabal` file, which says where their
+# modules are.
+[languages.haskell]
+
+# Core is the base: nothing in it imports the API, though one import is
+# suppressed and another slips through, as the core doesn't depend on the
+# API and GHC would never build it.
+[contracts.core-is-the-base]
+type = "forbidden"
+from = ["pkg:acme-core"]
+to = ["pkg:acme-api"]
+
+# The API imports the core through its facade, though its test suite
+# looks inside.
+[contracts.api-uses-the-core-facade]
+type = "forbidden"
+from = ["pkg:acme-api"]
+to = ["core/src/Acme/Core/Types.hs"]
+allow_indirect_imports = true
+exclude_kinds = ["test"]

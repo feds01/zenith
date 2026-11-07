@@ -1,7 +1,7 @@
 # Zenith: guide for contributors and agents
 
 Zenith is an architecture linter for monorepos in JavaScript, TypeScript, Go,
-Python, Rust and Terraform, written in Rust. The user guide in
+Haskell, Python, Rust and Terraform, written in Rust. The user guide in
 [docs/book](docs/book/src/SUMMARY.md) describes its behaviour: when a change
 alters what users see, update the guide in the same change.
 
@@ -73,9 +73,10 @@ a new kind of responsibility, not for each feature:
   depends on no parser or resolver.
 - `zenith_lang_go`: Go support: parsing with tree-sitter, and resolving
   import paths against the project's Go modules.
-- `zenith_lang_haskell`: Haskell support: reading the module header and
-  the imports of plain and literate files, with a lexer, the layout rule and
-  a grammar built with winnow.
+- `zenith_lang_haskell`: Haskell support: package discovery from `.cabal`
+  files, the libraries that a cabal or stack build installed, parsing with
+  its own lexer, layout rule and winnow grammar, and resolving modules as
+  GHC finds them.
 - `zenith_lang_js`: JavaScript and TypeScript support: parsing with oxc,
   specifier resolution with `oxc_resolver`, workspace package discovery
   from `package.json`, and the `[languages.js]` table.

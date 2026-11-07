@@ -21,7 +21,7 @@ use rustc_hash::FxHashMap;
 use zenith_utils::{
     fs::{self, FileKind, FileSystem, OsFileSystem},
     glob::Glob,
-    path::{compare_paths, relative_posix, relative_posix_cow},
+    path::{compare_paths, is_named, relative_posix, relative_posix_cow},
     pool::thread_count,
 };
 
@@ -51,6 +51,8 @@ const ALWAYS_EXCLUDED_DIRS: &[&str] = &[
     ".ruff_cache",
     ".terraform",
     ".terragrunt-cache",
+    "dist-newstyle",
+    ".stack-work",
 ];
 
 /// Files that are never scanned: Yarn Plug'n'Play's generated loaders.
@@ -85,7 +87,8 @@ pub struct WalkSettings {
     pub source_file_names: Vec<&'static str>,
 
     /// The names of the manifest files to collect, such as `package.json`,
-    /// from which the languages find the project's packages.
+    /// or `*.cabal` for every file with that extension, from which the
+    /// languages find the project's packages.
     pub manifests: Vec<&'static str>,
 }
 
@@ -501,7 +504,7 @@ impl WalkSettings {
         {
             return;
         }
-        if self.manifests.contains(&name) {
+        if self.manifests.iter().any(|manifest| is_named(name, manifest)) {
             found.manifests.push(path.to_path_buf());
         }
         let has_source_extension = path
@@ -772,6 +775,16 @@ mod tests {
     }
 
     #[test]
+    fn collects_manifests_by_their_extension() {
+        let (_dir, root) =
+            project(&["acme.cabal", "core/acme-core.cabal", "core/src/A.hs", "cabal.project"]);
+        let mut settings = settings(&[]);
+        settings.manifests = vec!["*.cabal", "cabal.project"];
+        let (_, manifests) = found(&root, &settings);
+        assert_eq!(manifests, ["acme.cabal", "cabal.project", "core/acme-core.cabal"]);
+    }
+
+    #[test]
     fn skips_default_and_configured_excludes() {
         let (_dir, root) = project(&[
             "package.json",
@@ -784,6 +797,8 @@ mod tests {
             "web/src/routes.gen.ts",
             "infra/.terraform/modules/vpc/main.ts",
             "infra/.terragrunt-cache/x/main.ts",
+            "lib/dist-newstyle/build/x.ts",
+            "lib/.stack-work/dist/x.ts",
             "web/.storybook/main.ts",
             "experimental/f.ts",
             "out/g.js",

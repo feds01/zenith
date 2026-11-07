@@ -2,6 +2,7 @@
 //! files are matched against, which finds files as it does.
 
 use std::{
+    ffi::OsStr,
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -14,7 +15,7 @@ use zenith_lang::Workspace;
 use zenith_utils::{
     fs::{FileSystem, adjust_canonicalisation},
     glob::Glob,
-    path::{absolute_path, relative_posix},
+    path::{absolute_path, is_named, relative_posix},
 };
 use zenith_workspace::{
     Git, WalkResult, WalkSettings, walk, walk_dependencies_outside, walk_recording,
@@ -82,8 +83,8 @@ impl Stage for Discover {
                 let names = backend.manifests();
                 let manifests: Vec<PathBuf> = (found.manifests.iter())
                     .filter(|path| {
-                        path.file_name()
-                            .is_some_and(|name| names.iter().any(|known| name == *known))
+                        let name = path.file_name().and_then(OsStr::to_str);
+                        name.is_some_and(|name| names.iter().any(|known| is_named(name, known)))
                     })
                     .cloned()
                     .collect();

@@ -1,14 +1,16 @@
 # Languages
 
-zenith reads JavaScript and TypeScript, Go, Python, Rust and Terraform.
-Contracts, selectors, the baseline and the output work the same in every
-language: each language only decides which files it reads, which packages a
-project has, and what each import refers to. Each has a page of its own:
+zenith reads JavaScript and TypeScript, Go, Haskell, Python, Rust and
+Terraform. Contracts, selectors, the baseline and the output work the same in
+every language: each language only decides which files it reads, which
+packages a project has, and what each import refers to. Each has a page of its
+own:
 
 | Language | Table | Files | Packages | External packages | Builtins |
 |---|---|---|---|---|---|
 | [JavaScript and TypeScript](languages/javascript.md) | `[languages.js]` | `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs` | workspace packages | `npm:react` | `node:fs`, `bun:sqlite` |
 | [Go](languages/go.md) | `[languages.go]` | `.go` | modules | `gomod:github.com/pkg/errors` | `go:net/http` |
+| [Haskell](languages/haskell.md) | `[languages.haskell]` | `.hs`, `.lhs`, `.hs-boot`, `.lhs-boot`, `.hsig`, `.lhsig`, `.hsc` | packages with a `.cabal` file | `hackage:containers` | none |
 | [Python](languages/python.md) | `[languages.python]` | `.py`, `.pyi` | packages with a `pyproject.toml` | `pypi:requests` | `python:os` |
 | [Rust](languages/rust.md) | `[languages.rust]` | `.rs` | crates | `crate:serde` | `rust:std::fs` |
 | [Terraform](languages/terraform.md) | `[languages.terraform]` | `.tf`, `.tofu`, `terragrunt.hcl` | none | `tfmod:hashicorp/consul/aws` | none |
@@ -22,6 +24,7 @@ one:
 ```toml
 [languages.js]
 [languages.go]
+[languages.haskell]
 [languages.python]
 [languages.rust]
 [languages.terraform]

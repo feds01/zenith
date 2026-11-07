@@ -1,0 +1,12 @@
+cabal-version: 3.0
+name:          acme-core
+version:       0.1.0.0
+
+library
+  hs-source-dirs:   src
+  exposed-modules:  Acme.Core
+                    Acme.Core.Types
+  other-modules:    Paths_acme_core
+  autogen-modules:  Paths_acme_core
+  build-depends:    base >=4.18 && <5
+  default-language: GHC2021

@@ -81,12 +81,12 @@ Contracts
   [`protected`](contracts/protected.md), [`acyclic`](contracts/acyclic.md),
   [`encapsulation`](contracts/encapsulation.md) and
   [`limits`](contracts/limits.md).
-- **Several languages:** JavaScript and TypeScript, Go, Python, Rust and
-  Terraform, in one [import graph](languages.md), with the same contracts for
-  each.
-- **Monorepo aware:** workspace packages, Go modules, Python packages and Cargo
-  crates are found automatically, and can be named in contracts with `pkg:`
-  selectors.
+- **Several languages:** JavaScript and TypeScript, Go, Haskell, Python,
+  Rust and Terraform, in one [import graph](languages.md), with the same
+  contracts for each.
+- **Monorepo aware:** workspace packages, Go modules, Cabal packages, Python
+  packages and Cargo crates are found automatically, and can be named in
+  contracts with `pkg:` selectors.
 - **Built for adoption:** a [baseline](baseline.md) records the violations a
   codebase already has, so only new ones fail, and
   [suppressions](suppressions.md) exempt single imports.

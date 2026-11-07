@@ -6,6 +6,7 @@ use zenith_config::Languages;
 pub const LANGUAGES: Languages = Languages::new(&[
     &zenith_lang_js::JS,
     &zenith_lang_go::GO,
+    &zenith_lang_haskell::HASKELL,
     &zenith_lang_python::PYTHON,
     &zenith_lang_rust::RUST,
     &zenith_lang_terraform::TERRAFORM,

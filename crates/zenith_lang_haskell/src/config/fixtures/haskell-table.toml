@@ -1,0 +1,3 @@
+[languages.haskell]
+include = ["services/**"]
+ignore_unresolved = ["Generated.*"]

@@ -1,0 +1,62 @@
+cabal-version: 3.0
+-- A package with a field of every kind that zenith reads.
+Name:          acme-full
+version:       1.0
+
+common warnings
+  ghc-options: -Wall
+
+common shared
+  import:        warnings, shared
+  build-depends: base >=4.14 && <5
+
+library
+  import:             shared
+  hs-source-dirs:     src, "generated src"
+  exposed-modules:
+      Acme.Full
+      Acme.Full.Types
+  other-modules:      Acme.Full.Internal
+  autogen-modules:    Acme.Full.Version
+  reexported-modules: Data.Map as Acme.Map, containers:Data.Set
+  signatures:         Acme.Full.Store
+  build-depends:
+      containers >=0.6,
+      acme-full:{internal, other}
+  if os(windows)
+    build-depends: Win32
+    hs-source-dirs: windows
+  else
+    if flag(dev)
+      build-depends: unix
+  mixins:
+      base hiding (Prelude),
+      relude (Relude as Prelude, Relude.Extra),
+      text
+
+library internal
+  hs-source-dirs: internal
+  exposed-modules: Acme.Internal
+
+executable acme-full
+  main-is:        Main.hs
+  hs-source-dirs: app
+  build-depends:  base, acme-full
+
+test-suite spec
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  hs-source-dirs: test
+  build-depends:  base, acme-full:internal
+
+benchmark bench
+  type:           exitcode-stdio-1.0
+  main-is:        Bench.hs
+  build-depends:  base
+
+flag dev
+  default: False
+
+source-repository head
+  type:     git
+  location: https://example.com/acme

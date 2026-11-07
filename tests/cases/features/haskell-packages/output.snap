@@ -1,0 +1,81 @@
+$ zenith check
+exit: 1
+--- stdout
+error[core-is-the-base]: `acme-core` must not import `acme-api`
+ --> core/src/Acme/Core/Types.hs:9:18
+  |
+9 | import qualified Acme.Api as Api
+  |                  ^^^^^^^^ imports `api/src/Acme/Api.hs`
+  |
+  = help: remove this import
+
+Contracts
+  ✗ core-is-the-base          forbidden  broken (1 violation) · 1 suppressed
+  ✓ api-uses-the-core-facade  forbidden  kept
+
+1 kept, 1 broken · 8 files, 11 imports
+
+$ zenith graph --depth 2
+exit: 0
+--- stdout
+. (8 files)
+├─api/ (4 files)
+│ ├─app/ (1 file)
+│ ├─src/ (2 files)
+│ └─test/ (1 file)
+├─core/ (3 files)
+│ └─src/ (3 files)
+└─scripts/ (1 file)
+  └─Migrate.lhs
+
+dependencies between the children of `.`:
+  api -> core (3 imports)
+  core -> api (2 imports)
+  scripts -> core (1 import)
+
+$ zenith why api core
+exit: 0
+--- stdout
+chain 1 of 3:
+  api/src/Acme/Api.hs:4
+  -> core/src/Acme/Core.hs
+
+chain 2 of 3:
+  api/src/Acme/Api/Routes.hs:3
+  -> core/src/Acme/Core.hs
+
+chain 3 of 3:
+  api/test/Spec.hs:4 (test)
+  -> core/src/Acme/Core/Types.hs
+
+
+$ zenith resolve api/src/Acme/Api.hs Acme.Api.Routes
+exit: 0
+--- stdout
+internal: api/src/Acme/Api/Routes.hs
+
+$ zenith resolve api/app/Main.hs Acme.Api
+exit: 0
+--- stdout
+internal: api/src/Acme/Api.hs
+
+$ zenith resolve core/src/Acme/Core/Types.hs "{-# SOURCE #-} Acme.Core"
+exit: 0
+--- stdout
+internal: core/src/Acme/Core.hs-boot
+
+$ zenith resolve core/src/Acme/Core.hs Paths_acme_core
+exit: 1
+--- stdout
+unresolved: Cabal writes the module as it builds the package (expected, by `ignore_unresolved`)
+
+$ zenith resolve api/src/Acme/Api.hs Data.Aeson
+exit: 1
+--- stdout
+unresolved: no library of the project or of the compiler has the module, and no build says which package does: build the project with cabal or stack
+
+$ zenith resolve scripts/Migrate.lhs Acme.Core
+exit: 0
+--- stdout
+internal: core/src/Acme/Core.hs
+

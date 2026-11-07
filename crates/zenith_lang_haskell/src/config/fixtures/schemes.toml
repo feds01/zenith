@@ -1,0 +1,6 @@
+[languages.haskell]
+
+[contracts.no-network]
+type = "forbidden"
+from = ["services/core"]
+to = ["hackage:http-client", "pkg:acme-api"]

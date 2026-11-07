@@ -1,0 +1,20 @@
+cabal-version: 3.0
+name:          acme-prelude
+version:       0.1.0.0
+
+library
+  hs-source-dirs:     src
+  exposed-modules:    Acme.Prelude
+  reexported-modules: containers:Data.Map as Acme.Map
+  build-depends:      base, containers, legacy-containers
+
+library internal
+  hs-source-dirs:  internal
+  exposed-modules: Acme.Internal
+  build-depends:   base
+
+executable tool
+  hs-source-dirs: tool
+  main-is:        Tool.hs
+  build-depends:  base, relude, acme-prelude, acme-prelude:internal
+  mixins:         base hiding (Prelude), relude (Relude as Prelude)

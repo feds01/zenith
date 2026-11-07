@@ -19,7 +19,7 @@ use winnow::{
 };
 use zenith_utils::location::{ByteRange, Located};
 
-use super::{HaskellComment, HaskellSyntaxError};
+use super::HaskellComment;
 
 /// What lexing a part of the source gives, which never fails while there is
 /// source left.
@@ -188,16 +188,6 @@ pub(super) enum LexError {
 
     /// A character that starts no lexeme.
     Character,
-}
-
-impl From<LexError> for HaskellSyntaxError {
-    fn from(error: LexError) -> Self {
-        match error {
-            LexError::UnterminatedComment => Self::UnterminatedComment,
-            LexError::UnterminatedString => Self::UnterminatedString,
-            LexError::Character => Self::InvalidCharacter,
-        }
-    }
 }
 
 /// A lexeme, or a comment between them, or a line of the C preprocessor

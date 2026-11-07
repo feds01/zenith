@@ -14,6 +14,14 @@
 //! Imports come before every other declaration, so the first declaration
 //! that isn't one ends the reading, and nothing after it is lexed.
 //!
+//! The lexer and the grammar are built with the parser combinators of
+//! [winnow](https://docs.rs/winnow), which read text and slices of tokens
+//! alike: the lexer reads the source, and the grammar the lexemes of a
+//! declaration, without allocating, and a parser that fails says what it
+//! expected. A grammar generator, such as pest or LALRPOP, would still need
+//! the layout rule's own pass over the lexemes, and a lexer generator, such
+//! as logos, describes lexemes with regular expressions.
+//!
 //! ```
 //! use zenith_lang_haskell::parse::{Dialect, Parser};
 //!
@@ -43,6 +51,7 @@
 //! never panics. Each syntax error in the header or in an import is recorded
 //! in [`HaskellFile::errors`], and the imports around it are still read.
 
+mod error;
 mod grammar;
 mod layout;
 mod lexer;
@@ -52,9 +61,10 @@ mod reader;
 #[cfg(test)]
 mod tests;
 
-use std::{fmt, path::Path};
+use std::path::Path;
 
-use zenith_diagnostics::message;
+pub use error::{Expected, HaskellSyntaxError};
+use reader::Reader;
 use zenith_utils::location::{ByteRange, Located};
 
 /// Parses Haskell files into [`HaskellFile`]s.
@@ -89,10 +99,10 @@ impl Parser {
         }
         let keyword = dialect.header_keyword();
         match dialect.literate {
-            false => reader::read(source, keyword),
+            false => Reader::new(source, keyword).read(),
             true => {
                 literate::unlit(source, &mut self.code);
-                reader::read(&self.code, keyword)
+                Reader::new(&self.code, keyword).read()
             }
         }
     }
@@ -239,74 +249,4 @@ pub struct HaskellComment {
 
     /// Whether it is a `{- -}` comment, rather than a `--` comment.
     pub block: bool,
-}
-
-/// What is wrong in a syntax error of a Haskell file.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum HaskellSyntaxError {
-    /// The source is 4 GiB or longer, which is more than offsets can address.
-    SourceTooLarge,
-
-    /// A `{-` comment has no `-}` to end it.
-    UnterminatedComment,
-
-    /// A string has no `"` to end it on its line.
-    UnterminatedString,
-
-    /// A character that is no part of any lexeme, such as a control
-    /// character.
-    InvalidCharacter,
-
-    /// The grammar expected something else where the error is.
-    Expected(Expected),
-
-    /// A lexeme that the grammar has no place for, such as one after the end
-    /// of an import, as written.
-    Unexpected(String),
-
-    /// A declaration ends before the grammar has read all of it.
-    UnexpectedEnd,
-}
-
-/// What the grammar expected where it found something else.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Expected {
-    /// The name of a module, such as `Data.Map`.
-    ModuleName,
-
-    /// The name of a package, in quotes, as a package-qualified import names
-    /// one: words of letters and digits, apart by `-`.
-    PackageName,
-
-    /// A name, or an operator in parentheses, as an import or export list
-    /// holds.
-    Name,
-
-    /// A lexeme that must be written as it is, such as `where` or `)`.
-    Token(&'static str),
-}
-
-impl fmt::Display for HaskellSyntaxError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::SourceTooLarge => f.write_str(&message!(haskell_source_too_large)),
-            Self::UnterminatedComment => f.write_str(&message!(haskell_unterminated_comment)),
-            Self::UnterminatedString => f.write_str(&message!(haskell_unterminated_string)),
-            Self::InvalidCharacter => f.write_str(&message!(haskell_invalid_character)),
-            Self::Expected(expected) => expected.fmt(f),
-            Self::Unexpected(token) => f.write_str(&message!(haskell_unexpected_token, token)),
-            Self::UnexpectedEnd => f.write_str(&message!(haskell_unexpected_end)),
-        }
-    }
-}
-
-impl fmt::Display for Expected {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ModuleName => f.write_str(&message!(haskell_expected_module_name)),
-            Self::PackageName => f.write_str(&message!(haskell_expected_package_name)),
-            Self::Name => f.write_str(&message!(haskell_expected_name)),
-            Self::Token(token) => f.write_str(&message!(haskell_expected_token, token)),
-        }
-    }
 }

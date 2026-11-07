@@ -51,11 +51,12 @@ impl ContainsToken<&Token<'_>> for Kind {
 }
 
 /// `header → module modid [exports] where`, or `signature modid [exports]
-/// where` in a signature of Backpack's: what names the module, after
-/// `keyword`.
-pub(super) fn header<'t>(keyword: &'static str) -> impl Parser<Tokens<'t>, Located<String>, Error> {
+/// where` in a signature of Backpack's: what names the module. Which of the
+/// two starts a header in a file is for the layout rule to tell, by the
+/// file's dialect.
+pub(super) fn header(input: &mut Tokens<'_>) -> Result<Located<String>> {
     let rest = (opt(exports), "where".context(Expected::Token("where")));
-    preceded(keyword, cut_err(terminated(modid, rest)))
+    preceded(alt(("module", "signature")), cut_err(terminated(modid, rest))).parse_next(input)
 }
 
 /// `exports → ( export1 , … , exportn [ , ] )`

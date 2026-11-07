@@ -1,0 +1,5 @@
+# Test data, which GitHub collapses in the diffs of pull requests and leaves
+# out of the repository's languages: the fixtures that tests read, and the
+# projects and snapshots of the UI tests.
+**/fixtures/** linguist-generated
+tests/cases/** linguist-generated

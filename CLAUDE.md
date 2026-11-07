@@ -73,6 +73,9 @@ a new kind of responsibility, not for each feature:
   depends on no parser or resolver.
 - `zenith_lang_go`: Go support: parsing with tree-sitter, and resolving
   import paths against the project's Go modules.
+- `zenith_lang_haskell`: Haskell support: reading the module header and
+  the imports of plain and literate files, with a lexer, the layout rule and
+  a grammar built with winnow.
 - `zenith_lang_js`: JavaScript and TypeScript support: parsing with oxc,
   specifier resolution with `oxc_resolver`, workspace package discovery
   from `package.json`, and the `[languages.js]` table.

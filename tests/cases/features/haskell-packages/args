@@ -1,0 +1,12 @@
+check
+graph --depth 2
+why api core
+# A module of the component, of a library that it depends on, a boot file,
+# a module that Cabal writes, one that no build says the package of, and a
+# literate script's import.
+resolve api/src/Acme/Api.hs Acme.Api.Routes
+resolve api/app/Main.hs Acme.Api
+resolve core/src/Acme/Core/Types.hs "{-# SOURCE #-} Acme.Core"
+resolve core/src/Acme/Core.hs Paths_acme_core
+resolve api/src/Acme/Api.hs Data.Aeson
+resolve scripts/Migrate.lhs Acme.Core

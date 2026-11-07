@@ -10,6 +10,7 @@
 - [Languages](languages.md)
   - [JavaScript and TypeScript](languages/javascript.md)
   - [Go](languages/go.md)
+  - [Haskell](languages/haskell.md)
   - [Python](languages/python.md)
   - [Rust](languages/rust.md)
   - [Terraform](languages/terraform.md)

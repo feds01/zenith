@@ -53,6 +53,7 @@
 
 mod error;
 mod grammar;
+mod lang;
 mod layout;
 mod lexer;
 mod literate;
@@ -64,6 +65,7 @@ mod tests;
 use std::path::Path;
 
 pub use error::{Expected, HaskellSyntaxError};
+pub(crate) use lang::Specifier;
 use reader::Reader;
 use zenith_utils::location::{ByteRange, Located};
 

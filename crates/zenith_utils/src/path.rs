@@ -128,6 +128,16 @@ pub fn is_extension(extension: &str) -> bool {
     })
 }
 
+/// Whether the file name `name` is one that `pattern` names: `name` itself,
+/// or, for `*` and an extension, such as `*.cabal`, any name with that
+/// extension.
+pub fn is_named(name: &str, pattern: &str) -> bool {
+    match pattern.strip_prefix('*') {
+        Some(extension) => name.len() > extension.len() && name.ends_with(extension),
+        None => name == pattern,
+    }
+}
+
 /// The directory that contains the relative POSIX `path`, which is `""` (the
 /// root) for a path with one segment.
 pub fn posix_parent(path: &str) -> &str {
@@ -203,6 +213,15 @@ pub fn has_windows_drive(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn names_are_named_by_themselves_or_by_their_extension() {
+        assert!(is_named("package.json", "package.json"));
+        assert!(!is_named("package.json5", "package.json"));
+        assert!(is_named("acme-core.cabal", "*.cabal"));
+        assert!(!is_named(".cabal", "*.cabal"));
+        assert!(!is_named("acme.cabal.orig", "*.cabal"));
+    }
 
     #[test]
     fn relative_paths_are_posix() {

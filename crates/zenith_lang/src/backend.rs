@@ -33,7 +33,7 @@ pub struct BackendSettings<'a> {
 /// [`resolver`](Self::resolver) for every import of its files.
 pub trait Backend: Send + Sync {
     /// The names of the manifest files that the walk collects for it, such
-    /// as `package.json`.
+    /// as `package.json`, or `*.cabal` for every file with that extension.
     fn manifests(&self) -> &'static [&'static str];
 
     /// The scheme of the node ids of its external packages, without the `:`,

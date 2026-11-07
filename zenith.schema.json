@@ -122,6 +122,28 @@
       },
       "description": "Go."
     },
+    "HaskellTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Globs of the files to scan. Defaults to every Haskell source, plain\nand literate, with the boot files, the signatures and the sources of\n`hsc2hs`: `**/*.hs`, `**/*.lhs`, `**/*.hs-boot`, `**/*.lhs-boot`,\n`**/*.hsig`, `**/*.lhsig` and `**/*.hsc`."
+        },
+        "ignore_unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Name patterns of the specifiers of imports that are expected not to\nresolve, so are not reported as unresolved, such as `Generated.*`.",
+          "default": []
+        }
+      },
+      "description": "Haskell."
+    },
     "PythonTable": {
       "type": "object",
       "additionalProperties": false,
@@ -270,6 +292,10 @@
         "go": {
           "$ref": "#/$defs/GoTable",
           "description": "Go: how its files are found and their imports resolved."
+        },
+        "haskell": {
+          "$ref": "#/$defs/HaskellTable",
+          "description": "Haskell: how its files are found and the imports between its modules resolved."
         },
         "python": {
           "$ref": "#/$defs/PythonTable",

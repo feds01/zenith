@@ -1,0 +1,22 @@
+cabal-version: 3.0
+name:          acme-api
+version:       0.1.0.0
+
+library
+  default-language: Haskell2010
+  hs-source-dirs:   src
+  exposed-modules:  Acme.Api
+  build-depends:    base, text, acme-core
+
+executable acme
+  default-language: Haskell2010
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  build-depends:    base, acme-api
+
+test-suite spec
+  type:             exitcode-stdio-1.0
+  default-language: Haskell2010
+  hs-source-dirs:   test
+  main-is:          Spec.hs
+  build-depends:    base, acme-api, acme-core

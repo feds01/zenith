@@ -6,6 +6,7 @@
 
 mod backend;
 mod config;
+mod names;
 mod packages;
 pub mod parse;
 mod resolve;

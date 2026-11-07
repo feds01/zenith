@@ -21,6 +21,8 @@ use zenith_diagnostics::message;
 use zenith_lang::{Workspace, WorkspacePackage};
 use zenith_utils::{fs::FileSystem, path::relative_posix};
 
+use crate::names::is_conid;
+
 /// The names of the files that say where a project's build is, besides each
 /// package's directory: a cabal project's, and a stack project's.
 const PROJECT_FILES: &[&str] = &["cabal.project", "stack.yaml"];
@@ -438,15 +440,9 @@ impl Component {
 
 /// Whether `relative`, a path from a source directory, is that of a module's
 /// file: each of its directories, and its file's name before its extensions,
-/// is a part of a module's name, which starts with a capital letter.
+/// is a part of a module's name.
 fn is_module_path(relative: &Path) -> bool {
     let stem = relative.file_name().and_then(OsStr::to_str).and_then(|name| name.split('.').next());
     let dirs = relative.parent().into_iter().flat_map(Path::iter).map(OsStr::to_str);
-    dirs.chain([stem]).all(|part| {
-        part.is_some_and(|part| {
-            let mut chars = part.chars();
-            chars.next().is_some_and(char::is_uppercase)
-                && chars.all(|c| c.is_alphanumeric() || c == '_' || c == '\'')
-        })
-    })
+    dirs.chain([stem]).all(|part| part.is_some_and(is_conid))
 }

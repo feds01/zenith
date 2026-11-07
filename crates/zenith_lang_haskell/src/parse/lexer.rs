@@ -20,6 +20,7 @@ use winnow::{
 use zenith_utils::location::{ByteRange, Located};
 
 use super::HaskellComment;
+use crate::names::{is_ident, is_large};
 
 /// What lexing a part of the source gives, which never fails while there is
 /// source left.
@@ -527,19 +528,6 @@ fn is_white(c: char) -> bool {
 /// `small → ascSmall | uniSmall | _`
 fn is_small(c: char) -> bool {
     c == '_' || (c.is_alphabetic() && !is_large(c))
-}
-
-/// Whether `c` starts a name that is a constructor's: an uppercase or
-/// titlecase letter, which has a lowercase form of its own.
-///
-/// `large → ascLarge | uniLarge`
-fn is_large(c: char) -> bool {
-    c.is_uppercase() || (c.is_alphabetic() && !c.is_lowercase() && !c.to_lowercase().eq([c]))
-}
-
-/// Whether `c` may follow the first character of a name.
-fn is_ident(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '\''
 }
 
 /// Whether `c` is a symbol, of which operators are made: one of ASCII's, or

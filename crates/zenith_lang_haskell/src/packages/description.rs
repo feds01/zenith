@@ -6,7 +6,9 @@
 //! `if os(windows)`. Every branch is read, as a component depends on what
 //! any build of it depends on.
 
-use std::path::{self, Path, PathBuf};
+use std::path::Path;
+
+use zenith_utils::path::normalize_path;
 
 use super::{
     Component, ComponentKind, Dependency, Mixin, Package, Reexport, Visible,
@@ -114,7 +116,8 @@ impl Component {
                 }
             }
             "hs-source-dirs" | "hs-source-dir" => {
-                let dirs = fields::words(value).into_iter().map(|source| source_dir(dir, &source));
+                let dirs =
+                    fields::words(value).into_iter().map(|source| normalize_path(dir.join(source)));
                 self.source_dirs.extend(dirs);
             }
             name if EXPOSED.contains(&name) => self.exposed.extend(fields::words(value)),
@@ -232,21 +235,6 @@ impl Mixin {
         };
         Some(Mixin { package, library, visible })
     }
-}
-
-/// The directory `source`, one of a component's `hs-source-dirs`, of the
-/// package in `dir`, without the `.` and `..` that it may have, as in
-/// `../shared/src`.
-fn source_dir(dir: &Path, source: &str) -> PathBuf {
-    let mut joined = dir.to_path_buf();
-    for component in Path::new(source).components() {
-        match component {
-            path::Component::CurDir => {}
-            path::Component::ParentDir => _ = joined.pop(),
-            component => joined.push(component),
-        }
-    }
-    joined
 }
 
 /// The name of a package at the start of `text`: letters, digits and `-`.

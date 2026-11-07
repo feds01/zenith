@@ -1,0 +1,18 @@
+[package]
+name = "zenith_lang_haskell"
+version = { workspace = true }
+description = "Haskell support: reading the module header and the imports of Haskell files"
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+publish = { workspace = true }
+
+[dependencies]
+zenith_diagnostics = { workspace = true }
+zenith_utils = { workspace = true }
+
+winnow = { workspace = true }
+
+[lints]
+workspace = true

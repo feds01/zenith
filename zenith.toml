@@ -41,7 +41,7 @@ guidance = "Reach a language through the interfaces in zenith_config and zenith_
 [contracts.parsers-in-languages]
 type = "protected"
 name = "Parsers and resolvers stay in their languages"
-modules = ["crate:oxc_*", "crate:ra_ap_*", "crate:ruff_*", "crate:tree-sitter*", "crate:yaml-rust2"]
+modules = ["crate:oxc_*", "crate:ra_ap_*", "crate:ruff_*", "crate:tree-sitter*", "crate:winnow", "crate:yaml-rust2"]
 allowed_importers = ["pkg:zenith_lang_*"]
 guidance = "Expose what the parser finds through the types in zenith_lang."
 
@@ -200,10 +200,12 @@ ignore_imports = [
 ]
 guidance = "Move what both modules need into a third, which both may import."
 
+# Haskell only reads its files so far, so it joins with its backend, and the
+# containers go back to `crates/zenith_lang_*/src`.
 [contracts.language-stages]
 type = "layers"
 name = "A language's config builds its backend, which resolves, then parses"
-containers = ["crates/zenith_lang_*/src"]
+containers = ["crates/zenith_lang_{go,js,python,rust,terraform}/src"]
 layers = ["config", "backend", "resolve", "parse", "(crates) : (modules) : (packages)"]
 allow_indirect_imports = true
 guidance = "Parsing knows nothing of resolving, and neither knows the backend: pass them what they need."

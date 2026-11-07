@@ -2743,6 +2743,7 @@ dependencies = [
  "zenith_graph",
  "zenith_lang",
  "zenith_lang_go",
+ "zenith_lang_haskell",
  "zenith_lang_js",
  "zenith_lang_python",
  "zenith_lang_terraform",
@@ -2865,6 +2866,15 @@ dependencies = [
  "zenith_diagnostics",
  "zenith_graph",
  "zenith_lang",
+ "zenith_utils",
+]
+
+[[package]]
+name = "zenith_lang_haskell"
+version = "0.7.0"
+dependencies = [
+ "winnow 1.0.4",
+ "zenith_diagnostics",
  "zenith_utils",
 ]
 

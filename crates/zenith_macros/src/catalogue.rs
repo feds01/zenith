@@ -22,6 +22,7 @@ const SOURCES: &[(&str, &str)] = &[
     ("contracts.ftl", include_str!("../../zenith_diagnostics/messages/en-US/contracts.ftl")),
     ("go.ftl", include_str!("../../zenith_diagnostics/messages/en-US/go.ftl")),
     ("graph.ftl", include_str!("../../zenith_diagnostics/messages/en-US/graph.ftl")),
+    ("haskell.ftl", include_str!("../../zenith_diagnostics/messages/en-US/haskell.ftl")),
     ("js.ftl", include_str!("../../zenith_diagnostics/messages/en-US/js.ftl")),
     ("lang.ftl", include_str!("../../zenith_diagnostics/messages/en-US/lang.ftl")),
     ("lsp.ftl", include_str!("../../zenith_diagnostics/messages/en-US/lsp.ftl")),

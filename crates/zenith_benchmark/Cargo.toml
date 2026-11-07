@@ -32,6 +32,10 @@ name = "lang_go"
 harness = false
 
 [[bench]]
+name = "lang_haskell"
+harness = false
+
+[[bench]]
 name = "lang_js"
 harness = false
 
@@ -67,6 +71,7 @@ zenith_cache = { workspace = true }
 zenith_contracts = { workspace = true }
 zenith_lang = { workspace = true }
 zenith_lang_go = { workspace = true }
+zenith_lang_haskell = { workspace = true }
 zenith_lang_python = { workspace = true }
 zenith_lang_terraform = { workspace = true }
 zenith_pipeline = { workspace = true }

@@ -20,6 +20,7 @@ zenith_diagnostics = { path = "crates/zenith_diagnostics" }
 zenith_graph = { path = "crates/zenith_graph" }
 zenith_lang = { path = "crates/zenith_lang" }
 zenith_lang_go = { path = "crates/zenith_lang_go" }
+zenith_lang_haskell = { path = "crates/zenith_lang_haskell" }
 zenith_lang_js = { path = "crates/zenith_lang_js" }
 zenith_lang_python = { path = "crates/zenith_lang_python" }
 zenith_lang_rust = { path = "crates/zenith_lang_rust" }
@@ -91,6 +92,7 @@ triomphe = { version = "0.1.17", default-features = false }
 toml = { version = "1.1.8", features = ["preserve_order"] }
 trybuild = { version = "1.0.122" }
 unic-langid = { version = "0.9.6" }
+winnow = { version = "1.0.4", default-features = false, features = ["std", "parser"] }
 xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
 yaml-rust2 = { version = "0.13.0", default-features = false }
 

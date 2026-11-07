@@ -5,14 +5,22 @@
 
 use std::path::{Path, PathBuf};
 
+use zenith_utils::path::normalize_path;
+
 use super::{
     fields::{self, Item},
     *,
 };
 
+/// The path `path` in the project at `/repo`, absolute as a project's
+/// directories are, so on Windows on the drive of the current directory.
+fn repo(path: &str) -> PathBuf {
+    normalize_path(Path::new("/repo").join(path))
+}
+
 /// The package that the description `text`, in `/repo/<dir>`, describes.
 fn describe(dir: &str, text: &str) -> Package {
-    Package::describe(&Path::new("/repo").join(dir), text).expect("a package")
+    Package::describe(&repo(dir), text).expect("a package")
 }
 
 /// The component of `package` of `kind`.
@@ -63,7 +71,7 @@ fn describes_the_components_of_a_package() {
     let core = describe("core", include_str!("fixtures/acme-core.cabal"));
     assert_eq!(core.name, "acme-core");
     let library = component(&core, ComponentKind::Library(None));
-    assert_eq!(library.source_dirs, [PathBuf::from("/repo/core/src")]);
+    assert_eq!(library.source_dirs, [repo("core/src")]);
     assert_eq!(library.exposed, ["Acme.Core", "Acme.Core.Types"]);
     // `base` comes from the common stanza that the library imports.
     assert_eq!(dependencies(library), ["base", "containers", "split"]);
@@ -81,7 +89,7 @@ fn describes_the_components_of_a_package() {
     let executable = component(&api, ComponentKind::Executable("acme".into()));
     assert_eq!(
         (executable.main.as_deref(), executable.source_dirs.as_slice()),
-        (Some("Main.hs"), &[PathBuf::from("/repo/api/app")][..])
+        (Some("Main.hs"), &[repo("api/app")][..])
     );
     assert_eq!(dependencies(executable), ["base", "acme-api"]);
 }
@@ -92,7 +100,7 @@ fn reads_every_field_of_every_branch_and_stanza() {
     assert_eq!(full.name, "acme-full");
     let library = component(&full, ComponentKind::Library(None));
     let dirs: Vec<_> =
-        library.source_dirs.iter().map(|dir| dir.strip_prefix("/repo/full").unwrap()).collect();
+        library.source_dirs.iter().map(|dir| dir.strip_prefix(repo("full")).unwrap()).collect();
     assert_eq!(dirs, [Path::new("src"), Path::new("generated src"), Path::new("windows")]);
     assert_eq!(library.exposed, ["Acme.Full", "Acme.Full.Types", "Acme.Full.Store"]);
     assert_eq!(library.generated, ["Acme.Full.Version"]);
@@ -137,7 +145,7 @@ fn reads_every_field_of_every_branch_and_stanza() {
     assert_eq!(dependencies(spec), ["base", "acme-full:internal"]);
     // A component that names no source directory has its package's.
     let bench = component(&full, ComponentKind::Benchmark("bench".into()));
-    assert_eq!(bench.source_dirs, [PathBuf::from("/repo/full")]);
+    assert_eq!(bench.source_dirs, [repo("full")]);
 }
 
 #[test]
@@ -150,7 +158,7 @@ fn source_directories_are_without_dots() {
     let text = "name: flat\nlibrary\n  hs-source-dirs: ../shared/src ./src .\n";
     let flat = describe("flat", text);
     let library = component(&flat, ComponentKind::Library(None));
-    let dirs = ["/repo/shared/src", "/repo/flat/src", "/repo/flat"].map(PathBuf::from);
+    let dirs = ["shared/src", "flat/src", "flat"].map(repo);
     assert_eq!(library.source_dirs, dirs);
 }
 
@@ -234,9 +242,9 @@ fn a_build_chooses_the_first_library_of_each_package() {
 #[test]
 fn knows_the_files_that_only_tests_compile() {
     let api = describe("api", include_str!("fixtures/acme-api.cabal"));
-    assert!(api.compiles_only_tests(Path::new("/repo/api/test/Spec.hs")));
-    assert!(!api.compiles_only_tests(Path::new("/repo/api/src/Acme/Api.hs")));
-    assert!(!api.compiles_only_tests(Path::new("/repo/api/Setup.hs")));
+    assert!(api.compiles_only_tests(&repo("api/test/Spec.hs")));
+    assert!(!api.compiles_only_tests(&repo("api/src/Acme/Api.hs")));
+    assert!(!api.compiles_only_tests(&repo("api/Setup.hs")));
 }
 
 #[test]
@@ -248,7 +256,7 @@ fn a_component_compiles_its_modules_and_its_main_module() {
                 test\n  main-is: Spec.hs\n";
     let flat = describe("flat", text);
     let compiling = |path: &str| -> Vec<ComponentKind> {
-        let path = Path::new("/repo/flat").join(path);
+        let path = repo("flat").join(path);
         flat.components_of(&path).map(|component| component.kind.clone()).collect()
     };
     assert_eq!(compiling("Flat.hs"), [ComponentKind::Library(None)]);
@@ -257,7 +265,7 @@ fn a_component_compiles_its_modules_and_its_main_module() {
     assert_eq!(compiling("test/Spec.hs"), [ComponentKind::TestSuite("spec".into())]);
     assert_eq!(compiling("test/Acme/Helpers.hs"), [ComponentKind::TestSuite("spec".into())]);
     assert_eq!(compiling("scripts/migrate.hs"), []);
-    assert!(flat.compiles_only_tests(Path::new("/repo/flat/test/Spec.hs")));
+    assert!(flat.compiles_only_tests(&repo("flat/test/Spec.hs")));
 }
 
 #[test]
@@ -279,7 +287,7 @@ fn packages_are_the_workspace_packages() {
         Vec::new(),
         Build::default(),
     );
-    let workspace = packages.workspace(Path::new("/repo"));
+    let workspace = packages.workspace(&repo(""));
     let names: Vec<_> = workspace
         .packages
         .iter()

@@ -831,6 +831,10 @@ fn invalid_selectors_are_errors() {
              and `pkg:` selectors, which match files [\"use client\"]",
         ),
         (
+            "type = \"acyclic\"\nmodules = [{ path = \"a\", except = [{ path = \"a/{b\" }] }]",
+            "3:45: in contract `c`: invalid selector `a/{b`: unclosed `{` [\"a/{b\"]",
+        ),
+        (
             "type = \"layers\"\nlayers = [\"a\"]\ncontainers = [\"a**\"]",
             "4:15: in contract `c`: invalid selector `a**`: `**` must be a whole path segment; use \
              `*` within a segment [\"a**\"]",
@@ -1053,7 +1057,7 @@ fn selectors_layers_and_ignored_imports_keep_their_range() {
     let contents = r#"
 [contracts.c]
 type = "layers"
-containers = [{ path = "apps/*", except = ["apps/legacy"] }]
+containers = [{ path = "apps/*", except = ["apps/legacy", { path = "apps/**", directive = "use client" }] }]
 layers = ["ui | (api)"]
 ignore_imports = ["ui -> api"]
 "#;
@@ -1069,6 +1073,10 @@ ignore_imports = ["ui -> api"]
     let container = &layers.containers[0];
     assert_eq!(at(container.range()), (4, 24, "\"apps/*\""));
     assert_eq!(at(container.except()[0].range()), (4, 44, "\"apps/legacy\""));
+    // A table in `except` is at its `path`.
+    let except = &container.except()[1];
+    assert_eq!(at(except.range()), (4, 68, "\"apps/**\""));
+    assert_eq!(except.directive(), Some("use client"));
     let layer = &layers.layers[0];
     assert_eq!(at(layer.range), (5, 11, "\"ui | (api)\""));
     for member in &layer.members {
@@ -1152,5 +1160,6 @@ fn a_member_s_paths_are_relative_to_it_and_its_ids_start_with_it() {
     };
     assert!(matches(&config.from[0], "apps/web/src"));
     assert!(matches(&config.from[0].except()[0], "apps/web/src/tests"));
+    assert!(matches(&config.from[0].except()[1], "apps/web/src/app"));
     assert_eq!(config.to[0].scheme(), Some("pkg"));
 }

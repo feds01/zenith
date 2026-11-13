@@ -549,9 +549,10 @@ pub(crate) struct SelectorTable {
     /// The selector, in any of its string forms.
     pub(crate) path: Located<String>,
 
-    /// Selectors of modules to remove from each matched module.
+    /// Selectors of modules to remove from each matched module, in their
+    /// string or table form.
     #[serde(default)]
-    pub(crate) except: Vec<Located<String>>,
+    pub(crate) except: Vec<Located<SelectorValue>>,
 
     /// Keep only the files that start with this directive, such as
     /// `"use client"`, each as a module of its own.

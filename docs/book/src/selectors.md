@@ -51,13 +51,17 @@ zenith's glob dialect needs no escaping for Next.js and TanStack file names:
 ```toml
 { path = "web/src/**", directive = "use client" }
 { path = "web/src/features", except = ["web/src/features/experimental"] }
+{ path = "web/src/app", except = [{ path = "web/src/app", directive = "use client" }] }
 ```
 
 - `path` is any string-form selector.
 - `except` removes the members that its selectors match from each unit. A
   unit that it empties takes part in nothing, so `except` also removes whole
   units: in `{ path = "src/parse/*", except = ["src/parse/mod.rs"] }`, the
-  directory's own `mod.rs` is not a sibling of the modules in it.
+  directory's own `mod.rs` is not a sibling of the modules in it. Its
+  selectors take either form, so a table with a `directive` removes the files
+  that have it: the last example above is `web/src/app` as one unit, without
+  its client components.
 - `directive` keeps only the files whose directives include it, exactly as
   written, and makes **each file a unit of its own**, so a violation names the
   file. It only applies to path and `pkg:` selectors.

@@ -89,11 +89,7 @@ impl Parser {
             SelectorValue::Table(table) => table,
         };
         let selector = self.parse_string_selector(&table.path.value, table.path.range);
-        let except = table
-            .except
-            .iter()
-            .filter_map(|except| self.parse_string_selector(&except.value, except.range))
-            .collect();
+        let except = self.parse_selectors(&table.except);
         let directive = table.directive.as_ref();
         let selector =
             selector?.with_filters(except, directive.map(|directive| directive.value.clone()));

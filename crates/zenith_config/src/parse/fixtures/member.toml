@@ -18,5 +18,5 @@ layers = ["ui", "api"]
 
 [contracts.no-ui]
 type = "forbidden"
-from = [{ path = "src", except = ["src/tests"] }]
+from = [{ path = "src", except = ["src/tests", { path = "src/app", directive = "use client" }] }]
 to = ["pkg:@acme/ui"]

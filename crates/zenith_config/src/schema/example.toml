@@ -31,7 +31,12 @@ guidance = "Keep server-only modules out of client bundles."
 
 [contracts.features-independent]
 type = "independence"
-modules = [{ path = "web/src/features/*", except = ["web/src/features/experimental"] }]
+modules = [
+  { path = "web/src/features/*", except = [
+    "web/src/features/experimental",
+    { path = "web/src/features/**", directive = "use server" },
+  ] },
+]
 ignore_imports = ["web/src/features/* -> web/src/features/shared"]
 
 [contracts.package-tiers]

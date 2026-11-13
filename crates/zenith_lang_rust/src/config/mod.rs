@@ -31,6 +31,7 @@ pub const RUST: Language = Language {
     schemes: &["crate", "rust"],
     // The paths into the standard library, such as `rust:std::thread`, nest.
     path_schemes: &[("rust", "::")],
+    records_names: true,
     parse: |table| Arc::new(RustConfig::parse(table)),
     defaults: || Arc::new(RustConfig::default()),
     schema: |generator| generator.subschema_for::<RustTable>(),

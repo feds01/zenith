@@ -1,0 +1,7 @@
+[languages.test]
+[languages.other]
+
+[contracts.c]
+type = "forbidden"
+from = ["src"]
+to = [{ path = "oth:x", names = ["a"] }]

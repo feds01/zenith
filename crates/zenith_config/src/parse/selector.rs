@@ -79,23 +79,45 @@ impl IgnoreImport {
 impl Parser {
     /// Parse a list of selectors, leaving out the invalid ones.
     pub(super) fn parse_selectors(&mut self, values: &[Located<SelectorValue>]) -> Vec<Selector> {
-        values.iter().filter_map(|value| self.parse_selector(value)).collect()
+        values.iter().filter_map(|value| self.parse_selector(value, false)).collect()
     }
 
-    /// Parse a selector, in its string or table form.
-    fn parse_selector(&mut self, value: &Located<SelectorValue>) -> Option<Selector> {
+    /// Parse a list of selectors of what is imported, which may keep only the
+    /// imports that take some `names`, leaving out the invalid ones.
+    pub(super) fn parse_imported_selectors(
+        &mut self,
+        values: &[Located<SelectorValue>],
+    ) -> Vec<Selector> {
+        values.iter().filter_map(|value| self.parse_selector(value, true)).collect()
+    }
+
+    /// Parse a selector, in its string or table form, which may have `names`
+    /// if it selects what is `imported`.
+    fn parse_selector(
+        &mut self,
+        value: &Located<SelectorValue>,
+        imported: bool,
+    ) -> Option<Selector> {
         let table = match &value.value {
             SelectorValue::String(raw) => return self.parse_string_selector(raw, value.range),
             SelectorValue::Table(table) => table,
         };
+        let invalid =
+            |error| ConfigErrorKind::InvalidSelector { selector: table.path.value.clone(), error };
         let selector = self.parse_string_selector(&table.path.value, table.path.range);
         let except = self.parse_selectors(&table.except);
         let directive = table.directive.as_ref();
         let selector =
             selector?.with_filters(except, directive.map(|directive| directive.value.clone()));
-        self.check(selector, directive.map(|directive| directive.range), |error| {
-            ConfigErrorKind::InvalidSelector { selector: table.path.value.clone(), error }
-        })
+        let selector = self.check(selector, directive.map(|directive| directive.range), invalid)?;
+        let Some(names) = &table.names else {
+            return Some(selector);
+        };
+        let selector = match imported {
+            true => selector.with_names(names.value.clone(), self.languages),
+            false => Err(SelectorError::NamesNotImported),
+        };
+        self.check(selector, Some(names.range), invalid)
     }
 
     /// Parse the string form of a selector, written at `range`.

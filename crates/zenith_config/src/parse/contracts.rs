@@ -132,7 +132,7 @@ impl Parser {
         let kind = match table {
             ContractTable::Forbidden(table) => ContractKind::Forbidden(ForbiddenConfig {
                 from: self.parse_selectors(&table.from),
-                to: self.parse_selectors(&table.to),
+                to: self.parse_imported_selectors(&table.to),
                 allow_indirect_imports: table.allow_indirect_imports,
                 boundaries: self.parse_boundaries(&table.boundaries, table.allow_indirect_imports),
             }),
@@ -143,7 +143,7 @@ impl Parser {
             }),
             ContractTable::Layers(table) => ContractKind::Layers(self.parse_layers(table)),
             ContractTable::Protected(table) => ContractKind::Protected(ProtectedConfig {
-                modules: self.parse_selectors(&table.modules),
+                modules: self.parse_imported_selectors(&table.modules),
                 allowed_importers: self.parse_selectors(&table.allowed_importers),
             }),
             ContractTable::Acyclic(table) => ContractKind::Acyclic(AcyclicConfig {

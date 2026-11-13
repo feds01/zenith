@@ -155,6 +155,21 @@ impl ContractKind {
             Self::Protected(_) | Self::Acyclic(_) | Self::Encapsulation(_) | Self::Limits(_) => &[],
         }
     }
+
+    /// The selectors of what is imported, which alone may keep only the
+    /// imports that take some names: `to` of `forbidden`, and `modules` of
+    /// `protected`.
+    pub fn imported_selectors(&self) -> &[Selector] {
+        match self {
+            Self::Forbidden(ForbiddenConfig { to, .. }) => to,
+            Self::Protected(ProtectedConfig { modules, .. }) => modules,
+            Self::Independence(_)
+            | Self::Layers(_)
+            | Self::Acyclic(_)
+            | Self::Encapsulation(_)
+            | Self::Limits(_) => &[],
+        }
+    }
 }
 
 /// How a contract sees the imports of pass-through modules, the files that only

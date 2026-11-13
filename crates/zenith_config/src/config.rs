@@ -284,6 +284,14 @@ impl Config {
     pub fn needs_graph_through_reexports(&self) -> bool {
         self.contracts.iter().any(|contract| contract.reexports == Reexports::Transparent)
     }
+
+    /// Whether any contract keeps only the imports that take some names, so
+    /// needs the names that imports take.
+    pub fn needs_import_names(&self) -> bool {
+        let mut selectors =
+            self.contracts.iter().flat_map(|contract| contract.kind.imported_selectors());
+        selectors.any(|selector| selector.names().is_some())
+    }
 }
 
 /// The walk of a project that the globs of its configuration files are

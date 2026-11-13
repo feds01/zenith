@@ -30,6 +30,7 @@ pub const GO: Language = Language {
     // dependencies.
     schemes: &["go", "gomod"],
     path_schemes: &[],
+    records_names: false,
     parse: |table| Arc::new(GoConfig::parse(table)),
     defaults: || Arc::new(GoConfig::default()),
     schema: |generator| generator.subschema_for::<GoTable>(),

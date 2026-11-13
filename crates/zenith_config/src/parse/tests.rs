@@ -273,6 +273,34 @@ fn schemes_of_an_enabled_language_are_allowed() {
 }
 
 #[test]
+fn names_keep_the_imports_of_what_is_imported() {
+    let config = valid(include_str!("fixtures/names.toml"));
+    assert!(config.needs_import_names());
+    let ContractKind::Forbidden(forbidden) = &config.contracts[0].kind else {
+        panic!("expected `forbidden`");
+    };
+    let names: Vec<_> = forbidden.to.iter().map(Selector::names).collect();
+    assert_eq!(names, [Some(&["useState".to_string(), "default".to_string()][..]), None]);
+    let ContractKind::Protected(protected) = &config.contracts[1].kind else {
+        panic!("expected `protected`");
+    };
+    assert_eq!(protected.modules[0].names(), Some(&["run".to_string()][..]));
+
+    // Without `names`, the names that imports take aren't needed.
+    assert!(!valid(include_str!("fixtures/languages-with-schemes.toml")).needs_import_names());
+}
+
+#[test]
+fn names_on_a_scheme_of_a_language_that_records_none_are_errors() {
+    assert_eq!(
+        invalid(include_str!("fixtures/names-not-recorded.toml")),
+        ["7:33: in contract `c`: invalid selector `oth:x`: `names` doesn't apply to `oth:` \
+             selectors, since the `other` language doesn't record the names that imports take \
+             [[\"a\"]]"]
+    );
+}
+
+#[test]
 fn schemes_of_a_disabled_language_are_errors() {
     let contents = include_str!("fixtures/languages-empty-with-schemes.toml");
     // Selectors, `ignore_imports` entries and layers are all checked, and
@@ -829,6 +857,21 @@ fn invalid_selectors_are_errors() {
             "type = \"forbidden\"\nfrom = [{ path = \"ext:react\", directive = \"use client\" }]\nto = []",
             "3:43: in contract `c`: invalid selector `ext:react`: `directive` only applies to path \
              and `pkg:` selectors, which match files [\"use client\"]",
+        ),
+        (
+            "type = \"forbidden\"\nfrom = [{ path = \"a\", names = [\"x\"] }]\nto = []",
+            "3:31: in contract `c`: invalid selector `a`: `names` only applies to selectors of what is \
+             imported: `to` in `forbidden`, and `modules` in `protected` [[\"x\"]]",
+        ),
+        (
+            "type = \"protected\"\nmodules = [\"a\"]\nallowed_importers = [{ path = \"b\", names = [\"x\"] }]",
+            "4:44: in contract `c`: invalid selector `b`: `names` only applies to selectors of what is \
+             imported: `to` in `forbidden`, and `modules` in `protected` [[\"x\"]]",
+        ),
+        (
+            "type = \"forbidden\"\nfrom = []\nto = [{ path = \"a\", except = [{ path = \"a/b\", names = [\"x\"] }] }]",
+            "4:55: in contract `c`: invalid selector `a/b`: `names` only applies to selectors of what \
+             is imported: `to` in `forbidden`, and `modules` in `protected` [[\"x\"]]",
         ),
         (
             "type = \"acyclic\"\nmodules = [{ path = \"a\", except = [{ path = \"a/{b\" }] }]",

@@ -2703,7 +2703,7 @@ dependencies = [
 
 [[package]]
 name = "zenith"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "argfile",
@@ -2730,7 +2730,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_benchmark"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "codspeed-divan-compat",
  "fastrand",
@@ -2754,7 +2754,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_cache"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "log",
  "rayon",
@@ -2766,7 +2766,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_config"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "indexmap",
  "schemars",
@@ -2783,7 +2783,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_contracts"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "rayon",
  "rustc-hash 2.1.3",
@@ -2804,7 +2804,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_diagnostics"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "annotate-snippets",
  "fluent-bundle",
@@ -2821,7 +2821,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_graph"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "bitflags 2.13.2",
  "compact_str",
@@ -2842,7 +2842,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lang"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "thin-vec",
  "zenith_cache",
@@ -2853,7 +2853,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lang_go"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "log",
  "schemars",
@@ -2871,7 +2871,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lang_haskell"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "log",
  "rustc-hash 2.1.3",
@@ -2889,7 +2889,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lang_js"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "compact_str",
  "indexmap",
@@ -2918,7 +2918,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lang_python"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "log",
  "ruff_python_ast",
@@ -2939,7 +2939,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lang_rust"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "compact_str",
  "log",
@@ -2961,7 +2961,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lang_terraform"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "schemars",
  "serde",
@@ -2977,7 +2977,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_lsp"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "log",
  "lsp-server",
@@ -2989,7 +2989,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_macros"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "fluent-syntax",
  "proc-macro2",
@@ -2999,7 +2999,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_pipeline"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "log",
  "rayon",
@@ -3024,7 +3024,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_utils"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "dunce",
  "log",
@@ -3038,7 +3038,7 @@ dependencies = [
 
 [[package]]
 name = "zenith_workspace"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "ignore",
  "log",

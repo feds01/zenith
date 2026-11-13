@@ -188,7 +188,7 @@ fn the_schema_rejects_what_parsing_rejects() {
     /// A change to the example that makes it invalid.
     type Mutation = fn(&mut Value);
 
-    let mutations: [(&str, Mutation); 13] = [
+    let mutations: [(&str, Mutation); 14] = [
         ("an unknown table", |config| config["filez"] = json!({})),
         ("an unknown key in a table", |config| config["files"]["exclud"] = json!([])),
         ("an unknown language", |config| config["languages"]["go"] = json!({})),
@@ -204,6 +204,10 @@ fn the_schema_rejects_what_parsing_rejects() {
         }),
         ("an unknown key in a selector", |config| {
             config["contracts"]["client-safety"]["from"][0]["paths"] = json!("a");
+        }),
+        ("an unknown key in a selector in `except`", |config| {
+            config["contracts"]["features-independent"]["modules"][0]["except"][1]["paths"] =
+                json!("a");
         }),
         ("an unknown key in a layer", |config| {
             config["contracts"]["package-tiers"]["layers"][2]["close"] = json!(true);

@@ -999,10 +999,9 @@
         "except": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/SelectorValue"
           },
-          "description": "Selectors of modules to remove from each matched module.",
-          "default": []
+          "description": "Selectors of modules to remove from each matched module, in their\nstring or table form."
         },
         "directive": {
           "type": "string",

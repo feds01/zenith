@@ -527,6 +527,23 @@ mod tests {
     }
 
     #[test]
+    fn except_takes_selectors_in_their_table_form() {
+        let project = project();
+        // The files of `web/src/app` without the directive.
+        let (units, matched) = resolve(
+            &project,
+            &table(
+                r#"{ path = "web/src/app", except = [{ path = "web/src/app", directive = "use client" }] }"#,
+            ),
+        );
+        assert!(matched);
+        assert_eq!(
+            units,
+            [("web/src/app".to_string(), vec!["web/src/app/layout.tsx".to_string()])]
+        );
+    }
+
+    #[test]
     fn a_directive_makes_one_unit_per_file_that_has_it() {
         let project = project();
         assert_eq!(

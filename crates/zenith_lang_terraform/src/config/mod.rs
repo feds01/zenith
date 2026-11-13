@@ -30,6 +30,7 @@ pub const TERRAFORM: Language = Language {
     // `tfmod:` names the modules of registries and repositories.
     schemes: &["tfmod"],
     path_schemes: &[],
+    records_names: false,
     parse: |table| Arc::new(TerraformConfig::parse(table)),
     defaults: || Arc::new(TerraformConfig::default()),
     schema: |generator| generator.subschema_for::<TerraformTable>(),

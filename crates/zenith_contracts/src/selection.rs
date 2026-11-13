@@ -8,7 +8,9 @@
 //!   and `foo/` are, are one unit, whichever of them is matched;
 //! - `except` removes members from each unit;
 //! - `directive` replaces the units with one unit per member file that has the
-//!   directive.
+//!   directive;
+//! - `names` keeps the units, but only the imports of them that take one of the
+//!   names count.
 //!
 //! When a path glob matches nested nodes, such as `web/**` matching both
 //! `web/src` and `web/src/app.ts`, only the outermost become units, since they
@@ -19,7 +21,7 @@ use std::fmt;
 
 use zenith_config::{InContract, Selector, SelectorTarget};
 use zenith_diagnostics::message;
-use zenith_graph::{Graph, ModuleId, NodeSet, Unit};
+use zenith_graph::{Graph, ImportDetail, ImportKind, ImportedNames, ModuleId, NodeSet, Unit};
 use zenith_lang::Workspace;
 use zenith_utils::location::ByteRange;
 
@@ -138,6 +140,37 @@ impl Selection {
     }
 }
 
+/// A unit that a contract is about the imports of, with the names that an
+/// import of it must take to count.
+#[derive(Debug)]
+pub(crate) struct ImportedUnit {
+    /// The unit.
+    pub(crate) unit: Unit,
+
+    /// The names that an import of the unit must take one of, as a value, to
+    /// count, or `None` if every import counts.
+    pub(crate) names: Option<Vec<String>>,
+}
+
+impl ImportedUnit {
+    /// Whether the statement `detail`, of an import of the unit, counts: it
+    /// takes one of the names as a value, or the unit has none. A statement
+    /// that takes the whole module, such as a namespace import, takes none of
+    /// them by name.
+    pub(crate) fn takes(&self, detail: &ImportDetail) -> bool {
+        let Some(names) = &self.names else {
+            return true;
+        };
+        let ImportedNames::Names(taken) = &detail.names else {
+            return false;
+        };
+        detail.kind != ImportKind::Type
+            && taken
+                .iter()
+                .any(|name| !name.type_only && names.iter().any(|wanted| *wanted == name.name))
+    }
+}
+
 /// A path or `pkg:` selector that matches nothing, which is likely a typo or
 /// a rename.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,21 +249,51 @@ impl<'a> UnitResolver<'a> {
     ) -> Vec<(Unit, Option<ByteRange>)> {
         let mut units: Vec<(Unit, Option<ByteRange>)> = Vec::new();
         for selector in selectors {
-            match Selection::try_resolve(selector, self.graph, self.workspace) {
-                Ok(selection) => {
-                    for unit in selection.units {
-                        if !units.iter().any(|(existing, _)| existing.root == unit.root) {
-                            units.push((unit, selector.range()));
-                        }
-                    }
+            for unit in self.resolve(selector).units {
+                if !units.iter().any(|(existing, _)| existing.root == unit.root) {
+                    units.push((unit, selector.range()));
                 }
-                Err(unmatched) => self.error(
-                    ContractErrorKind::UnmatchedSelector { selector: unmatched.selector },
-                    selector.range(),
-                ),
             }
         }
         units
+    }
+
+    /// The units of `selectors` of what is imported, as [`Self::units`] finds
+    /// them, each with the names of every selector that matched it: none if
+    /// one of them has none, as every import of it counts.
+    pub(crate) fn imported_units(&mut self, selectors: &[Selector]) -> Vec<ImportedUnit> {
+        let mut units: Vec<ImportedUnit> = Vec::new();
+        for selector in selectors {
+            for unit in self.resolve(selector).units {
+                let names = selector.names().map(<[String]>::to_vec);
+                match units.iter_mut().find(|existing| existing.unit.root == unit.root) {
+                    Some(existing) => {
+                        existing.names = match (existing.names.take(), names) {
+                            (Some(mut existing), Some(names)) => {
+                                existing.extend(names);
+                                Some(existing)
+                            }
+                            _ => None,
+                        };
+                    }
+                    None => units.push(ImportedUnit { unit, names }),
+                }
+            }
+        }
+        units
+    }
+
+    /// The selection of `selector`, or an empty one if it matches nothing but
+    /// must match something, which is an error.
+    fn resolve(&mut self, selector: &Selector) -> Selection {
+        match Selection::try_resolve(selector, self.graph, self.workspace) {
+            Ok(selection) => selection,
+            Err(unmatched) => {
+                let kind = ContractErrorKind::UnmatchedSelector { selector: unmatched.selector };
+                self.error(kind, selector.range());
+                Selection::default()
+            }
+        }
     }
 
     /// Report the first pair of `units` that overlap, at the range of the

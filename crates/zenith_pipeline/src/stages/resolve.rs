@@ -88,8 +88,8 @@ impl Session {
         let languages: Vec<String> = (self.config.languages.iter())
             .map(|(language, options)| format!("{} {options:?}", language.name))
             .collect();
-        let reexports = self.needs_graph_through_reexports();
-        stable_hash((&self.root, &self.files, &self.manifests, languages, reexports))
+        let names = self.needs_import_names();
+        stable_hash((&self.root, &self.files, &self.manifests, languages, names))
     }
 }
 

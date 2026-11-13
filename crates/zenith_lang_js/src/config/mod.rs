@@ -30,6 +30,7 @@ pub const JS: Language = Language {
     index_files: &[],
     schemes: &["npm", "node", "bun"],
     path_schemes: &[],
+    records_names: true,
     parse: |table| Arc::new(JsConfig::parse(table)),
     defaults: || Arc::new(JsConfig::default()),
     schema: |generator| generator.subschema_for::<JsTable>(),

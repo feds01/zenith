@@ -18,8 +18,9 @@ pub struct Backends(Vec<Box<dyn Backend>>);
 impl Backends {
     /// The backends of the languages that `config` enables, set up for the
     /// project at `root` in `file_system`, which must be canonical there.
-    /// With `record_exports`, they record what each file exports, for the
-    /// graph through re-exports.
+    /// With `record_exports`, they record the names that imports take and
+    /// what each file exports, for the graph through re-exports and the
+    /// selectors with `names`.
     pub fn new(
         config: &Config,
         root: &Path,

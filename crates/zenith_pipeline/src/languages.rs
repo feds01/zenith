@@ -14,6 +14,7 @@ pub const LANGUAGES: Languages = Languages::new(&[
 
 #[cfg(test)]
 mod tests {
+    use zenith_config::Config;
     use zenith_utils::glob::Glob;
 
     use super::*;
@@ -61,6 +62,38 @@ mod tests {
                 assert!(globs.iter().any(|glob| glob.is_match(&path)), "{path}");
             }
             assert!(!globs.iter().any(|glob| glob.is_match("src/a.txt")));
+        }
+    }
+
+    #[test]
+    fn names_only_apply_to_the_schemes_of_languages_that_record_them() {
+        // Python, Go, Haskell and Terraform imports take whole modules.
+        let recording: Vec<_> = LANGUAGES
+            .iter()
+            .filter(|language| language.records_names)
+            .map(|language| language.name)
+            .collect();
+        assert_eq!(recording, ["js", "rust"]);
+        for language in LANGUAGES.iter() {
+            for scheme in language.schemes {
+                let toml =
+                    include_str!("fixtures/names-on-a-scheme.toml").replace("SCHEME", scheme);
+                let errors = Config::parse(&toml, LANGUAGES).err().unwrap_or_default();
+                let errors: Vec<_> = errors.iter().map(ToString::to_string).collect();
+                match language.records_names {
+                    true => assert_eq!(errors, Vec::<String>::new(), "{scheme}"),
+                    false => assert_eq!(
+                        errors,
+                        [format!(
+                            "in contract `c`: invalid selector `{scheme}:x`: `names` doesn't apply \
+                             to `{scheme}:` selectors, since the `{}` language doesn't record the \
+                             names that imports take",
+                            language.name
+                        )],
+                        "{scheme}"
+                    ),
+                }
+            }
         }
     }
 

@@ -11,7 +11,8 @@
 //!
 //! Package, external and builtin names are matched with a [`NamePattern`],
 //! in which `*` also matches `/`. A selector can also be a table that removes
-//! modules with `except`, or keeps only the files with a `directive`.
+//! modules with `except`, keeps only the files with a `directive`, or keeps
+//! only the imports of what it matches that take some `names`.
 //!
 //! The schemes other than `pkg:` belong to a [`Language`](crate::Language),
 //! and need it to be enabled. [`Selector::parse`] and [`IgnoreImport::parse`]
@@ -25,7 +26,7 @@ use zenith_utils::{
     location::ByteRange,
 };
 
-use crate::error::SelectorError;
+use crate::{error::SelectorError, language::Languages};
 
 /// A selector of modules, as written in the configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +42,10 @@ pub struct Selector {
 
     /// The directive that files must have to be kept.
     directive: Option<String>,
+
+    /// The names that an import of what the selector matches must take one
+    /// of to be kept, or `None` to keep every import.
+    names: Option<Vec<String>>,
 
     /// The byte range that the selector is written at in the configuration
     /// file.
@@ -70,7 +75,7 @@ pub enum SelectorTarget {
 impl Selector {
     /// A selector without filters, written as `raw`.
     pub(crate) fn new(raw: String, target: SelectorTarget) -> Self {
-        Self { raw, target, except: Vec::new(), directive: None, range: None }
+        Self { raw, target, except: Vec::new(), directive: None, names: None, range: None }
     }
 
     /// Record where the selector is written.
@@ -91,6 +96,26 @@ impl Selector {
         }
         self.except = except;
         self.directive = directive;
+        Ok(self)
+    }
+
+    /// Keep only the imports that take one of `names`. The language of the
+    /// selector's scheme, of the `languages`, must record the names that its
+    /// imports take.
+    pub(crate) fn with_names(
+        mut self,
+        names: Vec<String>,
+        languages: Languages,
+    ) -> Result<Self, SelectorError> {
+        let scheme = self.scheme();
+        let language = scheme.and_then(|scheme| languages.by_scheme(scheme));
+        if let (Some(scheme), Some(language)) = (scheme, language)
+            && !language.records_names
+        {
+            let language = language.name.to_string();
+            return Err(SelectorError::NamesNotRecorded { scheme: scheme.to_string(), language });
+        }
+        self.names = Some(names);
         Ok(self)
     }
 
@@ -137,6 +162,13 @@ impl Selector {
     /// on its own.
     pub fn directive(&self) -> Option<&str> {
         self.directive.as_deref()
+    }
+
+    /// The names that an import of what the selector matches must take one
+    /// of, as a value, to be kept, such as `useState`, or `default` for a
+    /// default import. `None` keeps every import.
+    pub fn names(&self) -> Option<&[String]> {
+        self.names.as_deref()
     }
 
     /// The byte range that the selector is written at in the configuration
@@ -270,5 +302,21 @@ mod tests {
             assert_eq!(filter(raw, Some("use client")), Err(SelectorError::DirectiveWithoutFiles));
             assert!(filter(raw, None).is_ok());
         }
+    }
+
+    #[test]
+    fn names_only_apply_to_the_schemes_of_languages_that_record_them() {
+        let names = |raw| parse(raw).with_names(vec!["a".to_string()], LANGUAGES);
+        for raw in ["web/src", "pkg:web", "ext:react", "core:*"] {
+            assert_eq!(names(raw).unwrap().names(), Some(&["a".to_string()][..]), "{raw}");
+        }
+        assert_eq!(
+            names("oth:x"),
+            Err(SelectorError::NamesNotRecorded {
+                scheme: "oth".to_string(),
+                language: "other".to_string()
+            })
+        );
+        assert_eq!(parse("ext:react").names(), None);
     }
 }

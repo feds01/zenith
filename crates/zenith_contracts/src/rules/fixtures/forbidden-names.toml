@@ -1,0 +1,5 @@
+# Server components never reach client-only React APIs, nor `client-only`.
+[contracts.f]
+type = "forbidden"
+from = ["web"]
+to = [{ path = "npm:react", names = ["useLayoutEffect", "default"] }, "npm:client-only"]

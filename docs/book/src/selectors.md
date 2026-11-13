@@ -52,6 +52,7 @@ zenith's glob dialect needs no escaping for Next.js and TanStack file names:
 { path = "web/src/**", directive = "use client" }
 { path = "web/src/features", except = ["web/src/features/experimental"] }
 { path = "web/src/app", except = [{ path = "web/src/app", directive = "use client" }] }
+{ path = "npm:react", names = ["useState", "useEffect"] }
 ```
 
 - `path` is any string-form selector.
@@ -65,6 +66,29 @@ zenith's glob dialect needs no escaping for Next.js and TanStack file names:
 - `directive` keeps only the files whose directives include it, exactly as
   written, and makes **each file a unit of its own**, so a violation names the
   file. It only applies to path and `pkg:` selectors.
+- `names` keeps the units, but only the import statements that take one of
+  the names, as a value, count as imports of them, and a report points at
+  those statements. The default import is `default`. A statement that takes
+  the whole module doesn't count: a namespace import, a side-effect import,
+  `export *`, a dynamic import or a `require` call. Nor does a name that
+  only its type is imported for, as in `import { type A }` or
+  `import type { A }`.
+
+`names` only applies where a selector picks what is imported: `to` in
+[`forbidden`](contracts/forbidden.md), and `modules` in
+[`protected`](contracts/protected.md). Imports record the names they take in
+JavaScript, TypeScript and Rust, so `names` is an error on the schemes of
+the other languages, such as `pypi:` or `gomod:`. On a path or `pkg:`
+selector, it only matches the imports of files whose language records
+names. A unit that several selectors match counts the imports that any of
+them counts, so one without `names` counts every import.
+
+A module reached through a pass-through module, such as a barrel of
+`export *` lines, is imported by the barrel, which takes the whole module,
+so `names` on it never matches. With
+[`reexports = "transparent"`](concepts.md#re-exports), the import of it is the
+one that takes the names: use it for a `names` selector of a module that a
+barrel re-exports.
 
 ## Selectors that match nothing
 

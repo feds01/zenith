@@ -1,0 +1,4 @@
+[contracts.p]
+type = "protected"
+modules = [{ path = "web/agents", names = ["run"] }]
+allowed_importers = ["web/app/api"]

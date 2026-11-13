@@ -1,0 +1,9 @@
+[contracts.server-components]
+type = "forbidden"
+from = ["web/src/app"]
+to = [{ path = "ext:react", names = ["useState", "default"] }, "ext:client-only"]
+
+[contracts.agents]
+type = "protected"
+modules = [{ path = "web/src/agents", names = ["run"] }]
+allowed_importers = ["web/src/app/api"]

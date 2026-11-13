@@ -2,7 +2,9 @@
 
 use thin_vec::{ThinVec, thin_vec};
 use zenith_config::{Config, Languages};
-use zenith_graph::{Graph, GraphBuilder, ImportDetail, ImportKind, ImportedNames, NodeHandle};
+use zenith_graph::{
+    Graph, GraphBuilder, ImportDetail, ImportKind, ImportedName, ImportedNames, NodeHandle,
+};
 use zenith_lang::{FileSuppressions, Suppression, Workspace};
 use zenith_utils::location::{ByteRange, Located};
 
@@ -59,18 +61,56 @@ impl Project {
         directives: &[(&str, &str)],
         toml: &str,
     ) -> Self {
+        let imports: Vec<_> = (imports.iter())
+            .map(|(importer, imported, kind)| (*importer, *imported, *kind, ImportedNames::All))
+            .collect();
+        Self::build(&imports, directives, toml)
+    }
+
+    /// A project as [`Project::new`] makes it, of the value imports
+    /// `(importer, imported, names)`, which take the space-separated `names`,
+    /// each with `:type` after it if it takes only its type, or the whole
+    /// module for `*`.
+    pub(crate) fn with_names(imports: &[(&str, &str, &str)], toml: &str) -> Self {
+        let imports: Vec<_> = (imports.iter())
+            .map(|(importer, imported, names)| {
+                let names = match *names {
+                    "*" => ImportedNames::All,
+                    names => {
+                        let names: Vec<_> = (names.split_whitespace())
+                            .map(|name| match name.strip_suffix(":type") {
+                                Some(name) => ImportedName::new(name, true),
+                                None => ImportedName::new(name, false),
+                            })
+                            .collect();
+                        ImportedNames::of(names)
+                    }
+                };
+                (*importer, *imported, ImportKind::Value, names)
+            })
+            .collect();
+        Self::build(&imports, &[], toml)
+    }
+
+    /// A project of the `(importer, imported, kind, names)` imports, as
+    /// [`Project::with_directives`] makes it.
+    fn build(
+        imports: &[(&str, &str, ImportKind, ImportedNames)],
+        directives: &[(&str, &str)],
+        toml: &str,
+    ) -> Self {
         let config = Config::parse(toml, LANGUAGES).unwrap_or_else(|errors| panic!("{errors:?}"));
         let mut builder = GraphBuilder::new();
         builder.set_optional_extensions(config.languages.optional_extensions());
         builder.set_directory_modules(config.languages.directory_modules());
-        for (line, (importer, imported, kind)) in (1..).zip(imports) {
+        for (line, (importer, imported, kind, names)) in (1..).zip(imports) {
             let importer = builder.add_file(importer).unwrap();
             let range = ByteRange::new(line * 100, line * 100 + 10);
             let detail = ImportDetail {
                 range,
                 specifier: format!("./import-{line}").into(),
                 kind: *kind,
-                names: ImportedNames::All,
+                names: names.clone(),
             };
             let imported: NodeHandle = if imported.starts_with("npm:") {
                 builder.add_external(imported).unwrap()

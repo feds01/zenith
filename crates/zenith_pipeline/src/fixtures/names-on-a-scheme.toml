@@ -1,0 +1,11 @@
+[languages.js]
+[languages.go]
+[languages.haskell]
+[languages.python]
+[languages.rust]
+[languages.terraform]
+
+[contracts.c]
+type = "forbidden"
+from = ["src"]
+to = [{ path = "SCHEME:x", names = ["a"] }]

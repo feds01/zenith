@@ -87,7 +87,11 @@ pass-through modules. An import that takes the whole module, such as
 `import * as lib from "./lib"`, still imports all of it, and so does an
 import of a name that can't be followed, such as one that may come from an
 external package through `export *`. Importing only a name's type is a
-`type` import.
+`type` import. Each of the imports takes only the names that go to its
+module, as that module exports them, so a selector's
+[`names`](selectors.md#the-table-form) sees `import { Button }` as an import of
+`default` from `button.tsx` if `lib/index.ts` has
+`export { default as Button } from "./button"`.
 
 ```toml
 [contracts.client-safety]

@@ -1006,6 +1006,13 @@
         "directive": {
           "type": "string",
           "description": "Keep only the files that start with this directive, such as\n`\"use client\"`, each as a module of its own."
+        },
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Keep only the imports that take one of these names as a value, such\nas `\"useState\"`, or `\"default\"` for a default import. Only for the\nselectors of what is imported: `to` in `forbidden`, and `modules` in\n`protected`."
         }
       },
       "required": [

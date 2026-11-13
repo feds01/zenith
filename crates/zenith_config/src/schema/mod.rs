@@ -557,6 +557,12 @@ pub(crate) struct SelectorTable {
     /// Keep only the files that start with this directive, such as
     /// `"use client"`, each as a module of its own.
     pub(crate) directive: Option<Located<String>>,
+
+    /// Keep only the imports that take one of these names as a value, such
+    /// as `"useState"`, or `"default"` for a default import. Only for the
+    /// selectors of what is imported: `to` in `forbidden`, and `modules` in
+    /// `protected`.
+    pub(crate) names: Option<Located<Vec<String>>>,
 }
 
 impl<'de> Deserialize<'de> for SelectorValue {

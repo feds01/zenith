@@ -124,6 +124,13 @@ impl<'g> GraphView<'g> {
         Self { boundaries, ..self }
     }
 
+    /// This view, also without the `excluded` imports.
+    pub fn without(&self, excluded: impl IntoIterator<Item = (ModuleId, ModuleId)>) -> Self {
+        let mut view = self.clone();
+        view.excluded.extend(excluded);
+        view
+    }
+
     /// The nodes that chains may start or end at, but not pass through.
     pub fn boundaries(&self) -> &NodeSet {
         &self.boundaries
@@ -219,6 +226,19 @@ mod tests {
         // The graph itself is untouched.
         assert_eq!(graph.imports_of(a), [b, c]);
         assert_eq!(graph.importers_of(c), [a, b]);
+    }
+
+    #[test]
+    fn a_view_without_more_imports_keeps_those_it_left_out() {
+        let graph = graph_of(&[("a.ts", "b.ts"), ("a.ts", "c.ts"), ("b.ts", "c.ts")]);
+        let [a, b, c] = ["a.ts", "b.ts", "c.ts"].map(|name| id(&graph, name));
+        let view = GraphView::with_excluded(&graph, [(a, c)].into_iter().collect());
+
+        let narrowed = view.without([(b, c)]);
+        assert_eq!(narrowed.imports_of(a).collect::<Vec<_>>(), [b]);
+        assert_eq!(narrowed.importers_of(c).count(), 0);
+        // The view it came from keeps its own.
+        assert_eq!(view.importers_of(c).collect::<Vec<_>>(), [b]);
     }
 
     #[test]

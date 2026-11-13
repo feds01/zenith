@@ -37,6 +37,7 @@ pub const HASKELL: Language = Language {
     // `hackage:` is for the packages that a build installed, `base` among them.
     schemes: &["hackage"],
     path_schemes: &[],
+    records_names: false,
     parse: |table| Arc::new(HaskellConfig::parse(table)),
     defaults: || Arc::new(HaskellConfig::default()),
     schema: |generator| generator.subschema_for::<HaskellTable>(),

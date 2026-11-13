@@ -535,6 +535,20 @@ pub enum SelectorError {
 
     /// A `directive` is set on a selector that matches no files.
     DirectiveWithoutFiles,
+
+    /// `names` is set on a selector of what imports, rather than of what is
+    /// imported.
+    NamesNotImported,
+
+    /// `names` is set on a selector of a scheme whose language doesn't record
+    /// the names that imports take.
+    NamesNotRecorded {
+        /// The scheme, without the `:`.
+        scheme: String,
+
+        /// The name of the language that owns it.
+        language: String,
+    },
 }
 
 impl fmt::Display for SelectorError {
@@ -546,6 +560,10 @@ impl fmt::Display for SelectorError {
             }
             Self::ParentDir => f.write_str(&message!(config_parent_dir)),
             Self::DirectiveWithoutFiles => f.write_str(&message!(config_directive_without_files)),
+            Self::NamesNotImported => f.write_str(&message!(config_names_not_imported)),
+            Self::NamesNotRecorded { scheme, language } => {
+                f.write_str(&message!(config_names_not_recorded, scheme, language))
+            }
         }
     }
 }

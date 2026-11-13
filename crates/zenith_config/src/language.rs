@@ -76,6 +76,12 @@ pub struct Language {
     /// those it names, so `rust:std` matches `rust:std::thread::spawn`.
     pub path_schemes: &'static [(&'static str, &'static str)],
 
+    /// Whether its imports record the names that they take from what they
+    /// import, which a selector's `names` keeps them by. Without them, every
+    /// import takes the whole module, so `names` on one of its
+    /// [schemes](Self::schemes) is an error.
+    pub records_names: bool,
+
     /// Parse its table into its options. An invalid table has the defaults,
     /// so that the language is still enabled.
     pub parse: fn(&mut LanguageTable<'_, '_>) -> Arc<dyn LanguageOptions>,

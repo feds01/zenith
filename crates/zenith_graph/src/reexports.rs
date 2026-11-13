@@ -8,7 +8,9 @@
 //! import graph has a chain to every module it re-exports, so contracts about
 //! what code reaches what, such as "client code must not reach server code",
 //! report violations that the bundle doesn't have. The graph through re-exports
-//! has the same modules, and imports to where each name is defined instead.
+//! has the same modules, and imports to where each name is defined instead,
+//! each taking the names that go there, as the module that defines them calls
+//! them.
 
 use std::{mem, ops::Range};
 
@@ -16,7 +18,7 @@ use compact_str::CompactString;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{Exports, Graph, ImportDetail, ImportedNames, ModuleId};
+use crate::{Exports, Graph, ImportDetail, ImportedName, ImportedNames, ModuleId, NameList};
 
 /// What each module exports, by module, with the source of each re-export
 /// as the node it resolved to. A module without an entry is taken to be code
@@ -34,7 +36,9 @@ impl Graph {
     /// a namespace import, stays, and so does an import of a name that
     /// can't be followed: one the pass-through module doesn't export, or
     /// that may come from an external package through `export *`. An import
-    /// of only a name's type becomes a type import.
+    /// of only a name's type becomes a type import. Each import takes only the
+    /// names that go to its module, as that module exports them, or the whole
+    /// module if one of them is it, as with `export * as ns`.
     pub fn through_reexports(&self, exports: &ModuleExports) -> Graph {
         // Each importer's imports are followed apart from the others', and each
         // piece of the work keeps its room to follow them in. The graph sorts the
@@ -62,12 +66,30 @@ impl Graph {
     }
 }
 
-/// A module that defines a name, and whether only its type gets there.
-type Definition = (ModuleId, bool);
+/// A module that defines a name.
+#[derive(Debug, Clone, Copy)]
+struct Definition<'a> {
+    /// The module.
+    module: ModuleId,
+
+    /// The name it exports it as, or `None` if the name is the whole module,
+    /// as with `export * as ns`.
+    name: Option<&'a str>,
+
+    /// Whether only its type gets there.
+    type_only: bool,
+}
+
+impl<'a> Definition<'a> {
+    /// The definition of `name` by `module`, as a value.
+    fn new(module: ModuleId, name: &'a str) -> Self {
+        Self { module, name: Some(name), type_only: false }
+    }
+}
 
 /// The room that following names takes, kept from name to name.
 #[derive(Default)]
-struct Scratch {
+struct Scratch<'a> {
     /// The `(pass-through module, name)` pairs met while following one name:
     /// `None` while the pair is being followed, then where the modules that
     /// define the name, as the pass-through module exports it, are in
@@ -75,55 +97,58 @@ struct Scratch {
     followed: FxHashMap<(ModuleId, CompactString), Option<Range<usize>>>,
 
     /// The definitions found while following one name, each pair's together.
-    found: Vec<Definition>,
+    found: Vec<Definition<'a>>,
 
     /// The definitions that the stars of the pass-through modules being
     /// followed bring, until each module's are all found and moved to
     /// `found` together.
-    stars: Vec<Definition>,
+    stars: Vec<Definition<'a>>,
 
     /// The modules asked about whether they export a name.
     seen: FxHashSet<ModuleId>,
 
-    /// The modules that the names of one import statement go to.
-    targets: Vec<Definition>,
+    /// The definitions that the names of one import statement go to.
+    targets: Vec<Definition<'a>>,
+
+    /// The names that one import statement takes from one of its modules.
+    names: Vec<ImportedName>,
 }
 
-impl Scratch {
+impl<'a> Scratch<'a> {
     /// Add `definitions` to `found`, with only their types getting there if
     /// `type_only`, and say where they are.
     fn add(&mut self, definitions: Range<usize>, type_only: bool) -> Range<usize> {
         let start = self.found.len();
         self.found.extend_from_within(definitions);
-        for (_, type_only_there) in &mut self.found[start..] {
-            *type_only_there |= type_only;
+        for definition in &mut self.found[start..] {
+            definition.type_only |= type_only;
         }
         start..self.found.len()
     }
 
     /// Add one definition to `found`, and say where it is.
-    fn add_one(&mut self, definition: Definition) -> Range<usize> {
+    fn add_one(&mut self, definition: Definition<'a>) -> Range<usize> {
         self.found.push(definition);
         self.found.len() - 1..self.found.len()
     }
 }
 
 /// Follows names through the exports of modules.
-struct Names<'e> {
+struct Names<'a> {
     /// What each module exports.
-    exports: &'e ModuleExports,
+    exports: &'a ModuleExports,
 }
 
-impl Names<'_> {
+impl<'a> Names<'a> {
     /// Add the imports of `imported` by `importer`, in `graph`, to `imports`,
     /// each import of names from a pass-through module replaced by imports of
     /// the modules that define them.
     fn follow_imports(
         &self,
-        graph: &Graph,
+        graph: &'a Graph,
         importer: ModuleId,
         imported: ModuleId,
-        scratch: &mut Scratch,
+        scratch: &mut Scratch<'a>,
         imports: &mut Vec<(ModuleId, ModuleId, ImportDetail)>,
     ) {
         let exports = self.exports;
@@ -146,38 +171,73 @@ impl Names<'_> {
             for name in taken {
                 match self.definitions(imported, &name.name, scratch) {
                     Some(definitions) => {
-                        targets.extend((scratch.found[definitions].iter()).map(
-                            |&(definition, type_only)| (definition, type_only || name.type_only),
-                        ))
+                        targets.extend(scratch.found[definitions].iter().map(|definition| {
+                            let type_only = definition.type_only || name.type_only;
+                            Definition { type_only, ..*definition }
+                        }))
                     }
-                    None => targets.push((imported, name.type_only)),
+                    None => targets.push(Definition {
+                        type_only: name.type_only,
+                        ..Definition::new(imported, &name.name)
+                    }),
                 }
             }
-            targets.retain(|(target, _)| *target != importer);
+            targets.retain(|target| target.module != importer);
 
-            // One detail per module that the statement imports, a type import
-            // only if every name that goes there is a type.
-            targets.sort_unstable();
-            targets.dedup_by_key(|(target, _)| *target);
-            for &(target, type_only) in &targets {
-                let detail = match target == imported {
+            // One detail per module that the statement imports, with the names that go
+            // there, in the order the statement takes them, and a type import only if
+            // every one of them is a type.
+            targets.sort_by_key(|target| target.module);
+            for definitions in targets.chunk_by(|a, b| a.module == b.module) {
+                let target = definitions[0].module;
+                let mut detail = match target == imported {
                     true => detail.clone(),
-                    false => detail.with_type_only(type_only),
+                    false => detail.with_type_only(definitions.iter().all(|found| found.type_only)),
                 };
+                detail.names = Self::narrow(taken, definitions, &mut scratch.names);
                 imports.push((importer, target, detail));
             }
             scratch.targets = targets;
         }
     }
 
+    /// The names that an import statement that takes `taken` takes from one
+    /// module, which defines them as `definitions` do: the same list if they
+    /// are the same names, so that the copies of the import share it, else
+    /// those names, each once, made in `names`. The whole module if one of
+    /// them is it.
+    fn narrow(
+        taken: &NameList,
+        definitions: &[Definition],
+        names: &mut Vec<ImportedName>,
+    ) -> ImportedNames {
+        let same = |(found, name): (&Definition, &ImportedName)| {
+            found.name == Some(name.name.as_str()) && found.type_only == name.type_only
+        };
+        if definitions.len() == taken.len() && definitions.iter().zip(taken).all(same) {
+            return ImportedNames::Names(taken.clone());
+        }
+        names.clear();
+        for found in definitions {
+            let Some(name) = found.name else {
+                return ImportedNames::All;
+            };
+            let name = ImportedName::new(name, found.type_only);
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        ImportedNames::of(names.drain(..))
+    }
+
     /// Where in `scratch.found` the modules that define `name` as `module`
-    /// exports it are, each with whether only its type gets there, or `None`
-    /// if they can't be told.
+    /// exports it are, each with the name it defines and whether only its
+    /// type gets there, or `None` if they can't be told.
     fn definitions(
         &self,
         module: ModuleId,
-        name: &str,
-        scratch: &mut Scratch,
+        name: &'a str,
+        scratch: &mut Scratch<'a>,
     ) -> Option<Range<usize>> {
         scratch.followed.clear();
         scratch.found.clear();
@@ -187,16 +247,22 @@ impl Names<'_> {
     }
 
     /// Where in `scratch.found` the modules that define `name` as `module`
-    /// exports it are, each with whether only its type gets there: none if it
-    /// doesn't export it, or `None` if that can't be told.
-    fn follow(&self, module: ModuleId, name: &str, scratch: &mut Scratch) -> Option<Range<usize>> {
+    /// exports it are, each with the name it defines and whether only its
+    /// type gets there: none if it doesn't export it, or `None` if that can't
+    /// be told.
+    fn follow(
+        &self,
+        module: ModuleId,
+        name: &'a str,
+        scratch: &mut Scratch<'a>,
+    ) -> Option<Range<usize>> {
         // 1. A module of code defines what it exports, and so does a pass-through
         //    module what it defines itself, as a Rust module may.
         let Some(exports) = self.exports.get(&module).filter(|exports| exports.pass_through) else {
-            return Some(scratch.add_one((module, false)));
+            return Some(scratch.add_one(Definition::new(module, name)));
         };
         if exports.names.iter().any(|defined| defined.name == name) {
-            return Some(scratch.add_one((module, false)));
+            return Some(scratch.add_one(Definition::new(module, name)));
         }
 
         // 2. A pair met before has the definitions found then, as when two pass-through
@@ -223,7 +289,11 @@ impl Names<'_> {
                     let definitions = self.follow(reexport.source, imported, scratch)?;
                     scratch.add(definitions, reexport.type_only)
                 }
-                _ => scratch.add_one((reexport.source, reexport.type_only)),
+                _ => scratch.add_one(Definition {
+                    module: reexport.source,
+                    name: None,
+                    type_only: reexport.type_only,
+                }),
             },
 
             // 4. Any other name, but `default`, may come through `export *` from the modules that
@@ -236,9 +306,9 @@ impl Names<'_> {
                     match self.exports_name(*star, name, scratch) {
                         Some(true) => {
                             let found = self.follow(*star, name, scratch)?;
-                            let found = &scratch.found[found];
-                            let found = found.iter().map(|&(definition, type_only)| {
-                                (definition, type_only || *star_type_only)
+                            let found = scratch.found[found].iter().map(|definition| {
+                                let type_only = definition.type_only || *star_type_only;
+                                Definition { type_only, ..*definition }
                             });
                             scratch.stars.extend(found);
                         }
@@ -692,6 +762,78 @@ mod tests {
         );
         let through = graph.through_reexports(&exports);
         assert_eq!(imports_of(&through, "a.ts"), ["a.ts -> b.ts"]);
+    }
+
+    /// What each statement of `importer` in `graph` takes, as `imported: a
+    /// b:type`, or `imported: *` for the whole module.
+    fn names_of(graph: &Graph, importer: &str) -> Vec<String> {
+        let importer = graph.id(importer).unwrap();
+        let mut found = Vec::new();
+        for &imported in graph.imports_of(importer) {
+            for detail in graph.details(importer, imported) {
+                let names = match &detail.names {
+                    ImportedNames::All => "*".to_string(),
+                    ImportedNames::Names(names) => {
+                        let names: Vec<_> = (names.iter())
+                            .map(|name| match name.type_only {
+                                true => format!("{}:type", name.name),
+                                false => name.name.to_string(),
+                            })
+                            .collect();
+                        names.join(" ")
+                    }
+                };
+                found.push(format!("{}: {names}", graph.name(imported)));
+            }
+        }
+        found
+    }
+
+    #[test]
+    fn each_import_takes_the_names_that_go_to_its_module_as_it_exports_them() {
+        let (graph, exports) = project(
+            &[
+                import(
+                    "app.ts",
+                    "index.ts",
+                    &["Button", "useThing", "useIso", "ns", "nope", "Props:type"],
+                ),
+                import("index.ts", "button.tsx", &["default"]),
+                import("index.ts", "hooks.ts", &["useThing", "Props"]),
+                import("index.ts", "npm:react", &["useLayoutEffect"]),
+                import("index.ts", "ns.ts", &["*"]),
+            ],
+            &[
+                (
+                    "index.ts",
+                    pass_through(
+                        &[
+                            ("Button", "button.tsx", Some("default")),
+                            ("useThing", "hooks.ts", Some("useThing")),
+                            ("Props", "hooks.ts", Some("Props")),
+                            ("useIso", "npm:react", Some("useLayoutEffect")),
+                            ("ns", "ns.ts", None),
+                        ],
+                        &[],
+                    ),
+                ),
+                ("button.tsx", module(&["default"])),
+                ("hooks.ts", module(&["useThing", "Props"])),
+                ("ns.ts", module(&["x"])),
+            ],
+        );
+        // `nope` can't be followed, so it stays on the pass-through module, and
+        // `ns` is the whole of `ns.ts`.
+        assert_eq!(
+            names_of(&graph.through_reexports(&exports), "app.ts"),
+            [
+                "button.tsx: default",
+                "hooks.ts: useThing Props:type",
+                "index.ts: nope",
+                "npm:react: useLayoutEffect",
+                "ns.ts: *",
+            ]
+        );
     }
 
     #[test]

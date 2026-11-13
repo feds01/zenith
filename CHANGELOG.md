@@ -3,6 +3,17 @@
 What changed for zenith's users in each release. dist shows a release's
 section as its notes on GitHub.
 
+## [0.8.0] - 2026-11-13
+
+[Changes since v0.7.0](https://github.com/feds01/zenith/compare/v0.7.0...v0.8.0)
+
+### Features
+
+- **haskell:** read the module header and imports of Haskell files ([#195](https://github.com/feds01/zenith/pull/195))
+- **haskell:** check Haskell projects ([#196](https://github.com/feds01/zenith/pull/196))
+- **config:** accept selector tables in except ([#200](https://github.com/feds01/zenith/pull/200))
+- **contracts:** keep only the imports that take a selector's names ([#201](https://github.com/feds01/zenith/pull/201))
+
 ## [0.7.0] - 2026-11-04
 
 [Changes since v0.6.0](https://github.com/feds01/zenith/compare/v0.6.0...v0.7.0)

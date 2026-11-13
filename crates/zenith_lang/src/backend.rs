@@ -21,8 +21,9 @@ pub struct BackendSettings<'a> {
     /// root is canonical.
     pub file_system: &'a Arc<dyn FileSystem>,
 
-    /// Whether parsing records what each file exports, which following
-    /// imports through re-exports needs, and costs time otherwise.
+    /// Whether parsing records the names that imports take and what each file
+    /// exports, which following imports through re-exports and the selectors
+    /// with `names` need, and which cost time otherwise.
     pub record_exports: bool,
 }
 

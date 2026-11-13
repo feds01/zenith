@@ -1,0 +1,6 @@
+# `npm:react` is matched by two selectors with names, so an import of it
+# counts if it takes a name of either.
+[contracts.f]
+type = "forbidden"
+from = ["web"]
+to = [{ path = "npm:*", names = ["useState"] }, { path = "npm:react", names = ["useEffect"] }]

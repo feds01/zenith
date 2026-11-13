@@ -1,0 +1,21 @@
+$ zenith check
+exit: 1
+--- stdout
+error[server-components-client-apis]: `src/app` must not import `npm:react`
+ --> src/app/page.tsx:1:24
+  |
+1 | import { Button } from "../ui";
+  |                        ^^^^^^^ starts a chain of 3 imports
+  |
+  = note: import chain:
+            src/app/page.tsx:1
+            -> src/ui/index.ts:2
+            -> src/ui/use-measure.ts:2
+            -> npm:react
+  = help: remove this import, or one further along the chain
+
+Contracts
+  ✗ server-components-client-apis  forbidden  broken (1 violation)
+
+0 kept, 1 broken · 6 files, 9 imports
+

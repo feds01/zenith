@@ -1,0 +1,4 @@
+[contracts.c]
+type = "protected"
+modules = [{ path = "b.ts", names = ["b"] }]
+allowed_importers = []

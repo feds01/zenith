@@ -12,7 +12,7 @@ use tempfile::TempDir;
 use zenith_cache::CacheSettings;
 use zenith_config::{Config, ConfigFile, FilesConfig, ProjectWalk};
 use zenith_diagnostics::{ReportElement, Reporter};
-use zenith_graph::{Graph, ImportKind, ModuleId, NodeKind};
+use zenith_graph::{Graph, ImportKind, ImportedName, ImportedNames, ModuleId, NodeKind};
 use zenith_lang::{ParsedFile, ResolveFailure, UnresolvedReason};
 use zenith_lang_js::ResolverError;
 use zenith_utils::{
@@ -864,6 +864,26 @@ fn the_paths_without_files_are_those_with_no_source_file_under_them() {
     assert_eq!(
         session.paths_without_files(&paths),
         expected.iter().map(PathBuf::as_path).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn imports_record_their_names_only_for_a_contract_that_keeps_imports_by_them() {
+    let project = Project::new(&[
+        ("a.ts", b"import { b } from './b';\n"),
+        ("b.ts", b"export const b = 1;\n"),
+    ]);
+    let names = |toml: &str| {
+        let session = project.build(toml).unwrap();
+        assert!(!session.needs_graph_through_reexports());
+        let graph = &session.graph;
+        let (a, b) = (graph.id("a.ts").unwrap(), graph.id("b.ts").unwrap());
+        graph.details(a, b)[0].names.clone()
+    };
+    assert_eq!(names(""), ImportedNames::All);
+    assert_eq!(
+        names(include_str!("fixtures/names.toml")),
+        ImportedNames::of([ImportedName::new("b", false)])
     );
 }
 

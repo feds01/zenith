@@ -58,9 +58,10 @@ pub struct Parser {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct ParseOptions {
     /// Whether to record the names that imports take and what each file
-    /// exports. Only following imports through pass-through modules needs
-    /// them, and they cost memory for every import, so without them every
-    /// import takes [`ImportedNames::All`] and every file exports nothing.
+    /// exports. Only following imports through pass-through modules and the
+    /// selectors with `names` need them, and they cost memory for every
+    /// import, so without them every import takes [`ImportedNames::All`] and
+    /// every file exports nothing.
     ///
     /// [`ImportedNames::All`]: zenith_graph::ImportedNames::All
     pub names: bool,

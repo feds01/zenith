@@ -1,0 +1,13 @@
+# Server components never reach a client-only React API by name. The page
+# imports `Button` from the UI barrel, which `export *`s a hook file that
+# lacks "use client" and takes `useLayoutEffect`. `forwardRef`, the namespace
+# import of `layout.tsx` and the client component's `useState` are fine.
+[contracts.server-components-client-apis]
+type = "forbidden"
+name = "Server components never reach client-only React APIs"
+from = [{ path = "src/app", except = [{ path = "src/app", directive = "use client" }] }]
+to = [
+  { path = "npm:react", names = ["useState", "useEffect", "useLayoutEffect"] },
+  "npm:client-only",
+]
+boundaries = [{ path = "**", directive = "use client" }]

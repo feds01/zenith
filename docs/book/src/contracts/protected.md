@@ -54,11 +54,17 @@ Other languages' packages work the same, such as
 selector may match nothing, a misspelt package name isn't an error: the
 contract is simply kept.
 
+A selector with [`names`](../selectors.md#the-table-form) protects only some
+of what a module exports: with
+`modules = [{ path = "npm:react", names = ["useSyncExternalStore"] }]`, only
+the imports that take `useSyncExternalStore` count, and any other import of
+`react` is allowed.
+
 ## Options
 
 | Option | Default | |
 |---|---|---|
-| `modules` | required | Selectors of the protected units. |
+| `modules` | required | Selectors of the protected units, which may have [`names`](../selectors.md#the-table-form). |
 | `allowed_importers` | required | Selectors. |
 
 ## Common options

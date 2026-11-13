@@ -1,0 +1,6 @@
+# Only `useThing` counts as an import of the hooks, but chains still pass
+# through them.
+[contracts.f]
+type = "forbidden"
+from = ["web"]
+to = [{ path = "lib/hooks.ts", names = ["useThing"] }, "npm:client-only"]

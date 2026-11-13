@@ -103,6 +103,11 @@ pub struct Session {
     /// it was [asked for](Session::build_graph_through_reexports).
     builds_graph_through_reexports: bool,
 
+    /// Whether parsing records the names that imports take and what each file
+    /// exports: if the graph through re-exports is built, or a contract keeps
+    /// only the imports that take some names.
+    needs_import_names: bool,
+
     /// The source files that could not be read or parsed in full, sorted by
     /// file. Found by the [`Parse`](crate::StageKind::Parse) stage.
     pub file_errors: Vec<FileError>,
@@ -191,10 +196,11 @@ impl Session {
         config: Config,
     ) -> Self {
         let builds_graph_through_reexports = config.needs_graph_through_reexports();
+        let needs_import_names = builds_graph_through_reexports || config.needs_import_names();
         let recorder = Arc::new(Recorder::new(file_system, &root));
         let file_system: Arc<dyn FileSystem> = recorder.clone();
         Self {
-            backends: Backends::new(&config, &root, &file_system, builds_graph_through_reexports),
+            backends: Backends::new(&config, &root, &file_system, needs_import_names),
             root,
             file_system,
             recorder,
@@ -211,6 +217,7 @@ impl Session {
             graph: GraphBuilder::new().finish(),
             graph_through_reexports: None,
             builds_graph_through_reexports,
+            needs_import_names,
             file_errors: Vec::new(),
             unresolved: Vec::new(),
             suppressions: Vec::new(),
@@ -224,6 +231,7 @@ impl Session {
     /// records what files export for it.
     pub fn build_graph_through_reexports(&mut self) {
         self.builds_graph_through_reexports = true;
+        self.needs_import_names = true;
         self.backends = Backends::new(&self.config, &self.root, &self.file_system, true);
     }
 
@@ -231,6 +239,12 @@ impl Session {
     /// through re-exports.
     pub fn needs_graph_through_reexports(&self) -> bool {
         self.builds_graph_through_reexports
+    }
+
+    /// Whether the [`Parse`](crate::StageKind::Parse) stage records the names
+    /// that imports take and what each file exports.
+    pub fn needs_import_names(&self) -> bool {
+        self.needs_import_names
     }
 
     /// A source map that reads the project's files when reports first need

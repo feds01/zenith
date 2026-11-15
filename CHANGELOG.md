@@ -3,9 +3,12 @@
 What changed for zenith's users in each release. dist shows a release's
 section as its notes on GitHub.
 
-## [0.8.0] - 2026-11-13
+## [0.8.1] - 2026-11-15
 
-[Changes since v0.7.0](https://github.com/feds01/zenith/compare/v0.7.0...v0.8.0)
+[Changes since v0.7.0](https://github.com/feds01/zenith/compare/v0.7.0...v0.8.1)
+
+0.8.0 was tagged but never released, as its build for macOS on Apple silicon
+couldn't run. 0.8.1 releases its changes.
 
 ### Features
 
@@ -13,6 +16,10 @@ section as its notes on GitHub.
 - **haskell:** check Haskell projects ([#196](https://github.com/feds01/zenith/pull/196))
 - **config:** accept selector tables in except ([#200](https://github.com/feds01/zenith/pull/200))
 - **contracts:** keep only the imports that take a selector's names ([#201](https://github.com/feds01/zenith/pull/201))
+
+## [0.8.0] - 2026-11-13
+
+Tagged but not released: its changes are in 0.8.1.
 
 ## [0.7.0] - 2026-11-04
 
